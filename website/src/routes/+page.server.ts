@@ -1,8 +1,8 @@
-import { fetchRegistry, type PackageResponse } from "$lib/registry-api"
+import { fetchRegistry, type SearchResponse } from "$lib/registry-api"
 import type { PageServerLoad } from "./$types"
 
 export const load: PageServerLoad = async ({ fetch }) => {
-	const packages = await fetchRegistry<PackageResponse[]>("search", fetch)
+	const { data: packages } = await fetchRegistry<SearchResponse>("search", fetch)
 
 	return { packages }
 }

@@ -1,9 +1,14 @@
 import { PUBLIC_REGISTRY_URL } from "$env/static/public"
 
+export type SearchResponse = {
+	count: number
+	data: PackageResponse[]
+}
+
 export type PackageResponse = {
 	name: string
 	version: string
-	target: TargetInfo
+	targets: TargetInfo[]
 	description: string
 	published_at: string
 	license: string

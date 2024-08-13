@@ -15,6 +15,7 @@ export default {
 					DEFAULT: "rgb(var(--color-card) / <alpha-value>)",
 					hover: "rgb(var(--color-card-hover) / <alpha-value>)",
 				},
+				border: "rgb(var(--color-border) / <alpha-value>)",
 
 				body: "rgb(var(--color-body) / <alpha-value>)",
 				heading: "rgb(var(--color-heading) / <alpha-value>)",
@@ -29,6 +30,7 @@ export default {
 				primary: {
 					DEFAULT: "rgb(var(--color-primary) / <alpha-value>)",
 					hover: "rgb(var(--color-primary-hover) / <alpha-value>)",
+					bg: "rgb(var(--color-primary-bg) / <alpha-value>)",
 					fg: "rgb(var(--color-primary-fg) / <alpha-value>)",
 				},
 			},
@@ -39,6 +41,9 @@ export default {
 				none: "0",
 				sm: `${4 / 16}rem`,
 				DEFAULT: `${8 / 16}rem`,
+			},
+			borderColor: {
+				DEFAULT: "rgb(var(--color-border) / <alpha-value>)",
 			},
 		},
 	},

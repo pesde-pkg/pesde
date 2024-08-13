@@ -3,6 +3,23 @@
 @import "tailwindcss/utilities";
 
 :root {
+	--color-background: 255 245 230;
+	--color-card: 245 230 210;
+	--color-card-hover: 240 225 205;
+	--color-border: 200 180 160;
+
+	--color-body: 84 70 50;
+	--color-heading: 70 55 35;
+	--color-light: 0 0 0;
+
+	--color-input-bg: 245 230 210;
+	--color-input-border: 180 160 140;
+	--color-placeholder: 130 90 40;
+
+	--color-primary: 120 70 10;
+	--color-primary-hover: 255 172 42;
+	--color-primary-bg: 241 157 30;
+	--color-primary-fg: 10 7 4;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -10,6 +27,7 @@
 		--color-background: 10 7 4;
 		--color-card: 28 22 17;
 		--color-card-hover: 40 32 25;
+		--color-border: 28 22 17;
 
 		--color-body: 198 167 140;
 		--color-heading: 227 213 200;
@@ -21,7 +39,8 @@
 
 		--color-primary: 241 157 30;
 		--color-primary-hover: 255 172 42;
-		--color-primary-fg: var(--color-background);
+		--color-primary-bg: 241 157 30;
+		--color-primary-fg: 10 7 4;
 	}
 }
 

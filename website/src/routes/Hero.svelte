@@ -83,7 +83,7 @@
 
 	<a
 		href="/docs/get-started"
-		class="inline-flex h-10 items-center rounded bg-primary px-4 font-semibold text-primary-fg transition hover:bg-primary-hover md:h-11 md:px-5"
+		class="bg-primary-bg inline-flex h-10 items-center rounded px-4 font-semibold text-primary-fg transition hover:bg-primary-hover md:h-11 md:px-5"
 	>
 		Get Started
 	</a>
