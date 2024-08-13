@@ -1,16 +1,16 @@
-import { mdsvex } from 'mdsvex';
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
-import adapter from '@sveltejs/adapter-vercel';
+import { mdsvex } from "mdsvex"
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte"
+import adapter from "@sveltejs/adapter-vercel"
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	preprocess: [vitePreprocess(), mdsvex()],
 
 	kit: {
-		adapter: adapter({})
+		adapter: adapter({}),
 	},
 
-	extensions: ['.svelte', '.svx']
-};
+	extensions: [".svelte", ".svx"],
+}
 
-export default config;
+export default config

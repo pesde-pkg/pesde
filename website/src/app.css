@@ -1,3 +1,45 @@
-@import 'tailwindcss/base';
-@import 'tailwindcss/components';
-@import 'tailwindcss/utilities';
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+:root {
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--color-background: 10 7 4;
+		--color-card: 28 22 17;
+		--color-card-hover: 40 32 25;
+
+		--color-body: 198 167 140;
+		--color-heading: 227 213 200;
+		--color-light: 255 255 255;
+
+		--color-input-bg: 22 15 8;
+		--color-input-border: 82 60 41;
+		--color-placeholder: 169 147 128;
+
+		--color-primary: 241 157 30;
+		--color-primary-hover: 255 172 42;
+		--color-primary-fg: var(--color-background);
+	}
+}
+
+html {
+	scroll-padding-top: theme(spacing.16);
+}
+
+body {
+	background-color: theme(colors.background);
+	color: theme(colors.body);
+}
+
+@keyframes cursor-blink {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
+}
