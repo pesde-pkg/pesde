@@ -15,7 +15,7 @@
 	</h2>
 
 	<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-		{#each data.packages as pkg}
+		{#each data.packages.slice(0, 24) as pkg}
 			{@const [scope, name] = pkg.name.split("/")}
 			{@const targetName = pkg.target.kind[0].toUpperCase() + pkg.target.kind.slice(1)}
 

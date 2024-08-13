@@ -63,27 +63,27 @@
 </script>
 
 <section class="mx-auto max-w-screen-xl px-4 py-32">
-	<h1 class="mb-6 text-5xl font-semibold text-heading">
+	<h1 class="mb-3 text-2xl font-semibold text-heading md:mb-6 md:text-4xl lg:text-5xl">
 		Manage your packages<br />
 		<span class="sr-only"> for Luau</span>
 		<span class="text-primary" aria-hidden="true">
 			for {typewriteText}{#if cursorVisible}
 				<span
-					class="ml-1 inline-block h-9 w-0.5 bg-current duration-100"
+					class="ml-1 inline-block h-[1.125rem] w-0.5 bg-current duration-100 md:h-7 lg:h-9"
 					class:animate-cursor-blink={blink}
 				></span>
 			{/if}
 		</span>
 	</h1>
 
-	<p class="mb-8 max-w-md text-lg">
+	<p class="mb-5 max-w-sm md:mb-8 md:max-w-md md:text-lg">
 		A package manager for the Luau programming language, supporting multiple runtimes including
 		Roblox and Lune.
 	</p>
 
 	<a
-		href="#"
-		class="hover:bg-primary-hover inline-flex h-11 items-center rounded bg-primary px-5 font-semibold text-primary-fg transition"
+		href="/docs/get-started"
+		class="inline-flex h-10 items-center rounded bg-primary px-4 font-semibold text-primary-fg transition hover:bg-primary-hover md:h-11 md:px-5"
 	>
 		Get Started
 	</a>
