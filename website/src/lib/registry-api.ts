@@ -5,6 +5,10 @@ export type SearchResponse = {
 	data: PackageResponse[]
 }
 
+export type PackageVersionsResponse = PackageResponse[]
+
+export type PackageVersionResponse = PackageResponse
+
 export type PackageResponse = {
 	name: string
 	version: string
