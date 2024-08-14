@@ -1,8 +1,10 @@
 import {
-	fetchRegistry,
+	fetchRegistryJson,
+	RegistryHttpError,
 	type PackageVersionsResponse,
 	type PackageVersionResponse,
 } from "$lib/registry-api"
+import { error } from "@sveltejs/kit"
 import type { LayoutServerLoad } from "./$types"
 
 type FetchPackageOptions =
@@ -20,23 +22,34 @@ type FetchPackageOptions =
 const fetchPackage = async (fetcher: typeof fetch, options: FetchPackageOptions) => {
 	const { scope, name } = options
 
-	if ("version" in options) {
-		const { version, target } = options
-		return fetchRegistry<PackageVersionResponse>(
-			`packages/${encodeURIComponent(`${scope}/${name}`)}/${version}/${target}`,
+	try {
+		if ("version" in options) {
+			if (options.target === undefined) {
+				error(404, "Not Found")
+			}
+
+			const { version, target } = options
+			return fetchRegistryJson<PackageVersionResponse>(
+				`packages/${encodeURIComponent(`${scope}/${name}`)}/${version}/${target}`,
+				fetcher,
+			)
+		}
+
+		const versions = await fetchRegistryJson<PackageVersionsResponse>(
+			`packages/${encodeURIComponent(`${scope}/${name}`)}`,
 			fetcher,
 		)
+
+		const latestVersion = versions.at(-1)
+		if (latestVersion === undefined) throw new Error("package has no versions *blows up*")
+
+		return latestVersion
+	} catch (e) {
+		if (e instanceof RegistryHttpError && e.response.status === 404) {
+			error(404, "This package does not exist.")
+		}
+		throw e
 	}
-
-	const versions = await fetchRegistry<PackageVersionsResponse>(
-		`packages/${encodeURIComponent(`${scope}/${name}`)}`,
-		fetcher,
-	)
-
-	const latestVersion = versions.at(-1)
-	if (latestVersion === undefined) throw new Error("package has no versions *blows up*")
-
-	return latestVersion
 }
 
 export const load: LayoutServerLoad = async ({ params }) => {

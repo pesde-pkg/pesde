@@ -12,15 +12,21 @@
 	const installCommand = `pesde add ${data.pkg.name}`
 </script>
 
-<div class="mx-auto flex max-w-screen-xl px-4 py-16">
+<div class="mx-auto flex max-w-screen-lg px-4 py-16">
 	<div class="flex-grow pr-4">
 		<h1 class="text-3xl font-bold">
 			<span class="text-heading">{scope}/</span><span class="text-light">{name}</span>
 		</h1>
 		<div class="mb-2 font-semibold text-primary">
-			v{data.pkg.version} · published {formatDistanceToNow(new Date(data.pkg.published_at), {
-				addSuffix: true,
-			})}
+			v{data.pkg.version} ·
+			<time
+				datetime={data.pkg.published_at}
+				title={new Date(data.pkg.published_at).toLocaleString()}
+			>
+				published {formatDistanceToNow(new Date(data.pkg.published_at), {
+					addSuffix: true,
+				})}
+			</time>
 		</div>
 		<p class="mb-6 max-w-prose">{data.pkg.description}</p>
 

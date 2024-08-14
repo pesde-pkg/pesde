@@ -28,15 +28,30 @@ export type TargetInfo = {
 
 export type TargetKind = "roblox" | "lune" | "luau"
 
-export async function fetchRegistry<T>(
+export class RegistryHttpError extends Error {
+	name = "RegistryError"
+	constructor(
+		message: string,
+		public response: Response,
+	) {
+		super(message)
+	}
+}
+
+export async function fetchRegistryJson<T>(
 	path: string,
 	fetcher: typeof fetch,
 	options?: RequestInit,
 ): Promise<T> {
+	const response = await fetchRegistry(path, fetcher, options)
+	return response.json()
+}
+
+export async function fetchRegistry(path: string, fetcher: typeof fetch, options?: RequestInit) {
 	const response = await fetcher(new URL(path, PUBLIC_REGISTRY_URL), options)
 	if (!response.ok) {
-		throw new Error(`Failed to fetch from registry: ${response.status} ${response.statusText}`)
+		throw new RegistryHttpError(`Failed to fetch ${response.url}: ${response.statusText}`, response)
 	}
 
-	return response.json()
+	return response
 }

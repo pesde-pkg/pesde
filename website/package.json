@@ -38,9 +38,18 @@
 	"type": "module",
 	"dependencies": {
 		"@fontsource-variable/nunito-sans": "^5.0.14",
+		"@shikijs/rehype": "^1.13.0",
 		"date-fns": "^3.6.0",
 		"gunzip-maybe": "^1.4.2",
 		"lucide-svelte": "^0.427.0",
-		"tar-stream": "^3.1.7"
+		"rehype-raw": "^7.0.0",
+		"rehype-sanitize": "^6.0.0",
+		"rehype-stringify": "^10.0.0",
+		"remark-gfm": "^4.0.0",
+		"remark-parse": "^11.0.0",
+		"remark-rehype": "^11.1.0",
+		"shiki": "^1.13.0",
+		"tar-stream": "^3.1.7",
+		"unified": "^11.0.5"
 	}
 }

@@ -20,6 +20,22 @@
 	--color-primary-hover: 255 172 42;
 	--color-primary-bg: 241 157 30;
 	--color-primary-fg: 10 7 4;
+
+	--shiki-foreground: rgb(var(--color-heading));
+	--shiki-background: rgb(var(--color-card));
+	--shiki-token-constant: color-mix(in srgb, rgb(120 140 230), rgb(var(--color-light)) 50%);
+	--shiki-token-string: rgb(var(--color-heading));
+	--shiki-token-comment: rgb(var(--color-body));
+	--shiki-token-keyword: color-mix(in srgb, rgb(var(--color-primary)), rgb(var(--color-light)) 50%);
+	--shiki-token-parameter: rgb(var(--color-heading));
+	--shiki-token-function: rgb(var(--color-primary));
+	--shiki-token-string-expression: color-mix(
+		in srgb,
+		rgb(120 230 140),
+		rgb(var(--color-light)) 50%
+	);
+	--shiki-token-punctuation: rgb(var(--color-heading));
+	--shiki-token-link: rgb(var(--color-primary));
 }
 
 @media (prefers-color-scheme: dark) {
