@@ -16,6 +16,8 @@ export type PackageResponse = {
 	description: string
 	published_at: string
 	license: string
+	authors?: string[]
+	repository?: string
 }
 
 export type TargetInfo = {
