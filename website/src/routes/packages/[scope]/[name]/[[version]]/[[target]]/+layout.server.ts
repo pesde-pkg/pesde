@@ -1,49 +1,26 @@
 import {
 	fetchRegistryJson,
 	RegistryHttpError,
-	type PackageVersionsResponse,
 	type PackageVersionResponse,
 } from "$lib/registry-api"
 import { error } from "@sveltejs/kit"
 import type { LayoutServerLoad } from "./$types"
 
-type FetchPackageOptions =
-	| {
-			scope: string
-			name: string
-	  }
-	| {
-			scope: string
-			name: string
-			version: string
-			target: string
-	  }
+type FetchPackageOptions = {
+	scope: string
+	name: string
+	version?: string
+	target?: string
+}
 
 const fetchPackage = async (fetcher: typeof fetch, options: FetchPackageOptions) => {
-	const { scope, name } = options
+	const { scope, name, version = "latest", target = "any" } = options
 
 	try {
-		if ("version" in options) {
-			if (options.target === undefined) {
-				error(404, "Not Found")
-			}
-
-			const { version, target } = options
-			return fetchRegistryJson<PackageVersionResponse>(
-				`packages/${encodeURIComponent(`${scope}/${name}`)}/${version}/${target}`,
-				fetcher,
-			)
-		}
-
-		const versions = await fetchRegistryJson<PackageVersionsResponse>(
-			`packages/${encodeURIComponent(`${scope}/${name}`)}`,
+		return await fetchRegistryJson<PackageVersionResponse>(
+			`packages/${encodeURIComponent(`${scope}/${name}`)}/${version}/${target}`,
 			fetcher,
 		)
-
-		const latestVersion = versions.at(-1)
-		if (latestVersion === undefined) throw new Error("package has no versions *blows up*")
-
-		return latestVersion
 	} catch (e) {
 		if (e instanceof RegistryHttpError && e.response.status === 404) {
 			error(404, "This package does not exist.")
