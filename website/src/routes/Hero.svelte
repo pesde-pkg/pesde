@@ -11,7 +11,7 @@
 
 	onMount(() => {
 		let current = 0
-		let timeout: number
+		let timeout: NodeJS.Timeout
 
 		function typewrite(text: string) {
 			blink = false
