@@ -4,7 +4,7 @@
 </script>
 
 <header class="fixed inset-x-0 top-0 z-50 bg-background/80 backdrop-blur">
-	<div class="mx-auto flex h-16 max-w-screen-xl items-center justify-between px-4">
+	<div class="mx-auto flex h-16 max-w-screen-lg items-center justify-between px-4">
 		<a href="/">
 			<Logo class="h-9 text-primary" />
 		</a>

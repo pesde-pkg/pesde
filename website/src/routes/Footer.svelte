@@ -1,4 +1,4 @@
-<footer class="mx-auto max-w-screen-xl px-4">
+<footer class="mx-auto max-w-screen-lg px-4">
 	<div class="border-t py-16 text-sm">
 		<p>Licensed under the MIT License.</p>
 		<p class="mb-4">Copyright © 2024 daimond113</p>

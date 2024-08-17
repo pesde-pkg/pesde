@@ -9,12 +9,12 @@
 
 <Hero />
 
-<section class="mx-auto max-w-screen-xl px-4 pb-32">
+<section class="mx-auto max-w-screen-lg px-4 pb-32">
 	<h2 class="mb-4 text-2xl font-semibold text-heading">
 		<a id="recently-published" href="#recently-published">Recently Published</a>
 	</h2>
 
-	<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+	<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 		{#each data.packages.slice(0, 24) as pkg}
 			{@const [scope, name] = pkg.name.split("/")}
 
