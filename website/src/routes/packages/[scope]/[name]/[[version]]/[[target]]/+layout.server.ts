@@ -32,7 +32,11 @@ const fetchPackage = async (fetcher: typeof fetch, options: FetchPackageOptions)
 export const load: LayoutServerLoad = async ({ params }) => {
 	const { scope, name, version, target } = params
 
-	const options = version ? { scope, name, version, target } : { scope, name }
+	if (version !== undefined && target === undefined) {
+		error(404, "Not Found")
+	}
+
+	const options = version !== undefined ? { scope, name, version, target } : { scope, name }
 
 	const pkg = await fetchPackage(fetch, options)
 

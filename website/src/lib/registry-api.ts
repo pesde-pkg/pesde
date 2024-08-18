@@ -15,7 +15,7 @@ export type PackageResponse = {
 	targets: TargetInfo[]
 	description: string
 	published_at: string
-	license: string
+	license?: string
 	authors?: string[]
 	repository?: string
 }
