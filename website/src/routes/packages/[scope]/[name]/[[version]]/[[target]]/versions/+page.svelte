@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from "$app/stores"
 	import { formatDistanceToNow } from "date-fns"
 
 	const { data } = $props()
@@ -7,9 +8,16 @@
 <div class="space-y-4 py-4">
 	{#each data.versions as pkg, index}
 		{@const isLatest = index === 0}
+		{@const isCurrent = $page.params.version === pkg.version}
 
 		<article
-			class={`relative overflow-hidden rounded bg-card px-5 py-4 transition hover:bg-card-hover ${isLatest ? "ring-2 ring-inset ring-primary" : ""}`}
+			class={`relative overflow-hidden rounded bg-card px-5 py-4 transition hover:bg-card-hover ${
+				isLatest
+					? "ring-2 ring-inset ring-primary"
+					: isCurrent
+						? "ring-2 ring-inset ring-body/50"
+						: ""
+			}`}
 		>
 			<h2 class="font-semibold text-heading">
 				<a
