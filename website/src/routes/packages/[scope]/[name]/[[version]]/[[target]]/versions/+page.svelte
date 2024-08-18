@@ -5,9 +5,11 @@
 </script>
 
 <div class="space-y-4 py-4">
-	{#each data.versions as pkg}
+	{#each data.versions as pkg, index}
+		{@const isLatest = index === 0}
+
 		<article
-			class="relative overflow-hidden rounded bg-card px-5 py-4 transition hover:bg-card-hover"
+			class={`relative overflow-hidden rounded bg-card px-5 py-4 transition hover:bg-card-hover ${isLatest ? "ring-2 ring-inset ring-primary" : ""}`}
 		>
 			<h2 class="font-semibold text-heading">
 				<a
@@ -15,6 +17,9 @@
 					class="after:absolute after:inset-0 after:content-['']"
 				>
 					{pkg.version}
+					{#if isLatest}
+						<span class="text-primary">(latest)</span>
+					{/if}
 				</a>
 			</h2>
 			<div class="text-sm font-semibold">
