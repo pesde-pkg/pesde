@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { formatDistanceToNow } from "date-fns"
-	import { Check, Clipboard } from "lucide-svelte"
+	import { Check, ChevronDownIcon, Clipboard } from "lucide-svelte"
 	import Tab from "./Tab.svelte"
+	import { page } from "$app/stores"
+	import { goto } from "$app/navigation"
 
 	let { children, data } = $props()
 
@@ -10,6 +12,19 @@
 	const [scope, name] = data.pkg.name.split("/")
 
 	const installCommand = `pesde add ${data.pkg.name}`
+
+	const defaultTarget = $derived(
+		"target" in $page.params ? $page.params.target : data.pkg.targets[0].kind,
+	)
+
+	const basePath = $derived.by(() => {
+		const { scope, name } = $page.params
+		if ("target" in $page.params) {
+			const { version } = $page.params
+			return `/packages/${scope}/${name}/${version}`
+		}
+		return `/packages/${scope}/${name}/latest`
+	})
 </script>
 
 <div class="mx-auto flex max-w-screen-lg px-4 py-16">
@@ -39,7 +54,7 @@
 	</div>
 	<aside class="ml-auto w-full max-w-[22rem] flex-shrink-0 border-l pl-4">
 		<h2 class="mb-1 text-lg font-semibold text-heading">Install</h2>
-		<div class="flex h-11 items-center overflow-hidden rounded border text-sm">
+		<div class="mb-4 flex h-11 items-center overflow-hidden rounded border text-sm">
 			<code class="truncate px-4">{installCommand}</code>
 			<button
 				class="ml-auto flex size-11 items-center justify-center border-l bg-card/40 hover:bg-card/60"
@@ -60,6 +75,33 @@
 					<Clipboard class="size-5" />
 				{/if}
 			</button>
+		</div>
+
+		<h2 class="mb-1 text-lg font-semibold text-heading">
+			<label for="target-select">Target</label>
+		</h2>
+		<div
+			class="relative flex h-11 w-full items-center rounded border border-input-border bg-input-bg ring-0 ring-primary-bg/20 transition focus-within:border-primary focus-within:ring-4 has-[:disabled]:opacity-50"
+		>
+			<select
+				class="absolute inset-0 appearance-none bg-transparent px-4 outline-none"
+				id="target-select"
+				onchange={(e) => {
+					const select = e.currentTarget
+
+					select.disabled = true
+					goto(`${basePath}/${e.currentTarget.value}`).finally(() => {
+						select.disabled = false
+					})
+				}}
+			>
+				{#each data.pkg.targets as target}
+					<option value={target.kind} class="bg-card" selected={target.kind === defaultTarget}>
+						{target.kind[0].toUpperCase() + target.kind.slice(1)}
+					</option>
+				{/each}
+			</select>
+			<ChevronDownIcon class="pointer-events-none absolute right-4 h-5 w-5" />
 		</div>
 	</aside>
 </div>
