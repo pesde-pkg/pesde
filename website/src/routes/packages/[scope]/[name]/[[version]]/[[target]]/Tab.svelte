@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { page } from "$app/stores"
 	import type { Snippet } from "svelte"
-	import type { PageData } from "./$types"
 
 	type Props = {
 		tab: string
@@ -9,13 +8,15 @@
 	}
 
 	const { tab, children }: Props = $props()
-	const pkg = $derived(($page.data as PageData).pkg)
 
-	const shortBasePath = $derived(`/packages/${pkg.name}`)
-	const fullBasePath = $derived(`${shortBasePath}/${pkg.version}/${pkg.targets[0].kind}`)
-
-	const isFullPath = $derived($page.url.pathname.startsWith(fullBasePath))
-	const basePath = $derived(isFullPath ? fullBasePath : shortBasePath)
+	const basePath = $derived.by(() => {
+		const { scope, name } = $page.params
+		if ("target" in $page.params) {
+			const { version, target } = $page.params
+			return `/packages/${scope}/${name}/${version}/${target}`
+		}
+		return `/packages/${scope}/${name}`
+	})
 
 	const activeTab = $derived(
 		$page.url.pathname.slice(basePath.length).replace(/^\//, "").replace(/\/$/, ""),
