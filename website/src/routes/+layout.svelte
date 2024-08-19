@@ -7,7 +7,7 @@
 </script>
 
 <Header />
-<main class="mt-16 min-h-screen">
+<main class="min-h-screen">
 	<slot></slot>
 </main>
 <Footer />

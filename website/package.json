@@ -39,6 +39,7 @@
 	"dependencies": {
 		"@fontsource-variable/nunito-sans": "^5.0.14",
 		"@shikijs/rehype": "^1.13.0",
+		"bits-ui": "^0.21.13",
 		"date-fns": "^3.6.0",
 		"gunzip-maybe": "^1.4.2",
 		"lucide-svelte": "^0.427.0",
