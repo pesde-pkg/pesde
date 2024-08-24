@@ -6,7 +6,9 @@
 	const { id }: { id: string } = $props()
 
 	const defaultTarget = $derived(
-		"target" in $page.params ? $page.params.target : $page.data.pkg.targets[0].kind,
+		"target" in $page.params && $page.params.target !== "any"
+			? $page.params.target
+			: $page.data.pkg.targets[0].kind,
 	)
 
 	const basePath = $derived.by(() => {

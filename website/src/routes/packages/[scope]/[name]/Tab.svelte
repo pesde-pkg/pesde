@@ -11,10 +11,6 @@
 
 	const basePath = $derived.by(() => {
 		const { scope, name } = $page.params
-		if ("target" in $page.params) {
-			const { version, target } = $page.params
-			return `/packages/${scope}/${name}/${version}/${target}`
-		}
 		return `/packages/${scope}/${name}`
 	})
 

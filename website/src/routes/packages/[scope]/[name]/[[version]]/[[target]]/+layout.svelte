@@ -1,7 +1,5 @@
 <script lang="ts">
-	import { formatDistanceToNow } from "date-fns"
 	import { BinaryIcon, Icon, LibraryIcon } from "lucide-svelte"
-	import Tab from "./Tab.svelte"
 	import { page } from "$app/stores"
 	import type { TargetInfo } from "$lib/registry-api"
 	import type { ComponentType } from "svelte"
@@ -11,13 +9,13 @@
 
 	let { children, data } = $props()
 
-	const [scope, name] = $derived(data.pkg.name.split("/"))
-
 	const installCommand = $derived(`pesde add ${data.pkg.name}`)
 	const xCommand = $derived(`pesde x ${data.pkg.name}`)
 
 	const defaultTarget = $derived(
-		"target" in $page.params ? $page.params.target : data.pkg.targets[0].kind,
+		"target" in $page.params && $page.params.target !== "any"
+			? $page.params.target
+			: data.pkg.targets[0].kind,
 	)
 	const currentTarget = $derived(data.pkg.targets.find((target) => target.kind === defaultTarget))
 
@@ -42,39 +40,18 @@
 		lib: LibraryIcon,
 		bin: BinaryIcon,
 	}
+
+	const exportEntries = $derived(
+		Object.entries(exportNames).filter(([key]) => !!currentTarget?.[key as keyof TargetInfo]),
+	)
 </script>
 
-<div class="mx-auto flex max-w-prose flex-col px-4 py-16 lg:max-w-screen-lg lg:flex-row">
-	<div class="flex-grow lg:pr-4">
-		<h1 class="text-3xl font-bold">
-			<span class="text-heading">{scope}/</span><span class="text-light">{name}</span>
-		</h1>
-		<div class="mb-2 font-semibold text-primary">
-			v{data.pkg.version} ·
-			<time
-				datetime={data.pkg.published_at}
-				title={new Date(data.pkg.published_at).toLocaleString()}
-			>
-				published {formatDistanceToNow(new Date(data.pkg.published_at), {
-					addSuffix: true,
-				})}
-			</time>
-		</div>
-		<p class="mb-6 max-w-prose">{data.pkg.description}</p>
-
-		<div class="mb-12 lg:hidden">
-			<TargetSelector id="target-selector-sidebar" />
-		</div>
-
-		<nav class="flex w-full border-b-2">
-			<Tab tab="">Readme</Tab>
-			<Tab tab="versions">Versions</Tab>
-		</nav>
-
+<div class="flex flex-col lg:flex-row">
+	<div class="lg:pr-4">
 		{@render children()}
 	</div>
 	<aside
-		class="w-full flex-shrink-0 border-t pt-16 lg:ml-auto lg:max-w-[22rem] lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0"
+		class="w-full flex-shrink-0 border-t pt-16 lg:ml-auto lg:max-w-[22rem] lg:border-l lg:border-t-0 lg:pl-4 lg:pt-6"
 	>
 		<h2 class="mb-1 text-lg font-semibold text-heading">Install</h2>
 		<Command command={installCommand} class="mb-4" />
@@ -111,7 +88,7 @@
 
 		<h2 class="mb-1 text-lg font-semibold text-heading">Exports</h2>
 		<ul class="mb-6 space-y-0.5">
-			{#each Object.entries(exportNames).filter(([key]) => !!currentTarget?.[key as keyof TargetInfo]) as [exportKey, exportName]}
+			{#each exportEntries as [exportKey, exportName]}
 				{@const Icon = exportIcons[exportKey as keyof TargetInfo]}
 				<li class="flex items-center">
 					<Icon class="mr-2 size-5 text-primary" />
