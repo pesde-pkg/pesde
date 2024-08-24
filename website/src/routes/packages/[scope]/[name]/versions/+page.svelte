@@ -2,6 +2,11 @@
 	import { formatDistanceToNow } from "date-fns"
 
 	const { data } = $props()
+
+	let displayDates = $state(false)
+	$effect(() => {
+		displayDates = true
+	})
 </script>
 
 <div class="space-y-4 py-4">
@@ -24,8 +29,14 @@
 					{/if}
 				</a>
 			</h2>
-			<div class="text-sm font-semibold">
-				<time>{formatDistanceToNow(new Date(pkg.published_at), { addSuffix: true })}</time>
+			<div class="text-sm font-semibold" class:invisible={!displayDates}>
+				<time>
+					{#if displayDates}
+						{formatDistanceToNow(new Date(pkg.published_at), { addSuffix: true })}
+					{:else}
+						...
+					{/if}
+				</time>
 				·
 				{pkg.targets
 					.map((target) => {

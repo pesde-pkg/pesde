@@ -1,10 +1,15 @@
 <script lang="ts">
-	import type { PageData } from "./$types"
 	import { formatDistanceToNow } from "date-fns"
 
 	import Hero from "./Hero.svelte"
 
-	export let data: PageData
+	const { data } = $props()
+
+	let displayDates = $state(false)
+
+	$effect(() => {
+		displayDates = true
+	})
 </script>
 
 <Hero />
@@ -38,8 +43,12 @@
 				</div>
 				<p class="mb-3 line-clamp-2 h-[2lh] overflow-hidden text-sm">{pkg.description}</p>
 				<div class="text-sm font-semibold text-heading">
-					<time datetime={pkg.published_at}>
-						{formatDistanceToNow(new Date(pkg.published_at), { addSuffix: true })}
+					<time datetime={pkg.published_at} class:invisible={!displayDates}>
+						{#if displayDates}
+							{formatDistanceToNow(new Date(pkg.published_at), { addSuffix: true })}
+						{:else}
+							...
+						{/if}
 					</time>
 				</div>
 			</article>
