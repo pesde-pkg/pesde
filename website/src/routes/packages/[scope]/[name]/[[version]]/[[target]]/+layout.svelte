@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { BinaryIcon, Icon, LibraryIcon } from "lucide-svelte"
+	import { BinaryIcon, Globe, Icon, LibraryIcon, Mail } from "lucide-svelte"
 	import { page } from "$app/stores"
 	import type { TargetInfo } from "$lib/registry-api"
 	import type { ComponentType } from "svelte"
@@ -102,6 +102,33 @@
 				This package provides a binary that can be executed after installation, or globally via:
 			</p>
 			<Command command={xCommand} class="mb-6" />
+		{/if}
+
+		{#if data.pkg.authors && data.pkg.authors.length > 0}
+			<h2 class="mb-2 text-lg font-semibold text-heading">Authors</h2>
+			<ul>
+				{#each data.pkg.authors as author}
+					{@const [, name] = author.match(/^(.*?)(<|\()/) ?? []}
+					{@const [, email] = author.match(/<(.*)>/) ?? []}
+					{@const [, website] = author.match(/\((.*)\)/) ?? []}
+
+					<li class="mb-2 flex items-center">
+						{name}
+						<div class="ml-auto flex items-center space-x-2">
+							{#if email}
+								<a href={`mailto:${email}`} class="ml-1 text-primary" title={`Email: ${email}`}>
+									<Mail class="size-5 text-primary" aria-hidden="true" />
+								</a>
+							{/if}
+							{#if website}
+								<a href={website} class="ml-1 text-primary" title={`Website: ${website}`}>
+									<Globe class="size-5 text-primary" aria-hidden="true" />
+								</a>
+							{/if}
+						</div>
+					</li>
+				{/each}
+			</ul>
 		{/if}
 	</aside>
 </div>
