@@ -9,12 +9,12 @@
 	<div class="fixed inset-x-0 top-0 z-50 bg-background/80 backdrop-blur">
 		<div class="mx-auto flex h-14 max-w-screen-lg items-center justify-between px-4 sm:h-16">
 			<a href="/">
-				<Logo class="h-7 text-primary md:h-9" />
+				<Logo class="h-7 text-primary sm:h-9" />
 			</a>
 			<div class="hidden w-full max-w-80 sm:flex">
 				<Search />
 			</div>
-			<div class="hidden items-center space-x-6 md:flex [&_a:hover]:text-heading [&_a]:transition">
+			<div class="hidden items-center space-x-6 sm:flex [&_a:hover]:text-heading [&_a]:transition">
 				<nav class="flex items-center space-x-6 font-medium">
 					<a href="/docs">Docs</a>
 					<a href="/policies">Policies</a>
@@ -24,7 +24,7 @@
 					<Github class="size-6" />
 				</a>
 			</div>
-			<div class="flex items-center md:hidden">
+			<div class="flex items-center sm:hidden">
 				<Hamburger />
 			</div>
 		</div>
