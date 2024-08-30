@@ -3,10 +3,11 @@ import { unified } from "unified"
 import type { PageServerLoad } from "./$types"
 import remarkParse from "remark-parse"
 import remarkRehype from "remark-rehype"
+import remarkGfm from "remark-gfm"
+import remarkGemoji from "remark-gemoji"
 import rehypeSanitize from "rehype-sanitize"
 import rehypeStringify from "rehype-stringify"
 import rehypeRaw from "rehype-raw"
-import remarkGfm from "remark-gfm"
 import rehypeShiki from "@shikijs/rehype"
 import { createCssVariablesTheme } from "shiki"
 
@@ -45,6 +46,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 	const file = await unified()
 		.use(remarkParse)
 		.use(remarkGfm)
+		.use(remarkGemoji)
 		.use(remarkRehype, { allowDangerousHtml: true })
 		.use(rehypeRaw)
 		.use(rehypeSanitize)
