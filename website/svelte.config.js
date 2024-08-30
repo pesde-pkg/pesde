@@ -8,6 +8,9 @@ const config = {
 
 	kit: {
 		adapter: adapter({}),
+		env: {
+			dir: "..",
+		},
 	},
 
 	extensions: [".svelte", ".svx"],
