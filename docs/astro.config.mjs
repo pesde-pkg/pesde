@@ -23,11 +23,14 @@ export default defineConfig({
 					autogenerate: { directory: "reference" },
 				},
 			],
-      components: {
-        SiteTitle: "./src/components/SiteTitle.astro",
-      },
+			components: {
+				SiteTitle: "./src/components/SiteTitle.astro",
+			},
 			customCss: ["./src/tailwind.css"],
 		}),
 		tailwind({ applyBaseStyles: false }),
 	],
+	vite: {
+		envDir: "..",
+	},
 })
