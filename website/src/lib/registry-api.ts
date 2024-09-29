@@ -26,7 +26,14 @@ export type TargetInfo = {
 	bin: boolean
 }
 
-export type TargetKind = "roblox" | "lune" | "luau"
+export type TargetKind = "roblox" | "roblox_server" | "lune" | "luau"
+
+export const TARGET_KIND_DISPLAY_NAMES: Record<TargetKind, string> = {
+	roblox: "Roblox",
+	roblox_server: "Roblox (server)",
+	lune: "Lune",
+	luau: "Luau",
+}
 
 export class RegistryHttpError extends Error {
 	name = "RegistryError"

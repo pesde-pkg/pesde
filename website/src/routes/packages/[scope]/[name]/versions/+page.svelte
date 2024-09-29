@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { TARGET_KIND_DISPLAY_NAMES } from "$lib/registry-api.js"
 	import { formatDistanceToNow } from "date-fns"
 
 	const { data } = $props()
@@ -14,11 +15,11 @@
 		{@const isLatest = index === 0}
 
 		<article
-			class={`relative overflow-hidden rounded bg-card px-5 py-4 transition hover:bg-card-hover ${
-				isLatest ? "ring-2 ring-inset ring-primary" : ""
+			class={`bg-card hover:bg-card-hover relative overflow-hidden rounded px-5 py-4 transition ${
+				isLatest ? "ring-primary ring-2 ring-inset" : ""
 			}`}
 		>
-			<h2 class="font-semibold text-heading">
+			<h2 class="text-heading font-semibold">
 				<a
 					href={`/packages/${pkg.name}/${pkg.version}/any`}
 					class="after:absolute after:inset-0 after:content-['']"
@@ -38,11 +39,7 @@
 					{/if}
 				</time>
 				·
-				{pkg.targets
-					.map((target) => {
-						return target.kind[0].toUpperCase() + target.kind.slice(1)
-					})
-					.join(", ")}
+				{pkg.targets.map((target) => TARGET_KIND_DISPLAY_NAMES[target.kind]).join(", ")}
 			</div>
 		</article>
 	{/each}
