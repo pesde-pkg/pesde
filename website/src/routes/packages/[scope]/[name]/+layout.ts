@@ -4,7 +4,7 @@ import {
 	type PackageVersionResponse,
 } from "$lib/registry-api"
 import { error } from "@sveltejs/kit"
-import type { LayoutServerLoad } from "./$types"
+import type { LayoutLoad } from "./$types"
 
 type FetchPackageOptions = {
 	scope: string
@@ -29,7 +29,7 @@ const fetchPackage = async (fetcher: typeof fetch, options: FetchPackageOptions)
 	}
 }
 
-export const load: LayoutServerLoad = async ({ params }) => {
+export const load: LayoutLoad = async ({ params }) => {
 	const { scope, name, version, target } = params
 
 	if (version !== undefined && target === undefined) {

@@ -9,7 +9,7 @@ import remarkParse from "remark-parse"
 import remarkRehype from "remark-rehype"
 import { createCssVariablesTheme } from "shiki"
 import { unified } from "unified"
-import type { PageServerLoad } from "./$types"
+import type { PageLoad } from "./$types"
 
 const fetchReadme = async (
 	fetcher: typeof fetch,
@@ -37,7 +37,7 @@ const fetchReadme = async (
 	}
 }
 
-export const load: PageServerLoad = async ({ parent }) => {
+export const load: PageLoad = async ({ parent }) => {
 	const { pkg } = await parent()
 	const { name, version, targets } = pkg
 
