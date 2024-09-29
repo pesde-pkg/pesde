@@ -17,7 +17,9 @@
 			? $page.params.target
 			: data.pkg.targets[0].kind,
 	)
-	const currentTarget = $derived(data.pkg.targets.find((target) => target.kind === defaultTarget))
+	const currentTarget = $derived(
+		data.pkg.targets.find((target: TargetInfo) => target.kind === defaultTarget),
+	)
 
 	const repositoryUrl = $derived(
 		data.pkg.repository !== undefined ? new URL(data.pkg.repository) : undefined,

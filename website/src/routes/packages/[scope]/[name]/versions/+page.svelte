@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { TARGET_KIND_DISPLAY_NAMES } from "$lib/registry-api.js"
+	import { TARGET_KIND_DISPLAY_NAMES, type TargetInfo } from "$lib/registry-api.js"
 	import { formatDistanceToNow } from "date-fns"
 
 	const { data } = $props()
@@ -39,7 +39,7 @@
 					{/if}
 				</time>
 				·
-				{pkg.targets.map((target) => TARGET_KIND_DISPLAY_NAMES[target.kind]).join(", ")}
+				{pkg.targets.map((target: TargetInfo) => TARGET_KIND_DISPLAY_NAMES[target.kind]).join(", ")}
 			</div>
 		</article>
 	{/each}
