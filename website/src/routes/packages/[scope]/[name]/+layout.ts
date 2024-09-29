@@ -29,7 +29,7 @@ const fetchPackage = async (fetcher: typeof fetch, options: FetchPackageOptions)
 	}
 }
 
-export const load: LayoutLoad = async ({ params }) => {
+export const load: LayoutLoad = async ({ params, fetch }) => {
 	const { scope, name, version, target } = params
 
 	if (version !== undefined && target === undefined) {

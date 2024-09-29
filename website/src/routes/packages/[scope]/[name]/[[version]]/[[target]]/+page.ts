@@ -37,7 +37,7 @@ const fetchReadme = async (
 	}
 }
 
-export const load: PageLoad = async ({ parent }) => {
+export const load: PageLoad = async ({ parent, fetch }) => {
 	const { pkg } = await parent()
 	const { name, version, targets } = pkg
 
