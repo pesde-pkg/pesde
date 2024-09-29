@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from "$app/stores"
-	import Github from "$lib/components/Github.svelte"
+	import GitHub from "$lib/components/GitHub.svelte"
 	import type { TargetInfo } from "$lib/registry-api"
 	import { BinaryIcon, Globe, Icon, LibraryIcon, Mail } from "lucide-svelte"
 	import type { ComponentType } from "svelte"
@@ -22,7 +22,7 @@
 	const repositoryUrl = $derived(
 		data.pkg.repository !== undefined ? new URL(data.pkg.repository) : undefined,
 	)
-	const isGithub = $derived(repositoryUrl?.hostname === "github.com")
+	const isGitHub = $derived(repositoryUrl?.hostname === "github.com")
 	const githubRepo = $derived(
 		repositoryUrl?.pathname
 			.split("/")
@@ -74,8 +74,8 @@
 					target="_blank"
 					rel="noreferrer noopener"
 				>
-					{#if isGithub}
-						<Github class="text-primary size-5" />
+					{#if isGitHub}
+						<GitHub class="text-primary size-5" />
 						<span>
 							{githubRepo}
 						</span>

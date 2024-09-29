@@ -1,10 +1,10 @@
 <script lang="ts">
+	import GitHub from "$lib/components/GitHub.svelte"
 	import Logo from "$lib/components/Logo.svelte"
-	import Github from "$lib/components/Github.svelte"
-	import Search from "./Search.svelte"
 	import { Dialog } from "bits-ui"
 	import { Menu, X } from "lucide-svelte"
 	import { fade, fly } from "svelte/transition"
+	import Search from "./Search.svelte"
 </script>
 
 <Dialog.Root>
@@ -17,7 +17,7 @@
 			<Dialog.Title class="sr-only">Menu</Dialog.Title>
 			<div transition:fade={{ duration: 200 }} class="bg-background">
 				<div class="relative z-50 flex h-14 flex-shrink-0 items-center justify-between px-4">
-					<Logo class="h-7 text-primary" />
+					<Logo class="text-primary h-7" />
 					<Dialog.Close>
 						<span class="sr-only">close menu</span>
 						<X aria-hidden="true" />
@@ -28,13 +28,13 @@
 				</div>
 			</div>
 			<div
-				class="flex flex-grow flex-col overflow-hidden bg-background"
+				class="bg-background flex flex-grow flex-col overflow-hidden"
 				transition:fade={{ duration: 200 }}
 			>
 				<nav class="flex h-full flex-col px-4 pt-2" transition:fly={{ y: "-2%", duration: 200 }}>
 					<div class="flex flex-grow flex-col border-y py-3">
 						{#snippet item(href: string, text: string)}
-							<a {href} class="flex h-10 items-center rounded px-3 hover:bg-card/50">{text}</a>
+							<a {href} class="hover:bg-card/50 flex h-10 items-center rounded px-3">{text}</a>
 						{/snippet}
 
 						{@render item("/docs", "Documentation")}
@@ -42,7 +42,7 @@
 					</div>
 					<div class="flex items-center py-5">
 						<a href="https://github.com/daimond113/pesde" target="_blank" rel="noreferrer noopener">
-							<Github class="size-6" />
+							<GitHub class="size-6" />
 						</a>
 					</div>
 				</nav>
