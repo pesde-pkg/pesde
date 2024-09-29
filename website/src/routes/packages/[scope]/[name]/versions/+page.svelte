@@ -31,7 +31,7 @@
 				</a>
 			</h2>
 			<div class="text-sm font-semibold" class:invisible={!displayDates}>
-				<time>
+				<time datetime={pkg.published_at}>
 					{#if displayDates}
 						{formatDistanceToNow(new Date(pkg.published_at), { addSuffix: true })}
 					{:else}
