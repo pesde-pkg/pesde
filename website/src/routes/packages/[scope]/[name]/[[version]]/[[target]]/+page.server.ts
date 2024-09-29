@@ -1,15 +1,15 @@
 import { fetchRegistry, RegistryHttpError } from "$lib/registry-api"
-import { unified } from "unified"
-import type { PageServerLoad } from "./$types"
-import remarkParse from "remark-parse"
-import remarkRehype from "remark-rehype"
-import remarkGfm from "remark-gfm"
-import remarkGemoji from "remark-gemoji"
+import rehypeShiki from "@shikijs/rehype"
+import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
 import rehypeStringify from "rehype-stringify"
-import rehypeRaw from "rehype-raw"
-import rehypeShiki from "@shikijs/rehype"
+import remarkGemoji from "remark-gemoji"
+import remarkGfm from "remark-gfm"
+import remarkParse from "remark-parse"
+import remarkRehype from "remark-rehype"
 import { createCssVariablesTheme } from "shiki"
+import { unified } from "unified"
+import type { PageServerLoad } from "./$types"
 
 const fetchReadme = async (
 	fetcher: typeof fetch,
@@ -57,7 +57,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 				variableDefaults: {},
 				fontStyle: true,
 			}),
-			defaultLanguage: "text",
+			fallbackLanguage: "text",
 		})
 		.use(rehypeStringify)
 		.process(readmeText)
