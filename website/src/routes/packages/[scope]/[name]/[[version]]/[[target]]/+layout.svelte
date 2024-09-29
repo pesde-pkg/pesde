@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { BinaryIcon, Globe, Icon, LibraryIcon, Mail } from "lucide-svelte"
 	import { page } from "$app/stores"
+	import Github from "$lib/components/Github.svelte"
 	import type { TargetInfo } from "$lib/registry-api"
+	import { BinaryIcon, Globe, Icon, LibraryIcon, Mail } from "lucide-svelte"
 	import type { ComponentType } from "svelte"
 	import Command from "./Command.svelte"
 	import TargetSelector from "./TargetSelector.svelte"
-	import Github from "$lib/components/Github.svelte"
 
 	let { children, data } = $props()
 
@@ -53,7 +53,7 @@
 	<aside
 		class="w-full flex-shrink-0 border-t pt-16 lg:ml-auto lg:max-w-[22rem] lg:border-l lg:border-t-0 lg:pl-4 lg:pt-6"
 	>
-		<h2 class="mb-1 text-lg font-semibold text-heading">Install</h2>
+		<h2 class="text-heading mb-1 text-lg font-semibold">Install</h2>
 		<Command command={installCommand} class="mb-4" />
 
 		<div class="hidden lg:block">
@@ -61,12 +61,12 @@
 		</div>
 
 		{#if data.pkg.license !== undefined}
-			<h2 class="mb-1 text-lg font-semibold text-heading">License</h2>
+			<h2 class="text-heading mb-1 text-lg font-semibold">License</h2>
 			<div class="mb-6">{data.pkg.license}</div>
 		{/if}
 
 		{#if data.pkg.repository !== undefined}
-			<h2 class="mb-1 text-lg font-semibold text-heading">Repository</h2>
+			<h2 class="text-heading mb-1 text-lg font-semibold">Repository</h2>
 			<div class="mb-6">
 				<a
 					href={data.pkg.repository}
@@ -75,7 +75,7 @@
 					rel="noreferrer noopener"
 				>
 					{#if isGithub}
-						<Github class="size-5 text-primary" />
+						<Github class="text-primary size-5" />
 						<span>
 							{githubRepo}
 						</span>
@@ -86,29 +86,29 @@
 			</div>
 		{/if}
 
-		<h2 class="mb-1 text-lg font-semibold text-heading">Exports</h2>
+		<h2 class="text-heading mb-1 text-lg font-semibold">Exports</h2>
 		<ul class="mb-6 space-y-0.5">
 			{#each exportEntries as [exportKey, exportName]}
 				{@const Icon = exportIcons[exportKey as keyof TargetInfo]}
 				<li class="flex items-center">
-					<Icon class="mr-2 size-5 text-primary" />
+					<Icon class="text-primary mr-2 size-5" />
 					{exportName}
 				</li>
 			{/each}
 		</ul>
 
 		{#if currentTarget?.bin}
-			<p class="-mt-3 mb-4 text-sm text-body/80">
+			<p class="text-body/80 -mt-3 mb-4 text-sm">
 				This package provides a binary that can be executed after installation, or globally via:
 			</p>
 			<Command command={xCommand} class="mb-6" />
 		{/if}
 
 		{#if data.pkg.authors && data.pkg.authors.length > 0}
-			<h2 class="mb-2 text-lg font-semibold text-heading">Authors</h2>
+			<h2 class="text-heading mb-2 text-lg font-semibold">Authors</h2>
 			<ul>
 				{#each data.pkg.authors as author}
-					{@const [, name] = author.match(/^(.*?)(<|\()/) ?? []}
+					{@const [, name] = author.match(/^(.*?)\s*(<|\(|$)/) ?? []}
 					{@const [, email] = author.match(/<(.*)>/) ?? []}
 					{@const [, website] = author.match(/\((.*)\)/) ?? []}
 
@@ -116,13 +116,13 @@
 						{name}
 						<div class="ml-auto flex items-center space-x-2">
 							{#if email}
-								<a href={`mailto:${email}`} class="ml-1 text-primary" title={`Email: ${email}`}>
-									<Mail class="size-5 text-primary" aria-hidden="true" />
+								<a href={`mailto:${email}`} class="text-primary ml-1" title={`Email: ${email}`}>
+									<Mail class="text-primary size-5" aria-hidden="true" />
 								</a>
 							{/if}
 							{#if website}
-								<a href={website} class="ml-1 text-primary" title={`Website: ${website}`}>
-									<Globe class="size-5 text-primary" aria-hidden="true" />
+								<a href={website} class="text-primary ml-1" title={`Website: ${website}`}>
+									<Globe class="text-primary size-5" aria-hidden="true" />
 								</a>
 							{/if}
 						</div>
