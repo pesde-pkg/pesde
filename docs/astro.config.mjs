@@ -2,6 +2,8 @@ import { defineConfig } from "astro/config"
 import starlight from "@astrojs/starlight"
 import tailwind from "@astrojs/tailwind"
 
+import vercel from "@astrojs/vercel/serverless"
+
 // https://astro.build/config
 export default defineConfig({
 	redirects: {
@@ -16,11 +18,18 @@ export default defineConfig({
 			sidebar: [
 				{
 					label: "Guides",
-					items: [{ label: "Getting Started", slug: "guides/getting-started" }],
+					items: [
+						{
+							label: "Getting Started",
+							slug: "guides/getting-started",
+						},
+					],
 				},
 				{
 					label: "Reference",
-					autogenerate: { directory: "reference" },
+					autogenerate: {
+						directory: "reference",
+					},
 				},
 			],
 			components: {
@@ -28,9 +37,14 @@ export default defineConfig({
 			},
 			customCss: ["./src/tailwind.css"],
 		}),
-		tailwind({ applyBaseStyles: false }),
+		tailwind({
+			applyBaseStyles: false,
+		}),
 	],
 	vite: {
 		envDir: "..",
 	},
+	output: "hybrid",
+	adapter: vercel(),
 })
+
