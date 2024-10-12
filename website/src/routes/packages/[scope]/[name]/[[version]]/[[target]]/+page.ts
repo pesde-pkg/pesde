@@ -41,7 +41,9 @@ export const load: PageLoad = async ({ parent, fetch }) => {
 	const { pkg } = await parent()
 	const { name, version, targets } = pkg
 
+	console.log("fetching readme")
 	const readmeText = await fetchReadme(fetch, name, version, targets[0].kind)
+	console.log(readmeText)
 
 	const file = await unified()
 		.use(remarkParse)
@@ -63,6 +65,7 @@ export const load: PageLoad = async ({ parent, fetch }) => {
 		.process(readmeText)
 
 	const readmeHtml = file.value
+	console.log(readmeHtml)
 
 	return {
 		readmeHtml,
