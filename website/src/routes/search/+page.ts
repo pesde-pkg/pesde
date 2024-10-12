@@ -22,5 +22,10 @@ export const load: PageLoad = async ({ fetch, url }) => {
 		page,
 		pageSize: PAGE_SIZE,
 		result,
+
+		meta: {
+			title: query === "" ? "search" : `results for "${query}"`,
+			description: "Search for packages in the pesde registry.",
+		},
 	}
 }

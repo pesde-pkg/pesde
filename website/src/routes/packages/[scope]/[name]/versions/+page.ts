@@ -19,6 +19,11 @@ export const load: PageLoad = async ({ params, fetch }) => {
 
 		return {
 			versions,
+
+			meta: {
+				title: `${versions[0].name} - versions`,
+				description: versions[0].description,
+			},
 		}
 	} catch (e) {
 		if (e instanceof RegistryHttpError && e.response.status === 404) {

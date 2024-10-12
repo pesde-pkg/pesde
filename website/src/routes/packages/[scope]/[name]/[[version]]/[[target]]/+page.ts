@@ -67,5 +67,10 @@ export const load: PageLoad = async ({ parent, fetch }) => {
 	return {
 		readmeHtml,
 		pkg,
+
+		meta: {
+			title: `${name} - ${version}`,
+			description: pkg.description,
+		},
 	}
 }
