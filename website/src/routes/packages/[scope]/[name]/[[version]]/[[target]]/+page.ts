@@ -52,15 +52,15 @@ export const load: PageLoad = async ({ parent, fetch }) => {
 		.use(remarkRehype, { allowDangerousHtml: true })
 		.use(rehypeRaw)
 		.use(rehypeSanitize)
-		.use(rehypeShiki, {
-			theme: createCssVariablesTheme({
-				name: "css-variables",
-				variablePrefix: "--shiki-",
-				variableDefaults: {},
-				fontStyle: true,
-			}),
-			fallbackLanguage: "text",
-		})
+		// .use(rehypeShiki, {
+		// 	theme: createCssVariablesTheme({
+		// 		name: "css-variables",
+		// 		variablePrefix: "--shiki-",
+		// 		variableDefaults: {},
+		// 		fontStyle: true,
+		// 	}),
+		// 	fallbackLanguage: "text",
+		// })
 		.use(rehypeStringify)
 		.process(readmeText)
 
