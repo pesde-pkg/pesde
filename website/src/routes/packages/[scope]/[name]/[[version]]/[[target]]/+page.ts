@@ -1,5 +1,5 @@
 import { fetchRegistry, RegistryHttpError } from "$lib/registry-api"
-import rehypeShiki from "@shikijs/rehype"
+import rehypeShikiFromHighlighter from "@shikijs/rehype/core"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize from "rehype-sanitize"
 import rehypeStringify from "rehype-stringify"
@@ -7,9 +7,14 @@ import remarkGemoji from "remark-gemoji"
 import remarkGfm from "remark-gfm"
 import remarkParse from "remark-parse"
 import remarkRehype from "remark-rehype"
-import { createCssVariablesTheme } from "shiki"
+import { createCssVariablesTheme, createHighlighter } from "shiki"
 import { unified } from "unified"
 import type { PageLoad } from "./$types"
+
+const highlighter = await createHighlighter({
+	themes: [],
+	langs: [],
+})
 
 const fetchReadme = async (
 	fetcher: typeof fetch,
@@ -50,14 +55,14 @@ export const load: PageLoad = async ({ parent, fetch }) => {
 		.use(remarkRehype, { allowDangerousHtml: true })
 		.use(rehypeRaw)
 		.use(rehypeSanitize)
-		.use(rehypeShiki, {
+		.use(rehypeShikiFromHighlighter, highlighter, {
+			lazy: true,
 			theme: createCssVariablesTheme({
 				name: "css-variables",
 				variablePrefix: "--shiki-",
 				variableDefaults: {},
 				fontStyle: true,
 			}),
-			lazy: true,
 			fallbackLanguage: "text",
 		})
 		.use(rehypeStringify)
