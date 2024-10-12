@@ -11,11 +11,6 @@ import { createCssVariablesTheme, createHighlighter } from "shiki"
 import { unified } from "unified"
 import type { PageLoad } from "./$types"
 
-const highlighter = await createHighlighter({
-	themes: [],
-	langs: [],
-})
-
 const fetchReadme = async (
 	fetcher: typeof fetch,
 	name: string,
@@ -47,6 +42,11 @@ export const load: PageLoad = async ({ parent, fetch }) => {
 	const { name, version, targets } = pkg
 
 	const readmeText = await fetchReadme(fetch, name, version, targets[0].kind)
+
+	const highlighter = await createHighlighter({
+		themes: [],
+		langs: [],
+	})
 
 	const file = await unified()
 		.use(remarkParse)
