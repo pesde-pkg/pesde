@@ -1,5 +1,5 @@
-import type { Config } from "tailwindcss"
 import starlightPlugin from "@astrojs/starlight-tailwind"
+import type { Config } from "tailwindcss"
 import defaultTheme from "tailwindcss/defaultTheme"
 
 export default {
@@ -20,8 +20,8 @@ export default {
 				gray: {
 					100: "rgb(245 230 210)",
 					200: "rgb(228 212 192)",
-					300: "rgb(180 160 140)",
-					400: "rgb(130 90 40)",
+					300: "rgb(198 167 140)",
+					400: "rgb(142 128 112)",
 					500: "rgb(84 70 50)",
 					600: "rgb(65 50 41)",
 					700: "rgb(50 42 35)",

@@ -1,0 +1,36 @@
+---
+title: Roblox
+description: Using pesde in a Roblox project.
+---
+
+pesde can be used in Roblox projects, however this requires some extra setup.
+Namely, you need to specify a `roblox_sync_config_generator` script in order
+to generate the adequate configuration for the sync tool you are using.
+
+The [`pesde-scripts`](https://github.com/daimond113/pesde-scripts)
+repository contains a list of scripts for different sync tools. If the tool
+you are using is not supported, you can write your own script and submit a PR
+to get it added.
+
+These scripts are automatically cloned into the `~/.pesde/scripts` folder and
+kept up to date when you use pesde.
+
+## Usage with Rojo
+
+[Rojo](https://rojo.space/) is a popular tool for syncing files into Roblox
+Studio.
+
+Running `pesde init` will prompt you to select a target, select
+`roblox` or `roblox_server` in this case. This will setup the configuration
+needed to use pesde in a project using Rojo.
+
+## Usage with other tools
+
+If you are using a different sync tool, you should look for it's scripts in the
+pesde-scripts repository. If you cannot find them, you can write your own and
+optionally submit a PR to help others using the same tool as you get started
+quicker. 
+
+Scaffold your project with `pesde init`, select the `roblox` or `roblox_server`
+target, and then replace the `.pesde/roblox_sync_config_generator.luau` script
+with the one you want to use.

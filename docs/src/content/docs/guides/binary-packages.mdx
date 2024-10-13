@@ -1,0 +1,41 @@
+---
+title: Using Binary Packages
+description: Learn how to use binary packages.
+---
+
+A **binary package** is a package that contains a binary export.
+
+Binary packages can be run like a normal program. There are several ways to use
+binary packages with pesde.
+
+## Using `pesde x`
+
+The `pesde x` command can be used to run a one-off binary package. This is
+useful for running a binary package without installing it or outside of a pesde
+project.
+
+```sh
+pesde x pesde/hello
+# Hello, pesde! (pesde/hello@1.0.0, lune)
+```
+
+## Installing a binary package
+
+Binary packages can be installed using the `pesde add` and `pesde install`
+commands.
+
+This requires a `pesde.toml` file to be present in the current directory, and
+will add the binary package to the `dependencies` section of the file.
+
+```sh
+pesde add pesde/hello
+pesde install
+```
+
+This will add the binary package to your `PATH`, meaning that it can be run
+anywhere!
+
+```sh
+hello
+# Hello, pesde! (pesde/hello@1.0.0, lune)
+```

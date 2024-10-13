@@ -1,0 +1,142 @@
+---
+title: Quickstart
+description: Start using pesde
+---
+
+import { FileTree } from "@astrojs/starlight/components"
+
+Let's make a simple Luau program that uses the `pesde/hello` package to print
+hello to the terminal.
+
+## Scaffolding the project
+
+In your terminal, run the following commands to create a folder and navigate
+into it.
+
+```sh
+mkdir hello-pesde
+cd hello-pesde
+```
+
+Then, we'll use `pesde init` to scaffold a new pesde project. The command will
+ask you a few questions to set up the project. Our project will be named
+`<username>/hello_pesde`, replace `<username>` with a username of your choice.
+The name may only contain lowercase letters, numbers, and underscores. The
+environment we're targeting is `luau`.
+
+```sh
+pesde init
+
+# What is the name of the project? <username>/hello_pesde
+# What is the description of the project? (leave empty for none) 
+# Who are the authors of this project? (leave empty for none, comma separated) 
+# What is the repository URL of this project? (leave empty for none) 
+# What is the license of this project? (leave empty for none) MIT
+# What environment are you targeting for your package? luau
+# Would you like to setup a default roblox_sync_config_generator script? No
+```
+
+The command will create a `pesde.toml` file in the current folder. Go ahead
+and open this file in your text editor of choice.
+
+## Adding a main script
+
+Under the `[target]` section, we're going to add a `bin` field to specify
+the path to the main script of our package.
+
+```diff lang="toml" title="pesde.toml"
+  name = "<username>/hello_pesde"
+  version = "0.1.0"
+  license = "MIT"
+
+  [target]
+  environment = "luau"
++ bin = "main.luau"
+
+  [indices]
+  default = "https://github.com/daimond113/pesde-index"
+```
+
+Don't forget to save the file after making the changes.
+
+Now, lets create a `main.luau` file in the project folder and add the following
+code to it.
+
+```luau title="main.luau"
+print("Hello, pesde!")
+```
+
+## Running the script
+
+Then, we can run the following command to run the script.
+
+```sh
+pesde run
+```
+
+You should see `Hello, pesde!` printed to the terminal.
+
+## Install a dependency
+
+Let's use the `pesde/hello` package instead of printing ourselves.
+
+Run the following command to add the package to `pesde.toml`.
+
+```sh
+pesde add pesde/hello
+```
+
+You should see that `pesde.toml` has been updated with the new dependency.
+
+```diff lang="toml" title="pesde.toml"
+  name = "lukadev_0/hello_pesde"
+  version = "0.1.0"
+  license = "MIT"
+
+  [target]
+  environment = "luau"
+  bin = "main.luau"
+
+  [indices]
+  default = "https://github.com/daimond113/pesde-index"
+
++ [dependencies]
++ hello = { name = "pesde/hello", version = "^1.0.0" }
+```
+
+Run the following command to install the new dependency.
+
+```sh
+pesde install
+```
+
+You should see that pesde has created a `luau_packages` folder containing the
+newly installed package. It has alsoo created a `pesde.lock` file, this file
+contains the exact versions of the dependencies that were installed so that
+they can be installed again in the future.
+
+<FileTree>
+
+- luau_packages/
+  - hello.luau
+  - ...
+- main.luau
+- pesde.lock
+- pesde.toml
+
+</FileTree>
+
+Let's update the `main.luau` file to use the `pesde/hello` package.
+
+```luau title="main.luau"
+local hello = require("./luau_packages/hello")
+
+hello()
+```
+
+If we run the script again, we should see something printed to the terminal.
+
+```sh
+pesde run
+# Hello, pesde! (pesde/hello@1.0.0, luau)
+```

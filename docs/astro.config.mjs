@@ -6,9 +6,6 @@ import vercel from "@astrojs/vercel/serverless"
 
 // https://astro.build/config
 export default defineConfig({
-	redirects: {
-		"/": "/guides/getting-started",
-	},
 	integrations: [
 		starlight({
 			title: "pesde docs",
@@ -17,19 +14,20 @@ export default defineConfig({
 			},
 			sidebar: [
 				{
+					label: "Intro",
+					items: [{ slug: "" }, { slug: "installation" }, { slug: "quickstart" }],
+				},
+				{
 					label: "Guides",
-					items: [
-						{
-							label: "Getting Started",
-							slug: "guides/getting-started",
-						},
-					],
+					autogenerate: { directory: "guides" },
 				},
 				{
 					label: "Reference",
-					autogenerate: {
-						directory: "reference",
-					},
+					autogenerate: { directory: "reference" },
+				},
+				{
+					label: "Registry",
+					autogenerate: { directory: "registry" },
 				},
 			],
 			components: {
@@ -43,6 +41,20 @@ export default defineConfig({
 					attrs: {
 						name: "theme-color",
 						content: "#F19D1E",
+					},
+				},
+				{
+					tag: "meta",
+					attrs: {
+						property: "og:image",
+						content: "/favicon-48x48.png",
+					},
+				},
+				{
+					tag: "meta",
+					attrs: {
+						name: "twitter:card",
+						content: "summary",
 					},
 				},
 				{

@@ -1,0 +1,89 @@
+---
+title: Installation
+description: Install pesde
+---
+
+import { Aside, Steps, TabItem, Tabs } from "@astrojs/starlight/components"
+
+## Prerequisites
+
+pesde requires [Lune](https://lune-org.github.io/docs) to be installed on your
+system in order to function properly.
+
+You can follow the installation instructions in the
+[Lune documentation](https://lune-org.github.io/docs/getting-started/1-installation).
+
+## Installing pesde
+
+<Steps>
+
+1. Go to the [GitHub releases page](https://github.com/daimond113/pesde/releases/latest).
+
+2. Download the corresponding archive for your operating system. You can choose
+  whether to use the `.zip` or `.tar.gz` files.
+
+3. Extract the downloaded archive to a folder on your computer.
+
+4. Open a terminal and locate the path of the extracted `pesde` binary.
+
+    <Tabs syncKey="os">
+      <TabItem label="Windows">
+
+      If you extracted the archive to `C:\Users\User\Downloads`, the path to the
+      `pesde` binary would be `C:\Users\User\Downloads\pesde.exe`.
+
+      You can then run the `self-install` command:
+
+      ```ps
+      C:\Users\User\Downloads\pesde.exe self-install
+      ```
+
+      pesde should now be installed on your system. You may need to restart your
+      computer for the changes to take effect.
+
+      </TabItem>
+      <TabItem label="Linux & macOS">
+      
+      If you extracted the archive to `~/Downloads`, the path to the `pesde`
+      binary would be `~/Downloads/pesde`.
+
+      You must then add execute permissions and run the `self-install` command:
+
+      ```sh
+      chmod +x ~/Downloads/pesde
+      ~/Downloads/pesde self-install
+      ```
+
+      pesde should now be installed on your system. You will need to update your
+      shell configuration file to add the pesde binary to your `PATH`
+      environment variable.
+
+      ```sh title=".zshrc"
+      export PATH = "$PATH:/home/user/.pesde/bin"
+      ```
+
+      You should then be able to run `pesde` after restarting your shell.
+      
+      </TabItem>
+    </Tabs>
+
+  5. Verify that pesde is installed by running the following command:
+
+      ```sh
+      pesde -v
+      ```
+
+      This command should output the version of pesde that you installed.
+
+</Steps>
+
+<Aside type="caution">
+
+It is not recommended to use toolchain managers (such as Rokit or Aftman) to
+install pesde. You can use `pesde self-upgrade` if you need to update pesde.
+
+If you need everyone to use the same version of pesde, you can use the
+`pesde_version` field in `pesde.toml` to specify the version of pesde to use
+for the current project.
+
+</Aside>

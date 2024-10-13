@@ -1,0 +1,191 @@
+---
+title: pesde CLI
+description: Reference for the pesde CLI.
+---
+
+import { LinkCard } from '@astrojs/starlight/components'
+
+The pesde CLI is the primary way to interact with pesde projects. It provides
+commands for installing dependencies, running scripts, and more.
+
+## `pesde auth`
+
+Authentication-related commands.
+
+### `pesde auth login`
+
+Logs in, stores an authentication token.
+
+- `-i, --index`: The index to authenticate with. Defaults to the default index.
+- `-t, --token`: The token to use for authentication.
+
+If no token is provided, you will be prompted to authenticate with GitHub. A
+code will be provided that you can paste into the GitHub authentication prompt.
+
+### `pesde auth logout`
+
+Logs out, removes the stored authentication token.
+
+### `pesde auth whoami`
+
+Prints the username of the currently authenticated user.
+
+### `pesde auth set-token-override`
+
+```sh
+pesde auth set-token-override <REPOSITORY> [TOKEN]
+```
+
+Sets a token override for a specific repository.
+
+## `pesde config`
+
+Configuration-related commands.
+
+### `pesde config default-index`
+
+```sh
+pesde config default-index [INDEX]
+```
+
+Configures the default index. If no index is provided, the current default index
+is printed.
+
+- `-r, --reset`: Resets the default index.
+
+The default index is [`pesde-index`](https://github.com/daimond113/pesde-index).
+
+### `pesde config scripts-repo`
+
+```sh
+pesde config scripts-repo [REPO]
+```
+
+Configures the scripts repository. If no repository is provided, the current
+scripts repository is printed.
+
+- `-r, --reset`: Resets the scripts repository.
+
+The default scripts repository is [`pesde-scripts`](https://github.com/daimond113/pesde-scripts).
+
+## `pesde init`
+
+Initializes a new pesde project in the current directory.
+
+## `pesde run`
+
+Runs a script from the current project using Lune.
+
+```sh
+pesde run [SCRIPT] [ -- <ARGS>...]
+```
+
+If no script is provided, it will run the script specified by `target.bin`
+in `pesde.toml`.
+
+If a path is provided, it will run the script at that path.
+
+If a script defined in `[scripts]` is provided, it will run that script.
+
+If a package name is provided, it will run the script specified by `target.bin`
+in that package.
+
+Arguments can be passed to the script by using `--` followed by the arguments.
+
+```sh
+pesde run foo -- --arg1 --arg2
+```
+
+## `pesde install`
+
+Installs dependencies for the current project.
+
+- `-t, --threads`: The number of threads to use for downloading dependencies.
+- `--locked`: Whether to error if the lockfile is out of date.
+- `--prod`: Whether to skip installing dev dependencies.
+
+## `pesde publish`
+
+Publishes the current project to the pesde registry.
+
+- `-d, --dry-run`: Whether to perform a dry run. This will output a
+  tarball containing the package that would be published, but will not actually
+  publish it.
+- `-y, --yes`: Whether to skip the confirmation prompt.
+
+## `pesde self-install`
+
+Performs the pesde installation process. This should be the first command run
+after downloading the pesde binary.
+
+## `pesde self-upgrade`
+
+Upgrades the pesde binary to the latest version.
+
+## `pesde patch`
+
+```sh
+pesde patch <PACKAGE>
+```
+
+Prepares a patching environment for a package. This will copy the source code of
+the package to a temporary directory.
+
+The package specified must be in the format `<name>@<version> <target>`.
+
+<LinkCard
+  title="Overrides"
+  description="Learn more about overriding and patching packages."
+  href="/guides/overrides/"
+/>
+
+## `pesde patch-commit`
+
+```sh
+pesde patch-commit <PATH>
+```
+
+Applies the changes made in the patching environment created by `pesde patch`.
+
+## `pesde add`
+
+```sh
+pesde add <PACKAGE>
+```
+Adds a package to the dependencies of the current project.
+
+- `-i, --index <INDEX>`: The index in which to search for the package.
+- `-t, --target <TARGET>`: The target environment for the package.
+- `-a, --alias <ALIAS>`: The alias to use for the package, defaults to the
+  package name.
+- `-p, --peer`: Adds the package as a peer dependency.
+- `-d, --dev`: Adds the package as a dev dependency.
+
+The following formats are supported:
+
+```sh
+pesde add pesde/hello
+pesde add gh#acme/package#main
+pesde add https://git.acme.local/package.git#aeff6
+```
+
+## `pesde update`
+
+Updates the dependencies of the current project.
+
+- `-t, --threads`: The number of threads to use for downloading dependencies.
+
+## `pesde x`
+
+Runs a one-off binary package.
+
+```sh
+pesde x <PACKAGE>
+```
+
+This is useful for running a binary package without installing it or outside of
+a pesde project.
+
+```sh
+pesde x pesde/hello
+```
