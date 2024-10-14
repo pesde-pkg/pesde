@@ -26,7 +26,9 @@
 			<Dialog.Title class="sr-only">Menu</Dialog.Title>
 			<div transition:fade={{ duration: 200 }} class="bg-background">
 				<div class="relative z-50 flex h-14 flex-shrink-0 items-center justify-between px-4">
-					<Logo class="text-primary h-7" />
+					<a href="/">
+						<Logo class="text-primary h-7" />
+					</a>
 					<Dialog.Close>
 						<span class="sr-only">close menu</span>
 						<X aria-hidden="true" />
