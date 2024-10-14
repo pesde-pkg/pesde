@@ -46,5 +46,5 @@
 			</option>
 		{/each}
 	</select>
-	<ChevronDownIcon class="pointer-events-none absolute right-4 h-5 w-5" />
+	<ChevronDownIcon aria-hidden="true" class="pointer-events-none absolute right-4 h-5 w-5" />
 </div>

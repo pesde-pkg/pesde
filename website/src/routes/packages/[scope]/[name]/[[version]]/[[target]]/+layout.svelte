@@ -93,7 +93,7 @@
 			{#each exportEntries as [exportKey, exportName]}
 				{@const Icon = exportIcons[exportKey as keyof TargetInfo]}
 				<li class="flex items-center">
-					<Icon class="text-primary mr-2 size-5" />
+					<Icon aria-hidden="true" class="text-primary mr-2 size-5" />
 					{exportName}
 				</li>
 			{/each}
