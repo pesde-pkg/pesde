@@ -1,13 +1,22 @@
 <script lang="ts">
+	import { navigating } from "$app/stores"
 	import GitHub from "$lib/components/GitHub.svelte"
 	import Logo from "$lib/components/Logo.svelte"
 	import { Dialog } from "bits-ui"
 	import { Menu, X } from "lucide-svelte"
 	import { fade, fly } from "svelte/transition"
 	import Search from "./Search.svelte"
+
+	let dialogOpen = $state(false)
+
+	$effect(() => {
+		if ($navigating) {
+			dialogOpen = false
+		}
+	})
 </script>
 
-<Dialog.Root>
+<Dialog.Root bind:open={dialogOpen}>
 	<Dialog.Trigger>
 		<span class="sr-only">open menu</span>
 		<Menu aria-hidden="true" />
