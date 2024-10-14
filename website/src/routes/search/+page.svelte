@@ -12,7 +12,6 @@
 	$effect(() => {
 		displayDates = true
 	})
-	console.log(data.result)
 </script>
 
 <div class="mx-auto max-w-screen-lg px-4">

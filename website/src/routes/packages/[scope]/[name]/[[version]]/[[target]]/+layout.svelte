@@ -4,8 +4,8 @@
 	import type { TargetInfo } from "$lib/registry-api"
 	import { BinaryIcon, Globe, Icon, LibraryIcon, Mail } from "lucide-svelte"
 	import type { ComponentType } from "svelte"
+	import TargetSelector from "../../TargetSelector.svelte"
 	import Command from "./Command.svelte"
-	import TargetSelector from "./TargetSelector.svelte"
 
 	let { children, data } = $props()
 

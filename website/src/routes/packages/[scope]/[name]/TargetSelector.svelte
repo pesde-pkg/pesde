@@ -1,16 +1,13 @@
 <script lang="ts">
 	import { goto } from "$app/navigation"
 	import { page } from "$app/stores"
-	import { TARGET_KIND_DISPLAY_NAMES, type TargetKind } from "$lib/registry-api"
+	import { TARGET_KIND_DISPLAY_NAMES, type TargetInfo, type TargetKind } from "$lib/registry-api"
 	import { ChevronDownIcon } from "lucide-svelte"
+	import { getContext } from "svelte"
 
 	const { id }: { id: string } = $props()
 
-	const defaultTarget = $derived(
-		"target" in $page.params && $page.params.target !== "any"
-			? $page.params.target
-			: $page.data.pkg.targets[0].kind,
-	)
+	const currentTarget = getContext<{ value: TargetInfo }>("currentTarget")
 
 	const basePath = $derived.by(() => {
 		const { scope, name } = $page.params
@@ -41,7 +38,11 @@
 		}}
 	>
 		{#each $page.data.pkg.targets as target}
-			<option value={target.kind} class="bg-card" selected={target.kind === defaultTarget}>
+			<option
+				value={target.kind}
+				class="bg-card"
+				selected={target.kind === currentTarget.value.kind}
+			>
 				{TARGET_KIND_DISPLAY_NAMES[target.kind as TargetKind]}
 			</option>
 		{/each}
