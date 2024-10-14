@@ -4,8 +4,25 @@
 
 	const { data } = $props()
 
+	// Vercel only supports up to Node 20.x, which doesn't support Object.groupBy
+	function groupBy<T, K extends PropertyKey>(
+		arr: T[],
+		predicate: (value: T) => K,
+	): Partial<Record<K, T[]>> {
+		const groups: Partial<Record<K, T[]>> = {}
+		for (const item of arr) {
+			const key = predicate(item)
+			if (key in groups) {
+				groups[key]!.push(item)
+			} else {
+				groups[key] = [item]
+			}
+		}
+		return groups
+	}
+
 	let groupedDeps = $derived(
-		Object.groupBy(
+		groupBy(
 			Object.entries(data.pkg.dependencies).map(([alias, dependency]) => ({ alias, dependency })),
 			(entry) => entry.dependency[1],
 		),
