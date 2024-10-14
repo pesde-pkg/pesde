@@ -3,7 +3,7 @@ title: pesde CLI
 description: Reference for the pesde CLI.
 ---
 
-import { LinkCard } from '@astrojs/starlight/components'
+import { LinkCard } from "@astrojs/starlight/components"
 
 The pesde CLI is the primary way to interact with pesde projects. It provides
 commands for installing dependencies, running scripts, and more.
@@ -12,31 +12,27 @@ commands for installing dependencies, running scripts, and more.
 
 Authentication-related commands.
 
+- `-i, --index`: The index of which token to manipulate. May be a URL or an alias.
+  Defaults to the default
+  index of the current project or the default index set in the config.
+
 ### `pesde auth login`
 
-Logs in, stores an authentication token.
+Sets the token for the index.
 
-- `-i, --index`: The index to authenticate with. Defaults to the default index.
-- `-t, --token`: The token to use for authentication.
+- `-t, --token`: The token to set.
 
 If no token is provided, you will be prompted to authenticate with GitHub. A
 code will be provided that you can paste into the GitHub authentication prompt.
 
 ### `pesde auth logout`
 
-Logs out, removes the stored authentication token.
+Removes the stored token for the index.
 
 ### `pesde auth whoami`
 
-Prints the username of the currently authenticated user.
-
-### `pesde auth set-token-override`
-
-```sh
-pesde auth set-token-override <REPOSITORY> [TOKEN]
-```
-
-Sets a token override for a specific repository.
+Prints the username of the currently authenticated user of the index. Only
+works if the token is a GitHub token.
 
 ## `pesde config`
 
@@ -134,9 +130,9 @@ the package to a temporary directory.
 The package specified must be in the format `<name>@<version> <target>`.
 
 <LinkCard
-  title="Overrides"
-  description="Learn more about overriding and patching packages."
-  href="/guides/overrides/"
+	title="Overrides"
+	description="Learn more about overriding and patching packages."
+	href="/guides/overrides/"
 />
 
 ## `pesde patch-commit`
@@ -152,6 +148,7 @@ Applies the changes made in the patching environment created by `pesde patch`.
 ```sh
 pesde add <PACKAGE>
 ```
+
 Adds a package to the dependencies of the current project.
 
 - `-i, --index <INDEX>`: The index in which to search for the package.
