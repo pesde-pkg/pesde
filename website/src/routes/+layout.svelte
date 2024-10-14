@@ -24,6 +24,8 @@
 	<meta property="og:type" content="website" />
 	<meta property="og:title" content={title ?? "Manage your packages for Luau"} />
 	<meta property="og:description" content={description} />
+	<meta property="og:image" content="/favicon-48x48.png" />
+	<meta name="twitter:card" content="summary" />
 
 	<link rel="icon" type="image/png" href="/favicon-48x48.png" sizes="48x48" />
 	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
