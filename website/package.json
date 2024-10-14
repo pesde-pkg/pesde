@@ -53,5 +53,8 @@
     "shiki": "^1.22.0",
     "tar-stream": "^3.1.7",
     "unified": "^11.0.5"
+  },
+  "patchedDependencies": {
+    "@shikijs/rehype@1.22.0": "patches/@shikijs%2Frehype@1.22.0.patch"
   }
 }
