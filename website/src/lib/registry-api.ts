@@ -36,6 +36,10 @@ export type DependencyInfo = {
 	name: string
 	target?: string
 	version: string
+} | {
+	index: string,
+	wally: string,
+	version: string,
 }
 
 export type DependencyKind = "standard" | "peer" | "dev"
