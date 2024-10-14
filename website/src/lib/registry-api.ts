@@ -34,7 +34,7 @@ export type DependencyEntry = [DependencyInfo, DependencyKind]
 export type DependencyInfo = {
 	index: string
 	name: string
-	target: string
+	target?: string
 	version: string
 }
 

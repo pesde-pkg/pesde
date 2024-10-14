@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from "$app/stores"
 	import { DEPENDENCY_KIND_DISPLAY_NAMES, type DependencyKind } from "$lib/registry-api.js"
 
 	const { data } = $props()
@@ -24,13 +25,15 @@
 				<div class="space-y-4">
 					{#each group as { dependency: [dependencyInfo] }}
 						{@const [scope, name] = dependencyInfo.name.split("/")}
+						{@const target =
+							dependencyInfo.target ?? $page.params.target ?? data.pkg.targets[0].kind}
 
 						<article
 							class="bg-card hover:bg-card-hover relative overflow-hidden rounded px-5 py-4 transition"
 						>
 							<h3 class="font-semibold">
 								<a
-									href={`/packages/${dependencyInfo.name}/latest/any`}
+									href={`/packages/${dependencyInfo.name}/latest/${target}`}
 									class="after:absolute after:inset-0 after:content-['']"
 								>
 									<span class="text-heading">{scope}/</span><span class="text-light">{name}</span>
@@ -39,7 +42,7 @@
 							<div class="text-primary text-sm font-semibold">
 								{dependencyInfo.version}
 								·
-								{dependencyInfo.target}
+								{target}
 							</div>
 						</article>
 					{/each}
