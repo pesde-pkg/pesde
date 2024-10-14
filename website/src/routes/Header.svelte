@@ -16,8 +16,8 @@
 			</div>
 			<div class="[&_a:hover]:text-heading hidden items-center space-x-6 sm:flex [&_a]:transition">
 				<nav class="flex items-center space-x-6 font-medium">
-					<a href="/docs">Docs</a>
-					<a href="/policies">Policies</a>
+					<a href="https://docs.pesde.daimond113.com/">Docs</a>
+					<a href="https://docs.pesde.daimond113.com/registry/policies">Policies</a>
 				</nav>
 
 				<a href="https://github.com/daimond113/pesde" target="_blank" rel="noreferrer noopener">

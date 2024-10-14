@@ -63,7 +63,7 @@
 </script>
 
 <section class="mx-auto max-w-screen-lg px-4 py-32">
-	<h1 class="mb-3 text-2xl font-semibold text-heading md:mb-6 md:text-4xl lg:text-5xl">
+	<h1 class="text-heading mb-3 text-2xl font-semibold md:mb-6 md:text-4xl lg:text-5xl">
 		Manage your packages<br />
 		<span class="sr-only"> for Luau</span>
 		<span class="text-primary" aria-hidden="true">
@@ -82,8 +82,8 @@
 	</p>
 
 	<a
-		href="/docs/get-started"
-		class="inline-flex h-10 items-center rounded bg-primary-bg px-4 font-semibold text-primary-fg transition hover:bg-primary-hover md:h-11 md:px-5"
+		href="https://docs.pesde.daimond113.com/"
+		class="bg-primary-bg text-primary-fg hover:bg-primary-hover inline-flex h-10 items-center rounded px-4 font-semibold transition md:h-11 md:px-5"
 	>
 		Get Started
 	</a>

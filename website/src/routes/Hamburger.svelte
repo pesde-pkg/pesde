@@ -48,8 +48,8 @@
 							<a {href} class="hover:bg-card/50 flex h-10 items-center rounded px-3">{text}</a>
 						{/snippet}
 
-						{@render item("/docs", "Documentation")}
-						{@render item("/policies", "Policies")}
+						{@render item("https://docs.pesde.daimond113.com/", "Documentation")}
+						{@render item("https://docs.pesde.daimond113.com/registry/policies", "Policies")}
 					</div>
 					<div class="flex items-center py-5">
 						<a href="https://github.com/daimond113/pesde" target="_blank" rel="noreferrer noopener">
