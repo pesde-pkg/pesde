@@ -49,7 +49,7 @@
 </script>
 
 <div class="flex flex-col lg:flex-row">
-	<div class="lg:pr-4">
+	<div class="flex-grow lg:pr-4">
 		{@render children()}
 	</div>
 	<aside

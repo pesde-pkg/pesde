@@ -18,6 +18,7 @@ export type PackageResponse = {
 	license?: string
 	authors?: string[]
 	repository?: string
+	dependencies: Record<string, DependencyEntry>
 }
 
 export type TargetInfo = {
@@ -28,11 +29,28 @@ export type TargetInfo = {
 
 export type TargetKind = "roblox" | "roblox_server" | "lune" | "luau"
 
+export type DependencyEntry = [DependencyInfo, DependencyKind]
+
+export type DependencyInfo = {
+	index: string
+	name: string
+	target: string
+	version: string
+}
+
+export type DependencyKind = "standard" | "peer" | "dev"
+
 export const TARGET_KIND_DISPLAY_NAMES: Record<TargetKind, string> = {
 	roblox: "Roblox",
 	roblox_server: "Roblox (server)",
 	lune: "Lune",
 	luau: "Luau",
+}
+
+export const DEPENDENCY_KIND_DISPLAY_NAMES: Record<DependencyKind, string> = {
+	standard: "Dependencies",
+	peer: "Peer Dependencies",
+	dev: "Dev Dependencies",
 }
 
 export class RegistryHttpError extends Error {

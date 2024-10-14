@@ -78,6 +78,7 @@
 
 	<nav class="flex w-full border-b-2">
 		<Tab tab={readme}>Readme</Tab>
+		<Tab tab={`${pkgVersion}/${currentTarget.kind}/dependencies`}>Dependencies</Tab>
 		<Tab tab="versions">Versions</Tab>
 	</nav>
 
