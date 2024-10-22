@@ -1,0 +1,190 @@
+---
+title: Self Hosting Registries
+description: Learn how to self host registries for pesde.
+---
+
+You can self host registries for pesde. This is useful if you want a private
+registry or if you a separate registry for other reasons.
+
+## Making the index repository
+
+The index is a repository that contains metadata about all the packages in the
+registry.
+
+An index contains a `config.toml` file with configuration options.
+
+To create an index, create a new repository and add a `config.toml` file with
+the following content:
+
+```toml title="config.toml"
+# The URL of the registry API
+api = "https://registry.acme.local/"
+
+# Package download URL (optional)
+download = "{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}"
+
+# the client ID of the GitHub OAuth app (optional)
+github_oauth_client_id = "a1d648966fdfbdcd9295"
+
+# whether to allow packages with Git dependencies (default: false)
+git_allowed = true
+
+# whether to allow packages which depend on packages from other registries
+# (default: false)
+other_registries_allowed = true
+
+# whether to allow packages with Wally dependencies (default: false)
+wally_allowed = false
+
+# the maximum size of the archive in bytes (default: 4MB)
+max_archive_size = 4194304
+```
+
+- **api**: The URL of the registry API. See below for more information.
+
+- **download**: The URL to download packages from. This is optional and
+  defaults to the correct URL for the official pesde registry implementation.
+  You only need this if you are using a custom registry implementation.
+
+  This string can contain the following placeholders:
+
+  - `{API_URL}`: The API URL (as specified in the `api` field).
+  - `{PACKAGE}`: The package name.
+  - `{PACKAGE_VERSION}`: The package version.
+  - `{PACKAGE_TARGET}`: The package target.
+
+  Defaults to `{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}`.
+
+- **github_oauth_client_id**: This is required if you use GitHub OAuth for
+  authentication. See below for more information.
+
+- **git_allowed**: Whether to allow packages with Git dependencies. This is
+  optional and defaults to `false`.
+
+- **other_registries_allowed**: Whether to allow packages which depend on
+  packages from other registries. This is optional and defaults to `false`.
+
+- **wally_allowed**: Whether to allow packages with Wally dependencies. This is
+  optional and defaults to `false`.
+
+- **max_archive_size**: The maximum size of the archive in bytes. This is
+  optional and defaults to `4194304` (4MB).
+
+You should then push this repository to [GitHub](https://github.com/).
+
+## Configuring the registry
+
+The registry is a web server that provides package downloads and the ability to
+publish packages.
+
+The official registry implementation is available in the
+[pesde GitHub repository](https://github.com/daimond113/pesde/tree/0.5/registry).
+
+Configuring the registry is done using environment variables. In order to allow
+the registry to access the index repository, you must use a personal access
+token of a GitHub account that has access to the index repository. We recommend
+using a separate GitHub account for this purpose.
+
+For instructions on how to create a personal access token, see the
+[GitHub documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
+The access token must have read and write access to the index repository.
+
+### General configuration
+
+- **INDEX_REPO_URL**: The URL of the index repository. This is required.\
+  Example: `https://github.com/daimond113/pesde-index.git`
+
+- **GITHUB_USERNAME**: The username of the GitHub account that has access to the
+  index repository. This is required.
+
+- **GITHUB_PAT**: The personal access token of the GitHub account specified by
+  `GITHUB_USERNAME`. This is required.
+
+### Authentication configuration
+
+The registry supports multiple authentication methods, which are documented
+below.
+
+#### General configuration
+
+- **READ_NEEDS_AUTH**: If set to any value, reading data requires
+  authentication. If not set, anyone can read from the registry.
+  This is optional.
+
+#### Single token authentication
+
+Allows read and write access to the registry using a single token.
+
+- **ACCESS_TOKEN**: The token to use for authentication.
+
+#### Multiple token authentication
+
+Allows read and write access to the registry using different tokens.
+
+- **READ_ACCESS_TOKEN**: The token that grants read access.
+- **WRITE_ACCESS_TOKEN**: The token that grants write access.
+
+#### GitHub OAuth authentication
+
+Allows clients to get read and write access to the registry using GitHub OAuth.
+This requires a GitHub OAuth app, instructions to create one can be found
+in the [GitHub documentation](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app).
+
+- **GITHUB_CLIENT_SECRET**: The client secret of the GitHub OAuth app.
+
+#### No authentication
+
+If none of the above variables are set, **anyone** will be able to read and
+write to the registry.
+
+### Storage configuration
+
+The registry supports multiple storage backends, which are documented below.
+
+#### File system storage
+
+Stores packages on the file system.
+
+- **FS_STORAGE_ROOT**: The root directory where packages are stored.
+
+#### S3 storage
+
+Stores packages on an S3 compatible storage service, such as
+[Amazon S3](https://aws.amazon.com/s3/) or
+[Cloudflare R2](https://www.cloudflare.com/r2/).
+
+- **S3_ENDPOINT**: The endpoint of the S3 bucket to store packages in.
+- **S3_BUCKET_NAME**: The name of the bucket.
+- **S3_REGION**: The region of the bucket.
+- **S3_ACCESS_KEY**: The access key to use.
+- **S3_SECRET_KEY**: The secret key to use.
+
+### Sentry configuration
+
+The registry supports [Sentry](https://sentry.io/) for error tracking.
+
+- **SENTRY_URL**: The URL of the Sentry instance.
+
+## Running the registry
+
+First clone the repository and navigate to the repository directory:
+
+```sh
+git clone https://github.com/daimond113/pesde.git
+cd pesde
+```
+
+You can then build the registry using the following command:
+
+```sh
+cargo build --release -p pesde-registry
+```
+
+This will build the registry. The resulting binary will be located at
+`target/release/pesde-registry` or `target/release/pesde-registry.exe`.
+
+After setting the environment variables, you can run the registry using the
+by executing the binary.
+
+The registry must be exposed at the URL specified in the `api` field of the
+index repository configuration.
