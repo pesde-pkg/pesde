@@ -201,7 +201,7 @@ fn main() -> std::io::Result<()> {
     }
 
     let _guard = if let Some(sentry_url) = sentry_url {
-        std::env::set_var("RUST_BACKTRACE", "1");
+        std::env::set_var("RUST_BACKTRACE", "full");
 
         Some(sentry::init((
             sentry_url,
