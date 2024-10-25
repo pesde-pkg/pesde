@@ -85,8 +85,7 @@ pub trait GitBasedSource {
             .collect::<Vec<_>>()
             .join(std::path::MAIN_SEPARATOR_STR);
 
-        let mut lookup_buf = vec![];
-        let entry = match tree.lookup_entry(file_path, &mut lookup_buf) {
+        let entry = match tree.lookup_entry(file_path) {
             Ok(Some(entry)) => entry,
             Ok(None) => return Ok(None),
             Err(e) => return Err(errors::ReadFile::Lookup(file_path_str, e)),

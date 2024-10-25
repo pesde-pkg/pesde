@@ -97,10 +97,8 @@ impl PackageSource for GitPackageSource {
             })?;
 
         let tree = if let Some(path) = &specifier.path {
-            let mut buf = vec![];
-
             root_tree
-                .lookup_entry_by_path(path.as_str(), &mut buf)
+                .lookup_entry_by_path(path.as_str())
                 .map_err(|e| {
                     errors::ResolveError::ReadTreeEntry(
                         Box::new(self.repo_url.clone()),
