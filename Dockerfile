@@ -2,9 +2,7 @@ FROM rust:1.82-bookworm AS builder
 
 COPY . .
 
-WORKDIR /registry
-
-RUN cargo build --release
+RUN cargo build --release -p pesde-registry
 
 FROM debian:bookworm-slim
 

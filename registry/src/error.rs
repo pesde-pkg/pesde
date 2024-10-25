@@ -51,9 +51,11 @@ impl ResponseError for Error {
             Error::Query(e) => HttpResponse::BadRequest().json(ErrorResponse {
                 error: format!("failed to parse query: {e}"),
             }),
-            Error::Tar(_) | Error::InvalidArchive => HttpResponse::BadRequest().json(ErrorResponse {
-                error: "invalid archive. ensure it has all the required files, and all the dependencies exist in the registry.".to_string(),
-            }),
+            Error::Tar(_) | Error::InvalidArchive => {
+                HttpResponse::BadRequest().json(ErrorResponse {
+                    error: "invalid archive".to_string(),
+                })
+            }
             e => {
                 log::error!("unhandled error: {e:?}");
                 HttpResponse::InternalServerError().finish()

@@ -1,7 +1,7 @@
 use actix_cors::Cors;
 use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::{
-    middleware::{from_fn, Compress, Condition, Logger, NormalizePath, TrailingSlash},
+    middleware::{from_fn, Compress, Logger, NormalizePath, TrailingSlash},
     rt::System,
     web, App, HttpServer,
 };
@@ -80,7 +80,7 @@ macro_rules! benv {
     };
 }
 
-async fn run(with_sentry: bool) -> std::io::Result<()> {
+async fn run() -> std::io::Result<()> {
     let address = benv!("ADDRESS" => "127.0.0.1");
     let port: u16 = benv!(parse "PORT" => "8080");
 
@@ -134,7 +134,7 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .wrap(Condition::new(with_sentry, sentry_actix::Sentry::new()))
+            .wrap(sentry_actix::Sentry::new())
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .wrap(Cors::permissive())
             .wrap(Logger::default())
@@ -186,33 +186,21 @@ async fn run(with_sentry: bool) -> std::io::Result<()> {
 fn main() -> std::io::Result<()> {
     let _ = dotenvy::dotenv();
 
-    let sentry_url = benv!("SENTRY_URL").ok();
-    let with_sentry = sentry_url.is_some();
-
     let mut log_builder = pretty_env_logger::formatted_builder();
     log_builder.parse_env(pretty_env_logger::env_logger::Env::default().default_filter_or("info"));
 
-    if with_sentry {
-        let logger = sentry_log::SentryLogger::with_dest(log_builder.build());
-        log::set_boxed_logger(Box::new(logger)).unwrap();
-        log::set_max_level(log::LevelFilter::Info);
-    } else {
-        log_builder.try_init().unwrap();
+    let logger = sentry_log::SentryLogger::with_dest(log_builder.build());
+    log::set_boxed_logger(Box::new(logger)).unwrap();
+    log::set_max_level(log::LevelFilter::Info);
+
+    let guard = sentry::init(sentry::ClientOptions {
+        release: sentry::release_name!(),
+        ..Default::default()
+    });
+
+    if guard.is_enabled() {
+        std::env::set_var("RUST_BACKTRACE", "full");
     }
 
-    let _guard = if let Some(sentry_url) = sentry_url {
-        std::env::set_var("RUST_BACKTRACE", "full");
-
-        Some(sentry::init((
-            sentry_url,
-            sentry::ClientOptions {
-                release: sentry::release_name!(),
-                ..Default::default()
-            },
-        )))
-    } else {
-        None
-    };
-
-    System::new().block_on(run(with_sentry))
+    System::new().block_on(run())
 }
