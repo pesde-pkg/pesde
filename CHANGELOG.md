@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use updated aliases when reusing lockfile dependencies by @daimond113
 - Listen for device flow completion without requiring pressing enter by @daimond113
 - Sync scripts repo in background by @daimond113
+- Don't make CAS files read-only on Windows (file removal is disallowed if the file is read-only) by @daimond113 
 
 ### Performance
 - Clone dependency repos shallowly by @daimond113

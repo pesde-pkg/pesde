@@ -35,6 +35,19 @@ pub enum PackageFS {
     Copy(PathBuf, TargetKind),
 }
 
+fn make_readonly(_file: &std::fs::File) -> std::io::Result<()> {
+    // on Windows, file deletion is disallowed if the file is read-only which breaks patching
+    #[cfg(not(windows))]
+    {
+        let mut permissions = _file.metadata()?.permissions();
+        permissions.set_readonly(true);
+        _file.set_permissions(permissions)
+    }
+
+    #[cfg(windows)]
+    Ok(())
+}
+
 pub(crate) fn store_in_cas<P: AsRef<Path>>(
     cas_dir: P,
     contents: &[u8],
@@ -50,10 +63,7 @@ pub(crate) fn store_in_cas<P: AsRef<Path>>(
         let mut file = std::fs::File::create(&cas_path)?;
         file.write_all(contents)?;
 
-        // prevent the CAS from being corrupted due to accidental modifications
-        let mut permissions = file.metadata()?.permissions();
-        permissions.set_readonly(true);
-        file.set_permissions(permissions)?;
+        make_readonly(&file)?;
     }
 
     Ok((hash, cas_path))
@@ -89,10 +99,7 @@ pub(crate) fn store_reader_in_cas<P: AsRef<Path>>(
     let cas_path = folder.join(rest);
     match file_writer.into_inner()?.persist_noclobber(cas_path) {
         Ok(f) => {
-            // prevent the CAS from being corrupted due to accidental modifications
-            let mut permissions = f.metadata()?.permissions();
-            permissions.set_readonly(true);
-            f.set_permissions(permissions)?;
+            make_readonly(&f)?;
         }
         Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.error),
@@ -163,18 +170,13 @@ impl PackageFS {
                                 let mut f = std::fs::File::create(&path)?;
                                 f.write_all(&std::fs::read(cas_file_path)?)?;
 
-                                let mut permissions = f.metadata()?.permissions();
-                                #[cfg(windows)]
-                                {
-                                    #[allow(clippy::permissions_set_readonly_false)]
-                                    permissions.set_readonly(false);
-                                }
                                 #[cfg(unix)]
                                 {
+                                    let mut permissions = f.metadata()?.permissions();
                                     use std::os::unix::fs::PermissionsExt;
                                     permissions.set_mode(permissions.mode() | 0o644);
+                                    f.set_permissions(permissions)?;
                                 }
-                                f.set_permissions(permissions)?;
                             }
                         }
                         FSEntry::Directory => {
