@@ -69,32 +69,33 @@
 
 						goto(`/search?${params}`)
 					}}
-					let:pages
 				>
-					<div class="flex items-center space-x-1">
-						<Pagination.PrevButton
-							class="hover:enabled:bg-card-hover inline-flex size-8 items-center justify-center rounded transition disabled:opacity-50"
-						>
-							<ChevronLeft />
-						</Pagination.PrevButton>
-						{#each pages as page (page.key)}
-							{#if page.type === "ellipsis"}
-								<div class="px-2">...</div>
-							{:else}
-								<Pagination.Page
-									{page}
-									class="hover:bg-card-hover hover:text-heading data-[selected]:bg-primary-bg data-[selected]:text-primary-fg inline-flex size-8 items-center justify-center rounded font-bold transition"
-								>
-									{page.value}
-								</Pagination.Page>
-							{/if}
-						{/each}
-						<Pagination.NextButton
-							class="hover:enabled:bg-card-hover inline-flex size-8 items-center justify-center rounded transition disabled:opacity-50"
-						>
-							<ChevronRight />
-						</Pagination.NextButton>
-					</div>
+					{#snippet children({ pages })}
+						<div class="flex items-center space-x-1">
+							<Pagination.PrevButton
+								class="hover:enabled:bg-card-hover inline-flex size-8 items-center justify-center rounded transition disabled:opacity-50"
+							>
+								<ChevronLeft />
+							</Pagination.PrevButton>
+							{#each pages as page (page.key)}
+								{#if page.type === "ellipsis"}
+									<div class="px-2">...</div>
+								{:else}
+									<Pagination.Page
+										{page}
+										class="hover:bg-card-hover hover:text-heading data-[selected]:bg-primary-bg data-[selected]:text-primary-fg inline-flex size-8 items-center justify-center rounded font-bold transition"
+									>
+										{page.value}
+									</Pagination.Page>
+								{/if}
+							{/each}
+							<Pagination.NextButton
+								class="hover:enabled:bg-card-hover inline-flex size-8 items-center justify-center rounded transition disabled:opacity-50"
+							>
+								<ChevronRight />
+							</Pagination.NextButton>
+						</div>
+					{/snippet}
 				</Pagination.Root>
 			{/snippet}
 
