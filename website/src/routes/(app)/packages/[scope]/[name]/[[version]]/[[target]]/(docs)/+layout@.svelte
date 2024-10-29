@@ -49,15 +49,17 @@
 		})
 	}
 
-	const toc: TocItem[] = $page.error
-		? [
-				{
-					id: "_top",
-					title: "Overview",
-					level: 2,
-				},
-			]
-		: ($page.data.toc ?? [])
+	const toc: TocItem[] = $derived(
+		$page.error
+			? [
+					{
+						id: "_top",
+						title: "Overview",
+						level: 2,
+					},
+				]
+			: ($page.data.toc ?? []),
+	)
 </script>
 
 <svelte:window on:scroll={handleScroll} />
