@@ -27,6 +27,8 @@
 			(entry) => entry.dependency[1],
 		),
 	)
+
+	const stripWally = (s: string) => s.replace(/^wally#/, "")
 </script>
 
 {#if Object.keys(groupedDeps).length === 0}
@@ -42,9 +44,9 @@
 				<div class="space-y-4">
 					{#each group as { dependency: [dependencyInfo] }}
 						{@const isWally = "wally" in dependencyInfo}
-						{@const [scope, name] = (isWally ? dependencyInfo.wally : dependencyInfo.name).split(
-							"/",
-						)}
+						{@const [scope, name] = (
+							isWally ? stripWally(dependencyInfo.wally) : dependencyInfo.name
+						).split("/")}
 						{@const target = isWally
 							? undefined
 							: (dependencyInfo.target ?? $page.params.target ?? data.pkg.targets[0].kind)}
@@ -63,7 +65,7 @@
 									{...isOfficialRegistry
 										? {
 												href: isWally
-													? `https://wally.run/package/${dependencyInfo.wally}`
+													? `https://wally.run/package/${stripWally(dependencyInfo.wally)}`
 													: `/packages/${dependencyInfo.name}/latest/${target}`,
 											}
 										: {}}
