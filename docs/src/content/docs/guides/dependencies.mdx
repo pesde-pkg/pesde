@@ -1,0 +1,170 @@
+---
+title: Specifying Dependencies
+description: Learn how to specify dependencies in your pesde project.
+---
+
+import { Aside, FileTree, LinkCard } from "@astrojs/starlight/components"
+
+The `[dependencies]` section of your `pesde.toml` file is where you specify the
+dependencies of your project.
+
+pesde supports multiple types of dependencies.
+
+## pesde Dependencies
+
+The most common type of dependency are pesde dependencies. These are
+dependencies on packages published to a [pesde registry](https://pesde.daimond113.com).
+
+```toml title="pesde.toml"
+[indices]
+default = "https://github.com/daimond113/pesde-index"
+
+[dependencies]
+hello = { name = "pesde/hello", version = "^1.0.0" }
+```
+
+In this example, we're specifying a dependency on the `pesde/hello` package on
+the official pesde registry with a version constraint of `^1.0.0`.
+
+You can also add a dependency by running the following command:
+
+```sh
+pesde add pesde/hello
+```
+
+## Git Dependencies
+
+Git dependencies are dependencies on packages hosted on a Git repository.
+
+```toml title="pesde.toml"
+[dependencies]
+acme = { repo = "acme/package", rev = "main" }
+```
+
+In this example, we're specifying a dependency on the package contained within
+the `acme/package` GitHub repository at the `main` branch.
+
+You can also use a URL to specify the Git repository and a specific commit.
+
+```toml title="pesde.toml"
+[dependencies]
+acme = { repo = "https://git.acme.local/package.git", rev = "aeff6" }
+```
+
+You can also specify a path if the package is not at the root of the repository.
+
+<FileTree>
+
+- acme/package.git
+  - pkgs/
+    - **foo/**
+      - pesde.toml
+      - ...
+
+</FileTree>
+
+```toml title="pesde.toml"
+[dependencies]
+foo = { repo = "acme/package", rev = "main", path = "pkgs/foo" }
+```
+
+The path specified by the Git dependency must either be a valid pesde package or
+a [Wally][wally] package.
+
+You can also add a Git dependency by running the following command:
+
+```sh
+# From Git URL
+pesde add https://git.acme.local/package.git#aeff6
+
+# From GitHub repository
+pesde add gh#acme/package#main
+```
+
+## Wally Dependencies
+
+Wally dependencies are dependencies on packages published to a
+[Wally registry][wally]. Wally is a package manager for Roblox and thus Wally
+dependencies should only be used in Roblox projects.
+
+```toml title="pesde.toml"
+[wally_indices]
+default = "https://github.com/UpliftGames/wally-index"
+
+[dependencies]
+foo = { wally = "acme/package", version = "^1.0.0" }
+```
+
+In this example, we're specifying a dependency on the `acme/package` package
+on the official Wally registry with a version constraint of `^1.0.0`.
+
+<Aside type="note">
+
+In order to get proper types support for Wally dependencies, you need to have
+a [`sourcemap_generator` script](/reference/manifest#sourcemap_generator)
+specified in your `pesde.toml` file.
+
+</Aside>
+
+You can also add a Wally dependency by running the following command:
+
+```sh
+pesde add wally#acme/package
+```
+
+[wally]: https://wally.run/
+
+## Workspace Dependencies
+
+Packages within a workspace can depend on each other. For example, if `foo`
+and `bar` are both packages in the same workspace, you can add a dependency to
+`bar` in the `foo/pesde.toml` file:
+
+```toml title="foo/pesde.toml"
+[dependencies]
+bar = { workspace = "acme/bar", version = "^" }
+```
+
+You can also add a workspace dependency by running the following command:
+
+```sh
+pesde add workspace:acme/bar
+```
+
+<LinkCard
+  title="Workspaces"
+  description="Learn more about using workspaces in pesde."
+  href="/guides/workspaces/"
+/>
+
+## Peer Dependencies
+
+Peer dependencies are dependencies that are not installed automatically when
+used by another package. They need to be installed by the user of the package.
+
+```toml title="pesde.toml"
+[peer_dependencies]
+foo = { name = "acme/foo", version = "^1.0.0" }
+```
+
+You can add a peer dependency by passing `--peer` to the `pesde add` command:
+
+```sh
+pesde add --peer acme/foo
+```
+
+## Dev Dependencies
+
+Dev dependencies are dependencies that are only used during development. They
+are not installed when the package is used as a dependency.
+
+```toml title="pesde.toml"
+[dev_dependencies]
+foo = { name = "acme/foo", version = "^1.0.0" }
+```
+
+You can add a dev dependency by passing `--dev` to the `pesde add` command:
+
+```sh
+pesde add --dev acme/foo
+```

@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root[data-theme="light"] {
+	--sl-color-bg: rgb(255 245 230);
+}
+
+:root[data-theme="light"] .sidebar-pane {
+	background-color: var(--sl-color-bg);
+}

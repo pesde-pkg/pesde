@@ -1,0 +1,92 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+:root {
+	--color-background: 255 245 230;
+	--color-card: 245 230 210;
+	--color-card-hover: 240 225 205;
+	--color-border: 200 180 160;
+	--color-header: 250 234 215;
+
+	--color-body: 84 70 50;
+	--color-heading: 70 55 35;
+	--color-light: 0 0 0;
+
+	--color-input-bg: 245 230 210;
+	--color-input-border: 180 160 140;
+	--color-placeholder: 130 90 40;
+
+	--color-primary: 120 70 10;
+	--color-primary-hover: 255 172 42;
+	--color-primary-bg: 241 157 30;
+	--color-primary-fg: 10 7 4;
+
+	--shiki-foreground: rgb(var(--color-heading));
+	--shiki-background: rgb(var(--color-card));
+	--shiki-token-constant: color-mix(in srgb, rgb(120 140 230), rgb(var(--color-light)) 50%);
+	--shiki-token-string: rgb(var(--color-heading));
+	--shiki-token-comment: rgb(var(--color-body));
+	--shiki-token-keyword: color-mix(in srgb, rgb(var(--color-primary)), rgb(var(--color-light)) 50%);
+	--shiki-token-parameter: rgb(var(--color-heading));
+	--shiki-token-function: rgb(var(--color-primary));
+	--shiki-token-string-expression: color-mix(
+		in srgb,
+		rgb(120 230 140),
+		rgb(var(--color-light)) 50%
+	);
+	--shiki-token-punctuation: rgb(var(--color-heading));
+	--shiki-token-link: rgb(var(--color-primary));
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--color-background: 10 7 4;
+		--color-card: 28 22 17;
+		--color-card-hover: 40 32 25;
+		--color-border: 28 22 17;
+		--color-header: 20 16 12;
+
+		--color-body: 198 167 140;
+		--color-heading: 227 213 200;
+		--color-light: 255 255 255;
+
+		--color-input-bg: 20 13 8;
+		--color-input-border: 78 60 40;
+		--color-placeholder: 169 147 128;
+
+		--color-primary: 241 157 30;
+		--color-primary-hover: 255 172 42;
+		--color-primary-bg: 241 157 30;
+		--color-primary-fg: 10 7 4;
+	}
+}
+
+html {
+	scroll-padding-top: theme(spacing.24);
+	color-scheme: light dark;
+}
+
+body {
+	background-color: theme(colors.background);
+	color: theme(colors.body);
+}
+
+@keyframes cursor-blink {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0;
+	}
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
+.hide-scrollbar {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}

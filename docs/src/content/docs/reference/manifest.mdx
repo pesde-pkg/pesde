@@ -1,0 +1,405 @@
+---
+title: pesde.toml
+description: Reference for `pesde.toml`
+---
+
+import { LinkCard } from "@astrojs/starlight/components"
+
+`pesde.toml` is the manifest file for a pesde package. It contains metadata about
+the package and its dependencies.
+
+## Top-level fields
+
+```toml
+name = "acme/package"
+version = "1.2.3"
+description = "A package that does foo and bar"
+license = "MIT"
+authors = ["John Doe <john.doe@acme.local> (https://acme.local)"]
+repository = "https://github.com/acme/package"
+```
+
+### `name`
+
+The name of the package. This is used to identify the package in the registry.
+
+The name consists of a scope and a package name, separated by a slash (`/`). It
+may only contain lowercase letters, numbers, and underscores.
+
+The first one to publish to a given scope gets to own it. If you want multiple
+people to be able to publish to the same scope, you can send a pull request to
+the [pesde-index GitHub repository](https://github.com/daimond113/pesde-index)
+and add the GitHub user ID of the other person to the `owners` field of the
+`scope.toml` file of the given scope. For more information, see
+[policies](/registry/policies#package-ownership).
+
+### `version`
+
+The version of the package. This must be a valid [SemVer](https://semver.org/)
+version, such as `1.2.3`.
+
+### `description`
+
+A short description of the package. This is displayed on the package page in the
+registry.
+
+### `license`
+
+The license of the package. It is recommended to use a
+[SPDX license identifier](https://spdx.org/licenses/), such as `MIT` or
+`Apache-2.0`.
+
+### `authors`
+
+A list of authors of the package. Each author is a string containing the name of
+the author, optionally followed by an email address in angle brackets, and a
+website URL in parentheses. For example:
+
+```toml
+authors = ["John Doe <john.doe@acme.local> (https://acme.local)"]
+```
+
+### `repository`
+
+The URL of the repository where the package is hosted. This is displayed on the
+package page in the registry.
+
+### `private`
+
+A boolean indicating whether the package is private. If set to `true`, the
+package cannot be published to the registry.
+
+### `includes`
+
+List of top-level files and directories to include in the package when
+publishing. Files not listed here will not be published.
+
+```toml
+includes = [
+  "pesde.toml",
+  "README.md",
+  "LICENSE",
+  "init.luau",
+  "docs",
+]
+```
+
+### `pesde_version`
+
+The version of pesde to use within this project. The `pesde` CLI will look at
+this field and run the correct version of pesde for this project.
+
+### `workspace_members`
+
+A list of globs containing the members of this workspace.
+
+<LinkCard
+  title="Workspaces"
+  description="Learn more about workspaces in pesde."
+  href="/guides/workspaces/"
+/>
+
+
+## `[target]`
+
+The `[target]` section contains information about the target platform for the
+package.
+
+```toml
+[target]
+environment = "luau"
+lib = "init.luau"
+```
+
+### `environment`
+
+The target environment for the package. This can be one of the following:
+
+- `luau`: Standalone Luau code that can be run using the `luau` CLI.
+- `lune`: Luau code that requires the Lune runtime.
+- `roblox`: Luau code that must be run in Roblox.
+- `roblox_server`: Same as `roblox`, but only for server-side code.
+
+### `lib`
+
+**Allowed in:** `luau`, `lune`, `roblox`, `roblox_server`
+
+The entry point of the library exported by the package. This file is what will
+be required when the package is loaded using `require`.
+
+### `bin`
+
+**Allowed in:** `luau`, `lune`
+
+The entry point of the binary exported by the package. This file is what will be
+run when the package is executed as a binary.
+
+<LinkCard
+  title="Using Binary Packages"
+  description="Learn more about using binary packages in pesde."
+  href="/guides/binary-packages/"
+/>
+
+### `build_files`
+
+**Allowed in:** `roblox`, `roblox_server`
+
+A list of files that should be synced to Roblox when the package is installed.
+
+```toml
+build_files = [
+  "init.luau",
+  "foo.luau",
+]
+```
+
+These files are passed to [`roblox_sync_config_generator`](#roblox_sync_config_generator)
+when the package is installed in order to generate the necessary configuration.
+
+## `[scripts]`
+
+The `[scripts]` section contains scripts that can be run using the `pesde run`
+command. These scripts are run using [Lune](https://lune-org.github.io/docs).
+
+```toml
+[scripts]
+build = "sripts/build.luau"
+test = "scripts/test.luau"
+```
+
+There are also a few special scripts that are run in certain cases by pesde.
+
+### `roblox_sync_config_generator`
+
+This is responsible for generating adequate configuration files for Roblox
+sync tools.
+
+`process.args` will contain the directory containing the package, and the list
+of files specified within the [`target.build_files`](#build_files) of the
+package.
+
+You can find template scripts inside the
+[`pesde-scripts` repository](https://github.com/daimond113/pesde-scripts)
+for various sync tools.
+
+<LinkCard
+  title="Roblox"
+  description="Learn more about using pesde in Roblox projects."
+  href="/guides/roblox/"
+/>
+
+<LinkCard
+  title="Example script for Rojo"
+  description="An example script for generating configuration for Rojo."
+  href="https://github.com/daimond113/pesde-scripts/blob/master/lune/rojo/roblox_sync_config_generator.luau"
+/>
+
+### `sourcemap_generator`
+
+This is responsible for generating source maps for packages that are installed.
+This is required to get proper types support when using
+[Wally dependencies](/guides/dependencies/#wally-dependencies).
+
+The script will receive the path to the package directory as the first argument
+through `process.args`.
+
+<LinkCard
+  title="Example script for Rojo"
+  description="An example script for generating configuration for Rojo."
+  href="https://github.com/daimond113/pesde-scripts/blob/master/lune/rojo/sourcemap_generator.luau"
+/>
+
+## `[indices]`
+
+The `[indices]` section contains a list of pesde indices where packages can be
+installed from.
+
+```toml
+[indices]
+default = "https://github.com/daimond113/pesde-index"
+acme = "https://github.com/acme/pesde-index"
+```
+
+These can then be referenced in the [`dependencies`](#dependencies) of the
+package. The `default` index is used if no index is specified.
+
+```toml
+[dependencies]
+foo = { name = "acme/foo", version = "1.2.3", index = "acme" }
+```
+
+## `[wally_indices]`
+
+The `[wally_indices]` section contains a list of Wally indices where packages
+can be installed from. This is used for
+[Wally dependencies](/guides/dependencies/#wally-dependencies).
+
+```toml
+[wally_indices]
+default = "https://github.com/UpliftGames/wally-index"
+acme = "https://github.com/acme/wally-index"
+```
+
+These can then be referenced in the [`dependencies`](#dependencies) of the
+package. The `default` index is used if no index is specified.
+
+```toml
+[dependencies]
+foo = { wally = "acme/foo", version = "1.2.3", index = "acme" }
+```
+
+## `[overrides]`
+
+The `[overrides]` section contains a list of overrides for dependencies. This
+allows you to replace certain dependencies with different versions or even
+different packages.
+
+```toml
+[overrides]
+"bar>baz" = { name = "acme/baz", version = "1.0.0" }
+"foo>bar,baz>bar" = { name = "acme/bar", version = "2.0.0" }
+```
+
+The above example will replace the `baz` dependency of the `bar` package with
+version `1.0.0`, and the `bar` and `baz` dependencies of the `foo` package with
+version `2.0.0`.
+
+Each key in the overrides table is a comma-separated list of package paths. The
+path is a list of package names separated by `>`. For example, `foo>bar>baz`
+refers to the `baz` dependency of the `bar` package, which is a dependency of
+the `foo` package.
+
+<LinkCard
+  title="Overrides"
+  description="Learn more about overriding and patching packages."
+  href="/guides/overrides/"
+/>
+
+## `[patches]`
+
+The `[patches]` section contains a list of patches for dependencies. This allows
+you to modify the source code of dependencies.
+
+```toml
+[patches]
+"acme/foo" = { "1.0.0 luau" = "patches/acme+foo-1.0.0+luau.patch" }
+```
+
+The above example will patch version `1.0.0` with the `luau` target of the
+`acme/foo` package using the `patches/acme+foo-1.0.0+luau.patch` file.
+
+Each key in the patches table is the package name, and the value is a table
+where the keys are the version and target, and the value is the path to the
+patch.
+
+The patches can be generated using the `pesde patch` command.
+
+<LinkCard
+  title="Overrides"
+  description="Learn more about overriding and patching packages."
+  href="/guides/overrides/"
+/>
+
+## `[place]`
+
+This is used in Roblox projects to specify where packages are located in the
+Roblox datamodel.
+
+```toml
+[place]
+shared = "game.ReplicatedStorage.Packages"
+server = "game.ServerScriptService.Packages"
+```
+
+## `[dependencies]`
+
+The `[dependencies]` section contains a list of dependencies for the package.
+
+```toml
+[dependencies]
+foo = { name = "acme/foo", version = "1.2.3" }
+bar = { wally = "acme/bar", version = "2.3.4" }
+baz = { git = "acme/baz", rev = "main" }
+```
+
+Each key in the dependencies table is the name of the dependency, and the value
+is a dependency specifier.
+
+There are several types of dependency specifiers.
+
+### pesde
+
+```toml
+[dependencies]
+foo = { name = "acme/foo", version = "1.2.3", index = "acme", target = "lune" }
+```
+
+**pesde dependencies** contain the following fields:
+
+- `name`: The name of the package.
+- `version`: The version of the package.
+- `index`: The [pesde index](#indices) to install the package from. If not
+  specified, the `default` index is used.
+- `target`: The target platform for the package. If not specified, the target
+  platform of the current package is used.
+
+### Wally
+
+```toml
+[dependencies]
+foo = { wally = "acme/foo", version = "1.2.3", index = "acme" }
+```
+
+**Wally dependencies** contain the following fields:
+
+- `wally`: The name of the package.
+- `version`: The version of the package.
+- `index`: The [Wally index](#wally_indices) to install the package from. If not
+  specified, the `default` index is used.
+
+### Git
+
+```toml
+[dependencies]
+foo = { git = "acme/packages", rev = "main", path = "foo" }
+```
+
+**Git dependencies** contain the following fields:
+
+- `git`: The URL of the Git repository.
+  This can either be `<owner>/<name>` for a GitHub repository, or a full URL.
+- `rev`: The Git revision to install. This can be a branch, tag, or commit hash.
+- `path`: The path within the repository to install. If not specified, the root
+  of the repository is used.
+
+## `[peer_dependencies]`
+
+The `[peer_dependencies]` section contains a list of peer dependencies for the
+package. These are dependencies that are required by the package, but are not
+installed automatically. Instead, they must be installed by the user of the
+package.
+
+```toml
+[peer_dependencies]
+foo = { name = "acme/foo", version = "1.2.3" }
+```
+
+## `[dev_dependencies]`
+
+The `[dev_dependencies]` section contains a list of development dependencies for
+the package. These are dependencies that are only required during development,
+such as testing libraries or build tools. They are not installed when the
+package is used by another package.
+
+```toml
+[dev_dependencies]
+foo = { name = "acme/foo", version = "1.2.3" }
+```
+
+<br/>
+
+<LinkCard
+  title="Specifying Dependencies"
+  description="Learn more about specifying dependencies in pesde."
+  href="/guides/dependencies/"
+/>

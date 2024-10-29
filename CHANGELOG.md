@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- New website by @lukadev-0
+
 ### Fixed
 - Use updated aliases when reusing lockfile dependencies by @daimond113
 - Listen for device flow completion without requiring pressing enter by @daimond113

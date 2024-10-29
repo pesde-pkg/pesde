@@ -1,0 +1,80 @@
+---
+title: Overriding Dependencies
+description: Learn how to override and patch dependencies in pesde.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+
+pesde has several ways to override or patch dependencies in your project.
+
+## Dependency Overrides
+
+Dependency overrides allow you to replace a dependency of a dependency with a
+different version or package.
+
+Let's say you have a project with the following dependencies:
+
+```toml title="pesde.toml"
+[dependencies]
+foo = { name = "acme/foo", version = "^1.0.0" }
+```
+
+But `foo` depends on `bar` 1.0.0, and you want to use `bar` 2.0.0 instead. You
+can override the `bar` dependency in your `pesde.toml` file:
+
+```toml title="pesde.toml"
+[dependencies]
+foo = { name = "acme/foo", version = "^1.0.0" }
+
+[overrides]
+"foo>bar" = { name = "acme/bar", version = "^2.0.0" }
+```
+
+Now, when you run `pesde install`, `bar` 2.0.0 will be used instead of 1.0.0.
+
+You can learn more about the syntax for dependency overrides in the
+[reference](/reference/manifest#overrides).
+
+## Patching Dependencies
+
+Patching allows you to modify the source code of a dependency.
+
+To patch a dependency, you can use the `pesde patch` and `pesde patch-commit`
+commands.
+
+Let's say you have the following dependency in your `pesde.toml` file:
+
+```toml title="pesde.toml"
+[target]
+environment = "luau"
+
+[dependencies]
+foo = { name = "acme/foo", version = "^1.0.0" }
+```
+
+And you want to patch `foo` to fix a bug. You can run the following command:
+
+```sh
+pesde patch "acme/foo@1.0.0 luau"
+
+# done! modify the files in the directory, then run `pesde patch-commit /x/y/z`
+# to apply.
+# warning: do not commit these changes
+# note: the pesde.toml file will be ignored when patching
+```
+
+pesde will copy the source code of `foo` to a temporary directory, in this case
+`/x/y/z`. You can then modify the files in this directory. Once you're done,
+run `pesde patch-commit /x/y/z` to apply the changes.
+
+This will create a patch within the `patches` directory of your project, and
+add an entry to `[patches]`. Then, next time you run `pesde install`, the patch
+will be applied to the dependency.
+
+<Aside type="caution">
+
+Make sure not to commit or stage the changes made in the temporary directory.
+Otherwise pesde may not be able to create the patch correctly.
+
+</Aside>
+

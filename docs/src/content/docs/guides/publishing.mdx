@@ -1,0 +1,94 @@
+---
+title: Publishing Packages
+description: Learn how to publish packages to the pesde registry.
+---
+
+## Configuration
+
+Before you can publish a package, you must configure the required fields in your
+`pesde.toml` file.
+
+### `includes`
+
+The `includes` field is a list of files and directories that should be included
+in the package.
+
+```toml
+includes = [
+  "pesde.toml",
+  "README.md",
+  "LICENSE",
+  "init.luau",
+]
+```
+
+### `target`
+
+The `target` field defines the environment where the package can be run.
+
+Here, you must also specify the `lib` and/or `bin` fields to indicate the path
+of the exported library or binary.
+
+```toml
+[target]
+environment = "luau"
+lib = "init.luau"
+```
+
+#### Roblox
+
+`bin` is not supported in Roblox packages. You must also specify a list of
+`build_files`. These are the files that should be synced into Roblox. They are
+passed to the `roblox_sync_config_generator` script.
+
+For more information, see [Roblox](/guides/roblox).
+
+```toml
+[target]
+environment = "roblox"
+lib = "init.luau"
+build_files = ["init.luau"]
+```
+
+## Authentication
+
+Before you can publish a package, you must authenticate with your GitHub account.
+
+```sh
+pesde auth login
+```
+
+You will be given a code and prompted to open the GitHub authentication page in
+your browser. You must enter the code to authenticate.
+
+## Publishing
+
+To publish a package, run the following command:
+
+```sh
+pesde publish
+```
+
+You will be prompted to confirm the package details before publishing.
+
+Once a package is published, others will be able to install it. You may not
+remove a package once it has been published. You may not publish a package with
+an already existing version.
+
+## Multi-target Packages
+
+You may publish packages under the same name and version but with different
+targets. This allows you to publish a package that can be used in multiple
+environments.
+
+For example, you may publish a package that can be used in both Roblox and
+Luau environments by publishing two versions of the package, one for each
+environment.
+
+## Documentation
+
+The `README.md` file in the root of the package will be displayed on the
+[pesde registry website](https://pesde.daimond113.com/).
+
+If you have a `docs` directory in the root of the package, they will be
+hosted by pesde and be accessible on the pesde website.

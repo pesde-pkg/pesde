@@ -1,0 +1,100 @@
+---
+title: Workspaces
+description: Learn how to use workspaces in pesde.
+---
+
+import { FileTree, LinkCard } from "@astrojs/starlight/components"
+
+Workspaces allow you to work with multiple pesde projects within a single
+repository. Packages within a workspace can depend on each other. And you can
+run commands like install or publish on every package in the workspace at once.
+
+Let's say you have a repository with the following structure:
+
+<FileTree>
+
+- pesde.toml
+- pkgs/
+  - foo/
+    - pesde.toml
+    - ...
+  - bar/
+    - pesde.toml
+    - ...
+
+</FileTree>
+
+Within the root `pesde.toml` file, we can define a workspace:
+
+```toml title="pesde.toml"
+name = "acme/root"
+version = "0.0.0"
+private = "true"
+
+workspace_members = ["pkgs/*"]
+
+[target]
+environment = "luau"
+```
+
+Now, each folder within the `pkgs/` directory is considered a package in the
+workspace. You can run commands like `pesde install` or `pesde publish` from
+the root of the repository to run them on every package in the workspace.
+
+## Workspace Dependencies
+
+Packages within a workspace can depend on each other. For example, if `foo`
+depends on `bar`, you can add a dependency to `bar` in the `foo/pesde.toml` file:
+
+```toml title="pkgs/foo/pesde.toml"
+name = "acme/foo"
+version = "1.0.0"
+
+[dependencies]
+bar = { workspace = "acme/bar", version = "^"  }
+```
+
+Workspace dependencies are replaced with normal pesde dependencies when
+publishing.
+
+The `version` field can either contain `^`, `*`, `=`, `~`, or a specific version
+requirement, such as `^1.0.0`. If you use `^`, `=`, or `~`, it will be replaced
+with the version of the package in the workspace when publishing.
+
+For example, if you had the following:
+
+```toml title="pesde.toml"
+[dependencies]
+bar = { workspace = "acme/bar", version = "^" }
+qux = { workspace = "acme/qux", version = "=" }
+qar = { workspace = "acme/qar", version = "~" }
+zoo = { workspace = "acme/zoo", version = "^2.1.0" }
+baz = { workspace = "acme/baz", version = "*" }
+```
+
+If `bar`, `baz`, `qux`, `qar`, and `zoo` are all at version `2.1.5` in the
+workspace, the `pesde.toml` file will be transformed into the following when
+publishing.
+
+```toml title="pesde.toml"
+[dependencies]
+bar = { name = "acme/bar", version = "^2.1.5" }
+qux = { name = "acme/qux", version = "=2.1.5" }
+qar = { name = "acme/qar", version = "~2.1.5" }
+zoo = { name = "acme/zoo", version = "^2.1.0" }
+baz = { name = "acme/baz", version = "*" }
+```
+
+A `target` field can be added to the `dependencies` table to specify a target
+environment for the dependency.
+
+```toml title="pesde.toml"
+[dependencies]
+bar = { workspace = "acme/bar", version = "^", target = "luau" }
+```
+
+<LinkCard
+  title="Specifying Dependencies"
+  description="Learn more about specifying dependencies in pesde."
+  href="/guides/dependencies/"
+/>

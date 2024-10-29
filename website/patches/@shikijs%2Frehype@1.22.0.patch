@@ -1,0 +1,26 @@
+@shikis/rehype doesn't use the `fallbackLanguage` if `lazy` is used.
+
+--- a/dist/core.mjs
++++ b/dist/core.mjs
+@@ -1,6 +1,8 @@
+ import { visit } from 'unist-util-visit';
+ import { toString } from 'hast-util-to-string';
+ 
++import { bundledLanguages } from 'shiki';
++
+ const InlineCodeHandlers = {
+   "tailing-curly-colon": (_tree, node) => {
+     const raw = toString(node);
+@@ -90,8 +92,12 @@ function rehypeShikiFromHighlighter(highlighter, options) {
+     const languageQueue = [];
+     const queue = [];
+     function getLanguage(lang) {
+       if (!lang)
+         return defaultLanguage;
++
++      if (!(lang in bundledLanguages))
++        return fallbackLanguage;
++
+       if (highlighter.getLoadedLanguages().includes(lang))
+         return lang;
+       if (lazy) {
