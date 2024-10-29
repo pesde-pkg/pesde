@@ -7,6 +7,7 @@
 	--color-card: 245 230 210;
 	--color-card-hover: 240 225 205;
 	--color-border: 200 180 160;
+	--color-header: 250 234 215;
 
 	--color-body: 84 70 50;
 	--color-heading: 70 55 35;
@@ -44,13 +45,14 @@
 		--color-card: 28 22 17;
 		--color-card-hover: 40 32 25;
 		--color-border: 28 22 17;
+		--color-header: 20 16 12;
 
 		--color-body: 198 167 140;
 		--color-heading: 227 213 200;
 		--color-light: 255 255 255;
 
-		--color-input-bg: 22 15 8;
-		--color-input-border: 82 60 41;
+		--color-input-bg: 20 13 8;
+		--color-input-border: 78 60 40;
 		--color-placeholder: 169 147 128;
 
 		--color-primary: 241 157 30;
@@ -61,7 +63,8 @@
 }
 
 html {
-	scroll-padding-top: theme(spacing.16);
+	scroll-padding-top: theme(spacing.24);
+	color-scheme: light dark;
 }
 
 body {
@@ -77,4 +80,13 @@ body {
 	50% {
 		opacity: 0;
 	}
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+	display: none;
+}
+
+.hide-scrollbar {
+	-ms-overflow-style: none;
+	scrollbar-width: none;
 }

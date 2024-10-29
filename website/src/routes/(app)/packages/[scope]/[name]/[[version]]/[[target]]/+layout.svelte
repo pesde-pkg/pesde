@@ -59,7 +59,7 @@
 		<Command command={installCommand} class="mb-4" />
 
 		<div class="hidden lg:block">
-			<TargetSelector id="target-selector-sidebar" />
+			<TargetSelector />
 		</div>
 
 		{#if data.pkg.license !== undefined}

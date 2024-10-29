@@ -19,6 +19,7 @@ export type PackageResponse = {
 	authors?: string[]
 	repository?: string
 	dependencies: Record<string, DependencyEntry>
+	docs?: DocEntry[]
 }
 
 export type TargetInfo = {
@@ -31,18 +32,37 @@ export type TargetKind = "roblox" | "roblox_server" | "lune" | "luau"
 
 export type DependencyEntry = [DependencyInfo, DependencyKind]
 
-export type DependencyInfo = {
-	index: string
-	name: string
-	target?: string
-	version: string
-} | {
-	index: string,
-	wally: string,
-	version: string,
-}
+export type DependencyInfo =
+	| {
+			index: string
+			name: string
+			target?: string
+			version: string
+	  }
+	| {
+			index: string
+			wally: string
+			version: string
+	  }
 
 export type DependencyKind = "standard" | "peer" | "dev"
+
+export type DocEntry = DocEntryCategory | DocEntryPage
+
+export type DocEntryBase = {
+	label: string
+	position: number
+}
+
+export type DocEntryCategory = DocEntryBase & {
+	items?: DocEntry[]
+	collapsed?: boolean
+}
+
+export type DocEntryPage = DocEntryBase & {
+	name: string
+	hash: string
+}
 
 export const TARGET_KIND_DISPLAY_NAMES: Record<TargetKind, string> = {
 	roblox: "Roblox",

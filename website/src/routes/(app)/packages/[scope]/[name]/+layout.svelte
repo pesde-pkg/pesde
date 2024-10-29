@@ -10,7 +10,9 @@
 	const [scope, name] = $derived(data.pkg.name.split("/"))
 
 	let currentPkg = $state(data.pkg)
-	let currentTarget = $state(data.pkg.targets[0])
+	let currentTarget = $state(
+		data.pkg.targets.find((target) => target.kind === $page.params.target) ?? data.pkg.targets[0],
+	)
 
 	setContext("currentPkg", {
 		get value() {
@@ -73,13 +75,16 @@
 	<p class="mb-6 max-w-prose">{pkgDescription}</p>
 
 	<div class="mb-8 lg:hidden">
-		<TargetSelector id="mobile-target-selector" />
+		<TargetSelector />
 	</div>
 
-	<nav class="flex w-full border-b-2">
+	<nav class="flex w-full flex-col sm:flex-row sm:border-b-2">
 		<Tab tab={readme}>Readme</Tab>
 		<Tab tab={`${pkgVersion}/${currentTarget.kind}/dependencies`}>Dependencies</Tab>
 		<Tab tab="versions">Versions</Tab>
+		{#if currentPkg.docs && currentPkg.docs.length > 0}
+			<Tab tab={`${pkgVersion}/${currentTarget.kind}/docs`}>Documentation</Tab>
+		{/if}
 	</nav>
 
 	{@render children()}

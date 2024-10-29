@@ -61,7 +61,7 @@ const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 struct DocEntryInfo {
     #[serde(default)]
     label: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "position")]
     sidebar_position: Option<usize>,
     #[serde(default)]
     collapsed: bool,

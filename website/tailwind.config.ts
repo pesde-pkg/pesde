@@ -18,6 +18,7 @@ export default {
 					hover: "rgb(var(--color-card-hover) / <alpha-value>)",
 				},
 				border: "rgb(var(--color-border) / <alpha-value>)",
+				header: "rgb(var(--color-header) / <alpha-value>)",
 
 				body: "rgb(var(--color-body) / <alpha-value>)",
 				heading: "rgb(var(--color-heading) / <alpha-value>)",
