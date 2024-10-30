@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+        # we use some nightly rustfmt features, so we need nightly toolchain
+      - uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy, rustfmt
 
