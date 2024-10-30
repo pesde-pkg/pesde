@@ -122,7 +122,8 @@ impl StorageImpl for S3Storage {
         let object_url = PutObject::new(
             &self.s3_bucket,
             Some(&self.s3_credentials),
-            &format!("doc/{}.gz", doc_hash),
+            // capitalize Doc to prevent conflicts with scope names
+            &format!("Doc/{}.gz", doc_hash),
         )
         .sign(S3_SIGN_DURATION);
 
@@ -142,7 +143,7 @@ impl StorageImpl for S3Storage {
         let object_url = GetObject::new(
             &self.s3_bucket,
             Some(&self.s3_credentials),
-            &format!("doc/{}.gz", doc_hash),
+            &format!("Doc/{}.gz", doc_hash),
         )
         .sign(S3_SIGN_DURATION);
 

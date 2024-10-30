@@ -47,7 +47,10 @@ impl FromStr for PackageName {
                 return Err(Self::Err::PrePostfixUnderscore(reason, part.to_string()));
             }
 
-            if !part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            if !part
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+            {
                 return Err(Self::Err::InvalidCharacters(reason, part.to_string()));
             }
         }
@@ -172,7 +175,10 @@ pub mod wally {
                     return Err(Self::Err::InvalidLength(reason, part.to_string()));
                 }
 
-                if !part.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+                if !part
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                {
                     return Err(Self::Err::InvalidCharacters(reason, part.to_string()));
                 }
             }
