@@ -2,7 +2,7 @@
 
 --- a/dist/core.mjs
 +++ b/dist/core.mjs
-@@ -1,6 +1,8 @@
+@@ -2,6 +2,8 @@ import { isSpecialLang } from 'shiki/core';
  import { visit } from 'unist-util-visit';
  import { toString } from 'hast-util-to-string';
  
@@ -11,16 +11,12 @@
  const InlineCodeHandlers = {
    "tailing-curly-colon": (_tree, node) => {
      const raw = toString(node);
-@@ -90,8 +92,12 @@ function rehypeShikiFromHighlighter(highlighter, options) {
-     const languageQueue = [];
-     const queue = [];
-     function getLanguage(lang) {
-       if (!lang)
+@@ -95,6 +97,8 @@ function rehypeShikiFromHighlighter(highlighter, options) {
          return defaultLanguage;
-+
+       if (highlighter.getLoadedLanguages().includes(lang) || isSpecialLang(lang))
+         return lang;
 +      if (!(lang in bundledLanguages))
 +        return fallbackLanguage;
-+
-       if (highlighter.getLoadedLanguages().includes(lang))
-         return lang;
        if (lazy) {
+         languageQueue.push(lang);
+         return lang;
