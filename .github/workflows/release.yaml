@@ -33,6 +33,7 @@ jobs:
     name: Build for ${{ matrix.host }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - name: Set env
         shell: bash
         run: |
@@ -80,6 +81,7 @@ jobs:
     needs: [ build ]
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - name: Publish
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} --allow-dirty --locked
 

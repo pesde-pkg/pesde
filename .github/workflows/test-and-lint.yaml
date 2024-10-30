@@ -11,19 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: moonrepo/setup-rust@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          bins: cargo-tarpaulin
-          components: rustfmt, clippy
+          components: clippy, rustfmt
 
       - name: Install OS dependencies
         run: |
           sudo apt-get update
           sudo apt-get install libdbus-1-dev pkg-config
 
-      - name: Run tests
-        run: cargo test --all --all-features
+# pesde currently does not have any tests. Bring this back when (if) tests are added.
+#      - name: Run tests
+#        run: cargo test --all --all-features
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -31,10 +30,10 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all --all-targets --all-features -- -D warnings
 
-      - name: Generate coverage report
-        run: cargo tarpaulin --all-features --out xml --exclude-files src/cli/*  --exclude-files registry/* --exclude-files src/main.rs --skip-clean
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4.0.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+#      - name: Generate coverage report
+#        run: cargo tarpaulin --all-features --out xml --exclude-files src/cli/*  --exclude-files registry/* --exclude-files src/main.rs --skip-clean
+#
+#      - name: Upload coverage reports to Codecov
+#        uses: codecov/codecov-action@v4.0.1
+#        with:
+#          token: ${{ secrets.CODECOV_TOKEN }}
