@@ -4,8 +4,11 @@ use actix_web::{
     HttpResponse,
 };
 use pesde::{names::PackageName, source::version_id::VersionId};
-use std::{fmt::Display, fs::create_dir_all, path::PathBuf};
-use std::path::Path;
+use std::{
+    fmt::Display,
+    fs::create_dir_all,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug)]
 pub struct FSStorage {
@@ -58,7 +61,7 @@ impl StorageImpl for FSStorage {
             .join(name)
             .join(version.version().to_string())
             .join(version.target().to_string());
-        
+
         read_file_to_response(&path.join("pkg.tar.gz"), "application/gzip")
     }
 
