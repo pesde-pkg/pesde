@@ -66,5 +66,6 @@
   },
   "patchedDependencies": {
     "@shikijs/rehype@1.22.0": "patches/@shikijs%2Frehype@1.22.0.patch"
-  }
+  },
+  "packageManager": "bun@1.1.33"
 }
