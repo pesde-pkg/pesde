@@ -319,7 +319,7 @@ The `[dependencies]` section contains a list of dependencies for the package.
 [dependencies]
 foo = { name = "acme/foo", version = "1.2.3" }
 bar = { wally = "acme/bar", version = "2.3.4" }
-baz = { git = "acme/baz", rev = "main" }
+baz = { repo = "acme/baz", rev = "main" }
 ```
 
 Each key in the dependencies table is the name of the dependency, and the value
@@ -361,12 +361,12 @@ foo = { wally = "acme/foo", version = "1.2.3", index = "acme" }
 
 ```toml
 [dependencies]
-foo = { git = "acme/packages", rev = "main", path = "foo" }
+foo = { repo = "acme/packages", rev = "main", path = "foo" }
 ```
 
 **Git dependencies** contain the following fields:
 
-- `git`: The URL of the Git repository.
+- `repo`: The URL of the Git repository.
   This can either be `<owner>/<name>` for a GitHub repository, or a full URL.
 - `rev`: The Git revision to install. This can be a branch, tag, or commit hash.
 - `path`: The path within the repository to install. If not specified, the root
