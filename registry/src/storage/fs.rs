@@ -5,10 +5,22 @@ use actix_web::{
 };
 use pesde::{names::PackageName, source::version_id::VersionId};
 use std::{fmt::Display, fs::create_dir_all, path::PathBuf};
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct FSStorage {
     pub root: PathBuf,
+}
+
+fn read_file_to_response(path: &Path, content_type: &str) -> Result<HttpResponse, Error> {
+    Ok(match std::fs::read(path) {
+        Ok(contents) => HttpResponse::Ok()
+            .append_header((CONTENT_TYPE, content_type))
+            .append_header((CONTENT_ENCODING, "gzip"))
+            .body(contents),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => HttpResponse::NotFound().finish(),
+        Err(e) => return Err(e.into()),
+    })
 }
 
 impl StorageImpl for FSStorage {
@@ -46,13 +58,8 @@ impl StorageImpl for FSStorage {
             .join(name)
             .join(version.version().to_string())
             .join(version.target().to_string());
-
-        let contents = std::fs::read(path.join("pkg.tar.gz"))?;
-
-        Ok(HttpResponse::Ok()
-            .append_header((CONTENT_TYPE, "application/gzip"))
-            .append_header((CONTENT_ENCODING, "gzip"))
-            .body(contents))
+        
+        read_file_to_response(&path.join("pkg.tar.gz"), "application/gzip")
     }
 
     async fn store_readme(
@@ -90,16 +97,11 @@ impl StorageImpl for FSStorage {
             .join(version.version().to_string())
             .join(version.target().to_string());
 
-        let contents = std::fs::read(path.join("readme.gz"))?;
-
-        Ok(HttpResponse::Ok()
-            .append_header((CONTENT_TYPE, "text/plain"))
-            .append_header((CONTENT_ENCODING, "gzip"))
-            .body(contents))
+        read_file_to_response(&path.join("readme.gz"), "text/plain")
     }
 
     async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), Error> {
-        let path = self.root.join("docs");
+        let path = self.root.join("Doc");
         create_dir_all(&path)?;
 
         std::fs::write(path.join(format!("{doc_hash}.gz")), &contents)?;
@@ -108,14 +110,9 @@ impl StorageImpl for FSStorage {
     }
 
     async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, Error> {
-        let path = self.root.join("docs");
+        let path = self.root.join("Doc");
 
-        let contents = std::fs::read(path.join(format!("{doc_hash}.gz")))?;
-
-        Ok(HttpResponse::Ok()
-            .append_header((CONTENT_TYPE, "text/plain"))
-            .append_header((CONTENT_ENCODING, "gzip"))
-            .body(contents))
+        read_file_to_response(&path.join(format!("{doc_hash}.gz")), "text/plain")
     }
 }
 
