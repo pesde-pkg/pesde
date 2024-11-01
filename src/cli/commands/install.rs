@@ -154,7 +154,7 @@ impl InstallCommand {
                 if deleted_folders.insert(folder.to_string()) {
                     log::debug!("deleting the {folder} folder");
 
-                    if let Some(e) = std::fs::remove_dir_all(project.package_dir().join(&folder))
+                    if let Some(e) = fs_err::remove_dir_all(project.package_dir().join(&folder))
                         .err()
                         .filter(|e| e.kind() != std::io::ErrorKind::NotFound)
                     {
@@ -245,7 +245,7 @@ impl InstallCommand {
                 }
 
                 let bin_file = bin_folder.join(alias);
-                std::fs::write(&bin_file, bin_link_file(alias))
+                fs_err::write(&bin_file, bin_link_file(alias))
                     .context("failed to write bin link file")?;
 
                 make_executable(&bin_file).context("failed to make bin link executable")?;
@@ -253,7 +253,7 @@ impl InstallCommand {
                 #[cfg(windows)]
                 {
                     let bin_file = bin_file.with_extension(std::env::consts::EXE_EXTENSION);
-                    std::fs::copy(
+                    fs_err::copy(
                         std::env::current_exe().context("failed to get current executable path")?,
                         &bin_file,
                     )

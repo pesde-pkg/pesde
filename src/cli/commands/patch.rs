@@ -45,7 +45,7 @@ impl PatchCommand {
             .join(name.escaped())
             .join(version_id.escaped())
             .join(chrono::Utc::now().timestamp().to_string());
-        std::fs::create_dir_all(&directory)?;
+        fs_err::create_dir_all(&directory)?;
 
         source
             .download(&node.node.pkg_ref, &project, &reqwest)?

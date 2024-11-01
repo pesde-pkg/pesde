@@ -176,7 +176,7 @@ impl PublishCommand {
             }
 
             let contents =
-                std::fs::read_to_string(&export_path).context(format!("failed to read {name}"))?;
+                fs_err::read_to_string(&export_path).context(format!("failed to read {name}"))?;
 
             if let Err(err) = full_moon::parse(&contents).map_err(|errs| {
                 errs.into_iter()
@@ -235,8 +235,9 @@ impl PublishCommand {
 
                 archive.append_file(
                     included_name,
-                    &mut std::fs::File::open(&included_path)
-                        .context(format!("failed to read {included_name}"))?,
+                    fs_err::File::open(&included_path)
+                        .context(format!("failed to read {included_name}"))?
+                        .file_mut(),
                 )?;
             } else {
                 display_includes.push(format!("{included_name}/*"));
@@ -340,7 +341,7 @@ impl PublishCommand {
                                 .context("failed to get workspace directory")?,
                         )
                         .join(MANIFEST_FILE_NAME);
-                    let manifest = std::fs::read_to_string(&manifest)
+                    let manifest = fs_err::read_to_string(&manifest)
                         .context("failed to read workspace package manifest")?;
                     let manifest = toml::from_str::<pesde::manifest::Manifest>(&manifest)
                         .context("failed to parse workspace package manifest")?;
@@ -489,7 +490,7 @@ impl PublishCommand {
         }
 
         if self.dry_run {
-            std::fs::write("package.tar.gz", archive)?;
+            fs_err::write("package.tar.gz", archive)?;
 
             println!(
                 "{}",

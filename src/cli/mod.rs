@@ -10,7 +10,6 @@ use pesde::{
 use relative_path::RelativePathBuf;
 use std::{
     collections::{BTreeMap, HashSet},
-    fs::create_dir_all,
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -35,7 +34,7 @@ pub fn home_dir() -> anyhow::Result<PathBuf> {
 
 pub fn bin_dir() -> anyhow::Result<PathBuf> {
     let bin_dir = home_dir()?.join("bin");
-    create_dir_all(&bin_dir).context("failed to create bin folder")?;
+    fs_err::create_dir_all(&bin_dir).context("failed to create bin folder")?;
     Ok(bin_dir)
 }
 

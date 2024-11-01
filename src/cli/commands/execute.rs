@@ -78,7 +78,7 @@ impl ExecuteCommand {
         let bin_path = target.bin_path().context("package has no binary export")?;
 
         let tmp_dir = project.cas_dir().join(".tmp");
-        std::fs::create_dir_all(&tmp_dir).context("failed to create temporary directory")?;
+        fs_err::create_dir_all(&tmp_dir).context("failed to create temporary directory")?;
 
         let tempdir =
             tempfile::tempdir_in(tmp_dir).context("failed to create temporary directory")?;

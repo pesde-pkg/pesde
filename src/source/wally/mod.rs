@@ -151,7 +151,7 @@ impl PackageSource for WallyPackageSource {
             .join(pkg_ref.name.escaped())
             .join(pkg_ref.version.to_string());
 
-        let tempdir = match std::fs::read_to_string(&index_file) {
+        let tempdir = match fs_err::read_to_string(&index_file) {
             Ok(s) => {
                 log::debug!(
                     "using cached index file for package {}@{}",
@@ -198,7 +198,7 @@ impl PackageSource for WallyPackageSource {
 
         let mut entries = BTreeMap::new();
 
-        let mut dir_entries = std::fs::read_dir(tempdir.path())?.collect::<VecDeque<_>>();
+        let mut dir_entries = fs_err::read_dir(tempdir.path())?.collect::<VecDeque<_>>();
         while let Some(entry) = dir_entries.pop_front() {
             let entry = entry?;
             let path =
@@ -210,7 +210,7 @@ impl PackageSource for WallyPackageSource {
                 }
 
                 entries.insert(path, FSEntry::Directory);
-                dir_entries.extend(std::fs::read_dir(entry.path())?);
+                dir_entries.extend(fs_err::read_dir(entry.path())?);
 
                 continue;
             }
@@ -219,7 +219,7 @@ impl PackageSource for WallyPackageSource {
                 continue;
             }
 
-            let mut file = std::fs::File::open(entry.path())?;
+            let mut file = fs_err::File::open(entry.path())?;
             let hash = store_reader_in_cas(project.cas_dir(), &mut file)?;
             entries.insert(path, FSEntry::File(hash));
         }
@@ -227,10 +227,10 @@ impl PackageSource for WallyPackageSource {
         let fs = PackageFS::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
-            std::fs::create_dir_all(parent).map_err(errors::DownloadError::WriteIndex)?;
+            fs_err::create_dir_all(parent).map_err(errors::DownloadError::WriteIndex)?;
         }
 
-        std::fs::write(&index_file, toml::to_string(&fs)?)
+        fs_err::write(&index_file, toml::to_string(&fs)?)
             .map_err(errors::DownloadError::WriteIndex)?;
 
         Ok((fs, get_target(project, &tempdir)?))

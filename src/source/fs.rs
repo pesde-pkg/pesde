@@ -35,7 +35,7 @@ pub enum PackageFS {
     Copy(PathBuf, TargetKind),
 }
 
-fn make_readonly(_file: &std::fs::File) -> std::io::Result<()> {
+fn make_readonly(_file: &fs_err::File) -> std::io::Result<()> {
     // on Windows, file deletion is disallowed if the file is read-only which breaks patching
     #[cfg(not(windows))]
     {
@@ -56,11 +56,11 @@ pub(crate) fn store_in_cas<P: AsRef<Path>>(
     let (prefix, rest) = hash.split_at(2);
 
     let folder = cas_dir.as_ref().join(prefix);
-    std::fs::create_dir_all(&folder)?;
+    fs_err::create_dir_all(&folder)?;
 
     let cas_path = folder.join(rest);
     if !cas_path.exists() {
-        let mut file = std::fs::File::create(&cas_path)?;
+        let mut file = fs_err::File::create(&cas_path)?;
         file.write_all(contents)?;
 
         make_readonly(&file)?;
@@ -74,7 +74,7 @@ pub(crate) fn store_reader_in_cas<P: AsRef<Path>>(
     contents: &mut dyn Read,
 ) -> std::io::Result<String> {
     let tmp_dir = cas_dir.as_ref().join(".tmp");
-    std::fs::create_dir_all(&tmp_dir)?;
+    fs_err::create_dir_all(&tmp_dir)?;
     let mut hasher = Sha256::new();
     let mut buf = [0; 8 * 1024];
     let mut file_writer = BufWriter::new(tempfile::NamedTempFile::new_in(&tmp_dir)?);
@@ -94,12 +94,12 @@ pub(crate) fn store_reader_in_cas<P: AsRef<Path>>(
     let (prefix, rest) = hash.split_at(2);
 
     let folder = cas_dir.as_ref().join(prefix);
-    std::fs::create_dir_all(&folder)?;
+    fs_err::create_dir_all(&folder)?;
 
     let cas_path = folder.join(rest);
-    match file_writer.into_inner()?.persist_noclobber(cas_path) {
-        Ok(f) => {
-            make_readonly(&f)?;
+    match file_writer.into_inner()?.persist_noclobber(&cas_path) {
+        Ok(_) => {
+            make_readonly(&fs_err::File::open(cas_path)?)?;
         }
         Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.error),
@@ -113,8 +113,8 @@ fn copy_dir_all(
     dst: impl AsRef<Path>,
     target: TargetKind,
 ) -> std::io::Result<()> {
-    std::fs::create_dir_all(&dst)?;
-    'outer: for entry in std::fs::read_dir(src)? {
+    fs_err::create_dir_all(&dst)?;
+    'outer: for entry in fs_err::read_dir(src.as_ref().to_path_buf())? {
         let entry = entry?;
         let ty = entry.file_type()?;
         let file_name = entry.file_name().to_string_lossy().to_string();
@@ -136,7 +136,7 @@ fn copy_dir_all(
                 continue;
             }
 
-            std::fs::copy(entry.path(), dst.as_ref().join(file_name))?;
+            fs_err::copy(entry.path(), dst.as_ref().join(file_name))?;
         }
     }
     Ok(())
@@ -158,17 +158,17 @@ impl PackageFS {
                     match entry {
                         FSEntry::File(hash) => {
                             if let Some(parent) = path.parent() {
-                                std::fs::create_dir_all(parent)?;
+                                fs_err::create_dir_all(parent)?;
                             }
 
                             let (prefix, rest) = hash.split_at(2);
                             let cas_file_path = cas_path.as_ref().join(prefix).join(rest);
 
                             if link {
-                                std::fs::hard_link(cas_file_path, path)?;
+                                fs_err::hard_link(cas_file_path, path)?;
                             } else {
-                                let mut f = std::fs::File::create(&path)?;
-                                f.write_all(&std::fs::read(cas_file_path)?)?;
+                                let mut f = fs_err::File::create(&path)?;
+                                f.write_all(&fs_err::read(cas_file_path)?)?;
 
                                 #[cfg(unix)]
                                 {
@@ -180,7 +180,7 @@ impl PackageFS {
                             }
                         }
                         FSEntry::Directory => {
-                            std::fs::create_dir_all(path)?;
+                            fs_err::create_dir_all(path)?;
                         }
                     }
                 }
@@ -205,6 +205,6 @@ impl PackageFS {
 
         let (prefix, rest) = file_hash.as_ref().split_at(2);
         let cas_file_path = cas_path.as_ref().join(prefix).join(rest);
-        std::fs::read_to_string(cas_file_path).ok()
+        fs_err::read_to_string(cas_file_path).ok()
     }
 }

@@ -253,7 +253,7 @@ impl PackageSource for PesdePackageSource {
             .join(pkg_ref.version.to_string())
             .join(pkg_ref.target.to_string());
 
-        match std::fs::read_to_string(&index_file) {
+        match fs_err::read_to_string(&index_file) {
             Ok(s) => {
                 log::debug!(
                     "using cached index file for package {}@{} {}",
@@ -320,10 +320,10 @@ impl PackageSource for PesdePackageSource {
         let fs = PackageFS::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
-            std::fs::create_dir_all(parent).map_err(errors::DownloadError::WriteIndex)?;
+            fs_err::create_dir_all(parent).map_err(errors::DownloadError::WriteIndex)?;
         }
 
-        std::fs::write(&index_file, toml::to_string(&fs)?)
+        fs_err::write(&index_file, toml::to_string(&fs)?)
             .map_err(errors::DownloadError::WriteIndex)?;
 
         Ok((fs, pkg_ref.target.clone()))

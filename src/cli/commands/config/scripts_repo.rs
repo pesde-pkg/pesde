@@ -31,7 +31,7 @@ impl ScriptsRepoCommand {
                 config.scripts_repo = repo.clone();
                 write_config(&config)?;
 
-                std::fs::remove_dir_all(home_dir()?.join("scripts"))
+                fs_err::remove_dir_all(home_dir()?.join("scripts"))
                     .context("failed to remove scripts directory")?;
 
                 println!("scripts repo set to: {repo}");

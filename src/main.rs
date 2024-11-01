@@ -11,7 +11,6 @@ use indicatif_log_bridge::LogWrapper;
 use pesde::{AuthConfig, Project, MANIFEST_FILE_NAME};
 use std::{
     collections::HashSet,
-    fs::{create_dir_all, hard_link, remove_file},
     path::{Path, PathBuf},
     thread::spawn,
 };
@@ -45,8 +44,8 @@ fn get_linkable_dir(path: &Path) -> PathBuf {
 
         let try_path = curr_path.join(temp_file_name);
 
-        if hard_link(file_to_try.path(), &try_path).is_ok() {
-            if let Err(err) = remove_file(&try_path) {
+        if fs_err::hard_link(file_to_try.path(), &try_path).is_ok() {
+            if let Err(err) = fs_err::remove_file(&try_path) {
                 log::warn!(
                     "failed to remove temporary file at {}: {err}",
                     try_path.display()
@@ -109,7 +108,7 @@ fn run() -> anyhow::Result<()> {
         let mut workspace_dir = None::<PathBuf>;
 
         fn get_workspace_members(path: &Path) -> anyhow::Result<HashSet<PathBuf>> {
-            let manifest = std::fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+            let manifest = fs_err::read_to_string(path.join(MANIFEST_FILE_NAME))
                 .context("failed to read manifest")?;
             let manifest: pesde::manifest::Manifest =
                 toml::from_str(&manifest).context("failed to parse manifest")?;
@@ -180,7 +179,7 @@ fn run() -> anyhow::Result<()> {
 
     let home_dir = home_dir()?;
     let data_dir = home_dir.join("data");
-    create_dir_all(&data_dir).expect("failed to create data directory");
+    fs_err::create_dir_all(&data_dir).expect("failed to create data directory");
 
     let cas_dir = get_linkable_dir(&project_root_dir).join(HOME_DIR);
 

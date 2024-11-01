@@ -8,7 +8,6 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeSet, HashMap},
-    fs::read_dir,
     io::{Cursor, Read, Write},
 };
 use tar::Archive;
@@ -102,7 +101,7 @@ pub async fn publish_package(
     let mut docs = BTreeSet::new();
     let mut docs_pages = HashMap::new();
 
-    for entry in read_dir(package_dir.path())? {
+    for entry in fs_err::read_dir(package_dir.path())? {
         let entry = entry?;
         let file_name = entry
             .file_name()
@@ -118,7 +117,7 @@ pub async fn publish_package(
             if file_name == "docs" {
                 let mut stack = vec![(
                     BTreeSet::new(),
-                    read_dir(entry.path())?,
+                    fs_err::read_dir(entry.path())?,
                     None::<DocEntryInfo>,
                 )];
 
@@ -134,7 +133,7 @@ pub async fn publish_package(
                         if entry.file_type()?.is_dir() {
                             stack.push((
                                 BTreeSet::new(),
-                                read_dir(entry.path())?,
+                                fs_err::read_dir(entry.path())?,
                                 Some(DocEntryInfo {
                                     label: Some(file_name.to_case(Case::Title)),
                                     ..Default::default()
@@ -144,7 +143,7 @@ pub async fn publish_package(
                         }
 
                         if file_name == "_category_.json" {
-                            let info = std::fs::read_to_string(entry.path())?;
+                            let info = fs_err::read_to_string(entry.path())?;
                             let mut info: DocEntryInfo = serde_json::from_str(&info)?;
                             let old_info = category_info.take();
                             info.label = info.label.or(old_info.and_then(|i| i.label));
@@ -156,7 +155,7 @@ pub async fn publish_package(
                             continue;
                         };
 
-                        let content = std::fs::read_to_string(entry.path())?;
+                        let content = fs_err::read_to_string(entry.path())?;
                         let content = content.trim();
                         let hash = format!("{:x}", Sha256::digest(content.as_bytes()));
 
@@ -246,7 +245,7 @@ pub async fn publish_package(
         }
 
         if file_name == MANIFEST_FILE_NAME {
-            let content = std::fs::read_to_string(entry.path())?;
+            let content = fs_err::read_to_string(entry.path())?;
 
             manifest = Some(toml::de::from_str(&content)?);
         } else if file_name
@@ -259,7 +258,7 @@ pub async fn publish_package(
                 return Err(Error::InvalidArchive);
             }
 
-            let file = std::fs::File::open(entry.path())?;
+            let file = fs_err::File::open(entry.path())?;
 
             let mut gz = flate2::read::GzEncoder::new(file, flate2::Compression::best());
             let mut bytes = vec![];

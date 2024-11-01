@@ -86,7 +86,7 @@ fn update_repo<P: AsRef<Path>>(
             .write(gix::index::write::Options::default())
             .context("failed to write index")?;
     } else {
-        std::fs::create_dir_all(path).context(format!("failed to create {name} directory"))?;
+        fs_err::create_dir_all(path).context(format!("failed to create {name} directory"))?;
 
         gix::prepare_clone(url, path)
             .context(format!("failed to prepare {name} repository clone"))?

@@ -1427,6 +1427,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs-err"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bb60e7409f34ef959985bc9d9c5ee8f5db24ee46ed9775850548021710f807f"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "fs4"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3557,6 +3566,7 @@ dependencies = [
  "colored",
  "dirs",
  "flate2",
+ "fs-err",
  "full_moon",
  "git2",
  "gix",
@@ -3600,6 +3610,7 @@ dependencies = [
  "convert_case 0.6.0",
  "dotenvy",
  "flate2",
+ "fs-err",
  "futures",
  "git2",
  "gix",

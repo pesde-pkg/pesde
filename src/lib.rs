@@ -138,31 +138,31 @@ impl Project {
 
     /// Read the manifest file
     pub fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
-        let string = std::fs::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME))?;
+        let string = fs_err::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME))?;
         Ok(string)
     }
 
     /// Deserialize the manifest file
     pub fn deser_manifest(&self) -> Result<Manifest, errors::ManifestReadError> {
-        let string = std::fs::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME))?;
+        let string = fs_err::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME))?;
         Ok(toml::from_str(&string)?)
     }
 
     /// Write the manifest file
     pub fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
-        std::fs::write(self.package_dir.join(MANIFEST_FILE_NAME), manifest.as_ref())
+        fs_err::write(self.package_dir.join(MANIFEST_FILE_NAME), manifest.as_ref())
     }
 
     /// Deserialize the lockfile
     pub fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
-        let string = std::fs::read_to_string(self.package_dir.join(LOCKFILE_FILE_NAME))?;
+        let string = fs_err::read_to_string(self.package_dir.join(LOCKFILE_FILE_NAME))?;
         Ok(toml::from_str(&string)?)
     }
 
     /// Write the lockfile
     pub fn write_lockfile(&self, lockfile: Lockfile) -> Result<(), errors::LockfileWriteError> {
         let string = toml::to_string(&lockfile)?;
-        std::fs::write(self.package_dir.join(LOCKFILE_FILE_NAME), string)?;
+        fs_err::write(self.package_dir.join(LOCKFILE_FILE_NAME), string)?;
         Ok(())
     }
 
@@ -172,8 +172,8 @@ impl Project {
         dir: P,
     ) -> Result<HashMap<PathBuf, Manifest>, errors::WorkspaceMembersError> {
         let dir = dir.as_ref().to_path_buf();
-        let manifest = std::fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
-            .map_err(|e| errors::WorkspaceMembersError::ManifestMissing(dir.to_path_buf(), e))?;
+        let manifest = fs_err::read_to_string(dir.join(MANIFEST_FILE_NAME))
+            .map_err(errors::WorkspaceMembersError::ManifestMissing)?;
         let manifest = toml::from_str::<Manifest>(&manifest).map_err(|e| {
             errors::WorkspaceMembersError::ManifestDeser(dir.to_path_buf(), Box::new(e))
         })?;
@@ -191,8 +191,8 @@ impl Project {
         members
             .into_iter()
             .map(|path| {
-                let manifest = std::fs::read_to_string(path.join(MANIFEST_FILE_NAME))
-                    .map_err(|e| errors::WorkspaceMembersError::ManifestMissing(path.clone(), e))?;
+                let manifest = fs_err::read_to_string(path.join(MANIFEST_FILE_NAME))
+                    .map_err(errors::WorkspaceMembersError::ManifestMissing)?;
                 let manifest = toml::from_str::<Manifest>(&manifest).map_err(|e| {
                     errors::WorkspaceMembersError::ManifestDeser(path.clone(), Box::new(e))
                 })?;
@@ -251,8 +251,8 @@ pub mod errors {
     #[non_exhaustive]
     pub enum WorkspaceMembersError {
         /// The manifest file could not be found
-        #[error("missing manifest file at {0}")]
-        ManifestMissing(PathBuf, #[source] std::io::Error),
+        #[error("missing manifest file")]
+        ManifestMissing(#[source] std::io::Error),
 
         /// An error occurred deserializing the manifest file
         #[error("error deserializing manifest file at {0}")]

@@ -140,7 +140,7 @@ pub trait GitBasedSource {
             return Ok(());
         }
 
-        std::fs::create_dir_all(&path)?;
+        fs_err::create_dir_all(&path)?;
 
         let auth_config = project.auth_config.clone();
 

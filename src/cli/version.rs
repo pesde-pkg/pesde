@@ -3,7 +3,7 @@ use colored::Colorize;
 use reqwest::header::ACCEPT;
 use semver::Version;
 use serde::Deserialize;
-use std::{fs::create_dir_all, io::Read, path::PathBuf};
+use std::{io::Read, path::PathBuf};
 
 use crate::cli::{
     bin_dir,
@@ -157,7 +157,7 @@ pub fn get_or_download_version(
     version: &Version,
 ) -> anyhow::Result<Option<PathBuf>> {
     let path = home_dir()?.join("versions");
-    create_dir_all(&path).context("failed to create versions directory")?;
+    fs_err::create_dir_all(&path).context("failed to create versions directory")?;
 
     let path = path.join(format!("{version}{}", std::env::consts::EXE_SUFFIX));
 
@@ -172,11 +172,11 @@ pub fn get_or_download_version(
     }
 
     if is_requested_version {
-        std::fs::copy(std::env::current_exe()?, &path)
+        fs_err::copy(std::env::current_exe()?, &path)
             .context("failed to copy current executable to version directory")?;
     } else {
         let bytes = download_github_release(reqwest, version)?;
-        std::fs::write(&path, bytes).context("failed to write downloaded version file")?;
+        fs_err::write(&path, bytes).context("failed to write downloaded version file")?;
     }
 
     make_executable(&path).context("failed to make downloaded version executable")?;
@@ -190,9 +190,9 @@ pub fn get_or_download_version(
 
 pub fn max_installed_version() -> anyhow::Result<Version> {
     let versions_dir = home_dir()?.join("versions");
-    create_dir_all(&versions_dir).context("failed to create versions directory")?;
+    fs_err::create_dir_all(&versions_dir).context("failed to create versions directory")?;
 
-    let max_version = std::fs::read_dir(versions_dir)
+    let max_version = fs_err::read_dir(versions_dir)
         .context("failed to read versions directory")?
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
@@ -228,7 +228,7 @@ pub fn update_bin_exe() -> anyhow::Result<()> {
         std::env::consts::EXE_SUFFIX
     ));
 
-    std::fs::copy(std::env::current_exe()?, &copy_to)
+    fs_err::copy(std::env::current_exe()?, &copy_to)
         .context("failed to copy executable to bin folder")?;
 
     make_executable(&copy_to)

@@ -9,7 +9,6 @@ use crate::{
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
-    fs::create_dir_all,
     path::{Path, PathBuf},
 };
 
@@ -18,14 +17,14 @@ pub mod generator;
 
 fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
     let p = path.as_ref();
-    create_dir_all(p)?;
+    fs_err::create_dir_all(p)?;
     p.canonicalize()
 }
 
 fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
     let cas_path = store_in_cas(cas_dir, contents.as_bytes())?.1;
 
-    std::fs::hard_link(cas_path, destination)
+    fs_err::hard_link(cas_path, destination)
 }
 
 impl Project {
@@ -58,7 +57,7 @@ impl Project {
                 let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
                     let lib_file = lib_file.to_path(&container_folder);
 
-                    let contents = match std::fs::read_to_string(&lib_file) {
+                    let contents = match fs_err::read_to_string(&lib_file) {
                         Ok(contents) => contents,
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                             return Err(errors::LinkingError::LibFileNotFound(

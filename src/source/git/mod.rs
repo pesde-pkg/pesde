@@ -335,7 +335,7 @@ impl PackageSource for GitPackageSource {
             .join(hash(self.as_bytes()))
             .join(&pkg_ref.tree_id);
 
-        match std::fs::read_to_string(&index_file) {
+        match fs_err::read_to_string(&index_file) {
             Ok(s) => {
                 log::debug!(
                     "using cached index file for package {}#{} {}",
@@ -490,10 +490,10 @@ impl PackageSource for GitPackageSource {
         };
 
         if let Some(parent) = index_file.parent() {
-            std::fs::create_dir_all(parent)?;
+            fs_err::create_dir_all(parent)?;
         }
 
-        std::fs::write(
+        fs_err::write(
             &index_file,
             toml::to_string(&fs).map_err(|e| {
                 errors::DownloadError::SerializeIndex(Box::new(self.repo_url.clone()), e)

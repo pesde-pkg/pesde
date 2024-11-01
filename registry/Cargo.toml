@@ -18,6 +18,7 @@ chrono = { version = "0.4.38", features = ["serde"] }
 url = "2.5.2"
 futures = "0.3.31"
 tempfile = "3.13.0"
+fs-err = "3.0.0"
 
 git2 = "0.19.0"
 gix = { version = "0.67.0", default-features = false, features = [

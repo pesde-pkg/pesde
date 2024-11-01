@@ -7,9 +7,9 @@ use crate::{
     },
     Project, PACKAGES_CONTAINER_NAME,
 };
+use fs_err::create_dir_all;
 use std::{
     collections::HashSet,
-    fs::create_dir_all,
     sync::{mpsc::Receiver, Arc, Mutex},
 };
 
@@ -133,7 +133,7 @@ pub mod errors {
         RefreshFailed(#[from] Box<crate::source::errors::RefreshError>),
 
         /// Error interacting with the filesystem
-        #[error("error interacting with filesystem")]
+        #[error("error interacting with the filesystem")]
         Io(#[from] std::io::Error),
 
         /// Error downloading a package

@@ -125,9 +125,9 @@ impl InitCommand {
             let folder = project
                 .package_dir()
                 .join(concat!(".", env!("CARGO_PKG_NAME")));
-            std::fs::create_dir_all(&folder).context("failed to create scripts folder")?;
+            fs_err::create_dir_all(&folder).context("failed to create scripts folder")?;
 
-            std::fs::write(
+            fs_err::write(
                 folder.join(format!("{}.luau", ScriptName::RobloxSyncConfigGenerator)),
                 script_contents(Path::new(&format!(
                     "lune/rojo/{}.luau",
@@ -137,7 +137,7 @@ impl InitCommand {
             .context("failed to write sync config generator script file")?;
 
             #[cfg(feature = "wally-compat")]
-            std::fs::write(
+            fs_err::write(
                 folder.join(format!("{}.luau", ScriptName::SourcemapGenerator)),
                 script_contents(Path::new(&format!(
                     "lune/rojo/{}.luau",

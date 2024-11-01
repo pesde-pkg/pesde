@@ -6,7 +6,7 @@ use actix_web::{
     web, App, HttpServer,
 };
 use log::info;
-use std::{env::current_dir, fs::create_dir_all, path::PathBuf, sync::Mutex};
+use std::{env::current_dir, path::PathBuf, sync::Mutex};
 
 use pesde::{
     source::{pesde::PesdePackageSource, traits::PackageSource},
@@ -86,7 +86,7 @@ async fn run() -> std::io::Result<()> {
 
     let cwd = current_dir().unwrap();
     let data_dir = cwd.join("data");
-    create_dir_all(&data_dir).unwrap();
+    fs_err::create_dir_all(&data_dir).unwrap();
 
     let project = Project::new(
         &cwd,

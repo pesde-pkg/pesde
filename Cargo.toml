@@ -26,7 +26,8 @@ bin = [
     "open",
     "gix/worktree-mutation",
     "serde_json",
-    "winreg"
+    "winreg",
+    "fs-err/expose_original_error"
 ]
 wally-compat = ["zip", "serde_json"]
 patches = ["git2"]
@@ -60,6 +61,7 @@ chrono = { version = "0.4.38", features = ["serde"] }
 sha2 = "0.10.8"
 tempfile = "3.13.0"
 glob = "0.3.1"
+fs-err = "3.0.0"
 
 # TODO: remove this when gitoxide adds support for: committing, pushing, adding
 git2 = { version = "0.19.0", optional = true }

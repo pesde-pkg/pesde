@@ -62,7 +62,7 @@ pub(crate) fn get_target(
     let build_files = Default::default();
 
     let manifest = tempdir.path().join(WALLY_MANIFEST_FILE_NAME);
-    let manifest = std::fs::read_to_string(&manifest)?;
+    let manifest = fs_err::read_to_string(&manifest)?;
     let manifest: WallyManifest = toml::from_str(&manifest)?;
 
     Ok(if matches!(manifest.package.realm, Realm::Shared) {

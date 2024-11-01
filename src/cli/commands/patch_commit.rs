@@ -53,10 +53,10 @@ impl PatchCommitCommand {
         .context("failed to parse manifest")?;
 
         let patch = create_patch(&self.directory).context("failed to create patch")?;
-        std::fs::remove_dir_all(self.directory).context("failed to remove patch directory")?;
+        fs_err::remove_dir_all(self.directory).context("failed to remove patch directory")?;
 
         let patches_dir = project.package_dir().join("patches");
-        std::fs::create_dir_all(&patches_dir).context("failed to create patches directory")?;
+        fs_err::create_dir_all(&patches_dir).context("failed to create patches directory")?;
 
         let patch_file_name = format!("{}-{}.patch", name.escaped(), version_id.escaped());
 
@@ -65,7 +65,7 @@ impl PatchCommitCommand {
             anyhow::bail!("patch file already exists: {}", patch_file.display());
         }
 
-        std::fs::write(&patch_file, patch).context("failed to write patch file")?;
+        fs_err::write(&patch_file, patch).context("failed to write patch file")?;
 
         manifest["patches"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
             [&name.to_string()][&version_id.to_string()] =

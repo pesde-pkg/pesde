@@ -2,9 +2,10 @@ use crate::{
     lockfile::DownloadedGraph, source::traits::PackageRef, Project, MANIFEST_FILE_NAME,
     PACKAGES_CONTAINER_NAME,
 };
+use fs_err::read;
 use git2::{ApplyLocation, ApplyOptions, Diff, DiffFormat, DiffLineType, Repository, Signature};
 use relative_path::RelativePathBuf;
-use std::{fs::read, path::Path};
+use std::path::Path;
 
 /// Set up a git repository for patches
 pub fn setup_patches_repo<P: AsRef<Path>>(dir: P) -> Result<Repository, git2::Error> {
@@ -77,9 +78,9 @@ impl Project {
         for (name, versions) in manifest.patches {
             for (version_id, patch_path) in versions {
                 let patch_path = patch_path.to_path(self.package_dir());
-                let patch = Diff::from_buffer(&read(&patch_path).map_err(|e| {
-                    errors::ApplyPatchesError::PatchReadError(patch_path.clone(), e)
-                })?)?;
+                let patch = Diff::from_buffer(
+                    &read(&patch_path).map_err(errors::ApplyPatchesError::PatchRead)?,
+                )?;
 
                 let Some(node) = graph
                     .get(&name)
@@ -134,8 +135,8 @@ impl Project {
                         // there is no way (as far as I know) to check if it's hardlinked
                         // so, we always unlink it
                         let content = read(&path).unwrap();
-                        std::fs::remove_file(&path).unwrap();
-                        std::fs::write(path, content).unwrap();
+                        fs_err::remove_file(&path).unwrap();
+                        fs_err::write(path, content).unwrap();
 
                         true
                     });
@@ -144,9 +145,8 @@ impl Project {
 
                 log::debug!("patch applied to {name}@{version_id}, removing .git directory");
 
-                std::fs::remove_dir_all(container_folder.join(".git")).map_err(|e| {
-                    errors::ApplyPatchesError::GitDirectoryRemovalError(container_folder, e)
-                })?;
+                fs_err::remove_dir_all(container_folder.join(".git"))
+                    .map_err(errors::ApplyPatchesError::DotGitRemove)?;
             }
         }
 
@@ -156,8 +156,6 @@ impl Project {
 
 /// Errors that can occur when using patches
 pub mod errors {
-    use std::path::PathBuf;
-
     use thiserror::Error;
 
     /// Errors that can occur when applying patches
@@ -170,14 +168,14 @@ pub mod errors {
 
         /// Error interacting with git
         #[error("error interacting with git")]
-        GitError(#[from] git2::Error),
+        Git(#[from] git2::Error),
 
         /// Error reading the patch file
-        #[error("error reading patch file at {0}")]
-        PatchReadError(PathBuf, #[source] std::io::Error),
+        #[error("error reading patch file")]
+        PatchRead(#[source] std::io::Error),
 
         /// Error removing the .git directory
         #[error("error removing .git directory")]
-        GitDirectoryRemovalError(PathBuf, #[source] std::io::Error),
+        DotGitRemove(#[source] std::io::Error),
     }
 }

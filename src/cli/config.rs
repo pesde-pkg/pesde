@@ -39,7 +39,7 @@ impl Default for CliConfig {
 }
 
 pub fn read_config() -> anyhow::Result<CliConfig> {
-    let config_string = match std::fs::read_to_string(home_dir()?.join("config.toml")) {
+    let config_string = match fs_err::read_to_string(home_dir()?.join("config.toml")) {
         Ok(config_string) => config_string,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(CliConfig::default());
@@ -54,7 +54,7 @@ pub fn read_config() -> anyhow::Result<CliConfig> {
 
 pub fn write_config(config: &CliConfig) -> anyhow::Result<()> {
     let config_string = toml::to_string(config).context("failed to serialize config")?;
-    std::fs::write(home_dir()?.join("config.toml"), config_string)
+    fs_err::write(home_dir()?.join("config.toml"), config_string)
         .context("failed to write config file")?;
 
     Ok(())
