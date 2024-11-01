@@ -288,9 +288,11 @@ impl PackageSource for PesdePackageSource {
 
         let mut entries = BTreeMap::new();
 
-        for entry in archive.entries()? {
-            let mut entry = entry?;
-            let path = RelativePathBuf::from_path(entry.path()?).unwrap();
+        for entry in archive.entries().map_err(errors::DownloadError::Unpack)? {
+            let mut entry = entry.map_err(errors::DownloadError::Unpack)?;
+            let path =
+                RelativePathBuf::from_path(entry.path().map_err(errors::DownloadError::Unpack)?)
+                    .unwrap();
 
             if entry.header().entry_type().is_dir() {
                 if path
@@ -310,14 +312,15 @@ impl PackageSource for PesdePackageSource {
                 continue;
             }
 
-            let hash = store_reader_in_cas(project.cas_dir(), &mut entry)?;
+            let hash = store_reader_in_cas(project.cas_dir(), &mut entry)
+                .map_err(errors::DownloadError::Store)?;
             entries.insert(path, FSEntry::File(hash));
         }
 
         let fs = PackageFS::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).map_err(errors::DownloadError::WriteIndex)?;
         }
 
         std::fs::write(&index_file, toml::to_string(&fs)?)
@@ -551,7 +554,11 @@ pub mod errors {
 
         /// Error unpacking package
         #[error("error unpacking package")]
-        Unpack(#[from] std::io::Error),
+        Unpack(#[source] std::io::Error),
+
+        /// Error storing file in CAS
+        #[error("error storing file in CAS")]
+        Store(#[source] std::io::Error),
 
         /// Error writing index file
         #[error("error writing index file")]
