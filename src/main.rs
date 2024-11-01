@@ -11,7 +11,7 @@ use indicatif_log_bridge::LogWrapper;
 use pesde::{AuthConfig, Project, MANIFEST_FILE_NAME};
 use std::{
     collections::HashSet,
-    fs::{create_dir_all, hard_link},
+    fs::{create_dir_all, hard_link, remove_file},
     path::{Path, PathBuf},
     thread::spawn,
 };
@@ -37,17 +37,22 @@ struct Cli {
 
 fn get_linkable_dir(path: &Path) -> PathBuf {
     let mut curr_path = PathBuf::new();
-    let file_to_try = NamedTempFile::new_in(&curr_path).expect("failed to create temporary file");
+    let file_to_try = NamedTempFile::new_in(path).expect("failed to create temporary file");
+    let temp_file_name = file_to_try.path().file_name().unwrap();
 
     for component in path.components() {
         curr_path.push(component);
 
-        if hard_link(
-            file_to_try.path(),
-            curr_path.join(file_to_try.path().file_name().unwrap()),
-        )
-        .is_ok()
-        {
+        let try_path = curr_path.join(temp_file_name);
+
+        if hard_link(file_to_try.path(), &try_path).is_ok() {
+            if let Err(err) = remove_file(&try_path) {
+                log::warn!(
+                    "failed to remove temporary file at {}: {err}",
+                    try_path.display()
+                );
+            }
+
             return curr_path;
         }
     }
