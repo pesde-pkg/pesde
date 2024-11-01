@@ -11,10 +11,11 @@ use indicatif_log_bridge::LogWrapper;
 use pesde::{AuthConfig, Project, MANIFEST_FILE_NAME};
 use std::{
     collections::HashSet,
-    fs::create_dir_all,
+    fs::{create_dir_all, hard_link},
     path::{Path, PathBuf},
     thread::spawn,
 };
+use tempfile::NamedTempFile;
 
 mod cli;
 pub mod util;
@@ -34,37 +35,27 @@ struct Cli {
     subcommand: cli::commands::Subcommand,
 }
 
-#[cfg(windows)]
-fn get_root(path: &std::path::Path) -> PathBuf {
-    match path.components().next().unwrap() {
-        std::path::Component::Prefix(prefix) => {
-            let mut string = prefix.as_os_str().to_string_lossy().to_string();
-            if string.ends_with(':') {
-                string.push(std::path::MAIN_SEPARATOR);
-            }
+fn get_linkable_dir(path: &Path) -> PathBuf {
+    let mut curr_path = PathBuf::new();
+    let file_to_try = NamedTempFile::new_in(&curr_path).expect("failed to create temporary file");
 
-            std::path::PathBuf::from(&string)
+    for component in path.components() {
+        curr_path.push(component);
+
+        if hard_link(
+            file_to_try.path(),
+            curr_path.join(file_to_try.path().file_name().unwrap()),
+        )
+        .is_ok()
+        {
+            return curr_path;
         }
-        _ => unreachable!(),
-    }
-}
-
-#[cfg(unix)]
-fn get_root(path: &std::path::Path) -> PathBuf {
-    use std::os::unix::fs::MetadataExt;
-
-    let path = std::fs::canonicalize(path).unwrap();
-    let mut current = path.as_path();
-
-    while let Some(parent) = current.parent() {
-        if std::fs::metadata(parent).unwrap().dev() != std::fs::metadata(current).unwrap().dev() {
-            break;
-        }
-
-        current = parent;
     }
 
-    current.to_path_buf()
+    panic!(
+        "couldn't find a linkable directory for any point in {}",
+        curr_path.display()
+    );
 }
 
 fn run() -> anyhow::Result<()> {
@@ -182,19 +173,20 @@ fn run() -> anyhow::Result<()> {
         multi
     };
 
-    let data_dir = home_dir()?.join("data");
+    let home_dir = home_dir()?;
+    let data_dir = home_dir.join("data");
     create_dir_all(&data_dir).expect("failed to create data directory");
 
-    let home_cas_dir = data_dir.join("cas");
-    create_dir_all(&home_cas_dir).expect("failed to create cas directory");
-    let project_root = get_root(&project_root_dir);
-    let cas_dir = if get_root(&home_cas_dir) == project_root {
-        log::debug!("using home cas dir");
-        home_cas_dir
+    let cas_dir = get_linkable_dir(&project_root_dir).join(HOME_DIR);
+
+    let cas_dir = if cas_dir == home_dir {
+        &data_dir
     } else {
-        log::debug!("using cas dir in {}", project_root.display());
-        project_root.join(HOME_DIR).join("cas")
-    };
+        &cas_dir
+    }
+    .join("cas");
+
+    log::debug!("using cas dir in {}", cas_dir.display());
 
     let project = Project::new(
         project_root_dir,
