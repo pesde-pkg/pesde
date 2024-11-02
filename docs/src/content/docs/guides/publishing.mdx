@@ -3,6 +3,8 @@ title: Publishing Packages
 description: Learn how to publish packages to the pesde registry.
 ---
 
+import { LinkCard } from "@astrojs/starlight/components"
+
 ## Configuration
 
 Before you can publish a package, you must configure the required fields in your
@@ -41,14 +43,18 @@ lib = "init.luau"
 `build_files`. These are the files that should be synced into Roblox. They are
 passed to the `roblox_sync_config_generator` script.
 
-For more information, see [Roblox](/guides/roblox).
-
 ```toml
 [target]
 environment = "roblox"
-lib = "init.luau"
-build_files = ["init.luau"]
+lib = "src/init.luau"
+build_files = ["src"]
 ```
+
+<LinkCard
+	title="Roblox"
+	description="Learn more about authoring packages for Roblox."
+	href="/guides/roblox/#authoring-packages"
+/>
 
 ## Authentication
 
