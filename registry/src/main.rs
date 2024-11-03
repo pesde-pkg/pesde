@@ -85,7 +85,8 @@ async fn run() -> std::io::Result<()> {
     let port: u16 = benv!(parse "PORT" => "8080");
 
     let cwd = current_dir().unwrap();
-    let data_dir = PathBuf::from(benv!("DATA_DIR" => "{CWD}/data").replace("{CWD}", cwd.to_str().unwrap()));
+    let data_dir =
+        PathBuf::from(benv!("DATA_DIR" => "{CWD}/data").replace("{CWD}", cwd.to_str().unwrap()));
     fs_err::create_dir_all(&data_dir).unwrap();
 
     let project = Project::new(
