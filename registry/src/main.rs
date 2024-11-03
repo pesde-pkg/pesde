@@ -94,8 +94,8 @@ async fn run() -> std::io::Result<()> {
         data_dir.join("project"),
         &cwd,
         AuthConfig::new().with_git_credentials(Some(gix::sec::identity::Account {
-            username: benv!(required "GITHUB_USERNAME"),
-            password: benv!(required "GITHUB_PAT"),
+            username: benv!(required "GIT_USERNAME"),
+            password: benv!(required "GIT_PASSWORD"),
         })),
     );
     let source = PesdePackageSource::new(benv!(required "INDEX_REPO_URL").try_into().unwrap());

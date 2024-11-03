@@ -3,6 +3,8 @@ title: Self Hosting Registries
 description: Learn how to self host registries for pesde.
 ---
 
+import { Aside } from "@astrojs/starlight/components"
+
 You can self host registries for pesde. This is useful if you want a private
 registry or if you a separate registry for other reasons.
 
@@ -81,23 +83,26 @@ The official registry implementation is available in the
 [pesde GitHub repository](https://github.com/daimond113/pesde/tree/0.5/registry).
 
 Configuring the registry is done using environment variables. In order to allow
-the registry to access the index repository, you must use a personal access
-token of a GitHub account that has access to the index repository. We recommend
-using a separate GitHub account for this purpose.
+the registry to access the index repository, you must use an account that
+has access to the index repository. We recommend using a separate account
+for this purpose.
 
-For instructions on how to create a personal access token, see the
-[GitHub documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
-The access token must have read and write access to the index repository.
+<Aside>
+	For a GitHub account the password **must** be a personal access token. For
+	instructions on how to create a personal access token, see the [GitHub
+	documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
+	The access token must have read and write access to the index repository.
+</Aside>
 
 ### General configuration
 
 - **INDEX_REPO_URL**: The URL of the index repository. This is required.\
   Example: `https://github.com/daimond113/pesde-index.git`
 
-- **GITHUB_USERNAME**: The username of the GitHub account that has access to the
+- **GIT_USERNAME**: The username of a Git account that has push access to the
   index repository. This is required.
 
-- **GITHUB_PAT**: The personal access token of the GitHub account specified by
+- **GIT_PASSWORD**: The password of the account specified by
   `GITHUB_USERNAME`. This is required.
 
 - **COMMITTER_GIT_NAME**: The name to use for the committer when updating the
