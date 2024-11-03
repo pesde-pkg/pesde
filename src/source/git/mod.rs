@@ -14,6 +14,7 @@ use crate::{
         git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
         git_index::GitBasedSource,
         specifiers::DependencySpecifiers,
+        traits::PackageRef,
         PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
@@ -442,6 +443,15 @@ impl PackageSource for GitPackageSource {
             }
 
             if IGNORED_FILES.contains(&path.as_str()) {
+                continue;
+            }
+
+            if pkg_ref.use_new_structure() && path == "default.project.json" {
+                log::debug!(
+                    "removing default.project.json from {}#{} - using new structure",
+                    pkg_ref.repo,
+                    pkg_ref.tree_id
+                );
                 continue;
             }
 
