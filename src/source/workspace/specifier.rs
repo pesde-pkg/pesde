@@ -10,7 +10,7 @@ pub struct WorkspaceDependencySpecifier {
     #[serde(rename = "workspace")]
     pub name: PackageName,
     /// The version type to use when publishing the package
-    #[serde(default, rename = "version")]
+    #[serde(default)]
     pub version: VersionTypeOrReq,
     /// The target of the workspace package
     pub target: Option<TargetKind>,
@@ -67,7 +67,7 @@ impl FromStr for VersionType {
 }
 
 /// Either a version type or a version requirement
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, SerializeDisplay, DeserializeFromStr, Clone, PartialEq, Eq, Hash)]
 pub enum VersionTypeOrReq {
     /// A version type
     VersionType(VersionType),
