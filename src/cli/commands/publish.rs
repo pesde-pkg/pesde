@@ -26,7 +26,7 @@ use pesde::{
     Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
 
-#[derive(Debug, Args, Copy, Clone)]
+#[derive(Debug, Args, Clone)]
 pub struct PublishCommand {
     /// Whether to output a tarball instead of publishing
     #[arg(short, long)]
@@ -35,6 +35,10 @@ pub struct PublishCommand {
     /// Agree to all prompts
     #[arg(short, long)]
     yes: bool,
+
+    /// The index to publish to
+    #[arg(short, long, default_value_t = DEFAULT_INDEX_NAME.to_string())]
+    index: String,
 }
 
 impl PublishCommand {
@@ -460,8 +464,8 @@ impl PublishCommand {
 
         let index_url = manifest
             .indices
-            .get(DEFAULT_INDEX_NAME)
-            .context("missing default index")?;
+            .get(&self.index)
+            .context(format!("missing index {}", self.index))?;
         let source = PesdePackageSource::new(index_url.clone());
         source
             .refresh(project)
@@ -541,14 +545,16 @@ impl PublishCommand {
     }
 
     pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
-        let result = self.run_impl(&project, reqwest.clone());
+        let result = self.clone().run_impl(&project, reqwest.clone());
         if project.workspace_dir().is_some() {
             return result;
         } else if let Err(result) = result {
             println!("an error occurred publishing workspace root: {result}");
         }
 
-        run_on_workspace_members(&project, |project| self.run_impl(&project, reqwest.clone()))
-            .map(|_| ())
+        run_on_workspace_members(&project, |project| {
+            self.clone().run_impl(&project, reqwest.clone())
+        })
+        .map(|_| ())
     }
 }
