@@ -17,8 +17,9 @@ semver = "1.0.23"
 chrono = { version = "0.4.38", features = ["serde"] }
 url = "2.5.2"
 futures = "0.3.31"
+tokio = "1.41.0"
 tempfile = "3.13.0"
-fs-err = "3.0.0"
+fs-err = { version = "3.0.0", features = ["tokio"] }
 
 git2 = "0.19.0"
 gix = { version = "0.67.0", default-features = false, features = [
@@ -37,8 +38,8 @@ rusty-s3 = "0.5.0"
 reqwest = { version = "0.12.8", features = ["json", "rustls-tls"] }
 constant_time_eq = "0.3.1"
 
-tar = "0.4.42"
-flate2 = "1.0.34"
+tokio-tar = "0.3.1"
+async-compression = { version = "0.4.17", features = ["tokio", "gzip"] }
 
 log = "0.4.22"
 pretty_env_logger = "0.5.0"

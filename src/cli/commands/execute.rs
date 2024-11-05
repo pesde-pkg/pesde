@@ -1,6 +1,7 @@
 use crate::cli::{config::read_config, VersionedPackageName};
 use anyhow::Context;
 use clap::Args;
+use fs_err::tokio as fs;
 use pesde::{
     linking::generator::generate_bin_linking_module,
     manifest::target::TargetKind,
@@ -30,14 +31,16 @@ pub struct ExecuteCommand {
 }
 
 impl ExecuteCommand {
-    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
-        let index = self
-            .index
-            .or_else(|| read_config().ok().map(|c| c.default_index))
-            .context("no index specified")?;
+    pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+        let index = match self.index {
+            Some(index) => Some(index),
+            None => read_config().await.ok().map(|c| c.default_index),
+        }
+        .context("no index specified")?;
         let source = PesdePackageSource::new(index);
         source
             .refresh(&project)
+            .await
             .context("failed to refresh source")?;
 
         let version_req = self.package.1.unwrap_or(VersionReq::STAR);
@@ -51,6 +54,7 @@ impl ExecuteCommand {
 
             if let Some(res) = source
                 .resolve(&specifier, &project, TargetKind::Lune)
+                .await
                 .context("failed to resolve package")?
                 .1
                 .pop_last()
@@ -60,6 +64,7 @@ impl ExecuteCommand {
 
             source
                 .resolve(&specifier, &project, TargetKind::Luau)
+                .await
                 .context("failed to resolve package")?
                 .1
                 .pop_last()
@@ -74,16 +79,20 @@ impl ExecuteCommand {
 
         let (fs, target) = source
             .download(&pkg_ref, &project, &reqwest)
+            .await
             .context("failed to download package")?;
         let bin_path = target.bin_path().context("package has no binary export")?;
 
         let tmp_dir = project.cas_dir().join(".tmp");
-        fs_err::create_dir_all(&tmp_dir).context("failed to create temporary directory")?;
+        fs::create_dir_all(&tmp_dir)
+            .await
+            .context("failed to create temporary directory")?;
 
         let tempdir =
             tempfile::tempdir_in(tmp_dir).context("failed to create temporary directory")?;
 
         fs.write_to(tempdir.path(), project.cas_dir(), true)
+            .await
             .context("failed to write package contents")?;
 
         let mut caller =

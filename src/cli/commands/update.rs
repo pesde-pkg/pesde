@@ -1,30 +1,26 @@
-use crate::cli::{download_graph, run_on_workspace_members};
+use crate::cli::{download_graph, repos::update_scripts, run_on_workspace_members};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use indicatif::MultiProgress;
 use pesde::{lockfile::Lockfile, Project};
-use std::{collections::HashSet, thread::JoinHandle};
+use std::collections::HashSet;
 
 #[derive(Debug, Args, Copy, Clone)]
-pub struct UpdateCommand {
-    /// The amount of threads to use for downloading
-    #[arg(short, long, default_value_t = 6, value_parser = clap::value_parser!(u64).range(1..=128))]
-    threads: u64,
-}
+pub struct UpdateCommand {}
 
 impl UpdateCommand {
-    pub fn run(
+    pub async fn run(
         self,
         project: Project,
         multi: MultiProgress,
-        reqwest: reqwest::blocking::Client,
-        update_task: &mut Option<JoinHandle<()>>,
+        reqwest: reqwest::Client,
     ) -> anyhow::Result<()> {
         let mut refreshed_sources = HashSet::new();
 
         let manifest = project
             .deser_manifest()
+            .await
             .context("failed to read manifest")?;
 
         println!(
@@ -36,11 +32,10 @@ impl UpdateCommand {
 
         let graph = project
             .dependency_graph(None, &mut refreshed_sources)
+            .await
             .context("failed to build dependency graph")?;
 
-        if let Some(handle) = update_task.take() {
-            handle.join().expect("failed to join update task");
-        }
+        update_scripts(&project).await?;
 
         project
             .write_lockfile(Lockfile {
@@ -55,17 +50,21 @@ impl UpdateCommand {
                     &graph,
                     &multi,
                     &reqwest,
-                    self.threads as usize,
                     false,
                     false,
                     "📥 downloading dependencies".to_string(),
                     "📥 downloaded dependencies".to_string(),
-                )?,
+                )
+                .await?,
 
                 workspace: run_on_workspace_members(&project, |project| {
-                    self.run(project, multi.clone(), reqwest.clone(), &mut None)
-                })?,
+                    let multi = multi.clone();
+                    let reqwest = reqwest.clone();
+                    async move { Box::pin(self.run(project, multi, reqwest)).await }
+                })
+                .await?,
             })
+            .await
             .context("failed to write lockfile")?;
 
         Ok(())

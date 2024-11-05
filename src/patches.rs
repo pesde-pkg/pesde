@@ -2,8 +2,8 @@ use crate::{
     lockfile::DownloadedGraph, source::traits::PackageRef, Project, MANIFEST_FILE_NAME,
     PACKAGES_CONTAINER_NAME,
 };
-use fs_err::read;
-use git2::{ApplyLocation, ApplyOptions, Diff, DiffFormat, DiffLineType, Repository, Signature};
+use fs_err::tokio as fs;
+use git2::{ApplyLocation, Diff, DiffFormat, DiffLineType, Repository, Signature};
 use relative_path::RelativePathBuf;
 use std::path::Path;
 
@@ -72,14 +72,19 @@ pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
 
 impl Project {
     /// Apply patches to the project's dependencies
-    pub fn apply_patches(&self, graph: &DownloadedGraph) -> Result<(), errors::ApplyPatchesError> {
-        let manifest = self.deser_manifest()?;
+    pub async fn apply_patches(
+        &self,
+        graph: &DownloadedGraph,
+    ) -> Result<(), errors::ApplyPatchesError> {
+        let manifest = self.deser_manifest().await?;
 
         for (name, versions) in manifest.patches {
             for (version_id, patch_path) in versions {
                 let patch_path = patch_path.to_path(self.package_dir());
                 let patch = Diff::from_buffer(
-                    &read(&patch_path).map_err(errors::ApplyPatchesError::PatchRead)?,
+                    &fs::read(&patch_path)
+                        .await
+                        .map_err(errors::ApplyPatchesError::PatchRead)?,
                 )?;
 
                 let Some(node) = graph
@@ -110,42 +115,37 @@ impl Project {
 
                 {
                     let repo = setup_patches_repo(&container_folder)?;
-                    let mut apply_opts = ApplyOptions::new();
-                    apply_opts.delta_callback(|delta| {
-                        let Some(delta) = delta else {
-                            return true;
-                        };
-
+                    for delta in patch.deltas() {
                         if !matches!(delta.status(), git2::Delta::Modified) {
-                            return true;
+                            continue;
                         }
 
                         let file = delta.new_file();
                         let Some(relative_path) = file.path() else {
-                            return true;
+                            continue;
                         };
 
                         let relative_path = RelativePathBuf::from_path(relative_path).unwrap();
                         let path = relative_path.to_path(&container_folder);
 
                         if !path.is_file() {
-                            return true;
+                            continue;
                         }
 
                         // there is no way (as far as I know) to check if it's hardlinked
                         // so, we always unlink it
-                        let content = read(&path).unwrap();
-                        fs_err::remove_file(&path).unwrap();
-                        fs_err::write(path, content).unwrap();
+                        let content = fs::read(&path).await.unwrap();
+                        fs::remove_file(&path).await.unwrap();
+                        fs::write(path, content).await.unwrap();
+                    }
 
-                        true
-                    });
-                    repo.apply(&patch, ApplyLocation::Both, Some(&mut apply_opts))?;
+                    repo.apply(&patch, ApplyLocation::Both, None)?;
                 }
 
                 log::debug!("patch applied to {name}@{version_id}, removing .git directory");
 
-                fs_err::remove_dir_all(container_folder.join(".git"))
+                fs::remove_dir_all(container_folder.join(".git"))
+                    .await
                     .map_err(errors::ApplyPatchesError::DotGitRemove)?;
             }
         }

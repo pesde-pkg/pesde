@@ -37,8 +37,8 @@ impl<'de> Deserialize<'de> for Tokens {
     }
 }
 
-pub fn get_tokens() -> anyhow::Result<Tokens> {
-    let config = read_config()?;
+pub async fn get_tokens() -> anyhow::Result<Tokens> {
+    let config = read_config().await?;
     if !config.tokens.0.is_empty() {
         return Ok(config.tokens);
     }
@@ -56,7 +56,7 @@ pub fn get_tokens() -> anyhow::Result<Tokens> {
     Ok(Tokens(BTreeMap::new()))
 }
 
-pub fn set_tokens(tokens: Tokens) -> anyhow::Result<()> {
+pub async fn set_tokens(tokens: Tokens) -> anyhow::Result<()> {
     let entry = Entry::new("tokens", env!("CARGO_PKG_NAME"))?;
     let json = serde_json::to_string(&tokens).context("failed to serialize tokens")?;
 
@@ -66,19 +66,19 @@ pub fn set_tokens(tokens: Tokens) -> anyhow::Result<()> {
         Err(e) => return Err(e.into()),
     }
 
-    let mut config = read_config()?;
+    let mut config = read_config().await?;
     config.tokens = tokens;
-    write_config(&config).map_err(Into::into)
+    write_config(&config).await.map_err(Into::into)
 }
 
-pub fn set_token(repo: &gix::Url, token: Option<&str>) -> anyhow::Result<()> {
-    let mut tokens = get_tokens()?;
+pub async fn set_token(repo: &gix::Url, token: Option<&str>) -> anyhow::Result<()> {
+    let mut tokens = get_tokens().await?;
     if let Some(token) = token {
         tokens.0.insert(repo.clone(), token.to_string());
     } else {
         tokens.0.remove(repo);
     }
-    set_tokens(tokens)
+    set_tokens(tokens).await
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,18 +86,20 @@ struct UserResponse {
     login: String,
 }
 
-pub fn get_token_login(
-    reqwest: &reqwest::blocking::Client,
+pub async fn get_token_login(
+    reqwest: &reqwest::Client,
     access_token: &str,
 ) -> anyhow::Result<String> {
     let response = reqwest
         .get("https://api.github.com/user")
         .header(AUTHORIZATION, access_token)
         .send()
+        .await
         .context("failed to send user request")?
         .error_for_status()
         .context("failed to get user")?
         .json::<UserResponse>()
+        .await
         .context("failed to parse user response")?;
 
     Ok(response.login)

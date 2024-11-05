@@ -2,6 +2,7 @@ use crate::cli::{up_to_date_lockfile, VersionedPackageName};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
+use fs_err::tokio as fs;
 use pesde::{
     patches::setup_patches_repo,
     source::{
@@ -19,8 +20,8 @@ pub struct PatchCommand {
 }
 
 impl PatchCommand {
-    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
-        let graph = if let Some(lockfile) = up_to_date_lockfile(&project)? {
+    pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+        let graph = if let Some(lockfile) = up_to_date_lockfile(&project).await? {
             lockfile.graph
         } else {
             anyhow::bail!("outdated lockfile, please run the install command first")
@@ -45,12 +46,14 @@ impl PatchCommand {
             .join(name.escaped())
             .join(version_id.escaped())
             .join(chrono::Utc::now().timestamp().to_string());
-        fs_err::create_dir_all(&directory)?;
+        fs::create_dir_all(&directory).await?;
 
         source
-            .download(&node.node.pkg_ref, &project, &reqwest)?
+            .download(&node.node.pkg_ref, &project, &reqwest)
+            .await?
             .0
             .write_to(&directory, project.cas_dir(), false)
+            .await
             .context("failed to write package contents")?;
 
         setup_patches_repo(&directory)?;

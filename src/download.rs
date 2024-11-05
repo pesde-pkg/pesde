@@ -7,42 +7,41 @@ use crate::{
     },
     Project, PACKAGES_CONTAINER_NAME,
 };
-use fs_err::create_dir_all;
+use fs_err::tokio as fs;
 use std::{
     collections::HashSet,
-    sync::{mpsc::Receiver, Arc, Mutex},
+    sync::{Arc, Mutex},
 };
 
 type MultithreadedGraph = Arc<Mutex<DownloadedGraph>>;
 
 type MultithreadDownloadJob = (
-    Receiver<Result<(), errors::DownloadGraphError>>,
+    tokio::sync::mpsc::Receiver<Result<(), errors::DownloadGraphError>>,
     MultithreadedGraph,
 );
 
 impl Project {
     /// Downloads a graph of dependencies
-    pub fn download_graph(
+    pub async fn download_graph(
         &self,
         graph: &DependencyGraph,
         refreshed_sources: &mut HashSet<PackageSources>,
-        reqwest: &reqwest::blocking::Client,
-        threads: usize,
+        reqwest: &reqwest::Client,
         prod: bool,
         write: bool,
     ) -> Result<MultithreadDownloadJob, errors::DownloadGraphError> {
-        let manifest = self.deser_manifest()?;
+        let manifest = self.deser_manifest().await?;
         let downloaded_graph: MultithreadedGraph = Arc::new(Mutex::new(Default::default()));
 
-        let threadpool = threadpool::ThreadPool::new(threads);
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) =
+            tokio::sync::mpsc::channel(graph.iter().map(|(_, versions)| versions.len()).sum());
 
         for (name, versions) in graph {
             for (version_id, node) in versions {
                 let source = node.pkg_ref.source();
 
                 if refreshed_sources.insert(source.clone()) {
-                    source.refresh(self).map_err(Box::new)?;
+                    source.refresh(self).await.map_err(Box::new)?;
                 }
 
                 let container_folder = node.container_folder(
@@ -59,7 +58,7 @@ impl Project {
                     version_id.version(),
                 );
 
-                create_dir_all(&container_folder)?;
+                fs::create_dir_all(&container_folder).await?;
 
                 let tx = tx.clone();
 
@@ -71,27 +70,29 @@ impl Project {
                 let reqwest = reqwest.clone();
                 let downloaded_graph = downloaded_graph.clone();
 
-                threadpool.execute(move || {
+                tokio::spawn(async move {
                     let project = project.clone();
 
                     log::debug!("downloading {name}@{version_id}");
 
-                    let (fs, target) = match source.download(&node.pkg_ref, &project, &reqwest) {
-                        Ok(target) => target,
-                        Err(e) => {
-                            tx.send(Err(Box::new(e).into())).unwrap();
-                            return;
-                        }
-                    };
+                    let (fs, target) =
+                        match source.download(&node.pkg_ref, &project, &reqwest).await {
+                            Ok(target) => target,
+                            Err(e) => {
+                                tx.send(Err(Box::new(e).into())).await.unwrap();
+                                return;
+                            }
+                        };
 
                     log::debug!("downloaded {name}@{version_id}");
 
                     if write {
                         if !prod || node.ty != DependencyType::Dev {
-                            match fs.write_to(container_folder, project.cas_dir(), true) {
+                            match fs.write_to(container_folder, project.cas_dir(), true).await {
                                 Ok(_) => {}
                                 Err(e) => {
                                     tx.send(Err(errors::DownloadGraphError::WriteFailed(e)))
+                                        .await
                                         .unwrap();
                                     return;
                                 }
@@ -101,13 +102,15 @@ impl Project {
                         }
                     }
 
-                    let mut downloaded_graph = downloaded_graph.lock().unwrap();
-                    downloaded_graph
-                        .entry(name)
-                        .or_default()
-                        .insert(version_id, DownloadedDependencyGraphNode { node, target });
+                    {
+                        let mut downloaded_graph = downloaded_graph.lock().unwrap();
+                        downloaded_graph
+                            .entry(name)
+                            .or_default()
+                            .insert(version_id, DownloadedDependencyGraphNode { node, target });
+                    }
 
-                    tx.send(Ok(())).unwrap();
+                    tx.send(Ok(())).await.unwrap();
                 });
             }
         }

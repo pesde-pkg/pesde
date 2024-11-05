@@ -17,7 +17,7 @@ pub async fn get_package_versions(
 
     let (scope, name_part) = name.as_str();
 
-    let source = app_state.source.lock().unwrap();
+    let source = app_state.source.lock().await;
     let versions: IndexFile =
         match source.read_file([scope, name_part], &app_state.project, None)? {
             Some(versions) => toml::de::from_str(&versions)?,

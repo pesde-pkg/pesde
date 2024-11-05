@@ -13,8 +13,8 @@ pub struct DefaultIndexCommand {
 }
 
 impl DefaultIndexCommand {
-    pub fn run(self) -> anyhow::Result<()> {
-        let mut config = read_config()?;
+    pub async fn run(self) -> anyhow::Result<()> {
+        let mut config = read_config().await?;
 
         let index = if self.reset {
             Some(CliConfig::default().default_index)
@@ -25,7 +25,7 @@ impl DefaultIndexCommand {
         match index {
             Some(index) => {
                 config.default_index = index.clone();
-                write_config(&config)?;
+                write_config(&config).await?;
                 println!("default index set to: {index}");
             }
             None => {

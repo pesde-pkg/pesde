@@ -5,13 +5,13 @@ use actix_web::{
     rt::System,
     web, App, HttpServer,
 };
+use fs_err::tokio as fs;
 use log::info;
-use std::{env::current_dir, path::PathBuf, sync::Mutex};
-
 use pesde::{
     source::{pesde::PesdePackageSource, traits::PackageSource},
     AuthConfig, Project,
 };
+use std::{env::current_dir, path::PathBuf};
 
 use crate::{
     auth::{get_auth_from_env, Auth, UserIdExtractor},
@@ -38,13 +38,13 @@ pub fn make_reqwest() -> reqwest::Client {
 }
 
 pub struct AppState {
-    pub source: Mutex<PesdePackageSource>,
+    pub source: tokio::sync::Mutex<PesdePackageSource>,
     pub project: Project,
     pub storage: Storage,
     pub auth: Auth,
 
     pub search_reader: tantivy::IndexReader,
-    pub search_writer: Mutex<tantivy::IndexWriter>,
+    pub search_writer: std::sync::Mutex<tantivy::IndexWriter>,
 }
 
 #[macro_export]
@@ -87,7 +87,7 @@ async fn run() -> std::io::Result<()> {
     let cwd = current_dir().unwrap();
     let data_dir =
         PathBuf::from(benv!("DATA_DIR" => "{CWD}/data").replace("{CWD}", cwd.to_str().unwrap()));
-    fs_err::create_dir_all(&data_dir).unwrap();
+    fs::create_dir_all(&data_dir).await.unwrap();
 
     let project = Project::new(
         &cwd,
@@ -100,7 +100,10 @@ async fn run() -> std::io::Result<()> {
         })),
     );
     let source = PesdePackageSource::new(benv!(required "INDEX_REPO_URL").try_into().unwrap());
-    source.refresh(&project).expect("failed to refresh source");
+    source
+        .refresh(&project)
+        .await
+        .expect("failed to refresh source");
 
     let (search_reader, search_writer) = make_search(&project, &source);
 
@@ -116,11 +119,11 @@ async fn run() -> std::io::Result<()> {
             info!("auth: {auth}");
             auth
         },
-        source: Mutex::new(source),
+        source: tokio::sync::Mutex::new(source),
         project,
 
         search_reader,
-        search_writer: Mutex::new(search_writer),
+        search_writer: std::sync::Mutex::new(search_writer),
     });
 
     let publish_governor_config = GovernorConfigBuilder::default()

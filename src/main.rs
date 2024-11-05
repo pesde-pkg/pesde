@@ -2,17 +2,16 @@
 use crate::cli::version::{
     check_for_updates, current_version, get_or_download_version, max_installed_version,
 };
-use crate::cli::{auth::get_tokens, home_dir, repos::update_repo_dependencies, HOME_DIR};
+use crate::cli::{auth::get_tokens, display_err, home_dir, HOME_DIR};
 use anyhow::Context;
 use clap::Parser;
-use colored::Colorize;
+use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;
 use pesde::{AuthConfig, Project, MANIFEST_FILE_NAME};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
-    thread::spawn,
 };
 use tempfile::NamedTempFile;
 
@@ -34,7 +33,7 @@ struct Cli {
     subcommand: cli::commands::Subcommand,
 }
 
-fn get_linkable_dir(path: &Path) -> PathBuf {
+async fn get_linkable_dir(path: &Path) -> PathBuf {
     let mut curr_path = PathBuf::new();
     let file_to_try = NamedTempFile::new_in(path).expect("failed to create temporary file");
     let temp_file_name = file_to_try.path().file_name().unwrap();
@@ -44,8 +43,8 @@ fn get_linkable_dir(path: &Path) -> PathBuf {
 
         let try_path = curr_path.join(temp_file_name);
 
-        if fs_err::hard_link(file_to_try.path(), &try_path).is_ok() {
-            if let Err(err) = fs_err::remove_file(&try_path) {
+        if fs::hard_link(file_to_try.path(), &try_path).await.is_ok() {
+            if let Err(err) = fs::remove_file(&try_path).await {
                 log::warn!(
                     "failed to remove temporary file at {}: {err}",
                     try_path.display()
@@ -62,7 +61,7 @@ fn get_linkable_dir(path: &Path) -> PathBuf {
     );
 }
 
-fn run() -> anyhow::Result<()> {
+async fn run() -> anyhow::Result<()> {
     let cwd = std::env::current_dir().expect("failed to get current working directory");
 
     #[cfg(windows)]
@@ -107,8 +106,9 @@ fn run() -> anyhow::Result<()> {
         let mut project_root = None::<PathBuf>;
         let mut workspace_dir = None::<PathBuf>;
 
-        fn get_workspace_members(path: &Path) -> anyhow::Result<HashSet<PathBuf>> {
-            let manifest = fs_err::read_to_string(path.join(MANIFEST_FILE_NAME))
+        async fn get_workspace_members(path: &Path) -> anyhow::Result<HashSet<PathBuf>> {
+            let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+                .await
                 .context("failed to read manifest")?;
             let manifest: pesde::manifest::Manifest =
                 toml::from_str(&manifest).context("failed to parse manifest")?;
@@ -143,13 +143,13 @@ fn run() -> anyhow::Result<()> {
                 }
 
                 (Some(project_root), None) => {
-                    if get_workspace_members(&path)?.contains(project_root) {
+                    if get_workspace_members(&path).await?.contains(project_root) {
                         workspace_dir = Some(path);
                     }
                 }
 
                 (None, None) => {
-                    if get_workspace_members(&path)?.contains(&cwd) {
+                    if get_workspace_members(&path).await?.contains(&cwd) {
                         // initializing a new member of a workspace
                         break 'finder (cwd, Some(path));
                     } else {
@@ -179,9 +179,11 @@ fn run() -> anyhow::Result<()> {
 
     let home_dir = home_dir()?;
     let data_dir = home_dir.join("data");
-    fs_err::create_dir_all(&data_dir).expect("failed to create data directory");
+    fs::create_dir_all(&data_dir)
+        .await
+        .expect("failed to create data directory");
 
-    let cas_dir = get_linkable_dir(&project_root_dir).join(HOME_DIR);
+    let cas_dir = get_linkable_dir(&project_root_dir).await.join(HOME_DIR);
 
     let cas_dir = if cas_dir == home_dir {
         &data_dir
@@ -197,7 +199,7 @@ fn run() -> anyhow::Result<()> {
         project_workspace_dir,
         data_dir,
         cas_dir,
-        AuthConfig::new().with_tokens(get_tokens()?.0),
+        AuthConfig::new().with_tokens(get_tokens().await?.0),
     );
 
     let reqwest = {
@@ -210,7 +212,7 @@ fn run() -> anyhow::Result<()> {
                 .context("failed to create accept header")?,
         );
 
-        reqwest::blocking::Client::builder()
+        reqwest::Client::builder()
             .user_agent(concat!(
                 env!("CARGO_PKG_NAME"),
                 "/",
@@ -224,21 +226,22 @@ fn run() -> anyhow::Result<()> {
     {
         let target_version = project
             .deser_manifest()
+            .await
             .ok()
             .and_then(|manifest| manifest.pesde_version);
 
         // store the current version in case it needs to be used later
-        get_or_download_version(&reqwest, &current_version())?;
+        get_or_download_version(&reqwest, &current_version()).await?;
 
         let exe_path = if let Some(version) = target_version {
-            Some(get_or_download_version(&reqwest, &version)?)
+            Some(get_or_download_version(&reqwest, &version).await?)
         } else {
             None
         };
         let exe_path = if let Some(exe_path) = exe_path {
             exe_path
         } else {
-            get_or_download_version(&reqwest, &max_installed_version()?)?
+            get_or_download_version(&reqwest, &max_installed_version().await?).await?
         };
 
         if let Some(exe_path) = exe_path {
@@ -250,62 +253,26 @@ fn run() -> anyhow::Result<()> {
             std::process::exit(status.code().unwrap());
         }
 
-        display_err(check_for_updates(&reqwest), " while checking for updates");
-    }
-
-    let project_2 = project.clone();
-    let update_task = spawn(move || {
         display_err(
-            update_repo_dependencies(&project_2),
-            " while updating repository dependencies",
+            check_for_updates(&reqwest).await,
+            " while checking for updates",
         );
-    });
+    }
 
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => {
             let _ = err.print();
-            update_task.join().expect("failed to join update task");
             std::process::exit(err.exit_code());
         }
     };
 
-    cli.subcommand.run(project, multi, reqwest, update_task)
+    cli.subcommand.run(project, multi, reqwest).await
 }
 
-fn display_err(result: anyhow::Result<()>, prefix: &str) {
-    if let Err(err) = result {
-        eprintln!("{}: {err}\n", format!("error{prefix}").red().bold());
-
-        let cause = err.chain().skip(1).collect::<Vec<_>>();
-
-        if !cause.is_empty() {
-            eprintln!("{}:", "caused by".red().bold());
-            for err in cause {
-                eprintln!("  - {err}");
-            }
-        }
-
-        let backtrace = err.backtrace();
-        match backtrace.status() {
-            std::backtrace::BacktraceStatus::Disabled => {
-                eprintln!(
-                    "\n{}: set RUST_BACKTRACE=1 for a backtrace",
-                    "help".yellow().bold()
-                );
-            }
-            std::backtrace::BacktraceStatus::Captured => {
-                eprintln!("\n{}:\n{backtrace}", "backtrace".yellow().bold());
-            }
-            _ => {
-                eprintln!("\n{}: not captured", "backtrace".yellow().bold());
-            }
-        }
-    }
-}
-
-fn main() {
-    let result = run();
+#[tokio::main]
+async fn main() {
+    let result = run().await;
     let is_err = result.is_err();
     display_err(result, "");
     if is_err {

@@ -1,26 +1,21 @@
 use crate::cli::{
-    bin_dir, download_graph, files::make_executable, run_on_workspace_members, up_to_date_lockfile,
+    bin_dir, download_graph, files::make_executable, repos::update_scripts,
+    run_on_workspace_members, up_to_date_lockfile,
 };
 use anyhow::Context;
 use clap::Args;
 use colored::{ColoredString, Colorize};
+use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
     lockfile::Lockfile,
     manifest::{target::TargetKind, DependencyType},
     Project, MANIFEST_FILE_NAME,
 };
-use std::{
-    collections::{BTreeSet, HashSet},
-    thread::JoinHandle,
-};
+use std::collections::{BTreeSet, HashSet};
 
 #[derive(Debug, Args, Copy, Clone)]
 pub struct InstallCommand {
-    /// The amount of threads to use for downloading
-    #[arg(short, long, default_value_t = 6, value_parser = clap::value_parser!(u64).range(1..=128))]
-    threads: u64,
-
     /// Whether to error on changes in the lockfile
     #[arg(long)]
     locked: bool,
@@ -91,21 +86,21 @@ fn job(n: u8) -> ColoredString {
 }
 
 impl InstallCommand {
-    pub fn run(
+    pub async fn run(
         self,
         project: Project,
         multi: MultiProgress,
-        reqwest: reqwest::blocking::Client,
-        update_task: &mut Option<JoinHandle<()>>,
+        reqwest: reqwest::Client,
     ) -> anyhow::Result<()> {
         let mut refreshed_sources = HashSet::new();
 
         let manifest = project
             .deser_manifest()
+            .await
             .context("failed to read manifest")?;
 
         let lockfile = if self.locked {
-            match up_to_date_lockfile(&project)? {
+            match up_to_date_lockfile(&project).await? {
                 None => {
                     anyhow::bail!(
                         "lockfile is out of sync, run `{} install` to update it",
@@ -115,7 +110,7 @@ impl InstallCommand {
                 file => file,
             }
         } else {
-            match project.deser_lockfile() {
+            match project.deser_lockfile().await {
                 Ok(lockfile) => {
                     if lockfile.overrides != manifest.overrides {
                         log::debug!("overrides are different");
@@ -154,7 +149,8 @@ impl InstallCommand {
                 if deleted_folders.insert(folder.to_string()) {
                     log::debug!("deleting the {folder} folder");
 
-                    if let Some(e) = fs_err::remove_dir_all(project.package_dir().join(&folder))
+                    if let Some(e) = fs::remove_dir_all(project.package_dir().join(&folder))
+                        .await
                         .err()
                         .filter(|e| e.kind() != std::io::ErrorKind::NotFound)
                     {
@@ -184,12 +180,10 @@ impl InstallCommand {
 
         let graph = project
             .dependency_graph(old_graph.as_ref(), &mut refreshed_sources)
+            .await
             .context("failed to build dependency graph")?;
 
-        if let Some(task) = update_task.take() {
-            log::debug!("waiting for update task to finish");
-            task.join().expect("failed to join update task");
-        }
+        update_scripts(&project).await?;
 
         let downloaded_graph = download_graph(
             &project,
@@ -197,12 +191,12 @@ impl InstallCommand {
             &graph,
             &multi,
             &reqwest,
-            self.threads as usize,
             self.prod,
             true,
             format!("{} 📥 downloading dependencies", job(3)),
             format!("{} 📥 downloaded dependencies", job(3)),
-        )?;
+        )
+        .await?;
 
         let filtered_graph = if self.prod {
             downloaded_graph
@@ -225,9 +219,10 @@ impl InstallCommand {
 
         project
             .link_dependencies(&filtered_graph)
+            .await
             .context("failed to link dependencies")?;
 
-        let bin_folder = bin_dir()?;
+        let bin_folder = bin_dir().await?;
 
         for versions in filtered_graph.values() {
             for node in versions.values() {
@@ -245,18 +240,22 @@ impl InstallCommand {
                 }
 
                 let bin_file = bin_folder.join(alias);
-                fs_err::write(&bin_file, bin_link_file(alias))
+                fs::write(&bin_file, bin_link_file(alias))
+                    .await
                     .context("failed to write bin link file")?;
 
-                make_executable(&bin_file).context("failed to make bin link executable")?;
+                make_executable(&bin_file)
+                    .await
+                    .context("failed to make bin link executable")?;
 
                 #[cfg(windows)]
                 {
                     let bin_file = bin_file.with_extension(std::env::consts::EXE_EXTENSION);
-                    fs_err::copy(
+                    fs::copy(
                         std::env::current_exe().context("failed to get current executable path")?,
                         &bin_file,
                     )
+                    .await
                     .context("failed to copy bin link file")?;
                 }
             }
@@ -268,6 +267,7 @@ impl InstallCommand {
 
             project
                 .apply_patches(&filtered_graph)
+                .await
                 .context("failed to apply patches")?;
         }
 
@@ -283,9 +283,13 @@ impl InstallCommand {
                 graph: downloaded_graph,
 
                 workspace: run_on_workspace_members(&project, |project| {
-                    self.run(project, multi.clone(), reqwest.clone(), &mut None)
-                })?,
+                    let multi = multi.clone();
+                    let reqwest = reqwest.clone();
+                    async move { Box::pin(self.run(project, multi, reqwest)).await }
+                })
+                .await?,
             })
+            .await
             .context("failed to write lockfile")?;
 
         Ok(())

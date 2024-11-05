@@ -10,7 +10,7 @@ pub struct SelfInstallCommand {
 }
 
 impl SelfInstallCommand {
-    pub fn run(self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<()> {
         #[cfg(windows)]
         {
             if !self.skip_add_to_path {
@@ -24,7 +24,7 @@ impl SelfInstallCommand {
                     .0;
                 let path: String = env.get_value("Path").context("failed to get Path value")?;
 
-                let bin_dir = crate::cli::bin_dir()?;
+                let bin_dir = crate::cli::bin_dir().await?;
                 let bin_dir = bin_dir.to_string_lossy();
 
                 let exists = path.split(';').any(|part| *part == bin_dir);
@@ -68,7 +68,7 @@ and then restart your shell.
             );
         }
 
-        update_bin_exe()?;
+        update_bin_exe().await?;
 
         Ok(())
     }

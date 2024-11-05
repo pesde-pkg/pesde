@@ -59,7 +59,7 @@ pub async fn search_packages(
         )
         .unwrap();
 
-    let source = app_state.source.lock().unwrap();
+    let source = app_state.source.lock().await;
 
     let top_docs = top_docs
         .into_iter()

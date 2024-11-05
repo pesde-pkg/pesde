@@ -1,6 +1,7 @@
 use crate::cli::up_to_date_lockfile;
 use anyhow::Context;
 use clap::Args;
+use fs_err::tokio as fs;
 use pesde::{names::PackageNames, patches::create_patch, source::version_id::VersionId, Project};
 use std::{path::PathBuf, str::FromStr};
 
@@ -12,8 +13,8 @@ pub struct PatchCommitCommand {
 }
 
 impl PatchCommitCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
-        let graph = if let Some(lockfile) = up_to_date_lockfile(&project)? {
+    pub async fn run(self, project: Project) -> anyhow::Result<()> {
+        let graph = if let Some(lockfile) = up_to_date_lockfile(&project).await? {
             lockfile.graph
         } else {
             anyhow::bail!("outdated lockfile, please run the install command first")
@@ -48,15 +49,22 @@ impl PatchCommitCommand {
             .context("package not found in graph")?;
 
         let mut manifest = toml_edit::DocumentMut::from_str(
-            &project.read_manifest().context("failed to read manifest")?,
+            &project
+                .read_manifest()
+                .await
+                .context("failed to read manifest")?,
         )
         .context("failed to parse manifest")?;
 
         let patch = create_patch(&self.directory).context("failed to create patch")?;
-        fs_err::remove_dir_all(self.directory).context("failed to remove patch directory")?;
+        fs::remove_dir_all(self.directory)
+            .await
+            .context("failed to remove patch directory")?;
 
         let patches_dir = project.package_dir().join("patches");
-        fs_err::create_dir_all(&patches_dir).context("failed to create patches directory")?;
+        fs::create_dir_all(&patches_dir)
+            .await
+            .context("failed to create patches directory")?;
 
         let patch_file_name = format!("{}-{}.patch", name.escaped(), version_id.escaped());
 
@@ -65,7 +73,9 @@ impl PatchCommitCommand {
             anyhow::bail!("patch file already exists: {}", patch_file.display());
         }
 
-        fs_err::write(&patch_file, patch).context("failed to write patch file")?;
+        fs::write(&patch_file, patch)
+            .await
+            .context("failed to write patch file")?;
 
         manifest["patches"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
             [&name.to_string()][&version_id.to_string()] =
@@ -73,6 +83,7 @@ impl PatchCommitCommand {
 
         project
             .write_manifest(manifest.to_string())
+            .await
             .context("failed to write manifest")?;
 
         println!(concat!(

@@ -4,6 +4,7 @@ use crate::cli::{
 };
 use anyhow::Context;
 use clap::Args;
+use fs_err::tokio as fs;
 
 #[derive(Debug, Args)]
 pub struct ScriptsRepoCommand {
@@ -17,8 +18,8 @@ pub struct ScriptsRepoCommand {
 }
 
 impl ScriptsRepoCommand {
-    pub fn run(self) -> anyhow::Result<()> {
-        let mut config = read_config()?;
+    pub async fn run(self) -> anyhow::Result<()> {
+        let mut config = read_config().await?;
 
         let repo = if self.reset {
             Some(CliConfig::default().scripts_repo)
@@ -29,9 +30,10 @@ impl ScriptsRepoCommand {
         match repo {
             Some(repo) => {
                 config.scripts_repo = repo.clone();
-                write_config(&config)?;
+                write_config(&config).await?;
 
-                fs_err::remove_dir_all(home_dir()?.join("scripts"))
+                fs::remove_dir_all(home_dir()?.join("scripts"))
+                    .await
                     .context("failed to remove scripts directory")?;
 
                 println!("scripts repo set to: {repo}");

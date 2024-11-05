@@ -7,9 +7,11 @@ use crate::{
     },
     Project, DEFAULT_INDEX_NAME,
 };
+use futures::StreamExt;
 use relative_path::RelativePathBuf;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use std::collections::BTreeMap;
+use tokio::pin;
 
 /// The workspace package reference
 pub mod pkg_ref;
@@ -27,12 +29,12 @@ impl PackageSource for WorkspacePackageSource {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
-    fn refresh(&self, _project: &Project) -> Result<(), Self::RefreshError> {
+    async fn refresh(&self, _project: &Project) -> Result<(), Self::RefreshError> {
         // no-op
         Ok(())
     }
 
-    fn resolve(
+    async fn resolve(
         &self,
         specifier: &Self::Specifier,
         project: &Project,
@@ -45,7 +47,10 @@ impl PackageSource for WorkspacePackageSource {
                 .unwrap_or(&project.package_dir);
             let target = specifier.target.unwrap_or(package_target);
 
-            for (path, manifest) in project.workspace_members(workspace_dir)? {
+            let members = project.workspace_members(workspace_dir).await?;
+            pin!(members);
+
+            while let Some((path, manifest)) = members.next().await.transpose()? {
                 if manifest.name == specifier.name && manifest.target.kind() == target {
                     break 'finder (path, manifest);
                 }
@@ -119,7 +124,7 @@ impl PackageSource for WorkspacePackageSource {
         ))
     }
 
-    fn download(
+    async fn download(
         &self,
         pkg_ref: &Self::Ref,
         project: &Project,

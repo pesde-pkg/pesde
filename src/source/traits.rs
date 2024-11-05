@@ -1,3 +1,4 @@
+#![allow(async_fn_in_trait)]
 use std::{
     collections::BTreeMap,
     fmt::{Debug, Display},
@@ -41,12 +42,12 @@ pub trait PackageSource: Debug {
     type DownloadError: std::error::Error;
 
     /// Refreshes the source
-    fn refresh(&self, _project: &Project) -> Result<(), Self::RefreshError> {
+    async fn refresh(&self, _project: &Project) -> Result<(), Self::RefreshError> {
         Ok(())
     }
 
     /// Resolves a specifier to a reference
-    fn resolve(
+    async fn resolve(
         &self,
         specifier: &Self::Specifier,
         project: &Project,
@@ -54,10 +55,10 @@ pub trait PackageSource: Debug {
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError>;
 
     /// Downloads a package
-    fn download(
+    async fn download(
         &self,
         pkg_ref: &Self::Ref,
         project: &Project,
-        reqwest: &reqwest::blocking::Client,
+        reqwest: &reqwest::Client,
     ) -> Result<(PackageFS, Target), Self::DownloadError>;
 }

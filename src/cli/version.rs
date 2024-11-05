@@ -1,16 +1,18 @@
-use anyhow::Context;
-use colored::Colorize;
-use reqwest::header::ACCEPT;
-use semver::Version;
-use serde::Deserialize;
-use std::{io::Read, path::PathBuf};
-
 use crate::cli::{
     bin_dir,
     config::{read_config, write_config, CliConfig},
     files::make_executable,
     home_dir,
 };
+use anyhow::Context;
+use colored::Colorize;
+use fs_err::tokio as fs;
+use futures::StreamExt;
+use reqwest::header::ACCEPT;
+use semver::Version;
+use serde::Deserialize;
+use std::path::PathBuf;
+use tokio::io::AsyncReadExt;
 
 pub fn current_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
@@ -38,10 +40,10 @@ fn get_repo() -> (String, String) {
 
 const CHECK_INTERVAL: chrono::Duration = chrono::Duration::hours(6);
 
-pub fn check_for_updates(reqwest: &reqwest::blocking::Client) -> anyhow::Result<()> {
+pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> {
     let (owner, repo) = get_repo();
 
-    let config = read_config()?;
+    let config = read_config().await?;
 
     let version = if let Some((_, version)) = config
         .last_checked_updates
@@ -54,10 +56,12 @@ pub fn check_for_updates(reqwest: &reqwest::blocking::Client) -> anyhow::Result<
                 "https://api.github.com/repos/{owner}/{repo}/releases",
             ))
             .send()
+            .await
             .context("failed to send request to GitHub API")?
             .error_for_status()
             .context("failed to get GitHub API response")?
             .json::<Vec<Release>>()
+            .await
             .context("failed to parse GitHub API response")?;
 
         let version = releases
@@ -69,7 +73,8 @@ pub fn check_for_updates(reqwest: &reqwest::blocking::Client) -> anyhow::Result<
         write_config(&CliConfig {
             last_checked_updates: Some((chrono::Utc::now(), version.clone())),
             ..config
-        })?;
+        })
+        .await?;
 
         version
     };
@@ -97,8 +102,8 @@ pub fn check_for_updates(reqwest: &reqwest::blocking::Client) -> anyhow::Result<
     Ok(())
 }
 
-pub fn download_github_release(
-    reqwest: &reqwest::blocking::Client,
+pub async fn download_github_release(
+    reqwest: &reqwest::Client,
     version: &Version,
 ) -> anyhow::Result<Vec<u8>> {
     let (owner, repo) = get_repo();
@@ -108,10 +113,12 @@ pub fn download_github_release(
             "https://api.github.com/repos/{owner}/{repo}/releases/tags/v{version}",
         ))
         .send()
+        .await
         .context("failed to send request to GitHub API")?
         .error_for_status()
         .context("failed to get GitHub API response")?
         .json::<Release>()
+        .await
         .context("failed to parse GitHub API response")?;
 
     let asset = release
@@ -130,34 +137,43 @@ pub fn download_github_release(
         .get(asset.url)
         .header(ACCEPT, "application/octet-stream")
         .send()
+        .await
         .context("failed to send request to download asset")?
         .error_for_status()
         .context("failed to download asset")?
         .bytes()
+        .await
         .context("failed to download asset")?;
 
-    let mut decoder = flate2::read::GzDecoder::new(bytes.as_ref());
-    let mut archive = tar::Archive::new(&mut decoder);
+    let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes.as_ref());
+    let mut archive = tokio_tar::Archive::new(&mut decoder);
 
-    let entry = archive
+    let mut entry = archive
         .entries()
         .context("failed to read archive entries")?
         .next()
+        .await
         .context("archive has no entry")?
         .context("failed to get first archive entry")?;
 
+    let mut result = Vec::new();
+
     entry
-        .bytes()
-        .collect::<Result<Vec<u8>, std::io::Error>>()
-        .context("failed to read archive entry bytes")
+        .read_to_end(&mut result)
+        .await
+        .context("failed to read archive entry bytes")?;
+
+    Ok(result)
 }
 
-pub fn get_or_download_version(
-    reqwest: &reqwest::blocking::Client,
+pub async fn get_or_download_version(
+    reqwest: &reqwest::Client,
     version: &Version,
 ) -> anyhow::Result<Option<PathBuf>> {
     let path = home_dir()?.join("versions");
-    fs_err::create_dir_all(&path).context("failed to create versions directory")?;
+    fs::create_dir_all(&path)
+        .await
+        .context("failed to create versions directory")?;
 
     let path = path.join(format!("{version}{}", std::env::consts::EXE_SUFFIX));
 
@@ -172,14 +188,19 @@ pub fn get_or_download_version(
     }
 
     if is_requested_version {
-        fs_err::copy(std::env::current_exe()?, &path)
+        fs::copy(std::env::current_exe()?, &path)
+            .await
             .context("failed to copy current executable to version directory")?;
     } else {
-        let bytes = download_github_release(reqwest, version)?;
-        fs_err::write(&path, bytes).context("failed to write downloaded version file")?;
+        let bytes = download_github_release(reqwest, version).await?;
+        fs::write(&path, bytes)
+            .await
+            .context("failed to write downloaded version file")?;
     }
 
-    make_executable(&path).context("failed to make downloaded version executable")?;
+    make_executable(&path)
+        .await
+        .context("failed to make downloaded version executable")?;
 
     Ok(if is_requested_version {
         None
@@ -188,48 +209,52 @@ pub fn get_or_download_version(
     })
 }
 
-pub fn max_installed_version() -> anyhow::Result<Version> {
+pub async fn max_installed_version() -> anyhow::Result<Version> {
     let versions_dir = home_dir()?.join("versions");
-    fs_err::create_dir_all(&versions_dir).context("failed to create versions directory")?;
+    fs::create_dir_all(&versions_dir)
+        .await
+        .context("failed to create versions directory")?;
 
-    let max_version = fs_err::read_dir(versions_dir)
-        .context("failed to read versions directory")?
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .map(|entry| {
-            #[cfg(not(windows))]
-            let name = entry
-                .path()
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
-            #[cfg(windows)]
-            let name = entry
-                .path()
-                .file_stem()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
+    let mut read_dir = fs::read_dir(versions_dir)
+        .await
+        .context("failed to read versions directory")?;
+    let mut max_version = current_version();
 
-            Version::parse(&name).unwrap()
-        })
-        .max()
-        .filter(|v| v >= &current_version())
-        .unwrap_or_else(current_version);
+    while let Some(entry) = read_dir.next_entry().await? {
+        #[cfg(not(windows))]
+        let name = entry
+            .path()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        #[cfg(windows)]
+        let name = entry
+            .path()
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        let version = Version::parse(&name).unwrap();
+        if version > max_version {
+            max_version = version;
+        }
+    }
 
     Ok(max_version)
 }
 
-pub fn update_bin_exe() -> anyhow::Result<()> {
-    let copy_to = bin_dir()?.join(format!(
+pub async fn update_bin_exe() -> anyhow::Result<()> {
+    let copy_to = bin_dir().await?.join(format!(
         "{}{}",
         env!("CARGO_BIN_NAME"),
         std::env::consts::EXE_SUFFIX
     ));
 
-    fs_err::copy(std::env::current_exe()?, &copy_to)
+    fs::copy(std::env::current_exe()?, &copy_to)
+        .await
         .context("failed to copy executable to bin folder")?;
 
-    make_executable(&copy_to)
+    make_executable(&copy_to).await
 }

@@ -47,9 +47,10 @@ pub struct AddCommand {
 }
 
 impl AddCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
+    pub async fn run(self, project: Project) -> anyhow::Result<()> {
         let manifest = project
             .deser_manifest()
+            .await
             .context("failed to read manifest")?;
 
         let (source, specifier) = match &self.name {
@@ -65,7 +66,10 @@ impl AddCommand {
                         return Ok(());
                     }
 
-                    let index = index.unwrap_or(read_config()?.default_index);
+                    let index = match index {
+                        Some(index) => index,
+                        None => read_config().await?.default_index,
+                    };
 
                     let source = PackageSources::Pesde(PesdePackageSource::new(index));
                     let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
@@ -89,7 +93,7 @@ impl AddCommand {
                         return Ok(());
                     }
 
-                    let index = index.unwrap_or(read_config()?.default_index);
+                    let index = index.context("no wally index found")?;
 
                     let source =
                         PackageSources::Wally(pesde::source::wally::WallyPackageSource::new(index));
@@ -125,10 +129,12 @@ impl AddCommand {
         };
         source
             .refresh(&project)
+            .await
             .context("failed to refresh package source")?;
 
         let Some(version_id) = source
             .resolve(&specifier, &project, manifest.target.kind())
+            .await
             .context("failed to resolve package")?
             .1
             .pop_last()
@@ -141,7 +147,10 @@ impl AddCommand {
 
         let project_target = manifest.target.kind();
         let mut manifest = toml_edit::DocumentMut::from_str(
-            &project.read_manifest().context("failed to read manifest")?,
+            &project
+                .read_manifest()
+                .await
+                .context("failed to read manifest")?,
         )
         .context("failed to parse manifest")?;
         let dependency_key = if self.peer {
@@ -227,6 +236,7 @@ impl AddCommand {
 
         project
             .write_manifest(manifest.to_string())
+            .await
             .context("failed to write manifest")?;
 
         Ok(())

@@ -1,6 +1,8 @@
-use gix::remote::Direction;
-
+#![allow(async_fn_in_trait)]
 use crate::{util::authenticate_conn, Project};
+use fs_err::tokio as fs;
+use gix::remote::Direction;
+use tokio::task::spawn_blocking;
 
 /// A trait for sources that are based on Git repositories
 pub trait GitBasedSource {
@@ -104,56 +106,79 @@ pub trait GitBasedSource {
     }
 
     /// Refreshes the repository
-    fn refresh(&self, project: &Project) -> Result<(), errors::RefreshError> {
+    async fn refresh(&self, project: &Project) -> Result<(), errors::RefreshError> {
         let path = self.path(project);
+        let repo_url = self.repo_url().clone();
+        let auth_config = project.auth_config.clone();
+
         if path.exists() {
-            let repo = match gix::open(&path) {
-                Ok(repo) => repo,
-                Err(e) => return Err(errors::RefreshError::Open(path, Box::new(e))),
-            };
-            let remote = match repo.find_default_remote(Direction::Fetch) {
-                Some(Ok(remote)) => remote,
-                Some(Err(e)) => {
-                    return Err(errors::RefreshError::GetDefaultRemote(path, Box::new(e)))
+            spawn_blocking(move || {
+                let repo = match gix::open(&path) {
+                    Ok(repo) => repo,
+                    Err(e) => return Err(errors::RefreshError::Open(path, Box::new(e))),
+                };
+                let remote = match repo.find_default_remote(Direction::Fetch) {
+                    Some(Ok(remote)) => remote,
+                    Some(Err(e)) => {
+                        return Err(errors::RefreshError::GetDefaultRemote(path, Box::new(e)))
+                    }
+                    None => {
+                        return Err(errors::RefreshError::NoDefaultRemote(path));
+                    }
+                };
+
+                let mut connection = match remote.connect(Direction::Fetch) {
+                    Ok(connection) => connection,
+                    Err(e) => {
+                        return Err(errors::RefreshError::Connect(
+                            repo_url.to_string(),
+                            Box::new(e),
+                        ))
+                    }
+                };
+
+                authenticate_conn(&mut connection, &auth_config);
+
+                let fetch =
+                    match connection.prepare_fetch(gix::progress::Discard, Default::default()) {
+                        Ok(fetch) => fetch,
+                        Err(e) => {
+                            return Err(errors::RefreshError::PrepareFetch(
+                                repo_url.to_string(),
+                                Box::new(e),
+                            ))
+                        }
+                    };
+
+                match fetch.receive(gix::progress::Discard, &false.into()) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(errors::RefreshError::Read(
+                        repo_url.to_string(),
+                        Box::new(e),
+                    )),
                 }
-                None => {
-                    return Err(errors::RefreshError::NoDefaultRemote(path));
-                }
-            };
-
-            let mut connection = remote.connect(Direction::Fetch).map_err(|e| {
-                errors::RefreshError::Connect(self.repo_url().to_string(), Box::new(e))
-            })?;
-
-            authenticate_conn(&mut connection, &project.auth_config);
-
-            connection
-                .prepare_fetch(gix::progress::Discard, Default::default())
-                .map_err(|e| {
-                    errors::RefreshError::PrepareFetch(self.repo_url().to_string(), Box::new(e))
-                })?
-                .receive(gix::progress::Discard, &false.into())
-                .map_err(|e| {
-                    errors::RefreshError::Read(self.repo_url().to_string(), Box::new(e))
-                })?;
+            })
+            .await
+            .unwrap()?;
 
             return Ok(());
         }
 
-        fs_err::create_dir_all(&path)?;
+        fs::create_dir_all(&path).await?;
 
-        let auth_config = project.auth_config.clone();
-
-        gix::prepare_clone_bare(self.repo_url().clone(), &path)
-            .map_err(|e| errors::RefreshError::Clone(self.repo_url().to_string(), Box::new(e)))?
-            .configure_connection(move |c| {
-                authenticate_conn(c, &auth_config);
-                Ok(())
-            })
-            .fetch_only(gix::progress::Discard, &false.into())
-            .map_err(|e| errors::RefreshError::Fetch(self.repo_url().to_string(), Box::new(e)))?;
-
-        Ok(())
+        spawn_blocking(move || {
+            gix::prepare_clone_bare(repo_url.clone(), &path)
+                .map_err(|e| errors::RefreshError::Clone(repo_url.to_string(), Box::new(e)))?
+                .configure_connection(move |c| {
+                    authenticate_conn(c, &auth_config);
+                    Ok(())
+                })
+                .fetch_only(gix::progress::Discard, &false.into())
+                .map_err(|e| errors::RefreshError::Fetch(repo_url.to_string(), Box::new(e)))
+        })
+        .await
+        .unwrap()
+        .map(|_| ())
     }
 }
 

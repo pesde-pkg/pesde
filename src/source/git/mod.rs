@@ -10,7 +10,7 @@ use crate::{
     },
     names::PackageNames,
     source::{
-        fs::{store_in_cas, FSEntry, PackageFS},
+        fs::{FSEntry, PackageFS},
         git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
         git_index::GitBasedSource,
         specifiers::DependencySpecifiers,
@@ -20,6 +20,7 @@ use crate::{
     util::hash,
     Project, DEFAULT_INDEX_NAME, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
+use fs_err::tokio as fs;
 
 /// The Git package reference
 pub mod pkg_ref;
@@ -63,11 +64,11 @@ impl PackageSource for GitPackageSource {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
-    fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-        GitBasedSource::refresh(self, project)
+    async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+        GitBasedSource::refresh(self, project).await
     }
 
-    fn resolve(
+    async fn resolve(
         &self,
         specifier: &Self::Specifier,
         project: &Project,
@@ -324,11 +325,11 @@ impl PackageSource for GitPackageSource {
         ))
     }
 
-    fn download(
+    async fn download(
         &self,
         pkg_ref: &Self::Ref,
         project: &Project,
-        _reqwest: &reqwest::blocking::Client,
+        _reqwest: &reqwest::Client,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let index_file = project
             .cas_dir
@@ -336,7 +337,7 @@ impl PackageSource for GitPackageSource {
             .join(hash(self.as_bytes()))
             .join(&pkg_ref.tree_id);
 
-        match fs_err::read_to_string(&index_file) {
+        match fs::read_to_string(&index_file).await {
             Ok(s) => {
                 log::debug!(
                     "using cached index file for package {}#{} {}",
@@ -354,6 +355,7 @@ impl PackageSource for GitPackageSource {
                         match entries.get(&RelativePathBuf::from(MANIFEST_FILE_NAME)) {
                             Some(FSEntry::File(hash)) => match fs
                                 .read_file(hash, project.cas_dir())
+                                .await
                                 .map(|m| toml::de::from_str::<Manifest>(&m))
                             {
                                 Some(Ok(m)) => Some(m),
@@ -376,9 +378,10 @@ impl PackageSource for GitPackageSource {
                     #[cfg(feature = "wally-compat")]
                     None if !pkg_ref.new_structure => {
                         let tempdir = tempfile::tempdir()?;
-                        fs.write_to(tempdir.path(), project.cas_dir(), false)?;
+                        fs.write_to(tempdir.path(), project.cas_dir(), false)
+                            .await?;
 
-                        crate::source::wally::compat_util::get_target(project, &tempdir)?
+                        crate::source::wally::compat_util::get_target(project, &tempdir).await?
                     }
                     None => {
                         return Err(errors::DownloadError::NoManifest(Box::new(
@@ -393,47 +396,50 @@ impl PackageSource for GitPackageSource {
             Err(e) => return Err(errors::DownloadError::Io(e)),
         }
 
-        let repo = gix::open(self.path(project))
-            .map_err(|e| errors::DownloadError::OpenRepo(Box::new(self.repo_url.clone()), e))?;
-        let rev = repo
-            .rev_parse_single(BStr::new(&pkg_ref.tree_id))
-            .map_err(|e| {
-                errors::DownloadError::ParseRev(
-                    pkg_ref.tree_id.clone(),
-                    Box::new(self.repo_url.clone()),
-                    e,
-                )
-            })?;
-        let tree = rev
-            .object()
-            .map_err(|e| {
-                errors::DownloadError::ParseEntryToObject(Box::new(self.repo_url.clone()), e)
-            })?
-            .peel_to_tree()
-            .map_err(|e| {
-                errors::DownloadError::ParseObjectToTree(Box::new(self.repo_url.clone()), e)
-            })?;
-
-        let mut recorder = Recorder::default();
-        tree.traverse()
-            .breadthfirst(&mut recorder)
-            .map_err(|e| errors::DownloadError::TraverseTree(Box::new(self.repo_url.clone()), e))?;
-
         let mut entries = BTreeMap::new();
         let mut manifest = None;
 
+        let repo = gix::open(self.path(project))
+            .map_err(|e| errors::DownloadError::OpenRepo(Box::new(self.repo_url.clone()), e))?;
+
+        let recorder = {
+            let rev = repo
+                .rev_parse_single(BStr::new(&pkg_ref.tree_id))
+                .map_err(|e| {
+                    errors::DownloadError::ParseRev(
+                        pkg_ref.tree_id.clone(),
+                        Box::new(self.repo_url.clone()),
+                        e,
+                    )
+                })?;
+
+            let tree = rev
+                .object()
+                .map_err(|e| {
+                    errors::DownloadError::ParseEntryToObject(Box::new(self.repo_url.clone()), e)
+                })?
+                .peel_to_tree()
+                .map_err(|e| {
+                    errors::DownloadError::ParseObjectToTree(Box::new(self.repo_url.clone()), e)
+                })?;
+
+            let mut recorder = Recorder::default();
+            tree.traverse().breadthfirst(&mut recorder).map_err(|e| {
+                errors::DownloadError::TraverseTree(Box::new(self.repo_url.clone()), e)
+            })?;
+
+            recorder
+        };
+
         for entry in recorder.records {
             let path = RelativePathBuf::from(entry.filepath.to_string());
+            let name = path.file_name().unwrap_or("");
             let object = repo.find_object(entry.oid).map_err(|e| {
                 errors::DownloadError::ParseEntryToObject(Box::new(self.repo_url.clone()), e)
             })?;
 
             if matches!(object.kind, gix::object::Kind::Tree) {
-                if path
-                    .components()
-                    .next()
-                    .is_some_and(|ct| IGNORED_DIRS.contains(&ct.as_str()))
-                {
+                if IGNORED_DIRS.contains(&name) {
                     continue;
                 }
 
@@ -442,13 +448,13 @@ impl PackageSource for GitPackageSource {
                 continue;
             }
 
-            if IGNORED_FILES.contains(&path.as_str()) {
+            if IGNORED_FILES.contains(&name) {
                 continue;
             }
 
-            if pkg_ref.use_new_structure() && path == "default.project.json" {
+            if pkg_ref.use_new_structure() && name == "default.project.json" {
                 log::debug!(
-                    "removing default.project.json from {}#{} - using new structure",
+                    "removing default.project.json from {}#{} at {path} - using new structure",
                     pkg_ref.repo,
                     pkg_ref.tree_id
                 );
@@ -456,13 +462,15 @@ impl PackageSource for GitPackageSource {
             }
 
             let data = object.into_blob().data.clone();
-            let hash = store_in_cas(project.cas_dir(), &data)?.0;
+            // let hash =
+            //     store_reader_in_cas(project.cas_dir(), data.as_slice(), |_| async { Ok(()) })
+            //         .await?;
 
             if path == MANIFEST_FILE_NAME {
                 manifest = Some(data);
             }
 
-            entries.insert(path, FSEntry::File(hash));
+            // entries.insert(path, FSEntry::File(hash));
         }
 
         let manifest = match manifest {
@@ -488,9 +496,10 @@ impl PackageSource for GitPackageSource {
             #[cfg(feature = "wally-compat")]
             None if !pkg_ref.new_structure => {
                 let tempdir = tempfile::tempdir()?;
-                fs.write_to(tempdir.path(), project.cas_dir(), false)?;
+                fs.write_to(tempdir.path(), project.cas_dir(), false)
+                    .await?;
 
-                crate::source::wally::compat_util::get_target(project, &tempdir)?
+                crate::source::wally::compat_util::get_target(project, &tempdir).await?
             }
             None => {
                 return Err(errors::DownloadError::NoManifest(Box::new(
@@ -500,15 +509,16 @@ impl PackageSource for GitPackageSource {
         };
 
         if let Some(parent) = index_file.parent() {
-            fs_err::create_dir_all(parent)?;
+            fs::create_dir_all(parent).await?;
         }
 
-        fs_err::write(
+        fs::write(
             &index_file,
             toml::to_string(&fs).map_err(|e| {
                 errors::DownloadError::SerializeIndex(Box::new(self.repo_url.clone()), e)
             })?,
         )
+        .await
         .map_err(errors::DownloadError::Io)?;
 
         Ok((fs, target))

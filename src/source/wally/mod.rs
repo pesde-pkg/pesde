@@ -1,19 +1,8 @@
-use std::{
-    collections::{BTreeMap, VecDeque},
-    path::PathBuf,
-};
-
-use gix::Url;
-use relative_path::RelativePathBuf;
-use reqwest::header::AUTHORIZATION;
-use serde::Deserialize;
-use tempfile::tempdir;
-
 use crate::{
     manifest::target::{Target, TargetKind},
     names::PackageNames,
     source::{
-        fs::{store_reader_in_cas, FSEntry, PackageFS},
+        fs::{store_in_cas, FSEntry, PackageFS},
         git_index::GitBasedSource,
         traits::PackageSource,
         version_id::VersionId,
@@ -23,6 +12,15 @@ use crate::{
     util::hash,
     Project,
 };
+use fs_err::tokio as fs;
+use gix::Url;
+use relative_path::RelativePathBuf;
+use reqwest::header::AUTHORIZATION;
+use serde::Deserialize;
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use tempfile::tempdir;
+use tokio::{io::AsyncWriteExt, sync::Mutex};
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 pub(crate) mod compat_util;
 pub(crate) mod manifest;
@@ -86,11 +84,11 @@ impl PackageSource for WallyPackageSource {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
-    fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-        GitBasedSource::refresh(self, project)
+    async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+        GitBasedSource::refresh(self, project).await
     }
 
-    fn resolve(
+    async fn resolve(
         &self,
         specifier: &Self::Specifier,
         project: &Project,
@@ -138,11 +136,11 @@ impl PackageSource for WallyPackageSource {
         ))
     }
 
-    fn download(
+    async fn download(
         &self,
         pkg_ref: &Self::Ref,
         project: &Project,
-        reqwest: &reqwest::blocking::Client,
+        reqwest: &reqwest::Client,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let config = self.config(project).map_err(Box::new)?;
         let index_file = project
@@ -151,7 +149,7 @@ impl PackageSource for WallyPackageSource {
             .join(pkg_ref.name.escaped())
             .join(pkg_ref.version.to_string());
 
-        let tempdir = match fs_err::read_to_string(&index_file) {
+        let tempdir = match fs::read_to_string(&index_file).await {
             Ok(s) => {
                 log::debug!(
                     "using cached index file for package {}@{}",
@@ -162,9 +160,9 @@ impl PackageSource for WallyPackageSource {
                 let tempdir = tempdir()?;
                 let fs = toml::from_str::<PackageFS>(&s)?;
 
-                fs.write_to(&tempdir, project.cas_dir(), false)?;
+                fs.write_to(&tempdir, project.cas_dir(), false).await?;
 
-                return Ok((fs, get_target(project, &tempdir)?));
+                return Ok((fs, get_target(project, &tempdir).await?));
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => tempdir()?,
             Err(e) => return Err(errors::DownloadError::ReadIndex(e)),
@@ -190,50 +188,67 @@ impl PackageSource for WallyPackageSource {
             request = request.header(AUTHORIZATION, token);
         }
 
-        let response = request.send()?.error_for_status()?;
-        let bytes = response.bytes()?;
-
-        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
-        archive.extract(tempdir.path())?;
+        let response = request.send().await?.error_for_status()?;
+        let mut bytes = response.bytes().await?;
 
         let mut entries = BTreeMap::new();
+        let mut archive = async_zip::tokio::read::seek::ZipFileReader::with_tokio(
+            std::io::Cursor::new(&mut bytes),
+        )
+        .await?;
 
-        let mut dir_entries = fs_err::read_dir(tempdir.path())?.collect::<VecDeque<_>>();
-        while let Some(entry) = dir_entries.pop_front() {
-            let entry = entry?;
-            let path =
-                RelativePathBuf::from_path(entry.path().strip_prefix(tempdir.path())?).unwrap();
+        for index in 0..archive.file().entries().len() {
+            let entry = archive.file().entries().get(index).unwrap();
 
-            if entry.file_type()?.is_dir() {
-                if IGNORED_DIRS.contains(&path.as_str()) {
+            let relative_path = RelativePathBuf::from_path(entry.filename().as_str()?).unwrap();
+            let path = relative_path.to_path(tempdir.path());
+            let name = relative_path.file_name().unwrap_or("");
+
+            let entry_is_dir = entry.dir()?;
+            let entry_reader = archive.reader_without_entry(index).await?;
+
+            if entry_is_dir {
+                if IGNORED_DIRS.contains(&name) {
                     continue;
                 }
 
-                entries.insert(path, FSEntry::Directory);
-                dir_entries.extend(fs_err::read_dir(entry.path())?);
+                entries.insert(relative_path, FSEntry::Directory);
+                fs::create_dir_all(&path).await?;
 
                 continue;
             }
 
-            if IGNORED_FILES.contains(&path.as_str()) {
+            if IGNORED_FILES.contains(&name) {
                 continue;
             }
 
-            let mut file = fs_err::File::open(entry.path())?;
-            let hash = store_reader_in_cas(project.cas_dir(), &mut file)?;
-            entries.insert(path, FSEntry::File(hash));
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).await?;
+            }
+
+            let writer = Arc::new(Mutex::new(fs::File::create(&path).await?));
+            let hash = store_in_cas(project.cas_dir(), entry_reader.compat(), |bytes| {
+                let writer = writer.clone();
+                async move { writer.lock().await.write_all(&bytes).await }
+            })
+            .await?;
+
+            entries.insert(relative_path, FSEntry::File(hash));
         }
 
         let fs = PackageFS::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
-            fs_err::create_dir_all(parent).map_err(errors::DownloadError::WriteIndex)?;
+            fs::create_dir_all(parent)
+                .await
+                .map_err(errors::DownloadError::WriteIndex)?;
         }
 
-        fs_err::write(&index_file, toml::to_string(&fs)?)
+        fs::write(&index_file, toml::to_string(&fs)?)
+            .await
             .map_err(errors::DownloadError::WriteIndex)?;
 
-        Ok((fs, get_target(project, &tempdir)?))
+        Ok((fs, get_target(project, &tempdir).await?))
     }
 }
 
@@ -320,7 +335,7 @@ pub mod errors {
 
         /// Error decompressing archive
         #[error("error decompressing archive")]
-        Decompress(#[from] zip::result::ZipError),
+        Decompress(#[from] async_zip::error::ZipError),
 
         /// Error interacting with the filesystem
         #[error("error interacting with the filesystem")]

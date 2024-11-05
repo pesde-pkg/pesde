@@ -6,12 +6,8 @@ use colored::Colorize;
 pub struct WhoAmICommand {}
 
 impl WhoAmICommand {
-    pub fn run(
-        self,
-        index_url: gix::Url,
-        reqwest: reqwest::blocking::Client,
-    ) -> anyhow::Result<()> {
-        let tokens = get_tokens()?;
+    pub async fn run(self, index_url: gix::Url, reqwest: reqwest::Client) -> anyhow::Result<()> {
+        let tokens = get_tokens().await?;
         let token = match tokens.0.get(&index_url) {
             Some(token) => token,
             None => {
@@ -22,7 +18,7 @@ impl WhoAmICommand {
 
         println!(
             "logged in as {} into {index_url}",
-            get_token_login(&reqwest, token)?.bold()
+            get_token_login(&reqwest, token).await?.bold()
         );
 
         Ok(())

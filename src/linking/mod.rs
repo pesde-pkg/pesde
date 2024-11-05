@@ -3,9 +3,14 @@ use crate::{
     lockfile::DownloadedGraph,
     names::PackageNames,
     scripts::{execute_script, ScriptName},
-    source::{fs::store_in_cas, traits::PackageRef, version_id::VersionId},
+    source::{
+        fs::{cas_path, store_in_cas},
+        traits::PackageRef,
+        version_id::VersionId,
+    },
     Project, LINK_LIB_NO_FILE_FOUND, PACKAGES_CONTAINER_NAME,
 };
+use fs_err::tokio as fs;
 use std::{
     collections::BTreeMap,
     ffi::OsStr,
@@ -15,22 +20,25 @@ use std::{
 /// Generates linking modules for a project
 pub mod generator;
 
-fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
+async fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
     let p = path.as_ref();
-    fs_err::create_dir_all(p)?;
+    fs::create_dir_all(p).await?;
     p.canonicalize()
 }
 
-fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
-    let cas_path = store_in_cas(cas_dir, contents.as_bytes())?.1;
+async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
+    let hash = store_in_cas(cas_dir, contents.as_bytes(), |_| async { Ok(()) }).await?;
 
-    fs_err::hard_link(cas_path, destination)
+    fs::hard_link(cas_path(&hash, cas_dir), destination).await
 }
 
 impl Project {
     /// Links the dependencies of the project
-    pub fn link_dependencies(&self, graph: &DownloadedGraph) -> Result<(), errors::LinkingError> {
-        let manifest = self.deser_manifest()?;
+    pub async fn link_dependencies(
+        &self,
+        graph: &DownloadedGraph,
+    ) -> Result<(), errors::LinkingError> {
+        let manifest = self.deser_manifest().await?;
 
         let mut package_types = BTreeMap::<&PackageNames, BTreeMap<&VersionId, Vec<String>>>::new();
 
@@ -57,7 +65,7 @@ impl Project {
                 let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
                     let lib_file = lib_file.to_path(&container_folder);
 
-                    let contents = match fs_err::read_to_string(&lib_file) {
+                    let contents = match fs::read_to_string(&lib_file).await {
                         Ok(contents) => contents,
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                             return Err(errors::LinkingError::LibFileNotFound(
@@ -128,7 +136,8 @@ impl Project {
                                 .kind()
                                 .packages_folder(&node.node.pkg_ref.target_kind()),
                         ),
-                    )?;
+                    )
+                    .await?;
                     let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
                     let container_folder = node.node.container_folder(
@@ -162,7 +171,8 @@ impl Project {
                                     )?,
                                     types,
                                 ),
-                            )?;
+                            )
+                            .await?;
                         };
 
                         if let Some(bin_file) = node.target.bin_path() {
@@ -177,7 +187,8 @@ impl Project {
                                         &container_folder,
                                     ),
                                 ),
-                            )?;
+                            )
+                            .await?;
                         }
                     }
 
@@ -208,7 +219,8 @@ impl Project {
                                 .target_kind()
                                 .packages_folder(&dependency_node.node.pkg_ref.target_kind()),
                         ),
-                    )?;
+                    )
+                    .await?;
                     let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
                     let container_folder = dependency_node.node.container_folder(
@@ -220,7 +232,8 @@ impl Project {
                     let linker_folder = create_and_canonicalize(
                         node_container_folder
                             .join(node.node.base_folder(dependency_node.target.kind())),
-                    )?;
+                    )
+                    .await?;
 
                     write_cas(
                         linker_folder.join(format!("{dependency_alias}.luau")),
@@ -241,7 +254,8 @@ impl Project {
                                 .and_then(|v| v.get(dependency_version_id))
                                 .unwrap(),
                         ),
-                    )?;
+                    )
+                    .await?;
                 }
             }
         }

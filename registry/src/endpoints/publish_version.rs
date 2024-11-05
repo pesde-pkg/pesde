@@ -1,17 +1,3 @@
-use actix_multipart::Multipart;
-use actix_web::{web, HttpResponse, Responder};
-use convert_case::{Case, Casing};
-use flate2::read::GzDecoder;
-use futures::{future::join_all, join, StreamExt};
-use git2::{Remote, Repository, Signature};
-use serde::Deserialize;
-use sha2::{Digest, Sha256};
-use std::{
-    collections::{BTreeSet, HashMap},
-    io::{Cursor, Read, Write},
-};
-use tar::Archive;
-
 use crate::{
     auth::UserId,
     benv,
@@ -20,6 +6,13 @@ use crate::{
     storage::StorageImpl,
     AppState,
 };
+use actix_multipart::Multipart;
+use actix_web::{web, HttpResponse, Responder};
+use async_compression::Level;
+use convert_case::{Case, Casing};
+use fs_err::tokio as fs;
+use futures::{future::join_all, join, StreamExt};
+use git2::{Remote, Repository, Signature};
 use pesde::{
     manifest::Manifest,
     source::{
@@ -31,6 +24,13 @@ use pesde::{
     },
     MANIFEST_FILE_NAME,
 };
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::{
+    collections::{BTreeSet, HashMap},
+    io::{Cursor, Write},
+};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn signature<'a>() -> Signature<'a> {
     Signature::now(
@@ -71,18 +71,16 @@ pub async fn publish_package(
     mut body: Multipart,
     user_id: web::ReqData<UserId>,
 ) -> Result<impl Responder, Error> {
-    let max_archive_size = {
-        let source = app_state.source.lock().unwrap();
-        source.refresh(&app_state.project).map_err(Box::new)?;
-        source.config(&app_state.project)?.max_archive_size
-    };
+    let source = app_state.source.lock().await;
+    source.refresh(&app_state.project).await.map_err(Box::new)?;
+    let config = source.config(&app_state.project)?;
 
     let bytes = body
         .next()
         .await
         .ok_or(Error::InvalidArchive)?
         .map_err(|_| Error::InvalidArchive)?
-        .bytes(max_archive_size)
+        .bytes(config.max_archive_size)
         .await
         .map_err(|_| Error::InvalidArchive)?
         .map_err(|_| Error::InvalidArchive)?;
@@ -90,10 +88,10 @@ pub async fn publish_package(
     let package_dir = tempfile::tempdir()?;
 
     {
-        let mut decoder = GzDecoder::new(Cursor::new(&bytes));
-        let mut archive = Archive::new(&mut decoder);
+        let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(Cursor::new(&bytes));
+        let mut archive = tokio_tar::Archive::new(&mut decoder);
 
-        archive.unpack(package_dir.path())?;
+        archive.unpack(package_dir.path()).await?;
     }
 
     let mut manifest = None::<Manifest>;
@@ -101,15 +99,15 @@ pub async fn publish_package(
     let mut docs = BTreeSet::new();
     let mut docs_pages = HashMap::new();
 
-    for entry in fs_err::read_dir(package_dir.path())? {
-        let entry = entry?;
+    let mut read_dir = fs::read_dir(package_dir.path()).await?;
+    while let Some(entry) = read_dir.next_entry().await? {
         let file_name = entry
             .file_name()
             .to_str()
             .ok_or(Error::InvalidArchive)?
             .to_string();
 
-        if entry.file_type()?.is_dir() {
+        if entry.file_type().await?.is_dir() {
             if IGNORED_DIRS.contains(&file_name.as_str()) {
                 return Err(Error::InvalidArchive);
             }
@@ -117,23 +115,22 @@ pub async fn publish_package(
             if file_name == "docs" {
                 let mut stack = vec![(
                     BTreeSet::new(),
-                    fs_err::read_dir(entry.path())?,
+                    fs::read_dir(entry.path()).await?,
                     None::<DocEntryInfo>,
                 )];
 
                 'outer: while let Some((set, iter, category_info)) = stack.last_mut() {
-                    for entry in iter {
-                        let entry = entry?;
+                    while let Some(entry) = iter.next_entry().await? {
                         let file_name = entry
                             .file_name()
                             .to_str()
                             .ok_or(Error::InvalidArchive)?
                             .to_string();
 
-                        if entry.file_type()?.is_dir() {
+                        if entry.file_type().await?.is_dir() {
                             stack.push((
                                 BTreeSet::new(),
-                                fs_err::read_dir(entry.path())?,
+                                fs::read_dir(entry.path()).await?,
                                 Some(DocEntryInfo {
                                     label: Some(file_name.to_case(Case::Title)),
                                     ..Default::default()
@@ -143,7 +140,7 @@ pub async fn publish_package(
                         }
 
                         if file_name == "_category_.json" {
-                            let info = fs_err::read_to_string(entry.path())?;
+                            let info = fs::read_to_string(entry.path()).await?;
                             let mut info: DocEntryInfo = serde_json::from_str(&info)?;
                             let old_info = category_info.take();
                             info.label = info.label.or(old_info.and_then(|i| i.label));
@@ -155,16 +152,16 @@ pub async fn publish_package(
                             continue;
                         };
 
-                        let content = fs_err::read_to_string(entry.path())?;
+                        let content = fs::read_to_string(entry.path()).await?;
                         let content = content.trim();
                         let hash = format!("{:x}", Sha256::digest(content.as_bytes()));
 
-                        let mut gz = flate2::read::GzEncoder::new(
+                        let mut gz = async_compression::tokio::bufread::GzipEncoder::with_quality(
                             Cursor::new(content.as_bytes().to_vec()),
-                            flate2::Compression::best(),
+                            Level::Best,
                         );
                         let mut bytes = vec![];
-                        gz.read_to_end(&mut bytes)?;
+                        gz.read_to_end(&mut bytes).await?;
                         docs_pages.insert(hash.to_string(), bytes);
 
                         let mut lines = content.lines().peekable();
@@ -245,7 +242,7 @@ pub async fn publish_package(
         }
 
         if file_name == MANIFEST_FILE_NAME {
-            let content = fs_err::read_to_string(entry.path())?;
+            let content = fs::read_to_string(entry.path()).await?;
 
             manifest = Some(toml::de::from_str(&content)?);
         } else if file_name
@@ -258,12 +255,12 @@ pub async fn publish_package(
                 return Err(Error::InvalidArchive);
             }
 
-            let file = fs_err::File::open(entry.path())?;
+            let mut file = fs::File::open(entry.path()).await?;
 
-            let mut gz = flate2::read::GzEncoder::new(file, flate2::Compression::best());
-            let mut bytes = vec![];
-            gz.read_to_end(&mut bytes)?;
-            readme = Some(bytes);
+            let mut gz = async_compression::tokio::write::GzipEncoder::new(vec![]);
+            tokio::io::copy(&mut file, &mut gz).await?;
+            gz.shutdown().await?;
+            readme = Some(gz.into_inner());
         }
     }
 
@@ -272,10 +269,6 @@ pub async fn publish_package(
     };
 
     {
-        let source = app_state.source.lock().unwrap();
-        source.refresh(&app_state.project).map_err(Box::new)?;
-        let config = source.config(&app_state.project)?;
-
         let dependencies = manifest
             .all_dependencies()
             .map_err(|_| Error::InvalidArchive)?;

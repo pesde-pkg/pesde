@@ -1,4 +1,7 @@
 use anyhow::Context;
+use colored::Colorize;
+use fs_err::tokio as fs;
+use futures::StreamExt;
 use indicatif::MultiProgress;
 use pesde::{
     lockfile::{DependencyGraph, DownloadedGraph, Lockfile},
@@ -10,11 +13,13 @@ use pesde::{
 use relative_path::RelativePathBuf;
 use std::{
     collections::{BTreeMap, HashSet},
+    future::Future,
     path::PathBuf,
     str::FromStr,
     sync::Arc,
     time::Duration,
 };
+use tokio::pin;
 
 pub mod auth;
 pub mod commands;
@@ -32,15 +37,17 @@ pub fn home_dir() -> anyhow::Result<PathBuf> {
         .join(HOME_DIR))
 }
 
-pub fn bin_dir() -> anyhow::Result<PathBuf> {
+pub async fn bin_dir() -> anyhow::Result<PathBuf> {
     let bin_dir = home_dir()?.join("bin");
-    fs_err::create_dir_all(&bin_dir).context("failed to create bin folder")?;
+    fs::create_dir_all(&bin_dir)
+        .await
+        .context("failed to create bin folder")?;
     Ok(bin_dir)
 }
 
-pub fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Lockfile>> {
-    let manifest = project.deser_manifest()?;
-    let lockfile = match project.deser_lockfile() {
+pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Lockfile>> {
+    let manifest = project.deser_manifest().await?;
+    let lockfile = match project.deser_lockfile().await {
         Ok(lockfile) => lockfile,
         Err(pesde::errors::LockfileReadError::Io(e))
             if e.kind() == std::io::ErrorKind::NotFound =>
@@ -185,13 +192,12 @@ pub fn parse_gix_url(s: &str) -> Result<gix::Url, gix::url::parse::Error> {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn download_graph(
+pub async fn download_graph(
     project: &Project,
     refreshed_sources: &mut HashSet<PackageSources>,
     graph: &DependencyGraph,
     multi: &MultiProgress,
-    reqwest: &reqwest::blocking::Client,
-    threads: usize,
+    reqwest: &reqwest::Client,
     prod: bool,
     write: bool,
     progress_msg: String,
@@ -207,11 +213,12 @@ pub fn download_graph(
     );
     bar.enable_steady_tick(Duration::from_millis(100));
 
-    let (rx, downloaded_graph) = project
-        .download_graph(graph, refreshed_sources, reqwest, threads, prod, write)
+    let (mut rx, downloaded_graph) = project
+        .download_graph(graph, refreshed_sources, reqwest, prod, write)
+        .await
         .context("failed to download dependencies")?;
 
-    while let Ok(result) = rx.recv() {
+    while let Some(result) = rx.recv().await {
         bar.inc(1);
 
         match result {
@@ -238,41 +245,63 @@ pub fn shift_project_dir(project: &Project, pkg_dir: PathBuf) -> Project {
     )
 }
 
-pub fn run_on_workspace_members(
+pub async fn run_on_workspace_members<F: Future<Output = anyhow::Result<()>>>(
     project: &Project,
-    f: impl Fn(Project) -> anyhow::Result<()>,
+    f: impl Fn(Project) -> F,
 ) -> anyhow::Result<BTreeMap<PackageName, BTreeMap<TargetKind, RelativePathBuf>>> {
-    Ok(match project.workspace_dir() {
-        Some(_) => {
-            // this might seem counterintuitive, but remember that
-            // the presence of a workspace dir means that this project is a member of one
-            Default::default()
+    // this might seem counterintuitive, but remember that
+    // the presence of a workspace dir means that this project is a member of one
+    if project.workspace_dir().is_some() {
+        return Ok(Default::default());
+    }
+
+    let members_future = project.workspace_members(project.package_dir()).await?;
+    pin!(members_future);
+
+    let mut results = BTreeMap::<PackageName, BTreeMap<TargetKind, RelativePathBuf>>::new();
+
+    while let Some((path, manifest)) = members_future.next().await.transpose()? {
+        let relative_path =
+            RelativePathBuf::from_path(path.strip_prefix(project.package_dir()).unwrap()).unwrap();
+
+        f(shift_project_dir(project, path)).await?;
+
+        results
+            .entry(manifest.name)
+            .or_default()
+            .insert(manifest.target.kind(), relative_path);
+    }
+
+    Ok(results)
+}
+
+pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
+    if let Err(err) = result {
+        eprintln!("{}: {err}\n", format!("error{prefix}").red().bold());
+
+        let cause = err.chain().skip(1).collect::<Vec<_>>();
+
+        if !cause.is_empty() {
+            eprintln!("{}:", "caused by".red().bold());
+            for err in cause {
+                eprintln!("  - {err}");
+            }
         }
-        None => project
-            .workspace_members(project.package_dir())
-            .context("failed to get workspace members")?
-            .into_iter()
-            .map(|(path, manifest)| {
-                (
-                    manifest.name,
-                    manifest.target.kind(),
-                    RelativePathBuf::from_path(path.strip_prefix(project.package_dir()).unwrap())
-                        .unwrap(),
-                )
-            })
-            .map(|(name, target, path)| {
-                f(shift_project_dir(
-                    project,
-                    path.to_path(project.package_dir()),
-                ))
-                .map(|_| (name, target, path))
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .context("failed to install workspace member's dependencies")?
-            .into_iter()
-            .fold(BTreeMap::new(), |mut map, (name, target, path)| {
-                map.entry(name).or_default().insert(target, path);
-                map
-            }),
-    })
+
+        let backtrace = err.backtrace();
+        match backtrace.status() {
+            std::backtrace::BacktraceStatus::Disabled => {
+                eprintln!(
+                    "\n{}: set RUST_BACKTRACE=1 for a backtrace",
+                    "help".yellow().bold()
+                );
+            }
+            std::backtrace::BacktraceStatus::Captured => {
+                eprintln!("\n{}:\n{backtrace}", "backtrace".yellow().bold());
+            }
+            _ => {
+                eprintln!("\n{}: not captured", "backtrace".yellow().bold());
+            }
+        }
+    }
 }

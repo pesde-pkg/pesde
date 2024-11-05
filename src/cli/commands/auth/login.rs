@@ -3,6 +3,7 @@ use clap::Args;
 use colored::Colorize;
 use serde::Deserialize;
 use std::thread::spawn;
+use tokio::time::sleep;
 use url::Url;
 
 use pesde::{
@@ -46,16 +47,19 @@ enum AccessTokenResponse {
 }
 
 impl LoginCommand {
-    pub fn authenticate_device_flow(
+    pub async fn authenticate_device_flow(
         &self,
         index_url: &gix::Url,
         project: &Project,
-        reqwest: &reqwest::blocking::Client,
+        reqwest: &reqwest::Client,
     ) -> anyhow::Result<String> {
         println!("logging in into {index_url}");
 
         let source = PesdePackageSource::new(index_url.clone());
-        source.refresh(project).context("failed to refresh index")?;
+        source
+            .refresh(project)
+            .await
+            .context("failed to refresh index")?;
 
         let config = source
             .config(project)
@@ -70,10 +74,12 @@ impl LoginCommand {
                 &[("client_id", &client_id)],
             )?)
             .send()
+            .await
             .context("failed to send device code request")?
             .error_for_status()
             .context("failed to get device code response")?
             .json::<DeviceCodeResponse>()
+            .await
             .context("failed to parse device code response")?;
 
         println!(
@@ -102,7 +108,7 @@ impl LoginCommand {
         let mut interval = std::time::Duration::from_secs(response.interval);
 
         while time_left > 0 {
-            std::thread::sleep(interval);
+            sleep(interval).await;
             time_left = time_left.saturating_sub(interval.as_secs());
 
             let response = reqwest
@@ -118,10 +124,12 @@ impl LoginCommand {
                     ],
                 )?)
                 .send()
+                .await
                 .context("failed to send access token request")?
                 .error_for_status()
                 .context("failed to get access token response")?
                 .json::<AccessTokenResponse>()
+                .await
                 .context("failed to parse access token response")?;
 
             match response {
@@ -149,16 +157,19 @@ impl LoginCommand {
         anyhow::bail!("code expired, please re-run the login command");
     }
 
-    pub fn run(
+    pub async fn run(
         self,
         index_url: gix::Url,
         project: Project,
-        reqwest: reqwest::blocking::Client,
+        reqwest: reqwest::Client,
     ) -> anyhow::Result<()> {
         let token_given = self.token.is_some();
         let token = match self.token {
             Some(token) => token,
-            None => self.authenticate_device_flow(&index_url, &project, &reqwest)?,
+            None => {
+                self.authenticate_device_flow(&index_url, &project, &reqwest)
+                    .await?
+            }
         };
 
         let token = if token_given {
@@ -168,13 +179,13 @@ impl LoginCommand {
             let token = format!("Bearer {token}");
             println!(
                 "logged in as {} for {index_url}",
-                get_token_login(&reqwest, &token)?.bold()
+                get_token_login(&reqwest, &token).await?.bold()
             );
 
             token
         };
 
-        set_token(&index_url, Some(&token))?;
+        set_token(&index_url, Some(&token)).await?;
 
         Ok(())
     }

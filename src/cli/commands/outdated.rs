@@ -20,11 +20,12 @@ pub struct OutdatedCommand {
 }
 
 impl OutdatedCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
-        let graph = project.deser_lockfile()?.graph;
+    pub async fn run(self, project: Project) -> anyhow::Result<()> {
+        let graph = project.deser_lockfile().await?.graph;
 
         let manifest = project
             .deser_manifest()
+            .await
             .context("failed to read manifest")?;
 
         let mut refreshed_sources = HashSet::new();
@@ -45,7 +46,7 @@ impl OutdatedCommand {
                 let source = node.node.pkg_ref.source();
 
                 if refreshed_sources.insert(source.clone()) {
-                    source.refresh(&project)?;
+                    source.refresh(&project).await?;
                 }
 
                 if !self.strict {
@@ -64,6 +65,7 @@ impl OutdatedCommand {
 
                 let version_id = source
                     .resolve(&specifier, &project, manifest.target.kind())
+                    .await
                     .context("failed to resolve package versions")?
                     .1
                     .pop_last()

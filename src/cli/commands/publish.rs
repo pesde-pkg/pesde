@@ -1,15 +1,9 @@
+use crate::cli::{display_err, run_on_workspace_members, up_to_date_lockfile};
 use anyhow::Context;
+use async_compression::Level;
 use clap::Args;
 use colored::Colorize;
-use reqwest::{header::AUTHORIZATION, StatusCode};
-use semver::VersionReq;
-use std::{
-    io::{Seek, Write},
-    path::Component,
-};
-use tempfile::tempfile;
-
-use crate::cli::{run_on_workspace_members, up_to_date_lockfile};
+use fs_err::tokio as fs;
 use pesde::{
     manifest::{target::Target, DependencyType},
     scripts::ScriptName,
@@ -25,6 +19,11 @@ use pesde::{
     },
     Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
+use reqwest::{header::AUTHORIZATION, StatusCode};
+use semver::VersionReq;
+use std::path::Component;
+use tempfile::Builder;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 #[derive(Debug, Args, Clone)]
 pub struct PublishCommand {
@@ -42,9 +41,10 @@ pub struct PublishCommand {
 }
 
 impl PublishCommand {
-    fn run_impl(self, project: &Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
+    async fn run_impl(self, project: &Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
         let mut manifest = project
             .deser_manifest()
+            .await
             .context("failed to read manifest")?;
 
         println!(
@@ -72,7 +72,7 @@ impl PublishCommand {
                 anyhow::bail!("no build files found in target");
             }
 
-            match up_to_date_lockfile(project)? {
+            match up_to_date_lockfile(project).await? {
                 Some(lockfile) => {
                     if lockfile
                         .graph
@@ -93,10 +93,9 @@ impl PublishCommand {
             }
         }
 
-        let mut archive = tar::Builder::new(flate2::write::GzEncoder::new(
-            vec![],
-            flate2::Compression::best(),
-        ));
+        let mut archive = tokio_tar::Builder::new(
+            async_compression::tokio::write::GzipEncoder::with_quality(vec![], Level::Best),
+        );
 
         let mut display_includes: Vec<String> = vec![MANIFEST_FILE_NAME.to_string()];
         let mut display_build_files: Vec<String> = vec![];
@@ -179,8 +178,9 @@ impl PublishCommand {
                 anyhow::bail!("{name} must point to a file");
             }
 
-            let contents =
-                fs_err::read_to_string(&export_path).context(format!("failed to read {name}"))?;
+            let contents = fs::read_to_string(&export_path)
+                .await
+                .context(format!("failed to read {name}"))?;
 
             if let Err(err) = full_moon::parse(&contents).map_err(|errs| {
                 errs.into_iter()
@@ -237,17 +237,21 @@ impl PublishCommand {
             if included_path.is_file() {
                 display_includes.push(included_name.clone());
 
-                archive.append_file(
-                    included_name,
-                    fs_err::File::open(&included_path)
-                        .context(format!("failed to read {included_name}"))?
-                        .file_mut(),
-                )?;
+                archive
+                    .append_file(
+                        included_name,
+                        fs::File::open(&included_path)
+                            .await
+                            .context(format!("failed to read {included_name}"))?
+                            .file_mut(),
+                    )
+                    .await?;
             } else {
                 display_includes.push(format!("{included_name}/*"));
 
                 archive
                     .append_dir_all(included_name, &included_path)
+                    .await
                     .context(format!("failed to include directory {included_name}"))?;
             }
         }
@@ -331,6 +335,7 @@ impl PublishCommand {
                 DependencySpecifiers::Workspace(spec) => {
                     let pkg_ref = WorkspacePackageSource
                         .resolve(spec, project, target_kind)
+                        .await
                         .context("failed to resolve workspace package")?
                         .1
                         .pop_last()
@@ -345,7 +350,8 @@ impl PublishCommand {
                                 .context("failed to get workspace directory")?,
                         )
                         .join(MANIFEST_FILE_NAME);
-                    let manifest = fs_err::read_to_string(&manifest)
+                    let manifest = fs::read_to_string(&manifest)
+                        .await
                         .context("failed to read workspace package manifest")?;
                     let manifest = toml::from_str::<pesde::manifest::Manifest>(&manifest)
                         .context("failed to parse workspace package manifest")?;
@@ -442,25 +448,41 @@ impl PublishCommand {
             println!();
         }
 
-        let mut temp_manifest = tempfile().context("failed to create temp manifest file")?;
+        let temp_path = Builder::new().make(|_| Ok(()))?.into_temp_path();
+        let mut temp_manifest = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .read(true)
+            .open(temp_path.to_path_buf())
+            .await?;
+
         temp_manifest
             .write_all(
                 toml::to_string(&manifest)
                     .context("failed to serialize manifest")?
                     .as_bytes(),
             )
+            .await
             .context("failed to write temp manifest file")?;
         temp_manifest
             .rewind()
+            .await
             .context("failed to rewind temp manifest file")?;
 
-        archive.append_file(MANIFEST_FILE_NAME, &mut temp_manifest)?;
+        archive
+            .append_file(MANIFEST_FILE_NAME, temp_manifest.file_mut())
+            .await?;
 
-        let archive = archive
+        let mut encoder = archive
             .into_inner()
-            .context("failed to encode archive")?
-            .finish()
-            .context("failed to get archive bytes")?;
+            .await
+            .context("failed to finish archive")?;
+        encoder
+            .shutdown()
+            .await
+            .context("failed to finish archive")?;
+        let archive = encoder.into_inner();
 
         let index_url = manifest
             .indices
@@ -469,6 +491,7 @@ impl PublishCommand {
         let source = PesdePackageSource::new(index_url.clone());
         source
             .refresh(project)
+            .await
             .context("failed to refresh source")?;
         let config = source
             .config(project)
@@ -494,7 +517,7 @@ impl PublishCommand {
         }
 
         if self.dry_run {
-            fs_err::write("package.tar.gz", archive)?;
+            fs::write("package.tar.gz", archive).await?;
 
             println!(
                 "{}",
@@ -506,9 +529,9 @@ impl PublishCommand {
 
         let mut request = reqwest
             .post(format!("{}/v0/packages", config.api()))
-            .multipart(reqwest::blocking::multipart::Form::new().part(
+            .multipart(reqwest::multipart::Form::new().part(
                 "tarball",
-                reqwest::blocking::multipart::Part::bytes(archive).file_name("package.tar.gz"),
+                reqwest::multipart::Part::bytes(archive).file_name("package.tar.gz"),
             ));
 
         if let Some(token) = project.auth_config().tokens().get(index_url) {
@@ -516,10 +539,13 @@ impl PublishCommand {
             request = request.header(AUTHORIZATION, token);
         }
 
-        let response = request.send().context("failed to send request")?;
+        let response = request.send().await.context("failed to send request")?;
 
         let status = response.status();
-        let text = response.text().context("failed to get response text")?;
+        let text = response
+            .text()
+            .await
+            .context("failed to get response text")?;
         match status {
             StatusCode::CONFLICT => {
                 println!("{}", "package version already exists".red().bold());
@@ -544,17 +570,20 @@ impl PublishCommand {
         Ok(())
     }
 
-    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
-        let result = self.clone().run_impl(&project, reqwest.clone());
+    pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+        let result = self.clone().run_impl(&project, reqwest.clone()).await;
         if project.workspace_dir().is_some() {
             return result;
-        } else if let Err(result) = result {
-            println!("an error occurred publishing workspace root: {result}");
+        } else {
+            display_err(result, " occurred publishing workspace root");
         }
 
         run_on_workspace_members(&project, |project| {
-            self.clone().run_impl(&project, reqwest.clone())
+            let reqwest = reqwest.clone();
+            let this = self.clone();
+            async move { this.run_impl(&project, reqwest).await }
         })
+        .await
         .map(|_| ())
     }
 }

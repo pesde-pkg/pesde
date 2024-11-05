@@ -15,12 +15,15 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 impl Project {
     /// Create a dependency graph from the project's manifest
-    pub fn dependency_graph(
+    pub async fn dependency_graph(
         &self,
         previous_graph: Option<&DependencyGraph>,
         refreshed_sources: &mut HashSet<PackageSources>,
     ) -> Result<DependencyGraph, Box<errors::DependencyGraphError>> {
-        let manifest = self.deser_manifest().map_err(|e| Box::new(e.into()))?;
+        let manifest = self
+            .deser_manifest()
+            .await
+            .map_err(|e| Box::new(e.into()))?;
 
         let mut all_specifiers = manifest
             .all_dependencies()
@@ -190,11 +193,12 @@ impl Project {
             };
 
             if refreshed_sources.insert(source.clone()) {
-                source.refresh(self).map_err(|e| Box::new(e.into()))?;
+                source.refresh(self).await.map_err(|e| Box::new(e.into()))?;
             }
 
             let (name, resolved) = source
                 .resolve(&specifier, self, target)
+                .await
                 .map_err(|e| Box::new(e.into()))?;
 
             let Some(target_version_id) = graph

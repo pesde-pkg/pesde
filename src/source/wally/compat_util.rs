@@ -10,6 +10,7 @@ use crate::{
     source::wally::manifest::{Realm, WallyManifest},
     Project, LINK_LIB_NO_FILE_FOUND,
 };
+use fs_err::tokio as fs;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,11 +19,11 @@ struct SourcemapNode {
     file_paths: Vec<RelativePathBuf>,
 }
 
-pub(crate) fn find_lib_path(
+pub(crate) async fn find_lib_path(
     project: &Project,
     package_dir: &Path,
 ) -> Result<Option<RelativePathBuf>, errors::FindLibPathError> {
-    let manifest = project.deser_manifest()?;
+    let manifest = project.deser_manifest().await?;
 
     let Some(script_path) = manifest
         .scripts
@@ -53,16 +54,17 @@ pub(crate) fn find_lib_path(
 
 pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
 
-pub(crate) fn get_target(
+pub(crate) async fn get_target(
     project: &Project,
     tempdir: &TempDir,
 ) -> Result<Target, errors::FindLibPathError> {
-    let lib = find_lib_path(project, tempdir.path())?
+    let lib = find_lib_path(project, tempdir.path())
+        .await?
         .or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND)));
     let build_files = Default::default();
 
     let manifest = tempdir.path().join(WALLY_MANIFEST_FILE_NAME);
-    let manifest = fs_err::read_to_string(&manifest)?;
+    let manifest = fs::read_to_string(&manifest).await?;
     let manifest: WallyManifest = toml::from_str(&manifest)?;
 
     Ok(if matches!(manifest.package.realm, Realm::Shared) {

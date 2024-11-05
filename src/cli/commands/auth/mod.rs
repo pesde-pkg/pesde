@@ -28,8 +28,8 @@ pub enum AuthCommands {
 }
 
 impl AuthSubcommand {
-    pub fn run(self, project: Project, reqwest: reqwest::blocking::Client) -> anyhow::Result<()> {
-        let manifest = match project.deser_manifest() {
+    pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+        let manifest = match project.deser_manifest().await {
             Ok(manifest) => Some(manifest),
             Err(e) => match e {
                 ManifestReadError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
@@ -44,7 +44,7 @@ impl AuthSubcommand {
             },
             None => match manifest {
                 Some(_) => None,
-                None => Some(read_config()?.default_index),
+                None => Some(read_config().await?.default_index),
             },
         };
 
@@ -61,9 +61,9 @@ impl AuthSubcommand {
         };
 
         match self.command {
-            AuthCommands::Login(login) => login.run(index_url, project, reqwest),
-            AuthCommands::Logout(logout) => logout.run(index_url),
-            AuthCommands::WhoAmI(whoami) => whoami.run(index_url, reqwest),
+            AuthCommands::Login(login) => login.run(index_url, project, reqwest).await,
+            AuthCommands::Logout(logout) => logout.run(index_url).await,
+            AuthCommands::WhoAmI(whoami) => whoami.run(index_url, reqwest).await,
         }
     }
 }

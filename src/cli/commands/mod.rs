@@ -1,6 +1,5 @@
 use indicatif::MultiProgress;
 use pesde::Project;
-use std::thread::JoinHandle;
 
 mod add;
 mod auth;
@@ -73,40 +72,31 @@ pub enum Subcommand {
 }
 
 impl Subcommand {
-    pub fn run(
+    pub async fn run(
         self,
         project: Project,
         multi: MultiProgress,
-        reqwest: reqwest::blocking::Client,
-        update_task: JoinHandle<()>,
+        reqwest: reqwest::Client,
     ) -> anyhow::Result<()> {
-        let mut update_task = Some(update_task);
-
-        let res = match self {
-            Subcommand::Auth(auth) => auth.run(project, reqwest),
-            Subcommand::Config(config) => config.run(),
-            Subcommand::Init(init) => init.run(project),
-            Subcommand::Run(run) => run.run(project, &mut update_task),
-            Subcommand::Install(install) => install.run(project, multi, reqwest, &mut update_task),
-            Subcommand::Publish(publish) => publish.run(project, reqwest),
+        match self {
+            Subcommand::Auth(auth) => auth.run(project, reqwest).await,
+            Subcommand::Config(config) => config.run().await,
+            Subcommand::Init(init) => init.run(project).await,
+            Subcommand::Run(run) => run.run(project).await,
+            Subcommand::Install(install) => install.run(project, multi, reqwest).await,
+            Subcommand::Publish(publish) => publish.run(project, reqwest).await,
             #[cfg(feature = "version-management")]
-            Subcommand::SelfInstall(self_install) => self_install.run(),
+            Subcommand::SelfInstall(self_install) => self_install.run().await,
             #[cfg(feature = "patches")]
-            Subcommand::Patch(patch) => patch.run(project, reqwest),
+            Subcommand::Patch(patch) => patch.run(project, reqwest).await,
             #[cfg(feature = "patches")]
-            Subcommand::PatchCommit(patch_commit) => patch_commit.run(project),
+            Subcommand::PatchCommit(patch_commit) => patch_commit.run(project).await,
             #[cfg(feature = "version-management")]
-            Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(reqwest),
-            Subcommand::Add(add) => add.run(project),
-            Subcommand::Update(update) => update.run(project, multi, reqwest, &mut update_task),
-            Subcommand::Outdated(outdated) => outdated.run(project),
-            Subcommand::Execute(execute) => execute.run(project, reqwest),
-        };
-
-        if let Some(handle) = update_task.take() {
-            handle.join().expect("failed to join update task");
+            Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(reqwest).await,
+            Subcommand::Add(add) => add.run(project).await,
+            Subcommand::Update(update) => update.run(project, multi, reqwest).await,
+            Subcommand::Outdated(outdated) => outdated.run(project).await,
+            Subcommand::Execute(execute) => execute.run(project, reqwest).await,
         }
-
-        res
     }
 }

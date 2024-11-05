@@ -13,10 +13,10 @@ pub enum ConfigCommands {
 }
 
 impl ConfigCommands {
-    pub fn run(self) -> anyhow::Result<()> {
+    pub async fn run(self) -> anyhow::Result<()> {
         match self {
-            ConfigCommands::DefaultIndex(default_index) => default_index.run(),
-            ConfigCommands::ScriptsRepo(scripts_repo) => scripts_repo.run(),
+            ConfigCommands::DefaultIndex(default_index) => default_index.run().await,
+            ConfigCommands::ScriptsRepo(scripts_repo) => scripts_repo.run().await,
         }
     }
 }

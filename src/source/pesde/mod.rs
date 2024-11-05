@@ -20,13 +20,17 @@ use crate::{
     },
     names::{PackageName, PackageNames},
     source::{
-        fs::{store_reader_in_cas, FSEntry, PackageFS},
+        fs::{store_in_cas, FSEntry, PackageFS},
         git_index::GitBasedSource,
         DependencySpecifiers, PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project,
 };
+use fs_err::tokio as fs;
+use futures::StreamExt;
+
+// TODO: make more of these functions async
 
 /// The pesde package reference
 pub mod pkg_ref;
@@ -186,11 +190,11 @@ impl PackageSource for PesdePackageSource {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
-    fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-        GitBasedSource::refresh(self, project)
+    async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+        GitBasedSource::refresh(self, project).await
     }
 
-    fn resolve(
+    async fn resolve(
         &self,
         specifier: &Self::Specifier,
         project: &Project,
@@ -239,11 +243,11 @@ impl PackageSource for PesdePackageSource {
         ))
     }
 
-    fn download(
+    async fn download(
         &self,
         pkg_ref: &Self::Ref,
         project: &Project,
-        reqwest: &reqwest::blocking::Client,
+        reqwest: &reqwest::Client,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let config = self.config(project).map_err(Box::new)?;
         let index_file = project
@@ -253,7 +257,7 @@ impl PackageSource for PesdePackageSource {
             .join(pkg_ref.version.to_string())
             .join(pkg_ref.target.to_string());
 
-        match fs_err::read_to_string(&index_file) {
+        match fs::read_to_string(&index_file).await {
             Ok(s) => {
                 log::debug!(
                     "using cached index file for package {}@{} {}",
@@ -280,26 +284,29 @@ impl PackageSource for PesdePackageSource {
             request = request.header(AUTHORIZATION, token);
         }
 
-        let response = request.send()?.error_for_status()?;
-        let bytes = response.bytes()?;
+        let response = request.send().await?.error_for_status()?;
+        let bytes = response.bytes().await?;
 
-        let mut decoder = flate2::read::GzDecoder::new(bytes.as_ref());
-        let mut archive = tar::Archive::new(&mut decoder);
+        let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes.as_ref());
+        let mut archive = tokio_tar::Archive::new(&mut decoder);
 
         let mut entries = BTreeMap::new();
 
-        for entry in archive.entries().map_err(errors::DownloadError::Unpack)? {
-            let mut entry = entry.map_err(errors::DownloadError::Unpack)?;
+        while let Some(entry) = archive
+            .entries()
+            .map_err(errors::DownloadError::Unpack)?
+            .next()
+            .await
+            .transpose()
+            .map_err(errors::DownloadError::Unpack)?
+        {
             let path =
                 RelativePathBuf::from_path(entry.path().map_err(errors::DownloadError::Unpack)?)
                     .unwrap();
+            let name = path.file_name().unwrap_or("");
 
             if entry.header().entry_type().is_dir() {
-                if path
-                    .components()
-                    .next()
-                    .is_some_and(|ct| IGNORED_DIRS.contains(&ct.as_str()))
-                {
+                if IGNORED_DIRS.contains(&name) {
                     continue;
                 }
 
@@ -308,11 +315,12 @@ impl PackageSource for PesdePackageSource {
                 continue;
             }
 
-            if IGNORED_FILES.contains(&path.as_str()) {
+            if IGNORED_FILES.contains(&name) {
                 continue;
             }
 
-            let hash = store_reader_in_cas(project.cas_dir(), &mut entry)
+            let hash = store_in_cas(project.cas_dir(), entry, |_| async { Ok(()) })
+                .await
                 .map_err(errors::DownloadError::Store)?;
             entries.insert(path, FSEntry::File(hash));
         }
@@ -320,10 +328,13 @@ impl PackageSource for PesdePackageSource {
         let fs = PackageFS::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
-            fs_err::create_dir_all(parent).map_err(errors::DownloadError::WriteIndex)?;
+            fs::create_dir_all(parent)
+                .await
+                .map_err(errors::DownloadError::WriteIndex)?;
         }
 
-        fs_err::write(&index_file, toml::to_string(&fs)?)
+        fs::write(&index_file, toml::to_string(&fs)?)
+            .await
             .map_err(errors::DownloadError::WriteIndex)?;
 
         Ok((fs, pkg_ref.target.clone()))

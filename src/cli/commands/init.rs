@@ -10,6 +10,7 @@ use pesde::{
 };
 
 use crate::cli::{config::read_config, HOME_DIR};
+use fs_err::tokio as fs;
 
 #[derive(Debug, Args)]
 pub struct InitCommand {}
@@ -25,8 +26,8 @@ require(home_dir .. {:?})"#,
 }
 
 impl InitCommand {
-    pub fn run(self, project: Project) -> anyhow::Result<()> {
-        match project.read_manifest() {
+    pub async fn run(self, project: Project) -> anyhow::Result<()> {
+        match project.read_manifest().await {
             Ok(_) => {
                 println!("{}", "project already initialized".red());
                 return Ok(());
@@ -125,25 +126,29 @@ impl InitCommand {
             let folder = project
                 .package_dir()
                 .join(concat!(".", env!("CARGO_PKG_NAME")));
-            fs_err::create_dir_all(&folder).context("failed to create scripts folder")?;
+            fs::create_dir_all(&folder)
+                .await
+                .context("failed to create scripts folder")?;
 
-            fs_err::write(
+            fs::write(
                 folder.join(format!("{}.luau", ScriptName::RobloxSyncConfigGenerator)),
                 script_contents(Path::new(&format!(
                     "lune/rojo/{}.luau",
                     ScriptName::RobloxSyncConfigGenerator
                 ))),
             )
+            .await
             .context("failed to write sync config generator script file")?;
 
             #[cfg(feature = "wally-compat")]
-            fs_err::write(
+            fs::write(
                 folder.join(format!("{}.luau", ScriptName::SourcemapGenerator)),
                 script_contents(Path::new(&format!(
                     "lune/rojo/{}.luau",
                     ScriptName::SourcemapGenerator
                 ))),
             )
+            .await
             .context("failed to write sourcemap generator script file")?;
 
             let scripts =
@@ -166,9 +171,9 @@ impl InitCommand {
 
         manifest["indices"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
             [DEFAULT_INDEX_NAME] =
-            toml_edit::value(read_config()?.default_index.to_bstring().to_string());
+            toml_edit::value(read_config().await?.default_index.to_bstring().to_string());
 
-        project.write_manifest(manifest.to_string())?;
+        project.write_manifest(manifest.to_string()).await?;
 
         println!("{}", "initialized project".green());
         Ok(())

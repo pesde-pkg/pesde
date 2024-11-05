@@ -62,17 +62,17 @@ impl PackageSource for PackageSources {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
-    fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+    async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
         match self {
-            PackageSources::Pesde(source) => source.refresh(project).map_err(Into::into),
+            PackageSources::Pesde(source) => source.refresh(project).await.map_err(Into::into),
             #[cfg(feature = "wally-compat")]
-            PackageSources::Wally(source) => source.refresh(project).map_err(Into::into),
-            PackageSources::Git(source) => source.refresh(project).map_err(Into::into),
-            PackageSources::Workspace(source) => source.refresh(project).map_err(Into::into),
+            PackageSources::Wally(source) => source.refresh(project).await.map_err(Into::into),
+            PackageSources::Git(source) => source.refresh(project).await.map_err(Into::into),
+            PackageSources::Workspace(source) => source.refresh(project).await.map_err(Into::into),
         }
     }
 
-    fn resolve(
+    async fn resolve(
         &self,
         specifier: &Self::Specifier,
         project: &Project,
@@ -81,6 +81,7 @@ impl PackageSource for PackageSources {
         match (self, specifier) {
             (PackageSources::Pesde(source), DependencySpecifiers::Pesde(specifier)) => source
                 .resolve(specifier, project, package_target)
+                .await
                 .map(|(name, results)| {
                     (
                         name,
@@ -95,6 +96,7 @@ impl PackageSource for PackageSources {
             #[cfg(feature = "wally-compat")]
             (PackageSources::Wally(source), DependencySpecifiers::Wally(specifier)) => source
                 .resolve(specifier, project, package_target)
+                .await
                 .map(|(name, results)| {
                     (
                         name,
@@ -108,6 +110,7 @@ impl PackageSource for PackageSources {
 
             (PackageSources::Git(source), DependencySpecifiers::Git(specifier)) => source
                 .resolve(specifier, project, package_target)
+                .await
                 .map(|(name, results)| {
                     (
                         name,
@@ -122,6 +125,7 @@ impl PackageSource for PackageSources {
             (PackageSources::Workspace(source), DependencySpecifiers::Workspace(specifier)) => {
                 source
                     .resolve(specifier, project, package_target)
+                    .await
                     .map(|(name, results)| {
                         (
                             name,
@@ -140,28 +144,32 @@ impl PackageSource for PackageSources {
         }
     }
 
-    fn download(
+    async fn download(
         &self,
         pkg_ref: &Self::Ref,
         project: &Project,
-        reqwest: &reqwest::blocking::Client,
+        reqwest: &reqwest::Client,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         match (self, pkg_ref) {
             (PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => source
                 .download(pkg_ref, project, reqwest)
+                .await
                 .map_err(Into::into),
 
             #[cfg(feature = "wally-compat")]
             (PackageSources::Wally(source), PackageRefs::Wally(pkg_ref)) => source
                 .download(pkg_ref, project, reqwest)
+                .await
                 .map_err(Into::into),
 
             (PackageSources::Git(source), PackageRefs::Git(pkg_ref)) => source
                 .download(pkg_ref, project, reqwest)
+                .await
                 .map_err(Into::into),
 
             (PackageSources::Workspace(source), PackageRefs::Workspace(pkg_ref)) => source
                 .download(pkg_ref, project, reqwest)
+                .await
                 .map_err(Into::into),
 
             _ => Err(errors::DownloadError::Mismatch),

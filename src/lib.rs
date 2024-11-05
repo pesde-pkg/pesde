@@ -4,6 +4,9 @@
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
 
 use crate::{lockfile::Lockfile, manifest::Manifest};
+use async_stream::stream;
+use fs_err::tokio as fs;
+use futures::Stream;
 use gix::sec::identity::Account;
 use std::{
     collections::HashMap,
@@ -137,42 +140,49 @@ impl Project {
     }
 
     /// Read the manifest file
-    pub fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
-        let string = fs_err::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME))?;
+    pub async fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
+        let string = fs::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME)).await?;
         Ok(string)
     }
 
     /// Deserialize the manifest file
-    pub fn deser_manifest(&self) -> Result<Manifest, errors::ManifestReadError> {
-        let string = fs_err::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME))?;
+    pub async fn deser_manifest(&self) -> Result<Manifest, errors::ManifestReadError> {
+        let string = fs::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME)).await?;
         Ok(toml::from_str(&string)?)
     }
 
     /// Write the manifest file
-    pub fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
-        fs_err::write(self.package_dir.join(MANIFEST_FILE_NAME), manifest.as_ref())
+    pub async fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
+        fs::write(self.package_dir.join(MANIFEST_FILE_NAME), manifest.as_ref()).await
     }
 
     /// Deserialize the lockfile
-    pub fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
-        let string = fs_err::read_to_string(self.package_dir.join(LOCKFILE_FILE_NAME))?;
+    pub async fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
+        let string = fs::read_to_string(self.package_dir.join(LOCKFILE_FILE_NAME)).await?;
         Ok(toml::from_str(&string)?)
     }
 
     /// Write the lockfile
-    pub fn write_lockfile(&self, lockfile: Lockfile) -> Result<(), errors::LockfileWriteError> {
+    pub async fn write_lockfile(
+        &self,
+        lockfile: Lockfile,
+    ) -> Result<(), errors::LockfileWriteError> {
         let string = toml::to_string(&lockfile)?;
-        fs_err::write(self.package_dir.join(LOCKFILE_FILE_NAME), string)?;
+        fs::write(self.package_dir.join(LOCKFILE_FILE_NAME), string).await?;
         Ok(())
     }
 
     /// Get the workspace members
-    pub fn workspace_members<P: AsRef<Path>>(
+    pub async fn workspace_members<P: AsRef<Path>>(
         &self,
         dir: P,
-    ) -> Result<HashMap<PathBuf, Manifest>, errors::WorkspaceMembersError> {
+    ) -> Result<
+        impl Stream<Item = Result<(PathBuf, Manifest), errors::WorkspaceMembersError>>,
+        errors::WorkspaceMembersError,
+    > {
         let dir = dir.as_ref().to_path_buf();
-        let manifest = fs_err::read_to_string(dir.join(MANIFEST_FILE_NAME))
+        let manifest = fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
+            .await
             .map_err(errors::WorkspaceMembersError::ManifestMissing)?;
         let manifest = toml::from_str::<Manifest>(&manifest).map_err(|e| {
             errors::WorkspaceMembersError::ManifestDeser(dir.to_path_buf(), Box::new(e))
@@ -188,17 +198,18 @@ impl Project {
             .flat_map(|paths| paths.into_iter())
             .collect::<Result<Vec<_>, _>>()?;
 
-        members
-            .into_iter()
-            .map(|path| {
-                let manifest = fs_err::read_to_string(path.join(MANIFEST_FILE_NAME))
+        Ok(stream! {
+            for path in members {
+                let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+                    .await
                     .map_err(errors::WorkspaceMembersError::ManifestMissing)?;
                 let manifest = toml::from_str::<Manifest>(&manifest).map_err(|e| {
                     errors::WorkspaceMembersError::ManifestDeser(path.clone(), Box::new(e))
                 })?;
-                Ok((path, manifest))
-            })
-            .collect::<Result<_, _>>()
+
+                yield Ok((path, manifest));
+            }
+        })
     }
 }
 

@@ -3,6 +3,7 @@ use actix_web::{
     http::header::{CONTENT_ENCODING, CONTENT_TYPE},
     HttpResponse,
 };
+use fs_err::tokio as fs;
 use pesde::{names::PackageName, source::version_id::VersionId};
 use std::{
     fmt::Display,
@@ -14,8 +15,8 @@ pub struct FSStorage {
     pub root: PathBuf,
 }
 
-fn read_file_to_response(path: &Path, content_type: &str) -> Result<HttpResponse, Error> {
-    Ok(match fs_err::read(path) {
+async fn read_file_to_response(path: &Path, content_type: &str) -> Result<HttpResponse, Error> {
+    Ok(match fs::read(path).await {
         Ok(contents) => HttpResponse::Ok()
             .append_header((CONTENT_TYPE, content_type))
             .append_header((CONTENT_ENCODING, "gzip"))
@@ -40,9 +41,9 @@ impl StorageImpl for FSStorage {
             .join(name)
             .join(version.version().to_string())
             .join(version.target().to_string());
-        fs_err::create_dir_all(&path)?;
+        fs::create_dir_all(&path).await?;
 
-        fs_err::write(path.join("pkg.tar.gz"), &contents)?;
+        fs::write(path.join("pkg.tar.gz"), &contents).await?;
 
         Ok(())
     }
@@ -61,7 +62,7 @@ impl StorageImpl for FSStorage {
             .join(version.version().to_string())
             .join(version.target().to_string());
 
-        read_file_to_response(&path.join("pkg.tar.gz"), "application/gzip")
+        read_file_to_response(&path.join("pkg.tar.gz"), "application/gzip").await
     }
 
     async fn store_readme(
@@ -78,9 +79,9 @@ impl StorageImpl for FSStorage {
             .join(name)
             .join(version.version().to_string())
             .join(version.target().to_string());
-        fs_err::create_dir_all(&path)?;
+        fs::create_dir_all(&path).await?;
 
-        fs_err::write(path.join("readme.gz"), &contents)?;
+        fs::write(path.join("readme.gz"), &contents).await?;
 
         Ok(())
     }
@@ -99,14 +100,14 @@ impl StorageImpl for FSStorage {
             .join(version.version().to_string())
             .join(version.target().to_string());
 
-        read_file_to_response(&path.join("readme.gz"), "text/plain")
+        read_file_to_response(&path.join("readme.gz"), "text/plain").await
     }
 
     async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), Error> {
         let path = self.root.join("Doc");
-        fs_err::create_dir_all(&path)?;
+        fs::create_dir_all(&path).await?;
 
-        fs_err::write(path.join(format!("{doc_hash}.gz")), &contents)?;
+        fs::write(path.join(format!("{doc_hash}.gz")), &contents).await?;
 
         Ok(())
     }
@@ -114,7 +115,7 @@ impl StorageImpl for FSStorage {
     async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, Error> {
         let path = self.root.join("Doc");
 
-        read_file_to_response(&path.join(format!("{doc_hash}.gz")), "text/plain")
+        read_file_to_response(&path.join(format!("{doc_hash}.gz")), "text/plain").await
     }
 }
 
