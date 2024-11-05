@@ -39,13 +39,13 @@ pub enum PackageFS {
     Copy(PathBuf, TargetKind),
 }
 
-fn make_readonly(_file: &fs::File) -> std::io::Result<()> {
+async fn make_readonly(_file: &fs::File) -> std::io::Result<()> {
     // on Windows, file deletion is disallowed if the file is read-only which breaks patching
     #[cfg(not(windows))]
     {
-        let mut permissions = _file.metadata()?.permissions();
+        let mut permissions = _file.metadata().await?.permissions();
         permissions.set_readonly(true);
-        _file.set_permissions(permissions)
+        _file.set_permissions(permissions).await
     }
 
     #[cfg(windows)]
@@ -99,7 +99,7 @@ pub(crate) async fn store_in_cas<
 
     match temp_path.persist_noclobber(&cas_path) {
         Ok(_) => {
-            make_readonly(&file_writer.into_inner())?;
+            make_readonly(&file_writer.into_inner()).await?;
         }
         Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.error),
@@ -138,10 +138,10 @@ impl PackageFS {
 
                                 #[cfg(unix)]
                                 {
-                                    let mut permissions = f.metadata()?.permissions();
+                                    let mut permissions = f.metadata().await?.permissions();
                                     use std::os::unix::fs::PermissionsExt;
                                     permissions.set_mode(permissions.mode() | 0o644);
-                                    f.set_permissions(permissions)?;
+                                    f.set_permissions(permissions).await?;
                                 }
                             }
                         }
