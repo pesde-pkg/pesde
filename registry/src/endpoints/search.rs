@@ -28,23 +28,12 @@ pub async fn search_packages(
 
     let id = schema.get_field("id").unwrap();
 
-    let scope = schema.get_field("scope").unwrap();
-    let name = schema.get_field("name").unwrap();
-    let description = schema.get_field("description").unwrap();
-
     let query = request.query.as_deref().unwrap_or_default().trim();
 
     let query = if query.is_empty() {
         Box::new(AllQuery)
     } else {
-        let mut query_parser = tantivy::query::QueryParser::for_index(
-            searcher.index(),
-            vec![scope, name, description],
-        );
-        query_parser.set_field_boost(scope, 2.0);
-        query_parser.set_field_boost(name, 3.5);
-
-        query_parser.parse_query(query)?
+        app_state.query_parser.parse_query(query)?
     };
 
     let (count, top_docs) = searcher

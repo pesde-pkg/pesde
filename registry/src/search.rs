@@ -6,11 +6,16 @@ use pesde::{
 };
 use tantivy::{
     doc,
+    query::QueryParser,
     schema::{IndexRecordOption, TextFieldIndexing, TextOptions, FAST, STORED, STRING},
+    tokenizer::TextAnalyzer,
     DateTime, IndexReader, IndexWriter, Term,
 };
 
-pub fn make_search(project: &Project, source: &PesdePackageSource) -> (IndexReader, IndexWriter) {
+pub fn make_search(
+    project: &Project,
+    source: &PesdePackageSource,
+) -> (IndexReader, IndexWriter, QueryParser) {
     let mut schema_builder = tantivy::schema::SchemaBuilder::new();
 
     let field_options = TextOptions::default().set_indexing_options(
@@ -28,7 +33,9 @@ pub fn make_search(project: &Project, source: &PesdePackageSource) -> (IndexRead
     let search_index = tantivy::Index::create_in_ram(schema_builder.build());
     search_index.tokenizers().register(
         "ngram",
-        tantivy::tokenizer::NgramTokenizer::all_ngrams(1, 12).unwrap(),
+        TextAnalyzer::builder(tantivy::tokenizer::NgramTokenizer::all_ngrams(1, 12).unwrap())
+            .filter(tantivy::tokenizer::LowerCaser)
+            .build(),
     );
 
     let search_reader = search_index
@@ -56,7 +63,11 @@ pub fn make_search(project: &Project, source: &PesdePackageSource) -> (IndexRead
     search_writer.commit().unwrap();
     search_reader.reload().unwrap();
 
-    (search_reader, search_writer)
+    let mut query_parser = QueryParser::for_index(&search_index, vec![scope, name, description]);
+    query_parser.set_field_boost(scope, 2.0);
+    query_parser.set_field_boost(name, 3.5);
+
+    (search_reader, search_writer, query_parser)
 }
 
 pub fn update_version(app_state: &AppState, name: &PackageName, entry: IndexFileEntry) {

@@ -45,6 +45,7 @@ pub struct AppState {
 
     pub search_reader: tantivy::IndexReader,
     pub search_writer: std::sync::Mutex<tantivy::IndexWriter>,
+    pub query_parser: tantivy::query::QueryParser,
 }
 
 #[macro_export]
@@ -105,7 +106,7 @@ async fn run() -> std::io::Result<()> {
         .await
         .expect("failed to refresh source");
 
-    let (search_reader, search_writer) = make_search(&project, &source);
+    let (search_reader, search_writer, query_parser) = make_search(&project, &source);
 
     let app_data = web::Data::new(AppState {
         storage: {
@@ -124,6 +125,7 @@ async fn run() -> std::io::Result<()> {
 
         search_reader,
         search_writer: std::sync::Mutex::new(search_writer),
+        query_parser,
     });
 
     let publish_governor_config = GovernorConfigBuilder::default()
