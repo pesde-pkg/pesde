@@ -76,7 +76,7 @@ impl UpdateCommand {
             .context("failed to write lockfile")?;
 
         println!(
-            "\n{}\nrun `{} install` in order to install the new dependencies",
+            "\n\n{}. run `{} install` in order to install the new dependencies",
             "✅ done".green(),
             env!("CARGO_BIN_NAME")
         );
