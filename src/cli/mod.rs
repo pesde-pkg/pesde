@@ -192,8 +192,9 @@ pub fn parse_gix_url(s: &str) -> Result<gix::Url, gix::url::parse::Error> {
 
 pub async fn progress_bar<E: std::error::Error + Into<anyhow::Error>>(
     len: u64,
-    mut rx: tokio::sync::mpsc::Receiver<Result<(), E>>,
+    mut rx: tokio::sync::mpsc::Receiver<Result<String, E>>,
     multi: &MultiProgress,
+    prefix: String,
     progress_msg: String,
     finish_msg: String,
 ) -> anyhow::Result<()> {
@@ -201,8 +202,10 @@ pub async fn progress_bar<E: std::error::Error + Into<anyhow::Error>>(
         indicatif::ProgressBar::new(len)
             .with_style(
                 indicatif::ProgressStyle::default_bar()
-                    .template("{msg} {bar:40.208/166} {pos}/{len} {percent}% {elapsed_precise}")?,
+                    .template("{prefix}[{elapsed_precise}] {bar:40.208/166} {pos}/{len} {msg}")?
+                    .progress_chars("█▓▒░ "),
             )
+            .with_prefix(prefix)
             .with_message(progress_msg),
     );
     bar.enable_steady_tick(Duration::from_millis(100));
@@ -211,7 +214,9 @@ pub async fn progress_bar<E: std::error::Error + Into<anyhow::Error>>(
         bar.inc(1);
 
         match result {
-            Ok(()) => {}
+            Ok(text) => {
+                bar.set_message(text);
+            }
             Err(e) => return Err(e.into()),
         }
     }

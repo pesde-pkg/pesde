@@ -211,8 +211,9 @@ impl InstallCommand {
                 graph.values().map(|versions| versions.len() as u64).sum(),
                 rx,
                 &multi,
-                format!("{} 📥 downloading dependencies", job(3)),
-                format!("{} 📥 downloaded dependencies", job(3)),
+                format!("{} 📥 ", job(3)),
+                "downloading dependencies".to_string(),
+                "downloaded dependencies".to_string(),
             )
             .await?;
 
@@ -250,8 +251,9 @@ impl InstallCommand {
                 manifest.patches.values().map(|v| v.len() as u64).sum(),
                 rx,
                 &multi,
-                format!("{} 🩹 applying patches", job(4)),
-                format!("{} 🩹 applied patches", job(4)),
+                format!("{} 🩹 ", job(4)),
+                "applying patches".to_string(),
+                "applied patches".to_string(),
             )
             .await?;
         }

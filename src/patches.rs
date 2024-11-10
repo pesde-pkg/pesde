@@ -76,7 +76,7 @@ impl Project {
         &self,
         graph: &DownloadedGraph,
     ) -> Result<
-        tokio::sync::mpsc::Receiver<Result<(), errors::ApplyPatchesError>>,
+        tokio::sync::mpsc::Receiver<Result<String, errors::ApplyPatchesError>>,
         errors::ApplyPatchesError,
     > {
         let manifest = self.deser_manifest().await?;
@@ -103,7 +103,7 @@ impl Project {
                     log::warn!(
                         "patch for {name}@{version_id} not applied because it is not in the graph"
                     );
-                    tx.send(Ok(())).await.unwrap();
+                    tx.send(Ok(format!("{name}@{version_id}"))).await.unwrap();
                     continue;
                 };
 
@@ -212,7 +212,7 @@ impl Project {
                         return;
                     }
 
-                    tx.send(Ok(())).await.unwrap();
+                    tx.send(Ok(format!("{name}@{version_id}"))).await.unwrap();
                 });
             }
         }

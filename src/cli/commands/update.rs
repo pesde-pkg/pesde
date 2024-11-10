@@ -54,8 +54,9 @@ impl UpdateCommand {
                         graph.values().map(|versions| versions.len() as u64).sum(),
                         rx,
                         &multi,
-                        "📥 downloading dependencies".to_string(),
-                        "📥 downloaded dependencies".to_string(),
+                        "📥 ".to_string(),
+                        "downloading dependencies".to_string(),
+                        "downloaded dependencies".to_string(),
                     )
                     .await?;
 

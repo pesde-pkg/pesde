@@ -17,7 +17,7 @@ use std::{
 type MultithreadedGraph = Arc<Mutex<DownloadedGraph>>;
 
 type MultithreadDownloadJob = (
-    tokio::sync::mpsc::Receiver<Result<(), errors::DownloadGraphError>>,
+    tokio::sync::mpsc::Receiver<Result<String, errors::DownloadGraphError>>,
     MultithreadedGraph,
 );
 
@@ -119,6 +119,8 @@ impl Project {
                         }
                     }
 
+                    let display_name = format!("{name}@{version_id}");
+
                     {
                         let mut downloaded_graph = downloaded_graph.lock().unwrap();
                         downloaded_graph
@@ -127,7 +129,7 @@ impl Project {
                             .insert(version_id, DownloadedDependencyGraphNode { node, target });
                     }
 
-                    tx.send(Ok(())).await.unwrap();
+                    tx.send(Ok(display_name)).await.unwrap();
                 });
             }
         }
