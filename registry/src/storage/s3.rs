@@ -1,4 +1,7 @@
-use crate::{error::Error, storage::StorageImpl};
+use crate::{
+    error::{Error, ReqwestErrorExt},
+    storage::StorageImpl,
+};
 use actix_web::{http::header::LOCATION, HttpResponse};
 use pesde::{names::PackageName, source::version_id::VersionId};
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
@@ -42,7 +45,8 @@ impl StorageImpl for S3Storage {
             .body(contents)
             .send()
             .await?
-            .error_for_status()?;
+            .into_error()
+            .await?;
 
         Ok(())
     }
@@ -92,7 +96,8 @@ impl StorageImpl for S3Storage {
             .body(contents)
             .send()
             .await?
-            .error_for_status()?;
+            .into_error()
+            .await?;
 
         Ok(())
     }
@@ -134,7 +139,8 @@ impl StorageImpl for S3Storage {
             .body(contents)
             .send()
             .await?
-            .error_for_status()?;
+            .into_error()
+            .await?;
 
         Ok(())
     }

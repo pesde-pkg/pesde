@@ -144,7 +144,7 @@ async fn run() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .wrap(sentry_actix::Sentry::new())
+            .wrap(sentry_actix::Sentry::with_transaction())
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .wrap(Cors::permissive())
             .wrap(Logger::default())
@@ -205,11 +205,18 @@ fn main() -> std::io::Result<()> {
 
     let guard = sentry::init(sentry::ClientOptions {
         release: sentry::release_name!(),
+        dsn: benv!(parse "SENTRY_DSN").ok(),
+        session_mode: sentry::SessionMode::Request,
+        traces_sample_rate: 1.0,
+        debug: true,
         ..Default::default()
     });
 
     if guard.is_enabled() {
         std::env::set_var("RUST_BACKTRACE", "full");
+        info!("sentry initialized");
+    } else {
+        info!("sentry **NOT** initialized");
     }
 
     System::new().block_on(run())

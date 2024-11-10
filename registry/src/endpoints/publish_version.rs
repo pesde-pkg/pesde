@@ -24,6 +24,7 @@ use pesde::{
     },
     MANIFEST_FILE_NAME,
 };
+use sentry::add_breadcrumb;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -267,6 +268,20 @@ pub async fn publish_package(
     let Some(manifest) = manifest else {
         return Err(Error::InvalidArchive);
     };
+
+    add_breadcrumb(sentry::Breadcrumb {
+        category: Some("publish".into()),
+        message: Some(format!(
+            "publish request for {}@{} {}. has readme: {}. docs: {}",
+            manifest.name,
+            manifest.version,
+            manifest.target,
+            readme.is_some(),
+            docs_pages.len()
+        )),
+        level: sentry::Level::Info,
+        ..Default::default()
+    });
 
     {
         let dependencies = manifest

@@ -14,6 +14,7 @@ use actix_web::{
     web, HttpMessage, HttpResponse,
 };
 use pesde::source::pesde::IndexConfig;
+use sentry::add_breadcrumb;
 use sha2::{Digest, Sha256};
 use std::fmt::Display;
 
@@ -114,6 +115,13 @@ pub async fn write_mw(
         }
     };
 
+    add_breadcrumb(sentry::Breadcrumb {
+        category: Some("auth".into()),
+        message: Some(format!("write request authorized as {}", user_id.0)),
+        level: sentry::Level::Info,
+        ..Default::default()
+    });
+
     req.extensions_mut().insert(user_id);
 
     next.call(req).await.map(|res| res.map_into_left_body())
@@ -133,6 +141,13 @@ pub async fn read_mw(
                     .map_into_right_body())
             }
         };
+
+        add_breadcrumb(sentry::Breadcrumb {
+            category: Some("auth".into()),
+            message: Some(format!("read request authorized as {}", user_id.0)),
+            level: sentry::Level::Info,
+            ..Default::default()
+        });
 
         req.extensions_mut().insert(Some(user_id));
     } else {

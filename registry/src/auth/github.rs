@@ -1,4 +1,7 @@
-use crate::auth::{get_token_from_req, AuthImpl, UserId};
+use crate::{
+    auth::{get_token_from_req, AuthImpl, UserId},
+    error::ReqwestErrorExt,
+};
 use actix_web::{dev::ServiceRequest, Error as ActixError};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -41,8 +44,11 @@ impl AuthImpl for GitHubAuth {
                 Err(e) if e.status().is_some_and(|s| s == StatusCode::UNAUTHORIZED) => {
                     return Ok(None);
                 }
-                Err(e) => {
-                    log::error!("failed to get user: {e}");
+                Err(_) => {
+                    log::error!(
+                        "failed to get user: {}",
+                        response.into_error().await.unwrap_err()
+                    );
                     return Ok(None);
                 }
             },

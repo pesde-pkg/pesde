@@ -15,6 +15,9 @@ pub enum Error {
     #[error("error deserializing file")]
     Deserialize(#[from] toml::de::Error),
 
+    #[error("failed to send request: {1}\nserver response: {0}")]
+    ReqwestResponse(String, #[source] reqwest::Error),
+
     #[error("error sending request")]
     Reqwest(#[from] reqwest::Error),
 
@@ -66,6 +69,21 @@ impl ResponseError for Error {
                 log::error!("unhandled error: {e:?}");
                 HttpResponse::InternalServerError().finish()
             }
+        }
+    }
+}
+
+pub trait ReqwestErrorExt {
+    async fn into_error(self) -> Result<Self, Error>
+    where
+        Self: Sized;
+}
+
+impl ReqwestErrorExt for reqwest::Response {
+    async fn into_error(self) -> Result<Self, Error> {
+        match self.error_for_status_ref() {
+            Ok(_) => Ok(self),
+            Err(e) => Err(Error::ReqwestResponse(self.text().await?, e)),
         }
     }
 }
