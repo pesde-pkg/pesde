@@ -1,18 +1,22 @@
 use crate::cli::{
-    bin_dir, download_graph, files::make_executable, repos::update_scripts,
-    run_on_workspace_members, up_to_date_lockfile,
+    bin_dir, files::make_executable, progress_bar, repos::update_scripts, run_on_workspace_members,
+    up_to_date_lockfile,
 };
 use anyhow::Context;
 use clap::Args;
 use colored::{ColoredString, Colorize};
 use fs_err::tokio as fs;
+use futures::future::try_join_all;
 use indicatif::MultiProgress;
 use pesde::{
     lockfile::Lockfile,
     manifest::{target::TargetKind, DependencyType},
     Project, MANIFEST_FILE_NAME,
 };
-use std::collections::{BTreeSet, HashSet};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    sync::Arc,
+};
 
 #[derive(Debug, Args, Copy, Clone)]
 pub struct InstallCommand {
@@ -131,6 +135,9 @@ impl InstallCommand {
             }
         };
 
+        let project_2 = project.clone();
+        let update_scripts_handle = tokio::spawn(async move { update_scripts(&project_2).await });
+
         println!(
             "\n{}\n",
             format!("[now installing {} {}]", manifest.name, manifest.target)
@@ -141,23 +148,32 @@ impl InstallCommand {
         println!("{} ❌ removing current package folders", job(1));
 
         {
-            let mut deleted_folders = HashSet::new();
+            let mut deleted_folders = HashMap::new();
 
             for target_kind in TargetKind::VARIANTS {
                 let folder = manifest.target.kind().packages_folder(target_kind);
+                let package_dir = project.package_dir();
 
-                if deleted_folders.insert(folder.to_string()) {
-                    log::debug!("deleting the {folder} folder");
+                deleted_folders
+                    .entry(folder.to_string())
+                    .or_insert_with(|| async move {
+                        log::debug!("deleting the {folder} folder");
 
-                    if let Some(e) = fs::remove_dir_all(project.package_dir().join(&folder))
-                        .await
-                        .err()
-                        .filter(|e| e.kind() != std::io::ErrorKind::NotFound)
-                    {
-                        return Err(e).context(format!("failed to remove the {folder} folder"));
-                    };
-                }
+                        if let Some(e) = fs::remove_dir_all(package_dir.join(&folder))
+                            .await
+                            .err()
+                            .filter(|e| e.kind() != std::io::ErrorKind::NotFound)
+                        {
+                            return Err(e).context(format!("failed to remove the {folder} folder"));
+                        };
+
+                        Ok(())
+                    });
             }
+
+            try_join_all(deleted_folders.into_values())
+                .await
+                .context("failed to remove package folders")?;
         }
 
         let old_graph = lockfile.map(|lockfile| {
@@ -183,20 +199,28 @@ impl InstallCommand {
             .await
             .context("failed to build dependency graph")?;
 
-        update_scripts(&project).await?;
+        update_scripts_handle.await??;
 
-        let downloaded_graph = download_graph(
-            &project,
-            &mut refreshed_sources,
-            &graph,
-            &multi,
-            &reqwest,
-            self.prod,
-            true,
-            format!("{} 📥 downloading dependencies", job(3)),
-            format!("{} 📥 downloaded dependencies", job(3)),
-        )
-        .await?;
+        let downloaded_graph = {
+            let (rx, downloaded_graph) = project
+                .download_graph(&graph, &mut refreshed_sources, &reqwest, self.prod, true)
+                .await
+                .context("failed to download dependencies")?;
+
+            progress_bar(
+                graph.values().map(|versions| versions.len() as u64).sum(),
+                rx,
+                &multi,
+                format!("{} 📥 downloading dependencies", job(3)),
+                format!("{} 📥 downloaded dependencies", job(3)),
+            )
+            .await?;
+
+            Arc::into_inner(downloaded_graph)
+                .unwrap()
+                .into_inner()
+                .unwrap()
+        };
 
         let filtered_graph = if self.prod {
             downloaded_graph
@@ -263,12 +287,19 @@ impl InstallCommand {
 
         #[cfg(feature = "patches")]
         {
-            println!("{} 🩹 applying patches", job(5));
-
-            project
+            let rx = project
                 .apply_patches(&filtered_graph)
                 .await
                 .context("failed to apply patches")?;
+
+            progress_bar(
+                manifest.patches.values().map(|v| v.len() as u64).sum(),
+                rx,
+                &multi,
+                format!("{} 🩹 applying patches", job(5)),
+                format!("{} 🩹 applied patches", job(5)),
+            )
+            .await?;
         }
 
         println!("{} 🧹 finishing up", job(JOBS));

@@ -2,12 +2,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use actix_web::{web, HttpResponse, Responder};
 
+use crate::{error::Error, package::PackageResponse, AppState};
 use pesde::{
     names::PackageName,
-    source::{git_index::GitBasedSource, pesde::IndexFile},
+    source::{
+        git_index::{read_file, root_tree, GitBasedSource},
+        pesde::IndexFile,
+    },
 };
-
-use crate::{error::Error, package::PackageResponse, AppState};
 
 pub async fn get_package_versions(
     app_state: web::Data<AppState>,
@@ -17,12 +19,16 @@ pub async fn get_package_versions(
 
     let (scope, name_part) = name.as_str();
 
-    let source = app_state.source.lock().await;
-    let versions: IndexFile =
-        match source.read_file([scope, name_part], &app_state.project, None)? {
+    let versions: IndexFile = {
+        let source = app_state.source.lock().await;
+        let repo = gix::open(source.path(&app_state.project))?;
+        let tree = root_tree(&repo)?;
+
+        match read_file(&tree, [scope, name_part])? {
             Some(versions) => toml::de::from_str(&versions)?,
             None => return Ok(HttpResponse::NotFound().finish()),
-        };
+        }
+    };
 
     let mut responses = BTreeMap::new();
 

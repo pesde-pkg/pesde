@@ -18,10 +18,10 @@ use crate::{
         target::{Target, TargetKind},
         DependencyType,
     },
-    names::{PackageName, PackageNames},
+    names::PackageNames,
     source::{
         fs::{store_in_cas, FSEntry, PackageFS},
-        git_index::GitBasedSource,
+        git_index::{read_file, root_tree, GitBasedSource},
         DependencySpecifiers, PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
@@ -29,8 +29,7 @@ use crate::{
 };
 use fs_err::tokio as fs;
 use futures::StreamExt;
-
-// TODO: make more of these functions async
+use tokio::task::spawn_blocking;
 
 /// The pesde package reference
 pub mod pkg_ref;
@@ -74,104 +73,22 @@ impl PesdePackageSource {
     }
 
     /// Reads the config file
-    pub fn config(&self, project: &Project) -> Result<IndexConfig, errors::ConfigError> {
-        let file = self
-            .read_file(["config.toml"], project, None)
-            .map_err(Box::new)?;
-
-        let string = match file {
-            Some(s) => s,
-            None => {
-                return Err(errors::ConfigError::Missing(Box::new(
-                    self.repo_url.clone(),
-                )))
-            }
-        };
-
-        toml::from_str(&string).map_err(Into::into)
-    }
-
-    /// Reads all packages from the index
-    pub fn all_packages(
-        &self,
-        project: &Project,
-    ) -> Result<BTreeMap<PackageName, IndexFile>, errors::AllPackagesError> {
+    pub async fn config(&self, project: &Project) -> Result<IndexConfig, errors::ConfigError> {
+        let repo_url = self.repo_url.clone();
         let path = self.path(project);
 
-        let repo = match gix::open(&path) {
-            Ok(repo) => repo,
-            Err(e) => return Err(errors::AllPackagesError::Open(path, Box::new(e))),
-        };
+        spawn_blocking(move || {
+            let repo = gix::open(&path).map_err(Box::new)?;
+            let tree = root_tree(&repo).map_err(Box::new)?;
+            let file = read_file(&tree, ["config.toml"]).map_err(Box::new)?;
 
-        let tree = match self.tree(&repo) {
-            Ok(tree) => tree,
-            Err(e) => return Err(errors::AllPackagesError::Tree(path, Box::new(e))),
-        };
-
-        let mut packages = BTreeMap::<PackageName, IndexFile>::new();
-
-        for entry in tree.iter() {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(e) => return Err(errors::AllPackagesError::Decode(path, e)),
-            };
-
-            let object = match entry.object() {
-                Ok(object) => object,
-                Err(e) => return Err(errors::AllPackagesError::Convert(path, e)),
-            };
-
-            // directories will be trees, and files will be blobs
-            if !matches!(object.kind, gix::object::Kind::Tree) {
-                continue;
+            match file {
+                Some(s) => toml::from_str(&s).map_err(Into::into),
+                None => Err(errors::ConfigError::Missing(Box::new(repo_url))),
             }
-
-            let package_scope = entry.filename().to_string();
-
-            for inner_entry in object.into_tree().iter() {
-                let inner_entry = match inner_entry {
-                    Ok(entry) => entry,
-                    Err(e) => return Err(errors::AllPackagesError::Decode(path, e)),
-                };
-
-                let object = match inner_entry.object() {
-                    Ok(object) => object,
-                    Err(e) => return Err(errors::AllPackagesError::Convert(path, e)),
-                };
-
-                if !matches!(object.kind, gix::object::Kind::Blob) {
-                    continue;
-                }
-
-                let package_name = inner_entry.filename().to_string();
-
-                if package_name == SCOPE_INFO_FILE {
-                    continue;
-                }
-
-                let blob = object.into_blob();
-                let string = String::from_utf8(blob.data.clone())
-                    .map_err(|e| errors::AllPackagesError::Utf8(package_name.to_string(), e))?;
-
-                let file: IndexFile = match toml::from_str(&string) {
-                    Ok(file) => file,
-                    Err(e) => {
-                        return Err(errors::AllPackagesError::Deserialize(
-                            package_name,
-                            path,
-                            Box::new(e),
-                        ))
-                    }
-                };
-
-                // if this panics, it's an issue with the index.
-                let name = format!("{package_scope}/{package_name}").parse().unwrap();
-
-                packages.insert(name, file);
-            }
-        }
-
-        Ok(packages)
+        })
+        .await
+        .unwrap()
     }
 
     /// The git2 repository for the index
@@ -201,7 +118,9 @@ impl PackageSource for PesdePackageSource {
         package_target: TargetKind,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let (scope, name) = specifier.name.as_str();
-        let string = match self.read_file([scope, name], project, None) {
+        let repo = gix::open(self.path(project)).map_err(Box::new)?;
+        let tree = root_tree(&repo).map_err(Box::new)?;
+        let string = match read_file(&tree, [scope, name]) {
             Ok(Some(s)) => s,
             Ok(None) => return Err(Self::ResolveError::NotFound(specifier.name.to_string())),
             Err(e) => {
@@ -249,7 +168,7 @@ impl PackageSource for PesdePackageSource {
         project: &Project,
         reqwest: &reqwest::Client,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
-        let config = self.config(project).map_err(Box::new)?;
+        let config = self.config(project).await.map_err(Box::new)?;
         let index_file = project
             .cas_dir
             .join("index")
@@ -292,9 +211,9 @@ impl PackageSource for PesdePackageSource {
 
         let mut entries = BTreeMap::new();
 
-        while let Some(entry) = archive
-            .entries()
-            .map_err(errors::DownloadError::Unpack)?
+        let mut archive_entries = archive.entries().map_err(errors::DownloadError::Unpack)?;
+
+        while let Some(entry) = archive_entries
             .next()
             .await
             .transpose()
@@ -474,8 +393,6 @@ pub type IndexFile = BTreeMap<VersionId, IndexFileEntry>;
 
 /// Errors that can occur when interacting with the pesde package source
 pub mod errors {
-    use std::path::PathBuf;
-
     use thiserror::Error;
 
     use crate::source::git_index::errors::{ReadFile, TreeError};
@@ -484,9 +401,13 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ResolveError {
-        /// Error interacting with the filesystem
-        #[error("error interacting with the filesystem")]
-        Io(#[from] std::io::Error),
+        /// Error opening repository
+        #[error("error opening repository")]
+        Open(#[from] Box<gix::open::Error>),
+
+        /// Error getting tree
+        #[error("error getting tree")]
+        Tree(#[from] Box<TreeError>),
 
         /// Package not found in index
         #[error("package {0} not found")]
@@ -499,16 +420,20 @@ pub mod errors {
         /// Error parsing file for package
         #[error("error parsing file for {0}")]
         Parse(String, #[source] toml::de::Error),
-
-        /// Error parsing file for package as utf8
-        #[error("error parsing file for {0} to utf8")]
-        Utf8(String, #[source] std::string::FromUtf8Error),
     }
 
     /// Errors that can occur when reading the config file for a pesde package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ConfigError {
+        /// Error opening repository
+        #[error("error opening repository")]
+        Open(#[from] Box<gix::open::Error>),
+
+        /// Error getting tree
+        #[error("error getting tree")]
+        Tree(#[from] Box<TreeError>),
+
         /// Error reading file
         #[error("error reading config file")]
         ReadFile(#[from] Box<ReadFile>),
@@ -520,35 +445,6 @@ pub mod errors {
         /// The config file is missing
         #[error("missing config file for index at {0}")]
         Missing(Box<gix::Url>),
-    }
-
-    /// Errors that can occur when reading all packages from a pesde package source
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum AllPackagesError {
-        /// Error opening the repository
-        #[error("error opening repository at {0}")]
-        Open(PathBuf, #[source] Box<gix::open::Error>),
-
-        /// Error reading tree from repository
-        #[error("error getting tree from repository at {0}")]
-        Tree(PathBuf, #[source] Box<TreeError>),
-
-        /// Error decoding entry in repository
-        #[error("error decoding entry in repository at {0}")]
-        Decode(PathBuf, #[source] gix::objs::decode::Error),
-
-        /// Error converting entry in repository
-        #[error("error converting entry in repository at {0}")]
-        Convert(PathBuf, #[source] gix::object::find::existing::Error),
-
-        /// Error deserializing file in repository
-        #[error("error deserializing file {0} in repository at {1}")]
-        Deserialize(String, PathBuf, #[source] Box<toml::de::Error>),
-
-        /// Error parsing file in repository as utf8
-        #[error("error parsing file for {0} as utf8")]
-        Utf8(String, #[source] std::string::FromUtf8Error),
     }
 
     /// Errors that can occur when downloading a package from a pesde package source

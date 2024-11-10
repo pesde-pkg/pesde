@@ -3,7 +3,7 @@ use crate::{
     names::PackageNames,
     source::{
         fs::{store_in_cas, FSEntry, PackageFS},
-        git_index::GitBasedSource,
+        git_index::{read_file, root_tree, GitBasedSource},
         traits::PackageSource,
         version_id::VersionId,
         wally::{compat_util::get_target, manifest::WallyManifest, pkg_ref::WallyPackageRef},
@@ -13,13 +13,14 @@ use crate::{
     Project,
 };
 use fs_err::tokio as fs;
+use futures::future::try_join_all;
 use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use tempfile::tempdir;
-use tokio::{io::AsyncWriteExt, sync::Mutex};
+use tokio::{io::AsyncWriteExt, sync::Mutex, task::spawn_blocking};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 pub(crate) mod compat_util;
@@ -59,21 +60,22 @@ impl WallyPackageSource {
     }
 
     /// Reads the config file
-    pub fn config(&self, project: &Project) -> Result<WallyIndexConfig, errors::ConfigError> {
-        let file = self
-            .read_file(["config.json"], project, None)
-            .map_err(Box::new)?;
+    pub async fn config(&self, project: &Project) -> Result<WallyIndexConfig, errors::ConfigError> {
+        let repo_url = self.repo_url.clone();
+        let path = self.path(project);
 
-        let string = match file {
-            Some(s) => s,
-            None => {
-                return Err(errors::ConfigError::Missing(Box::new(
-                    self.repo_url.clone(),
-                )))
+        spawn_blocking(move || {
+            let repo = gix::open(&path).map_err(Box::new)?;
+            let tree = root_tree(&repo).map_err(Box::new)?;
+            let file = read_file(&tree, ["config.json"]).map_err(Box::new)?;
+
+            match file {
+                Some(s) => serde_json::from_str(&s).map_err(Into::into),
+                None => Err(errors::ConfigError::Missing(Box::new(repo_url))),
             }
-        };
-
-        serde_json::from_str(&string).map_err(Into::into)
+        })
+        .await
+        .unwrap()
     }
 }
 
@@ -94,8 +96,10 @@ impl PackageSource for WallyPackageSource {
         project: &Project,
         _package_target: TargetKind,
     ) -> Result<crate::source::ResolveResult<Self::Ref>, Self::ResolveError> {
+        let repo = gix::open(self.path(project)).map_err(Box::new)?;
+        let tree = root_tree(&repo).map_err(Box::new)?;
         let (scope, name) = specifier.name.as_str();
-        let string = match self.read_file([scope, name], project, None) {
+        let string = match read_file(&tree, [scope, name]) {
             Ok(Some(s)) => s,
             Ok(None) => return Err(Self::ResolveError::NotFound(specifier.name.to_string())),
             Err(e) => {
@@ -142,7 +146,7 @@ impl PackageSource for WallyPackageSource {
         project: &Project,
         reqwest: &reqwest::Client,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
-        let config = self.config(project).map_err(Box::new)?;
+        let config = self.config(project).await.map_err(Box::new)?;
         let index_file = project
             .cas_dir
             .join("wally_index")
@@ -170,18 +174,18 @@ impl PackageSource for WallyPackageSource {
 
         let (scope, name) = pkg_ref.name.as_str();
 
-        let url = format!(
-            "{}/v1/package-contents/{scope}/{name}/{}",
-            config.api.as_str().trim_end_matches('/'),
-            pkg_ref.version
-        );
-
-        let mut request = reqwest.get(&url).header(
-            "Wally-Version",
-            std::env::var("PESDE_WALLY_VERSION")
-                .as_deref()
-                .unwrap_or("0.3.2"),
-        );
+        let mut request = reqwest
+            .get(format!(
+                "{}/v1/package-contents/{scope}/{name}/{}",
+                config.api.as_str().trim_end_matches('/'),
+                pkg_ref.version
+            ))
+            .header(
+                "Wally-Version",
+                std::env::var("PESDE_WALLY_VERSION")
+                    .as_deref()
+                    .unwrap_or("0.3.2"),
+            );
 
         if let Some(token) = project.auth_config.tokens().get(&self.repo_url) {
             log::debug!("using token for {}", self.repo_url);
@@ -191,50 +195,69 @@ impl PackageSource for WallyPackageSource {
         let response = request.send().await?.error_for_status()?;
         let mut bytes = response.bytes().await?;
 
-        let mut entries = BTreeMap::new();
-        let mut archive = async_zip::tokio::read::seek::ZipFileReader::with_tokio(
+        let archive = async_zip::tokio::read::seek::ZipFileReader::with_tokio(
             std::io::Cursor::new(&mut bytes),
         )
         .await?;
 
-        for index in 0..archive.file().entries().len() {
-            let entry = archive.file().entries().get(index).unwrap();
-
-            let relative_path = RelativePathBuf::from_path(entry.filename().as_str()?).unwrap();
-            let path = relative_path.to_path(tempdir.path());
-            let name = relative_path.file_name().unwrap_or("");
-
-            let entry_is_dir = entry.dir()?;
-            let entry_reader = archive.reader_without_entry(index).await?;
-
-            if entry_is_dir {
-                if IGNORED_DIRS.contains(&name) {
-                    continue;
-                }
-
-                entries.insert(relative_path, FSEntry::Directory);
-                fs::create_dir_all(&path).await?;
-
-                continue;
-            }
-
-            if IGNORED_FILES.contains(&name) {
-                continue;
-            }
-
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).await?;
-            }
-
-            let writer = Arc::new(Mutex::new(fs::File::create(&path).await?));
-            let hash = store_in_cas(project.cas_dir(), entry_reader.compat(), |bytes| {
-                let writer = writer.clone();
-                async move { writer.lock().await.write_all(&bytes).await }
+        let entries = (0..archive.file().entries().len())
+            .map(|index| {
+                let entry = archive.file().entries().get(index).unwrap();
+                let relative_path = RelativePathBuf::from_path(entry.filename().as_str()?).unwrap();
+                Ok::<_, errors::DownloadError>((index, entry.dir()?, relative_path))
             })
-            .await?;
+            .collect::<Result<Vec<_>, _>>()?;
 
-            entries.insert(relative_path, FSEntry::File(hash));
-        }
+        let archive = Arc::new(Mutex::new(archive));
+
+        let entries = try_join_all(
+            entries
+                .into_iter()
+                .filter(|(_, is_dir, relative_path)| {
+                    let name = relative_path.file_name().unwrap_or("");
+
+                    if *is_dir {
+                        return !IGNORED_DIRS.contains(&name);
+                    }
+
+                    !IGNORED_FILES.contains(&name)
+                })
+                .map(|(index, is_dir, relative_path)| {
+                    let tempdir_path = tempdir.path().to_path_buf();
+                    let archive = archive.clone();
+
+                    async move {
+                        let path = relative_path.to_path(tempdir_path);
+
+                        if is_dir {
+                            fs::create_dir_all(&path).await?;
+                            return Ok::<_, errors::DownloadError>((
+                                relative_path,
+                                FSEntry::Directory,
+                            ));
+                        }
+
+                        let mut archive = archive.lock().await;
+                        let entry_reader = archive.reader_without_entry(index).await?;
+                        if let Some(parent) = path.parent() {
+                            fs::create_dir_all(parent).await?;
+                        }
+
+                        let writer = Arc::new(Mutex::new(fs::File::create(&path).await?));
+                        let hash =
+                            store_in_cas(project.cas_dir(), entry_reader.compat(), |bytes| {
+                                let writer = writer.clone();
+                                async move { writer.lock().await.write_all(&bytes).await }
+                            })
+                            .await?;
+
+                        Ok((relative_path, FSEntry::File(hash)))
+                    }
+                }),
+        )
+        .await?
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
 
         let fs = PackageFS::CAS(entries);
 
@@ -268,9 +291,13 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ResolveError {
-        /// Error interacting with the filesystem
-        #[error("error interacting with the filesystem")]
-        Io(#[from] std::io::Error),
+        /// Error opening repository
+        #[error("error opening repository")]
+        Open(#[from] Box<gix::open::Error>),
+
+        /// Error getting tree
+        #[error("error getting tree")]
+        Tree(#[from] Box<crate::source::git_index::errors::TreeError>),
 
         /// Package not found in index
         #[error("package {0} not found")]
@@ -284,10 +311,6 @@ pub mod errors {
         #[error("error parsing file for {0}")]
         Parse(String, #[source] serde_json::Error),
 
-        /// Error parsing file for package as utf8
-        #[error("error parsing file for {0} to utf8")]
-        Utf8(String, #[source] std::string::FromUtf8Error),
-
         /// Error parsing all dependencies
         #[error("error parsing all dependencies for {0}")]
         AllDependencies(
@@ -300,6 +323,14 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ConfigError {
+        /// Error opening repository
+        #[error("error opening repository")]
+        Open(#[from] Box<gix::open::Error>),
+
+        /// Error getting tree
+        #[error("error getting tree")]
+        Tree(#[from] Box<crate::source::git_index::errors::TreeError>),
+
         /// Error reading file
         #[error("error reading config file")]
         ReadFile(#[from] Box<ReadFile>),
@@ -340,10 +371,6 @@ pub mod errors {
         /// Error interacting with the filesystem
         #[error("error interacting with the filesystem")]
         Io(#[from] std::io::Error),
-
-        /// Error stripping prefix from path
-        #[error("error stripping prefix from path")]
-        StripPrefix(#[from] std::path::StripPrefixError),
 
         /// Error serializing index file
         #[error("error serializing index file")]

@@ -495,6 +495,7 @@ impl PublishCommand {
             .context("failed to refresh source")?;
         let config = source
             .config(project)
+            .await
             .context("failed to get source config")?;
 
         if archive.len() > config.max_archive_size {

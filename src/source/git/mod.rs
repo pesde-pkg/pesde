@@ -1,7 +1,6 @@
-use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::PathBuf};
-
-use gix::{bstr::BStr, traverse::tree::Recorder, Url};
+use gix::{bstr::BStr, traverse::tree::Recorder, ObjectId, Url};
 use relative_path::RelativePathBuf;
+use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::PathBuf, sync::Arc};
 
 use crate::{
     manifest::{
@@ -10,9 +9,9 @@ use crate::{
     },
     names::PackageNames,
     source::{
-        fs::{FSEntry, PackageFS},
+        fs::{store_in_cas, FSEntry, PackageFS},
         git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
-        git_index::GitBasedSource,
+        git_index::{read_file, GitBasedSource},
         specifiers::DependencySpecifiers,
         traits::PackageRef,
         PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
@@ -21,6 +20,8 @@ use crate::{
     Project, DEFAULT_INDEX_NAME, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use fs_err::tokio as fs;
+use futures::future::try_join_all;
+use tokio::{sync::Mutex, task::spawn_blocking};
 
 /// The Git package reference
 pub mod pkg_ref;
@@ -126,8 +127,7 @@ impl PackageSource for GitPackageSource {
             root_tree.clone()
         };
 
-        let manifest = match self
-            .read_file([MANIFEST_FILE_NAME], project, Some(tree.clone()))
+        let manifest = match read_file(&tree, [MANIFEST_FILE_NAME])
             .map_err(|e| errors::ResolveError::ReadManifest(Box::new(self.repo_url.clone()), e))?
         {
             Some(m) => match toml::from_str::<Manifest>(&m) {
@@ -196,12 +196,7 @@ impl PackageSource for GitPackageSource {
                             }
                             DependencySpecifiers::Git(_) => {}
                             DependencySpecifiers::Workspace(specifier) => {
-                                let lockfile = self
-                                    .read_file(
-                                        [LOCKFILE_FILE_NAME],
-                                        project,
-                                        Some(root_tree.clone()),
-                                    )
+                                let lockfile = read_file(&root_tree, [LOCKFILE_FILE_NAME])
                                     .map_err(|e| {
                                         errors::ResolveError::ReadLockfile(
                                             Box::new(self.repo_url.clone()),
@@ -260,15 +255,13 @@ impl PackageSource for GitPackageSource {
 
             #[cfg(feature = "wally-compat")]
             None => {
-                match self
-                    .read_file(
-                        [crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME],
-                        project,
-                        Some(tree.clone()),
-                    )
-                    .map_err(|e| {
-                        errors::ResolveError::ReadManifest(Box::new(self.repo_url.clone()), e)
-                    })? {
+                match read_file(
+                    &tree,
+                    [crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME],
+                )
+                .map_err(|e| {
+                    errors::ResolveError::ReadManifest(Box::new(self.repo_url.clone()), e)
+                })? {
                     Some(m) => {
                         match toml::from_str::<crate::source::wally::manifest::WallyManifest>(&m) {
                             Ok(manifest) => {
@@ -396,84 +389,128 @@ impl PackageSource for GitPackageSource {
             Err(e) => return Err(errors::DownloadError::Io(e)),
         }
 
-        let mut entries = BTreeMap::new();
-        let mut manifest = None;
-
         let repo = gix::open(self.path(project))
-            .map_err(|e| errors::DownloadError::OpenRepo(Box::new(self.repo_url.clone()), e))?;
+            .map_err(|e| errors::DownloadError::OpenRepo(Box::new(self.repo_url.clone()), e))?
+            .into_sync();
+        let repo_url = self.repo_url.clone();
+        let tree_id = pkg_ref.tree_id.clone();
 
-        let recorder = {
-            let rev = repo
-                .rev_parse_single(BStr::new(&pkg_ref.tree_id))
-                .map_err(|e| {
-                    errors::DownloadError::ParseRev(
-                        pkg_ref.tree_id.clone(),
+        let (repo, records) = spawn_blocking(move || {
+            let repo = repo.to_thread_local();
+
+            let mut recorder = Recorder::default();
+
+            {
+                let object_id = match tree_id.parse::<ObjectId>() {
+                    Ok(oid) => oid,
+                    Err(e) => {
+                        return Err(errors::DownloadError::ParseTreeId(Box::new(repo_url), e))
+                    }
+                };
+                let object = match repo.find_object(object_id) {
+                    Ok(object) => object,
+                    Err(e) => {
+                        return Err(errors::DownloadError::ParseOidToObject(
+                            object_id,
+                            Box::new(repo_url),
+                            e,
+                        ))
+                    }
+                };
+
+                let tree = match object.peel_to_tree() {
+                    Ok(tree) => tree,
+                    Err(e) => {
+                        return Err(errors::DownloadError::ParseObjectToTree(
+                            Box::new(repo_url),
+                            e,
+                        ))
+                    }
+                };
+
+                if let Err(e) = tree.traverse().breadthfirst(&mut recorder) {
+                    return Err(errors::DownloadError::TraverseTree(Box::new(repo_url), e));
+                }
+            }
+
+            Ok::<_, errors::DownloadError>((repo.into_sync(), recorder.records))
+        })
+        .await
+        .unwrap()?;
+
+        let repo = repo.to_thread_local();
+
+        let records = records
+            .into_iter()
+            .map(|entry| {
+                let object = repo.find_object(entry.oid).map_err(|e| {
+                    errors::DownloadError::ParseOidToObject(
+                        entry.oid,
                         Box::new(self.repo_url.clone()),
                         e,
                     )
                 })?;
 
-            let tree = rev
-                .object()
-                .map_err(|e| {
-                    errors::DownloadError::ParseEntryToObject(Box::new(self.repo_url.clone()), e)
-                })?
-                .peel_to_tree()
-                .map_err(|e| {
-                    errors::DownloadError::ParseObjectToTree(Box::new(self.repo_url.clone()), e)
-                })?;
+                Ok::<_, errors::DownloadError>((
+                    RelativePathBuf::from(entry.filepath.to_string()),
+                    if matches!(object.kind, gix::object::Kind::Tree) {
+                        None
+                    } else {
+                        Some(object.data.clone())
+                    },
+                ))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
-            let mut recorder = Recorder::default();
-            tree.traverse().breadthfirst(&mut recorder).map_err(|e| {
-                errors::DownloadError::TraverseTree(Box::new(self.repo_url.clone()), e)
-            })?;
+        let manifest = Arc::new(Mutex::new(None::<Vec<u8>>));
+        let entries = try_join_all(
+            records
+                .into_iter()
+                .filter(|(path, contents)| {
+                    let name = path.file_name().unwrap_or("");
+                    if contents.is_none() {
+                        return !IGNORED_DIRS.contains(&name);
+                    }
 
-            recorder
-        };
+                    if IGNORED_FILES.contains(&name) {
+                        return false;
+                    }
 
-        for entry in recorder.records {
-            let path = RelativePathBuf::from(entry.filepath.to_string());
-            let name = path.file_name().unwrap_or("");
-            let object = repo.find_object(entry.oid).map_err(|e| {
-                errors::DownloadError::ParseEntryToObject(Box::new(self.repo_url.clone()), e)
-            })?;
+                    if pkg_ref.use_new_structure() && name == "default.project.json" {
+                        log::debug!(
+                            "removing default.project.json from {}#{} at {path} - using new structure",
+                            pkg_ref.repo,
+                            pkg_ref.tree_id
+                        );
+                        return false;
+                    }
 
-            if matches!(object.kind, gix::object::Kind::Tree) {
-                if IGNORED_DIRS.contains(&name) {
-                    continue;
-                }
+                    true
+                })
+                .map(|(path, contents)| {
+                    let manifest = manifest.clone();
+                    async move {
+                        let Some(contents) = contents else {
+                            return Ok::<_, errors::DownloadError>((path, FSEntry::Directory));
+                        };
 
-                entries.insert(path, FSEntry::Directory);
+                        let hash =
+                            store_in_cas(project.cas_dir(), contents.as_slice(), |_| async { Ok(()) })
+                                .await?;
 
-                continue;
-            }
+                        if path == MANIFEST_FILE_NAME {
+                            manifest.lock().await.replace(contents);
+                        }
 
-            if IGNORED_FILES.contains(&name) {
-                continue;
-            }
+                        Ok((path, FSEntry::File(hash)))
+                    }
+                }),
+        )
+            .await?
+            .into_iter()
+            .collect::<BTreeMap<_, _>>();
 
-            if pkg_ref.use_new_structure() && name == "default.project.json" {
-                log::debug!(
-                    "removing default.project.json from {}#{} at {path} - using new structure",
-                    pkg_ref.repo,
-                    pkg_ref.tree_id
-                );
-                continue;
-            }
-
-            let data = object.into_blob().data.clone();
-            // let hash =
-            //     store_reader_in_cas(project.cas_dir(), data.as_slice(), |_| async { Ok(()) })
-            //         .await?;
-
-            if path == MANIFEST_FILE_NAME {
-                manifest = Some(data);
-            }
-
-            // entries.insert(path, FSEntry::File(hash));
-        }
-
-        let manifest = match manifest {
+        let manifest = match Arc::into_inner(manifest).unwrap().into_inner() {
             Some(data) => match String::from_utf8(data.to_vec()) {
                 Ok(s) => match toml::from_str::<Manifest>(&s) {
                     Ok(m) => Some(m),
@@ -528,6 +565,7 @@ impl PackageSource for GitPackageSource {
 /// Errors that can occur when interacting with the Git package source
 pub mod errors {
     use crate::manifest::target::TargetKind;
+    use gix::ObjectId;
     use relative_path::RelativePathBuf;
     use thiserror::Error;
 
@@ -646,14 +684,6 @@ pub mod errors {
         #[error("error opening Git repository for url {0}")]
         OpenRepo(Box<gix::Url>, #[source] gix::open::Error),
 
-        /// An error occurred parsing rev
-        #[error("error parsing rev {0} for repository {1}")]
-        ParseRev(
-            String,
-            Box<gix::Url>,
-            #[source] gix::revision::spec::parse::single::Error,
-        ),
-
         /// An error occurred while traversing the tree
         #[error("error traversing tree for repository {0}")]
         TraverseTree(
@@ -661,21 +691,17 @@ pub mod errors {
             #[source] gix::traverse::tree::breadthfirst::Error,
         ),
 
-        /// An error occurred parsing an entry to object
-        #[error("error parsing an entry to object for repository {0}")]
-        ParseEntryToObject(Box<gix::Url>, #[source] gix::object::find::existing::Error),
+        /// An error occurred parsing an object id to object
+        #[error("error parsing object id {0} to object for repository {1}")]
+        ParseOidToObject(
+            ObjectId,
+            Box<gix::Url>,
+            #[source] gix::object::find::existing::Error,
+        ),
 
         /// An error occurred parsing object to tree
         #[error("error parsing object to tree for repository {0}")]
         ParseObjectToTree(Box<gix::Url>, #[source] gix::object::peel::to_kind::Error),
-
-        /// An error occurred reading a tree entry
-        #[error("error reading tree entry for repository {0} at {1}")]
-        ReadTreeEntry(
-            Box<gix::Url>,
-            RelativePathBuf,
-            #[source] gix::objs::decode::Error,
-        ),
 
         /// An error occurred parsing the pesde manifest to UTF-8
         #[error("error parsing the manifest for repository {0} to UTF-8")]
@@ -684,5 +710,9 @@ pub mod errors {
         /// An error occurred while serializing the index file
         #[error("error serializing the index file for repository {0}")]
         SerializeIndex(Box<gix::Url>, #[source] toml::ser::Error),
+
+        /// An error occurred while parsing tree_id to ObjectId
+        #[error("error parsing tree_id to ObjectId for repository {0}")]
+        ParseTreeId(Box<gix::Url>, #[source] gix::hash::decode::Error),
     }
 }

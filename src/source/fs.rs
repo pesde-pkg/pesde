@@ -3,6 +3,7 @@ use crate::{
     source::{IGNORED_DIRS, IGNORED_FILES},
 };
 use fs_err::tokio as fs;
+use futures::future::try_join_all;
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -13,7 +14,7 @@ use std::{
 };
 use tempfile::Builder;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt, BufWriter},
+    io::{AsyncReadExt, AsyncWriteExt},
     pin,
 };
 
@@ -75,7 +76,7 @@ pub(crate) async fn store_in_cas<
     let temp_path = Builder::new()
         .make_in(&tmp_dir, |_| Ok(()))?
         .into_temp_path();
-    let mut file_writer = BufWriter::new(fs::File::create(temp_path.to_path_buf()).await?);
+    let mut file_writer = fs::File::create(temp_path.to_path_buf()).await?;
 
     loop {
         let bytes_future = contents.read(&mut buf);
@@ -99,7 +100,7 @@ pub(crate) async fn store_in_cas<
 
     match temp_path.persist_noclobber(&cas_path) {
         Ok(_) => {
-            make_readonly(&file_writer.into_inner()).await?;
+            make_readonly(&file_writer).await?;
         }
         Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.error),
@@ -118,38 +119,46 @@ impl PackageFS {
     ) -> std::io::Result<()> {
         match self {
             PackageFS::CAS(entries) => {
-                for (path, entry) in entries {
-                    let path = path.to_path(destination.as_ref());
+                try_join_all(entries.iter().map(|(path, entry)| {
+                    let destination = destination.as_ref().to_path_buf();
+                    let cas_path = cas_path.as_ref().to_path_buf();
 
-                    match entry {
-                        FSEntry::File(hash) => {
-                            if let Some(parent) = path.parent() {
-                                fs::create_dir_all(parent).await?;
-                            }
+                    async move {
+                        let path = path.to_path(destination);
 
-                            let (prefix, rest) = hash.split_at(2);
-                            let cas_file_path = cas_path.as_ref().join(prefix).join(rest);
+                        match entry {
+                            FSEntry::File(hash) => {
+                                if let Some(parent) = path.parent() {
+                                    fs::create_dir_all(parent).await?;
+                                }
 
-                            if link {
-                                fs::hard_link(cas_file_path, path).await?;
-                            } else {
-                                let mut f = fs::File::create(&path).await?;
-                                f.write_all(&fs::read(cas_file_path).await?).await?;
+                                let (prefix, rest) = hash.split_at(2);
+                                let cas_file_path = cas_path.join(prefix).join(rest);
 
-                                #[cfg(unix)]
-                                {
-                                    let mut permissions = f.metadata().await?.permissions();
-                                    use std::os::unix::fs::PermissionsExt;
-                                    permissions.set_mode(permissions.mode() | 0o644);
-                                    f.set_permissions(permissions).await?;
+                                if link {
+                                    fs::hard_link(cas_file_path, path).await?;
+                                } else {
+                                    fs::copy(cas_file_path, &path).await?;
+
+                                    #[cfg(unix)]
+                                    {
+                                        let f = fs::File::open(&path).await?;
+                                        let mut permissions = f.metadata().await?.permissions();
+                                        use std::os::unix::fs::PermissionsExt;
+                                        permissions.set_mode(permissions.mode() | 0o644);
+                                        f.set_permissions(permissions).await?;
+                                    }
                                 }
                             }
+                            FSEntry::Directory => {
+                                fs::create_dir_all(path).await?;
+                            }
                         }
-                        FSEntry::Directory => {
-                            fs::create_dir_all(path).await?;
-                        }
+
+                        Ok::<_, std::io::Error>(())
                     }
-                }
+                }))
+                .await?;
             }
             PackageFS::Copy(src, target) => {
                 fs::create_dir_all(destination.as_ref()).await?;

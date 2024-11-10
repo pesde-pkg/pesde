@@ -24,9 +24,13 @@ pub struct RunCommand {
 
 impl RunCommand {
     pub async fn run(self, project: Project) -> anyhow::Result<()> {
+        let project_2 = project.clone();
+        let update_scripts_handle = tokio::spawn(async move { update_scripts(&project_2).await });
+
         let run = |path: PathBuf| {
             Handle::current()
-                .block_on(update_scripts(&project))
+                .block_on(update_scripts_handle)
+                .unwrap()
                 .expect("failed to update scripts");
 
             let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
@@ -98,13 +102,15 @@ impl RunCommand {
                     version_id.version(),
                 );
 
-                run(bin_path.to_path(&container_folder))
+                run(bin_path.to_path(&container_folder));
+                return Ok(());
             }
         }
 
         if let Ok(manifest) = project.deser_manifest().await {
             if let Some(script_path) = manifest.scripts.get(&package_or_script) {
-                run(script_path.to_path(project.package_dir()))
+                run(script_path.to_path(project.package_dir()));
+                return Ok(());
             }
         };
 

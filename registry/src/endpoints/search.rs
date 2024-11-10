@@ -4,12 +4,14 @@ use actix_web::{web, HttpResponse, Responder};
 use serde::Deserialize;
 use tantivy::{collector::Count, query::AllQuery, schema::Value, DateTime, Order};
 
+use crate::{error::Error, package::PackageResponse, AppState};
 use pesde::{
     names::PackageName,
-    source::{git_index::GitBasedSource, pesde::IndexFile},
+    source::{
+        git_index::{read_file, root_tree, GitBasedSource},
+        pesde::IndexFile,
+    },
 };
-
-use crate::{error::Error, package::PackageResponse, AppState};
 
 #[derive(Deserialize)]
 pub struct Request {
@@ -49,6 +51,8 @@ pub async fn search_packages(
         .unwrap();
 
     let source = app_state.source.lock().await;
+    let repo = gix::open(source.path(&app_state.project))?;
+    let tree = root_tree(&repo)?;
 
     let top_docs = top_docs
         .into_iter()
@@ -64,13 +68,8 @@ pub async fn search_packages(
                 .unwrap();
             let (scope, name) = id.as_str();
 
-            let versions: IndexFile = toml::de::from_str(
-                &source
-                    .read_file([scope, name], &app_state.project, None)
-                    .unwrap()
-                    .unwrap(),
-            )
-            .unwrap();
+            let versions: IndexFile =
+                toml::de::from_str(&read_file(&tree, [scope, name]).unwrap().unwrap()).unwrap();
 
             let (latest_version, entry) = versions
                 .iter()

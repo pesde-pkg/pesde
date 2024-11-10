@@ -4,10 +4,10 @@ use fs_err::tokio as fs;
 use futures::StreamExt;
 use indicatif::MultiProgress;
 use pesde::{
-    lockfile::{DependencyGraph, DownloadedGraph, Lockfile},
+    lockfile::{DownloadedGraph, Lockfile},
     manifest::target::TargetKind,
     names::{PackageName, PackageNames},
-    source::{version_id::VersionId, workspace::specifier::VersionTypeOrReq, PackageSources},
+    source::{version_id::VersionId, workspace::specifier::VersionTypeOrReq},
     Project,
 };
 use relative_path::RelativePathBuf;
@@ -16,7 +16,6 @@ use std::{
     future::Future,
     path::PathBuf,
     str::FromStr,
-    sync::Arc,
     time::Duration,
 };
 use tokio::pin;
@@ -191,20 +190,15 @@ pub fn parse_gix_url(s: &str) -> Result<gix::Url, gix::url::parse::Error> {
     s.try_into()
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn download_graph(
-    project: &Project,
-    refreshed_sources: &mut HashSet<PackageSources>,
-    graph: &DependencyGraph,
+pub async fn progress_bar<E: std::error::Error + Into<anyhow::Error>>(
+    len: u64,
+    mut rx: tokio::sync::mpsc::Receiver<Result<(), E>>,
     multi: &MultiProgress,
-    reqwest: &reqwest::Client,
-    prod: bool,
-    write: bool,
     progress_msg: String,
     finish_msg: String,
-) -> anyhow::Result<DownloadedGraph> {
+) -> anyhow::Result<()> {
     let bar = multi.add(
-        indicatif::ProgressBar::new(graph.values().map(|versions| versions.len() as u64).sum())
+        indicatif::ProgressBar::new(len)
             .with_style(
                 indicatif::ProgressStyle::default_bar()
                     .template("{msg} {bar:40.208/166} {pos}/{len} {percent}% {elapsed_precise}")?,
@@ -212,11 +206,6 @@ pub async fn download_graph(
             .with_message(progress_msg),
     );
     bar.enable_steady_tick(Duration::from_millis(100));
-
-    let (mut rx, downloaded_graph) = project
-        .download_graph(graph, refreshed_sources, reqwest, prod, write)
-        .await
-        .context("failed to download dependencies")?;
 
     while let Some(result) = rx.recv().await {
         bar.inc(1);
@@ -229,10 +218,7 @@ pub async fn download_graph(
 
     bar.finish_with_message(finish_msg);
 
-    Ok(Arc::into_inner(downloaded_graph)
-        .unwrap()
-        .into_inner()
-        .unwrap())
+    Ok(())
 }
 
 pub fn shift_project_dir(project: &Project, pkg_dir: PathBuf) -> Project {

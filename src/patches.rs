@@ -75,17 +75,26 @@ impl Project {
     pub async fn apply_patches(
         &self,
         graph: &DownloadedGraph,
-    ) -> Result<(), errors::ApplyPatchesError> {
+    ) -> Result<
+        tokio::sync::mpsc::Receiver<Result<(), errors::ApplyPatchesError>>,
+        errors::ApplyPatchesError,
+    > {
         let manifest = self.deser_manifest().await?;
+        let (tx, rx) = tokio::sync::mpsc::channel(
+            manifest
+                .patches
+                .values()
+                .map(|v| v.len())
+                .sum::<usize>()
+                .max(1),
+        );
 
         for (name, versions) in manifest.patches {
             for (version_id, patch_path) in versions {
+                let tx = tx.clone();
+
+                let name = name.clone();
                 let patch_path = patch_path.to_path(self.package_dir());
-                let patch = Diff::from_buffer(
-                    &fs::read(&patch_path)
-                        .await
-                        .map_err(errors::ApplyPatchesError::PatchRead)?,
-                )?;
 
                 let Some(node) = graph
                     .get(&name)
@@ -94,6 +103,7 @@ impl Project {
                     log::warn!(
                         "patch for {name}@{version_id} not applied because it is not in the graph"
                     );
+                    tx.send(Ok(())).await.unwrap();
                     continue;
                 };
 
@@ -111,46 +121,103 @@ impl Project {
                     version_id.version(),
                 );
 
-                log::debug!("applying patch to {name}@{version_id}");
+                tokio::spawn(async move {
+                    log::debug!("applying patch to {name}@{version_id}");
 
-                {
-                    let repo = setup_patches_repo(&container_folder)?;
-                    for delta in patch.deltas() {
-                        if !matches!(delta.status(), git2::Delta::Modified) {
-                            continue;
+                    let patch = match fs::read(&patch_path).await {
+                        Ok(patch) => patch,
+                        Err(e) => {
+                            tx.send(Err(errors::ApplyPatchesError::PatchRead(e)))
+                                .await
+                                .unwrap();
+                            return;
                         }
+                    };
 
-                        let file = delta.new_file();
-                        let Some(relative_path) = file.path() else {
-                            continue;
+                    let patch = match Diff::from_buffer(&patch) {
+                        Ok(patch) => patch,
+                        Err(e) => {
+                            tx.send(Err(errors::ApplyPatchesError::Git(e)))
+                                .await
+                                .unwrap();
+                            return;
+                        }
+                    };
+
+                    {
+                        let repo = match setup_patches_repo(&container_folder) {
+                            Ok(repo) => repo,
+                            Err(e) => {
+                                tx.send(Err(errors::ApplyPatchesError::Git(e)))
+                                    .await
+                                    .unwrap();
+                                return;
+                            }
                         };
 
-                        let relative_path = RelativePathBuf::from_path(relative_path).unwrap();
-                        let path = relative_path.to_path(&container_folder);
+                        let modified_files = patch
+                            .deltas()
+                            .filter(|delta| matches!(delta.status(), git2::Delta::Modified))
+                            .filter_map(|delta| delta.new_file().path())
+                            .map(|path| {
+                                RelativePathBuf::from_path(path)
+                                    .unwrap()
+                                    .to_path(&container_folder)
+                            })
+                            .filter(|path| path.is_file())
+                            .collect::<Vec<_>>();
 
-                        if !path.is_file() {
-                            continue;
+                        for path in modified_files {
+                            // there is no way (as far as I know) to check if it's hardlinked
+                            // so, we always unlink it
+                            let content = match fs::read(&path).await {
+                                Ok(content) => content,
+                                Err(e) => {
+                                    tx.send(Err(errors::ApplyPatchesError::File(e)))
+                                        .await
+                                        .unwrap();
+                                    return;
+                                }
+                            };
+
+                            if let Err(e) = fs::remove_file(&path).await {
+                                tx.send(Err(errors::ApplyPatchesError::File(e)))
+                                    .await
+                                    .unwrap();
+                                return;
+                            }
+
+                            if let Err(e) = fs::write(path, content).await {
+                                tx.send(Err(errors::ApplyPatchesError::File(e)))
+                                    .await
+                                    .unwrap();
+                                return;
+                            }
                         }
 
-                        // there is no way (as far as I know) to check if it's hardlinked
-                        // so, we always unlink it
-                        let content = fs::read(&path).await.unwrap();
-                        fs::remove_file(&path).await.unwrap();
-                        fs::write(path, content).await.unwrap();
+                        if let Err(e) = repo.apply(&patch, ApplyLocation::Both, None) {
+                            tx.send(Err(errors::ApplyPatchesError::Git(e)))
+                                .await
+                                .unwrap();
+                            return;
+                        }
                     }
 
-                    repo.apply(&patch, ApplyLocation::Both, None)?;
-                }
+                    log::debug!("patch applied to {name}@{version_id}, removing .git directory");
 
-                log::debug!("patch applied to {name}@{version_id}, removing .git directory");
+                    if let Err(e) = fs::remove_dir_all(container_folder.join(".git")).await {
+                        tx.send(Err(errors::ApplyPatchesError::DotGitRemove(e)))
+                            .await
+                            .unwrap();
+                        return;
+                    }
 
-                fs::remove_dir_all(container_folder.join(".git"))
-                    .await
-                    .map_err(errors::ApplyPatchesError::DotGitRemove)?;
+                    tx.send(Ok(())).await.unwrap();
+                });
             }
         }
 
-        Ok(())
+        Ok(rx)
     }
 }
 
@@ -177,5 +244,9 @@ pub mod errors {
         /// Error removing the .git directory
         #[error("error removing .git directory")]
         DotGitRemove(#[source] std::io::Error),
+
+        /// Error interacting with a patched file
+        #[error("error interacting with a patched file")]
+        File(#[source] std::io::Error),
     }
 }

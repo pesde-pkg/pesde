@@ -1,10 +1,10 @@
-use crate::cli::{download_graph, repos::update_scripts, run_on_workspace_members};
+use crate::cli::{progress_bar, repos::update_scripts, run_on_workspace_members};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use indicatif::MultiProgress;
 use pesde::{lockfile::Lockfile, Project};
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 #[derive(Debug, Args, Copy, Clone)]
 pub struct UpdateCommand {}
@@ -44,18 +44,26 @@ impl UpdateCommand {
                 target: manifest.target.kind(),
                 overrides: manifest.overrides,
 
-                graph: download_graph(
-                    &project,
-                    &mut refreshed_sources,
-                    &graph,
-                    &multi,
-                    &reqwest,
-                    false,
-                    false,
-                    "📥 downloading dependencies".to_string(),
-                    "📥 downloaded dependencies".to_string(),
-                )
-                .await?,
+                graph: {
+                    let (rx, downloaded_graph) = project
+                        .download_graph(&graph, &mut refreshed_sources, &reqwest, false, false)
+                        .await
+                        .context("failed to download dependencies")?;
+
+                    progress_bar(
+                        graph.values().map(|versions| versions.len() as u64).sum(),
+                        rx,
+                        &multi,
+                        "📥 downloading dependencies".to_string(),
+                        "📥 downloaded dependencies".to_string(),
+                    )
+                    .await?;
+
+                    Arc::into_inner(downloaded_graph)
+                        .unwrap()
+                        .into_inner()
+                        .unwrap()
+                },
 
                 workspace: run_on_workspace_members(&project, |project| {
                     let multi = multi.clone();
@@ -66,6 +74,12 @@ impl UpdateCommand {
             })
             .await
             .context("failed to write lockfile")?;
+
+        println!(
+            "\n{}\nrun `{} install` in order to install the new dependencies",
+            "✅ done".green(),
+            env!("CARGO_BIN_NAME")
+        );
 
         Ok(())
     }

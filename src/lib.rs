@@ -3,13 +3,17 @@
 //! pesde has its own registry, however it can also use Wally, and Git repositories as package sources.
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
 
-use crate::{lockfile::Lockfile, manifest::Manifest};
+use crate::{
+    lockfile::Lockfile,
+    manifest::Manifest,
+    source::{traits::PackageSource, PackageSources},
+};
 use async_stream::stream;
 use fs_err::tokio as fs;
-use futures::Stream;
+use futures::{future::try_join_all, Stream};
 use gix::sec::identity::Account;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -211,6 +215,26 @@ impl Project {
             }
         })
     }
+}
+
+/// Refreshes the sources asynchronously
+pub async fn refresh_sources<I: Iterator<Item = PackageSources>>(
+    project: &Project,
+    sources: I,
+    refreshed_sources: &mut HashSet<PackageSources>,
+) -> Result<(), Box<source::errors::RefreshError>> {
+    try_join_all(sources.map(|source| {
+        let needs_refresh = refreshed_sources.insert(source.clone());
+        async move {
+            if needs_refresh {
+                source.refresh(project).await.map_err(Box::new)
+            } else {
+                Ok(())
+            }
+        }
+    }))
+    .await
+    .map(|_| ())
 }
 
 /// Errors that can occur when using the pesde library

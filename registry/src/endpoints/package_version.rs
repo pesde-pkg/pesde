@@ -7,7 +7,7 @@ use pesde::{
     manifest::target::TargetKind,
     names::PackageName,
     source::{
-        git_index::GitBasedSource,
+        git_index::{read_file, root_tree, GitBasedSource},
         pesde::{DocEntryKind, IndexFile},
     },
 };
@@ -73,8 +73,10 @@ pub async fn get_package_version(
 
     let entries: IndexFile = {
         let source = app_state.source.lock().await;
+        let repo = gix::open(source.path(&app_state.project))?;
+        let tree = root_tree(&repo)?;
 
-        match source.read_file([scope, name_part], &app_state.project, None)? {
+        match read_file(&tree, [scope, name_part])? {
             Some(versions) => toml::de::from_str(&versions)?,
             None => return Ok(HttpResponse::NotFound().finish()),
         }

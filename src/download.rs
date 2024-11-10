@@ -1,6 +1,7 @@
 use crate::{
     lockfile::{DependencyGraph, DownloadedDependencyGraphNode, DownloadedGraph},
     manifest::DependencyType,
+    refresh_sources,
     source::{
         traits::{PackageRef, PackageSource},
         PackageSources,
@@ -31,35 +32,29 @@ impl Project {
         write: bool,
     ) -> Result<MultithreadDownloadJob, errors::DownloadGraphError> {
         let manifest = self.deser_manifest().await?;
+        let manifest_target_kind = manifest.target.kind();
         let downloaded_graph: MultithreadedGraph = Arc::new(Mutex::new(Default::default()));
 
-        let (tx, rx) =
-            tokio::sync::mpsc::channel(graph.iter().map(|(_, versions)| versions.len()).sum());
+        let (tx, rx) = tokio::sync::mpsc::channel(
+            graph
+                .iter()
+                .map(|(_, versions)| versions.len())
+                .sum::<usize>()
+                .max(1),
+        );
+
+        refresh_sources(
+            self,
+            graph
+                .iter()
+                .flat_map(|(_, versions)| versions.iter())
+                .map(|(_, node)| node.pkg_ref.source()),
+            refreshed_sources,
+        )
+        .await?;
 
         for (name, versions) in graph {
             for (version_id, node) in versions {
-                let source = node.pkg_ref.source();
-
-                if refreshed_sources.insert(source.clone()) {
-                    source.refresh(self).await.map_err(Box::new)?;
-                }
-
-                let container_folder = node.container_folder(
-                    &self
-                        .package_dir()
-                        .join(
-                            manifest
-                                .target
-                                .kind()
-                                .packages_folder(&node.pkg_ref.target_kind()),
-                        )
-                        .join(PACKAGES_CONTAINER_NAME),
-                    name,
-                    version_id.version(),
-                );
-
-                fs::create_dir_all(&container_folder).await?;
-
                 let tx = tx.clone();
 
                 let name = name.clone();
@@ -70,7 +65,29 @@ impl Project {
                 let reqwest = reqwest.clone();
                 let downloaded_graph = downloaded_graph.clone();
 
+                let package_dir = self.package_dir().to_path_buf();
+
                 tokio::spawn(async move {
+                    let source = node.pkg_ref.source();
+
+                    let container_folder = node.container_folder(
+                        &package_dir
+                            .join(manifest_target_kind.packages_folder(&node.pkg_ref.target_kind()))
+                            .join(PACKAGES_CONTAINER_NAME),
+                        &name,
+                        version_id.version(),
+                    );
+
+                    match fs::create_dir_all(&container_folder).await {
+                        Ok(_) => {}
+                        Err(e) => {
+                            tx.send(Err(errors::DownloadGraphError::Io(e)))
+                                .await
+                                .unwrap();
+                            return;
+                        }
+                    }
+
                     let project = project.clone();
 
                     log::debug!("downloading {name}@{version_id}");

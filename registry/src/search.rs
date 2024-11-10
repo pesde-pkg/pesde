@@ -1,7 +1,12 @@
 use crate::AppState;
+use async_stream::stream;
+use futures::{Stream, StreamExt};
 use pesde::{
     names::PackageName,
-    source::pesde::{IndexFileEntry, PesdePackageSource},
+    source::{
+        git_index::{root_tree, GitBasedSource},
+        pesde::{IndexFile, IndexFileEntry, PesdePackageSource, SCOPE_INFO_FILE},
+    },
     Project,
 };
 use tantivy::{
@@ -11,8 +16,58 @@ use tantivy::{
     tokenizer::TextAnalyzer,
     DateTime, IndexReader, IndexWriter, Term,
 };
+use tokio::pin;
 
-pub fn make_search(
+pub async fn all_packages(
+    source: &PesdePackageSource,
+    project: &Project,
+) -> impl Stream<Item = (PackageName, IndexFile)> {
+    let path = source.path(project);
+
+    stream! {
+        let repo = gix::open(&path).expect("failed to open index");
+        let tree = root_tree(&repo).expect("failed to get root tree");
+
+        for entry in tree.iter() {
+            let entry = entry.expect("failed to read entry");
+            let object = entry.object().expect("failed to get object");
+
+            // directories will be trees, and files will be blobs
+            if !matches!(object.kind, gix::object::Kind::Tree) {
+                continue;
+            }
+
+            let package_scope = entry.filename().to_string();
+
+            for inner_entry in object.into_tree().iter() {
+                let inner_entry = inner_entry.expect("failed to read inner entry");
+                let object = inner_entry.object().expect("failed to get object");
+
+                if !matches!(object.kind, gix::object::Kind::Blob) {
+                    continue;
+                }
+
+                let package_name = inner_entry.filename().to_string();
+
+                if package_name == SCOPE_INFO_FILE {
+                    continue;
+                }
+
+                let blob = object.into_blob();
+                let string = String::from_utf8(blob.data.clone()).expect("failed to parse utf8");
+
+                let file: IndexFile = toml::from_str(&string).expect("failed to parse index file");
+
+                // if this panics, it's an issue with the index.
+                let name = format!("{package_scope}/{package_name}").parse().unwrap();
+
+                yield (name, file);
+            }
+        }
+    }
+}
+
+pub async fn make_search(
     project: &Project,
     source: &PesdePackageSource,
 ) -> (IndexReader, IndexWriter, QueryParser) {
@@ -45,7 +100,10 @@ pub fn make_search(
         .unwrap();
     let mut search_writer = search_index.writer(50_000_000).unwrap();
 
-    for (pkg_name, mut file) in source.all_packages(project).unwrap() {
+    let stream = all_packages(source, project).await;
+    pin!(stream);
+
+    while let Some((pkg_name, mut file)) = stream.next().await {
         let Some((_, latest_entry)) = file.pop_last() else {
             log::warn!("no versions found for {pkg_name}");
             continue;

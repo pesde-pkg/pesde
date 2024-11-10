@@ -1,6 +1,6 @@
 use actix_web::{body::BoxBody, HttpResponse, ResponseError};
 use log::error;
-use pesde::source::git_index::errors::{ReadFile, RefreshError};
+use pesde::source::git_index::errors::{ReadFile, RefreshError, TreeError};
 use serde::Serialize;
 use thiserror::Error;
 
@@ -38,6 +38,12 @@ pub enum Error {
 
     #[error("failed to serialize struct")]
     SerializeJson(#[from] serde_json::Error),
+
+    #[error("failed to open git repo")]
+    OpenRepo(#[from] gix::open::Error),
+
+    #[error("failed to get root tree")]
+    RootTree(#[from] TreeError),
 }
 
 #[derive(Debug, Serialize)]

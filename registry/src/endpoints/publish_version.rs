@@ -16,7 +16,7 @@ use git2::{Remote, Repository, Signature};
 use pesde::{
     manifest::Manifest,
     source::{
-        git_index::GitBasedSource,
+        git_index::{read_file, root_tree, GitBasedSource},
         pesde::{DocEntry, DocEntryKind, IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
         specifiers::DependencySpecifiers,
         version_id::VersionId,
@@ -73,7 +73,7 @@ pub async fn publish_package(
 ) -> Result<impl Responder, Error> {
     let source = app_state.source.lock().await;
     source.refresh(&app_state.project).await.map_err(Box::new)?;
-    let config = source.config(&app_state.project)?;
+    let config = source.config(&app_state.project).await?;
 
     let bytes = body
         .next()
@@ -316,11 +316,13 @@ pub async fn publish_package(
         }
 
         let repo = source.repo_git2(&app_state.project)?;
+        let gix_repo = gix::open(repo.path())?;
+        let gix_tree = root_tree(&gix_repo)?;
 
         let (scope, name) = manifest.name.as_str();
         let mut oids = vec![];
 
-        match source.read_file([scope, SCOPE_INFO_FILE], &app_state.project, None)? {
+        match read_file(&gix_tree, [scope, SCOPE_INFO_FILE])? {
             Some(info) => {
                 let info: ScopeInfo = toml::de::from_str(&info)?;
                 if !info.owners.contains(&user_id.0) {
@@ -338,11 +340,8 @@ pub async fn publish_package(
             }
         };
 
-        let mut entries: IndexFile = toml::de::from_str(
-            &source
-                .read_file([scope, name], &app_state.project, None)?
-                .unwrap_or_default(),
-        )?;
+        let mut entries: IndexFile =
+            toml::de::from_str(&read_file(&gix_tree, [scope, name])?.unwrap_or_default())?;
 
         let new_entry = IndexFileEntry {
             target: manifest.target.clone(),

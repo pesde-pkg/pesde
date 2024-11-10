@@ -63,6 +63,7 @@ impl LoginCommand {
 
         let config = source
             .config(project)
+            .await
             .context("failed to read index config")?;
         let Some(client_id) = config.github_oauth_client_id else {
             anyhow::bail!("index not configured for Github oauth.");

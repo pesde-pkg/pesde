@@ -106,7 +106,7 @@ async fn run() -> std::io::Result<()> {
         .await
         .expect("failed to refresh source");
 
-    let (search_reader, search_writer, query_parser) = make_search(&project, &source);
+    let (search_reader, search_writer, query_parser) = make_search(&project, &source).await;
 
     let app_data = web::Data::new(AppState {
         storage: {
@@ -115,8 +115,12 @@ async fn run() -> std::io::Result<()> {
             storage
         },
         auth: {
-            let auth =
-                get_auth_from_env(source.config(&project).expect("failed to get index config"));
+            let auth = get_auth_from_env(
+                source
+                    .config(&project)
+                    .await
+                    .expect("failed to get index config"),
+            );
             info!("auth: {auth}");
             auth
         },
