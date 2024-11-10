@@ -239,52 +239,6 @@ impl InstallCommand {
             downloaded_graph.clone()
         };
 
-        println!("{} 🗺️ linking dependencies", job(4));
-
-        project
-            .link_dependencies(&filtered_graph)
-            .await
-            .context("failed to link dependencies")?;
-
-        let bin_folder = bin_dir().await?;
-
-        for versions in filtered_graph.values() {
-            for node in versions.values() {
-                if node.target.bin_path().is_none() {
-                    continue;
-                }
-
-                let Some((alias, _)) = &node.node.direct else {
-                    continue;
-                };
-
-                if alias == env!("CARGO_BIN_NAME") {
-                    log::warn!("package {alias} has the same name as the CLI, skipping bin link");
-                    continue;
-                }
-
-                let bin_file = bin_folder.join(alias);
-                fs::write(&bin_file, bin_link_file(alias))
-                    .await
-                    .context("failed to write bin link file")?;
-
-                make_executable(&bin_file)
-                    .await
-                    .context("failed to make bin link executable")?;
-
-                #[cfg(windows)]
-                {
-                    let bin_file = bin_file.with_extension(std::env::consts::EXE_EXTENSION);
-                    fs::copy(
-                        std::env::current_exe().context("failed to get current executable path")?,
-                        &bin_file,
-                    )
-                    .await
-                    .context("failed to copy bin link file")?;
-                }
-            }
-        }
-
         #[cfg(feature = "patches")]
         {
             let rx = project
@@ -296,11 +250,67 @@ impl InstallCommand {
                 manifest.patches.values().map(|v| v.len() as u64).sum(),
                 rx,
                 &multi,
-                format!("{} 🩹 applying patches", job(5)),
-                format!("{} 🩹 applied patches", job(5)),
+                format!("{} 🩹 applying patches", job(4)),
+                format!("{} 🩹 applied patches", job(4)),
             )
             .await?;
         }
+
+        println!("{} 🗺️ linking dependencies", job(JOBS - 1));
+
+        let bin_folder = bin_dir().await?;
+
+        try_join_all(
+            filtered_graph
+                .values()
+                .flat_map(|versions| versions.values())
+                .filter(|node| node.target.bin_path().is_some())
+                .filter_map(|node| node.node.direct.as_ref())
+                .map(|(alias, _)| alias)
+                .filter(|alias| {
+                    if *alias == env!("CARGO_BIN_NAME") {
+                        log::warn!(
+                            "package {alias} has the same name as the CLI, skipping bin link"
+                        );
+                        return false;
+                    }
+
+                    true
+                })
+                .map(|alias| {
+                    let bin_folder = bin_folder.clone();
+                    async move {
+                        let bin_file = bin_folder.join(alias);
+                        fs::write(&bin_file, bin_link_file(alias))
+                            .await
+                            .context("failed to write bin link file")?;
+
+                        make_executable(&bin_file)
+                            .await
+                            .context("failed to make bin link executable")?;
+
+                        #[cfg(windows)]
+                        {
+                            let bin_file = bin_file.with_extension(std::env::consts::EXE_EXTENSION);
+                            fs::copy(
+                                std::env::current_exe()
+                                    .context("failed to get current executable path")?,
+                                &bin_file,
+                            )
+                            .await
+                            .context("failed to copy bin link file")?;
+                        }
+
+                        Ok::<_, anyhow::Error>(())
+                    }
+                }),
+        )
+        .await?;
+
+        project
+            .link_dependencies(&filtered_graph)
+            .await
+            .context("failed to link dependencies")?;
 
         println!("{} 🧹 finishing up", job(JOBS));
 
