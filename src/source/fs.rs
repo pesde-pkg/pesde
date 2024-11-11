@@ -40,17 +40,31 @@ pub enum PackageFS {
     Copy(PathBuf, TargetKind),
 }
 
-async fn make_readonly(_file: &fs::File) -> std::io::Result<()> {
-    // on Windows, file deletion is disallowed if the file is read-only which breaks patching
-    #[cfg(not(windows))]
-    {
-        let mut permissions = _file.metadata().await?.permissions();
-        permissions.set_readonly(true);
-        _file.set_permissions(permissions).await
+async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
+    // on Windows, file deletion is disallowed if the file is read-only which breaks multiple features
+    #[cfg(windows)]
+    if readonly {
+        return Ok(());
     }
 
-    #[cfg(windows)]
-    Ok(())
+    let mut permissions = fs::metadata(path).await?.permissions();
+    if readonly {
+        permissions.set_readonly(true);
+    } else {
+        #[cfg(windows)]
+        #[allow(clippy::permissions_set_readonly_false)]
+        {
+            permissions.set_readonly(false);
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            permissions.set_mode(permissions.mode() | 0o644);
+        }
+    }
+
+    fs::set_permissions(path, permissions).await
 }
 
 pub(crate) fn cas_path(hash: &str, cas_dir: &Path) -> PathBuf {
@@ -100,7 +114,7 @@ pub(crate) async fn store_in_cas<
 
     match temp_path.persist_noclobber(&cas_path) {
         Ok(_) => {
-            make_readonly(&file_writer).await?;
+            set_readonly(&cas_path, true).await?;
         }
         Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.error),
@@ -139,15 +153,7 @@ impl PackageFS {
                                     fs::hard_link(cas_file_path, path).await?;
                                 } else {
                                     fs::copy(cas_file_path, &path).await?;
-
-                                    #[cfg(unix)]
-                                    {
-                                        let f = fs::File::open(&path).await?;
-                                        let mut permissions = f.metadata().await?.permissions();
-                                        use std::os::unix::fs::PermissionsExt;
-                                        permissions.set_mode(permissions.mode() | 0o644);
-                                        f.set_permissions(permissions).await?;
-                                    }
+                                    set_readonly(&path, false).await?;
                                 }
                             }
                             FSEntry::Directory => {

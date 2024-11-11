@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correctly (de)serialize workspace specifiers by @daimond113
 - Fix CAS finder algorithm issues with Windows by @daimond113
 - Fix CAS finder algorithm's AlreadyExists error by @daimond113
+- Use moved path when setting file to read-only by @daimond113
 
 ### Changed
 - Switched to fs-err for better errors with file system operations by @daimond113
