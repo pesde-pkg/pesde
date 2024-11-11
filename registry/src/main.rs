@@ -1,9 +1,16 @@
+use crate::{
+    auth::{get_auth_from_env, Auth, UserIdExtractor},
+    search::make_search,
+    storage::{get_storage_from_env, Storage},
+};
 use actix_cors::Cors;
 use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::{
     middleware::{from_fn, Compress, Logger, NormalizePath, TrailingSlash},
     rt::System,
-    web, App, HttpServer,
+    web,
+    web::PayloadConfig,
+    App, HttpServer,
 };
 use fs_err::tokio as fs;
 use log::info;
@@ -12,12 +19,6 @@ use pesde::{
     AuthConfig, Project,
 };
 use std::{env::current_dir, path::PathBuf};
-
-use crate::{
-    auth::{get_auth_from_env, Auth, UserIdExtractor},
-    search::make_search,
-    storage::{get_storage_from_env, Storage},
-};
 
 mod auth;
 mod endpoints;
@@ -105,6 +106,10 @@ async fn run() -> std::io::Result<()> {
         .refresh(&project)
         .await
         .expect("failed to refresh source");
+    let config = source
+        .config(&project)
+        .await
+        .expect("failed to get index config");
 
     let (search_reader, search_writer, query_parser) = make_search(&project, &source).await;
 
@@ -115,12 +120,7 @@ async fn run() -> std::io::Result<()> {
             storage
         },
         auth: {
-            let auth = get_auth_from_env(
-                source
-                    .config(&project)
-                    .await
-                    .expect("failed to get index config"),
-            );
+            let auth = get_auth_from_env(&config);
             info!("auth: {auth}");
             auth
         },
@@ -176,12 +176,16 @@ async fn run() -> std::io::Result<()> {
                             .to(endpoints::package_version::get_package_version)
                             .wrap(from_fn(auth::read_mw)),
                     )
-                    .route(
-                        "/packages",
-                        web::post()
-                            .to(endpoints::publish_version::publish_package)
-                            .wrap(Governor::new(&publish_governor_config))
-                            .wrap(from_fn(auth::write_mw)),
+                    .service(
+                        web::scope("/packages")
+                            .app_data(PayloadConfig::new(config.max_archive_size))
+                            .route(
+                                "",
+                                web::post()
+                                    .to(endpoints::publish_version::publish_package)
+                                    .wrap(Governor::new(&publish_governor_config))
+                                    .wrap(from_fn(auth::write_mw)),
+                            ),
                     ),
             )
     })

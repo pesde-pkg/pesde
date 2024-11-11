@@ -7,7 +7,6 @@ publish = false
 
 [dependencies]
 actix-web = "4.9.0"
-actix-multipart = "0.7.2"
 actix-cors = "0.7.0"
 actix-governor = "0.7.0"
 dotenvy = "0.15.7"

@@ -6,12 +6,11 @@ use crate::{
     storage::StorageImpl,
     AppState,
 };
-use actix_multipart::Multipart;
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, web::Bytes, HttpResponse, Responder};
 use async_compression::Level;
 use convert_case::{Case, Casing};
 use fs_err::tokio as fs;
-use futures::{future::join_all, join, StreamExt};
+use futures::{future::join_all, join};
 use git2::{Remote, Repository, Signature};
 use pesde::{
     manifest::Manifest,
@@ -69,22 +68,12 @@ struct DocEntryInfo {
 
 pub async fn publish_package(
     app_state: web::Data<AppState>,
-    mut body: Multipart,
+    bytes: Bytes,
     user_id: web::ReqData<UserId>,
 ) -> Result<impl Responder, Error> {
     let source = app_state.source.lock().await;
     source.refresh(&app_state.project).await.map_err(Box::new)?;
     let config = source.config(&app_state.project).await?;
-
-    let bytes = body
-        .next()
-        .await
-        .ok_or(Error::InvalidArchive)?
-        .map_err(|_| Error::InvalidArchive)?
-        .bytes(config.max_archive_size)
-        .await
-        .map_err(|_| Error::InvalidArchive)?
-        .map_err(|_| Error::InvalidArchive)?;
 
     let package_dir = tempfile::tempdir()?;
 

@@ -530,10 +530,7 @@ impl PublishCommand {
 
         let mut request = reqwest
             .post(format!("{}/v0/packages", config.api()))
-            .multipart(reqwest::multipart::Form::new().part(
-                "tarball",
-                reqwest::multipart::Part::bytes(archive).file_name("package.tar.gz"),
-            ));
+            .body(archive);
 
         if let Some(token) = project.auth_config().tokens().get(index_url) {
             log::debug!("using token for {index_url}");

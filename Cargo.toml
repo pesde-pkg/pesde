@@ -15,7 +15,6 @@ bin = [
     "dirs",
     "pretty_env_logger",
     "reqwest/json",
-    "reqwest/multipart",
     "indicatif",
     "indicatif-log-bridge",
     "inquire",

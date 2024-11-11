@@ -157,7 +157,7 @@ pub async fn read_mw(
     next.call(req).await.map(|res| res.map_into_left_body())
 }
 
-pub fn get_auth_from_env(config: IndexConfig) -> Auth {
+pub fn get_auth_from_env(config: &IndexConfig) -> Auth {
     if let Ok(token) = benv!("ACCESS_TOKEN") {
         Auth::Token(token::TokenAuth {
             token: *Sha256::digest(token.as_bytes()).as_ref(),
@@ -167,6 +167,7 @@ pub fn get_auth_from_env(config: IndexConfig) -> Auth {
             reqwest_client: make_reqwest(),
             client_id: config
                 .github_oauth_client_id
+                .clone()
                 .expect("index isn't configured for GitHub"),
             client_secret,
         })
