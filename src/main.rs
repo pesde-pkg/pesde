@@ -36,9 +36,27 @@ struct Cli {
 async fn get_linkable_dir(path: &Path) -> PathBuf {
     let mut curr_path = PathBuf::new();
     let file_to_try = NamedTempFile::new_in(path).expect("failed to create temporary file");
-    let temp_file_name = file_to_try.path().file_name().unwrap();
 
-    for component in path.components() {
+    let temp_path = tempfile::Builder::new()
+        .make(|_| Ok(()))
+        .expect("failed to create temporary file")
+        .into_temp_path();
+    let temp_file_name = temp_path.file_name().expect("failed to get file name");
+
+    // C: and \ are different components on Windows
+    #[cfg(windows)]
+    let components = path.components().map(|c| {
+        let mut path = c.as_os_str().to_os_string();
+        if let std::path::Component::Prefix(_) = c {
+            path.push(std::path::MAIN_SEPARATOR_STR);
+        }
+
+        path
+    });
+    #[cfg(not(windows))]
+    let components = path.components().map(|c| c.as_os_str().to_os_string());
+
+    for component in components {
         curr_path.push(component);
 
         let try_path = curr_path.join(temp_file_name);

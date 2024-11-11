@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use a different algorithm for finding a CAS directory to avoid issues with mounted drives by @daimond113
 - Remove default.project.json from Git pesde dependencies by @daimond113
 - Correctly (de)serialize workspace specifiers by @daimond113
+- Fix CAS finder algorithm issues with Windows by @daimond113
+- Fix CAS finder algorithm's AlreadyExists error by @daimond113
 
 ### Changed
 - Switched to fs-err for better errors with file system operations by @daimond113
