@@ -3,6 +3,8 @@ title: Publishing Packages
 description: Learn how to publish packages to the pesde registry.
 ---
 
+import { Aside, LinkCard } from "@astrojs/starlight/components"
+
 ## Configuration
 
 Before you can publish a package, you must configure the required fields in your
@@ -41,18 +43,23 @@ lib = "init.luau"
 `build_files`. These are the files that should be synced into Roblox. They are
 passed to the `roblox_sync_config_generator` script.
 
-For more information, see [Roblox](/guides/roblox).
-
 ```toml
 [target]
 environment = "roblox"
-lib = "init.luau"
-build_files = ["init.luau"]
+lib = "src/init.luau"
+build_files = ["src"]
 ```
+
+<LinkCard
+	title="Roblox"
+	description="Learn more about authoring packages for Roblox."
+	href="/guides/roblox/#authoring-packages"
+/>
 
 ## Authentication
 
-Before you can publish a package, you must authenticate with your GitHub account.
+Before you can publish a package, you must authenticate with your GitHub
+account.
 
 ```sh
 pesde auth login
@@ -90,5 +97,41 @@ environment.
 The `README.md` file in the root of the package will be displayed on the
 [pesde registry website](https://pesde.daimond113.com/).
 
-If you have a `docs` directory in the root of the package, they will be
-hosted by pesde and be accessible on the pesde website.
+You can include a `docs` directory in the package containing markdown files
+and they will be available on the pesde registry website. You can see an example
+in [`pesde/hello`](https://pesde.daimond113.com/packages/pesde/hello/latest/any/docs).
+
+### Customizing the sidebar
+
+You can include frontmatter with a `sidebar_position` to customize the order
+of the pages on the sidebar.
+
+```md title="docs/getting-started.md"
+---
+sidebar_position: 2
+---
+
+# Getting Started
+
+Lorem ipsum odor amet, consectetuer adipiscing elit. Eleifend consectetur id
+consequat conubia fames curae?
+```
+
+You can have directories in the `docs` directory to create nested pages. These
+will show up as collapsible sections in the sidebar. You can include a
+`_category_.json` file inside the nested directories to customize the label and
+the ordering in the sidebar.
+
+```json title="docs/guides/_category_.json"
+{
+	"label": "Guides",
+	"position": 3
+}
+```
+
+<Aside type="tip">
+
+Make sure to include `docs` inside the `includes` field in `pesde.toml`
+otherwise they won't be published with your package.
+
+</Aside>

@@ -94,11 +94,10 @@ this field and run the correct version of pesde for this project.
 A list of globs containing the members of this workspace.
 
 <LinkCard
-  title="Workspaces"
-  description="Learn more about workspaces in pesde."
-  href="/guides/workspaces/"
+	title="Workspaces"
+	description="Learn more about workspaces in pesde."
+	href="/guides/workspaces/"
 />
-
 
 ## `[target]`
 
@@ -135,9 +134,9 @@ The entry point of the binary exported by the package. This file is what will be
 run when the package is executed as a binary.
 
 <LinkCard
-  title="Using Binary Packages"
-  description="Learn more about using binary packages in pesde."
-  href="/guides/binary-packages/"
+	title="Using Binary Packages"
+	description="Learn more about using binary packages in pesde."
+	href="/guides/binary-packages/"
 />
 
 ### `build_files`
@@ -183,15 +182,15 @@ You can find template scripts inside the
 for various sync tools.
 
 <LinkCard
-  title="Roblox"
-  description="Learn more about using pesde in Roblox projects."
-  href="/guides/roblox/"
+	title="Roblox"
+	description="Learn more about using pesde in Roblox projects."
+	href="/guides/roblox/"
 />
 
 <LinkCard
-  title="Example script for Rojo"
-  description="An example script for generating configuration for Rojo."
-  href="https://github.com/daimond113/pesde-scripts/blob/master/lune/rojo/roblox_sync_config_generator.luau"
+	title="Example script for Rojo"
+	description="An example script for generating configuration for Rojo."
+	href="https://github.com/daimond113/pesde-scripts/blob/master/lune/rojo/roblox_sync_config_generator.luau"
 />
 
 ### `sourcemap_generator`
@@ -204,9 +203,9 @@ The script will receive the path to the package directory as the first argument
 through `process.args`.
 
 <LinkCard
-  title="Example script for Rojo"
-  description="An example script for generating configuration for Rojo."
-  href="https://github.com/daimond113/pesde-scripts/blob/master/lune/rojo/sourcemap_generator.luau"
+	title="Example script for Rojo"
+	description="An example script for generating configuration for Rojo."
+	href="https://github.com/daimond113/pesde-scripts/blob/master/lune/rojo/sourcemap_generator.luau"
 />
 
 ## `[indices]`
@@ -270,9 +269,9 @@ refers to the `baz` dependency of the `bar` package, which is a dependency of
 the `foo` package.
 
 <LinkCard
-  title="Overrides"
-  description="Learn more about overriding and patching packages."
-  href="/guides/overrides/"
+	title="Overrides"
+	description="Learn more about overriding and patching packages."
+	href="/guides/overrides/"
 />
 
 ## `[patches]`
@@ -295,9 +294,9 @@ patch.
 The patches can be generated using the `pesde patch` command.
 
 <LinkCard
-  title="Overrides"
-  description="Learn more about overriding and patching packages."
-  href="/guides/overrides/"
+	title="Overrides"
+	description="Learn more about overriding and patching packages."
+	href="/guides/overrides/"
 />
 
 ## `[place]`
@@ -372,6 +371,25 @@ foo = { repo = "acme/packages", rev = "main", path = "foo" }
 - `path`: The path within the repository to install. If not specified, the root
   of the repository is used.
 
+### Workspace
+
+```toml
+[dependencies]
+foo = { workspace = "acme/foo", version = "^" }
+```
+
+**Workspace dependencies** contain the following fields:
+
+- `workspace`: The name of the package in the workspace.
+- `version`: The version requirement for the package. This can be `^`, `*`, `=`,
+  `~`, or a specific version requirement such as `^1.2.3`.
+
+<LinkCard
+	title="Workspaces"
+	description="Learn more about workspace dependencies in pesde."
+	href="/guides/workspaces/#workspace-dependencies"
+/>
+
 ## `[peer_dependencies]`
 
 The `[peer_dependencies]` section contains a list of peer dependencies for the
@@ -396,10 +414,10 @@ package is used by another package.
 foo = { name = "acme/foo", version = "1.2.3" }
 ```
 
-<br/>
+<br />
 
 <LinkCard
-  title="Specifying Dependencies"
-  description="Learn more about specifying dependencies in pesde."
-  href="/guides/dependencies/"
+	title="Specifying Dependencies"
+	description="Learn more about specifying dependencies in pesde."
+	href="/guides/dependencies/"
 />
