@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Switched to fs-err for better errors with file system operations by @daimond113
+- Use body bytes over multipart for publishing packages by @daimond113
+
+### Performance
+- Switch to async Rust by @daimond113
 
 ## [0.5.0-rc.7] - 2024-10-30
 ### Added
