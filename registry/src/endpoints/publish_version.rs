@@ -75,13 +75,13 @@ fn compare_repo_urls(this: &gix::Url, external: &gix::Url) -> bool {
     } else {
         &this
     };
-    
+
     let external = if external.ends_with(".git") {
         &external[..external.len() - 4]
     } else {
         &external
     };
-        
+
     this == external
 }
 
