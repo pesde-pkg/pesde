@@ -9,7 +9,6 @@ use pesde::{
 };
 use relative_path::RelativePathBuf;
 use std::{env::current_dir, ffi::OsString, io::Write, path::PathBuf, process::Command};
-use tokio::runtime::Handle;
 
 #[derive(Debug, Args)]
 pub struct RunCommand {
@@ -24,49 +23,45 @@ pub struct RunCommand {
 
 impl RunCommand {
     pub async fn run(self, project: Project) -> anyhow::Result<()> {
-        let project_2 = project.clone();
-        let update_scripts_handle = tokio::spawn(async move { update_scripts(&project_2).await });
-
         let run = |path: PathBuf| {
-            Handle::current()
-                .block_on(update_scripts_handle)
-                .unwrap()
-                .expect("failed to update scripts");
+            let package_dir = project.package_dir().to_path_buf();
+            let fut = update_scripts(&project);
+            async move {
+                fut.await.expect("failed to update scripts");
 
-            let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
-            caller
-                .write_all(
-                    generate_bin_linking_module(
-                        project.package_dir(),
-                        &format!("{:?}", path.to_string_lossy()),
+                let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
+                caller
+                    .write_all(
+                        generate_bin_linking_module(
+                            package_dir,
+                            &format!("{:?}", path.to_string_lossy()),
+                        )
+                        .as_bytes(),
                     )
-                    .as_bytes(),
-                )
-                .expect("failed to write to tempfile");
+                    .expect("failed to write to tempfile");
 
-            let status = Command::new("lune")
-                .arg("run")
-                .arg(caller.path())
-                .arg("--")
-                .args(&self.args)
-                .current_dir(current_dir().expect("failed to get current directory"))
-                .status()
-                .expect("failed to run script");
+                let status = Command::new("lune")
+                    .arg("run")
+                    .arg(caller.path())
+                    .arg("--")
+                    .args(&self.args)
+                    .current_dir(current_dir().expect("failed to get current directory"))
+                    .status()
+                    .expect("failed to run script");
 
-            drop(caller);
+                drop(caller);
 
-            std::process::exit(status.code().unwrap_or(1))
+                std::process::exit(status.code().unwrap_or(1))
+            }
         };
 
-        let package_or_script = match self.package_or_script {
-            Some(package_or_script) => package_or_script,
-            None => {
-                if let Some(script_path) = project.deser_manifest().await?.target.bin_path() {
-                    run(script_path.to_path(project.package_dir()));
-                }
-
-                anyhow::bail!("no package or script specified")
+        let Some(package_or_script) = self.package_or_script else {
+            if let Some(script_path) = project.deser_manifest().await?.target.bin_path() {
+                run(script_path.to_path(project.package_dir())).await;
+                return Ok(());
             }
+
+            anyhow::bail!("no package or script specified, and no bin path found in manifest")
         };
 
         if let Ok(pkg_name) = package_or_script.parse::<PackageName>() {
@@ -102,14 +97,14 @@ impl RunCommand {
                     version_id.version(),
                 );
 
-                run(bin_path.to_path(&container_folder));
+                run(bin_path.to_path(&container_folder)).await;
                 return Ok(());
             }
         }
 
         if let Ok(manifest) = project.deser_manifest().await {
             if let Some(script_path) = manifest.scripts.get(&package_or_script) {
-                run(script_path.to_path(project.package_dir()));
+                run(script_path.to_path(project.package_dir())).await;
                 return Ok(());
             }
         };
@@ -118,10 +113,10 @@ impl RunCommand {
         let path = relative_path.to_path(project.package_dir());
 
         if !path.exists() {
-            anyhow::bail!("path does not exist: {}", path.display());
+            anyhow::bail!("path `{}` does not exist", path.display());
         }
 
-        run(path);
+        run(path).await;
 
         Ok(())
     }
