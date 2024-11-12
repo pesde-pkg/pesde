@@ -66,6 +66,25 @@ struct DocEntryInfo {
     collapsed: bool,
 }
 
+fn compare_repo_urls(this: &gix::Url, external: &gix::Url) -> bool {
+    let this = this.to_bstring().to_string().to_lowercase();
+    let external = external.to_bstring().to_string().to_lowercase();
+
+    let this = if this.ends_with(".git") {
+        &this[..this.len() - 4]
+    } else {
+        &this
+    };
+    
+    let external = if external.ends_with(".git") {
+        &external[..external.len() - 4]
+    } else {
+        &external
+    };
+        
+    this == external
+}
+
 pub async fn publish_package(
     app_state: web::Data<AppState>,
     bytes: Bytes,
@@ -94,12 +113,14 @@ pub async fn publish_package(
         let file_name = entry
             .file_name()
             .to_str()
-            .ok_or(Error::InvalidArchive)?
+            .ok_or_else(|| Error::InvalidArchive("file name contains non UTF-8 characters".into()))?
             .to_string();
 
         if entry.file_type().await?.is_dir() {
             if IGNORED_DIRS.contains(&file_name.as_str()) {
-                return Err(Error::InvalidArchive);
+                return Err(Error::InvalidArchive(format!(
+                    "archive contains forbidden directory: {file_name}"
+                )));
             }
 
             if file_name == "docs" {
@@ -114,7 +135,11 @@ pub async fn publish_package(
                         let file_name = entry
                             .file_name()
                             .to_str()
-                            .ok_or(Error::InvalidArchive)?
+                            .ok_or_else(|| {
+                                Error::InvalidArchive(
+                                    "file name contains non UTF-8 characters".into(),
+                                )
+                            })?
                             .to_string();
 
                         if entry.file_type().await?.is_dir() {
@@ -176,8 +201,12 @@ pub async fn publish_package(
                             .and_then(|l| l.strip_prefix("# "))
                             .map(|s| s.to_string());
 
-                        let info: DocEntryInfo = serde_yaml::from_str(&front_matter)
-                            .map_err(|_| Error::InvalidArchive)?;
+                        let info: DocEntryInfo =
+                            serde_yaml::from_str(&front_matter).map_err(|_| {
+                                Error::InvalidArchive(format!(
+                                    "doc {file_name}'s frontmatter isn't valid YAML"
+                                ))
+                            })?;
 
                         set.insert(DocEntry {
                             label: info.label.or(h1).unwrap_or(file_name.to_case(Case::Title)),
@@ -189,7 +218,11 @@ pub async fn publish_package(
                                     .unwrap()
                                     .with_extension("")
                                     .to_str()
-                                    .ok_or(Error::InvalidArchive)?
+                                    .ok_or_else(|| {
+                                        Error::InvalidArchive(
+                                            "file name contains non UTF-8 characters".into(),
+                                        )
+                                    })?
                                     // ensure that the path is always using forward slashes
                                     .replace("\\", "/"),
                                 hash,
@@ -223,12 +256,12 @@ pub async fn publish_package(
             continue;
         }
 
-        if IGNORED_FILES.contains(&file_name.as_str()) {
-            return Err(Error::InvalidArchive);
-        }
-
-        if ADDITIONAL_FORBIDDEN_FILES.contains(&file_name.as_str()) {
-            return Err(Error::InvalidArchive);
+        if IGNORED_FILES.contains(&file_name.as_str())
+            || ADDITIONAL_FORBIDDEN_FILES.contains(&file_name.as_str())
+        {
+            return Err(Error::InvalidArchive(format!(
+                "archive contains forbidden file: {file_name}"
+            )));
         }
 
         if file_name == MANIFEST_FILE_NAME {
@@ -242,7 +275,9 @@ pub async fn publish_package(
             .is_some()
         {
             if readme.is_some() {
-                return Err(Error::InvalidArchive);
+                return Err(Error::InvalidArchive(
+                    "archive contains multiple readme files".into(),
+                ));
             }
 
             let mut file = fs::File::open(entry.path()).await?;
@@ -255,7 +290,9 @@ pub async fn publish_package(
     }
 
     let Some(manifest) = manifest else {
-        return Err(Error::InvalidArchive);
+        return Err(Error::InvalidArchive(
+            "archive doesn't contain a manifest".into(),
+        ));
     };
 
     add_breadcrumb(sentry::Breadcrumb {
@@ -273,9 +310,9 @@ pub async fn publish_package(
     });
 
     {
-        let dependencies = manifest
-            .all_dependencies()
-            .map_err(|_| Error::InvalidArchive)?;
+        let dependencies = manifest.all_dependencies().map_err(|e| {
+            Error::InvalidArchive(format!("manifest has invalid dependencies: {e}"))
+        })?;
 
         for (specifier, _) in dependencies.values() {
             match specifier {
@@ -285,17 +322,21 @@ pub async fn publish_package(
                         .as_deref()
                         .filter(|index| match gix::Url::try_from(*index) {
                             Ok(_) if config.other_registries_allowed => true,
-                            Ok(url) => url == *source.repo_url(),
+                            Ok(url) => compare_repo_urls(source.repo_url(), &url),
                             Err(_) => false,
                         })
                         .is_none()
                     {
-                        return Err(Error::InvalidArchive);
+                        return Err(Error::InvalidArchive(format!(
+                            "invalid index in pesde dependency {specifier}"
+                        )));
                     }
                 }
                 DependencySpecifiers::Wally(specifier) => {
                     if !config.wally_allowed {
-                        return Err(Error::InvalidArchive);
+                        return Err(Error::InvalidArchive(
+                            "wally dependencies are not allowed".into(),
+                        ));
                     }
 
                     if specifier
@@ -304,17 +345,23 @@ pub async fn publish_package(
                         .filter(|index| index.parse::<url::Url>().is_ok())
                         .is_none()
                     {
-                        return Err(Error::InvalidArchive);
+                        return Err(Error::InvalidArchive(format!(
+                            "invalid index in wally dependency {specifier}"
+                        )));
                     }
                 }
                 DependencySpecifiers::Git(_) => {
                     if !config.git_allowed {
-                        return Err(Error::InvalidArchive);
+                        return Err(Error::InvalidArchive(
+                            "git dependencies are not allowed".into(),
+                        ));
                     }
                 }
                 DependencySpecifiers::Workspace(_) => {
                     // workspace specifiers are to be transformed into Pesde specifiers by the sender
-                    return Err(Error::InvalidArchive);
+                    return Err(Error::InvalidArchive(
+                        "non-transformed workspace dependency".into(),
+                    ));
                 }
             }
         }

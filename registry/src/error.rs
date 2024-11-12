@@ -25,7 +25,7 @@ pub enum Error {
     Tar(#[from] std::io::Error),
 
     #[error("invalid archive")]
-    InvalidArchive,
+    InvalidArchive(String),
 
     #[error("failed to read index config")]
     Config(#[from] pesde::source::pesde::errors::ConfigError),
@@ -60,11 +60,12 @@ impl ResponseError for Error {
             Error::Query(e) => HttpResponse::BadRequest().json(ErrorResponse {
                 error: format!("failed to parse query: {e}"),
             }),
-            Error::Tar(_) | Error::InvalidArchive => {
-                HttpResponse::BadRequest().json(ErrorResponse {
-                    error: "invalid archive".to_string(),
-                })
-            }
+            Error::Tar(_) => HttpResponse::BadRequest().json(ErrorResponse {
+                error: "corrupt archive".to_string(),
+            }),
+            Error::InvalidArchive(e) => HttpResponse::BadRequest().json(ErrorResponse {
+                error: format!("archive is invalid: {e}"),
+            }),
             e => {
                 log::error!("unhandled error: {e:?}");
                 HttpResponse::InternalServerError().finish()
