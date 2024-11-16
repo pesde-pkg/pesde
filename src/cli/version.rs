@@ -287,11 +287,13 @@ pub async fn update_bin_exe(downloaded_file: &Path) -> anyhow::Result<()> {
     ));
     let mut downloaded_file = downloaded_file.to_path_buf();
 
-    if cfg!(target_os = "linux") && bin_exe_path.exists() {
+    let exists = bin_exe_path.exists();
+
+    if cfg!(target_os = "linux") && exists {
         fs::remove_file(&bin_exe_path)
             .await
             .context("failed to remove existing executable")?;
-    } else {
+    } else if exists {
         let tempfile = tempfile::Builder::new()
             .make(|_| Ok(()))
             .context("failed to create temporary file")?;
