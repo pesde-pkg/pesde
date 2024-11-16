@@ -72,7 +72,7 @@ impl Project {
 
                     let container_folder = node.container_folder(
                         &package_dir
-                            .join(manifest_target_kind.packages_folder(&node.pkg_ref.target_kind()))
+                            .join(manifest_target_kind.packages_folder(version_id.target()))
                             .join(PACKAGES_CONTAINER_NAME),
                         &name,
                         version_id.version(),

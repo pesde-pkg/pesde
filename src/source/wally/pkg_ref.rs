@@ -4,7 +4,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    manifest::{target::TargetKind, DependencyType},
+    manifest::DependencyType,
     names::wally::WallyPackageName,
     source::{wally::WallyPackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
@@ -34,10 +34,6 @@ impl PackageRef for WallyPackageRef {
 
     fn use_new_structure(&self) -> bool {
         false
-    }
-
-    fn target_kind(&self) -> TargetKind {
-        TargetKind::Roblox
     }
 
     fn source(&self) -> PackageSources {

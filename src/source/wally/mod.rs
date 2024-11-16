@@ -6,7 +6,11 @@ use crate::{
         git_index::{read_file, root_tree, GitBasedSource},
         traits::PackageSource,
         version_id::VersionId,
-        wally::{compat_util::get_target, manifest::WallyManifest, pkg_ref::WallyPackageRef},
+        wally::{
+            compat_util::get_target,
+            manifest::{Realm, WallyManifest},
+            pkg_ref::WallyPackageRef,
+        },
         IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
@@ -125,7 +129,13 @@ impl PackageSource for WallyPackageSource {
                 .filter(|manifest| specifier.version.matches(&manifest.package.version))
                 .map(|manifest| {
                     Ok((
-                        VersionId(manifest.package.version.clone(), TargetKind::Roblox),
+                        VersionId(
+                            manifest.package.version.clone(),
+                            match manifest.package.realm {
+                                Realm::Server => TargetKind::RobloxServer,
+                                _ => TargetKind::Roblox,
+                            },
+                        ),
                         WallyPackageRef {
                             name: specifier.name.clone(),
                             index_url: self.repo_url.clone(),

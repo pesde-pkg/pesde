@@ -4,7 +4,6 @@ use clap::Args;
 use pesde::{
     linking::generator::generate_bin_linking_module,
     names::{PackageName, PackageNames},
-    source::traits::PackageRef,
     Project, PACKAGES_CONTAINER_NAME,
 };
 use relative_path::RelativePathBuf;
@@ -87,7 +86,7 @@ impl RunCommand {
                     .await?
                     .target
                     .kind()
-                    .packages_folder(&node.node.pkg_ref.target_kind());
+                    .packages_folder(version_id.target());
                 let container_folder = node.node.container_folder(
                     &project
                         .package_dir()

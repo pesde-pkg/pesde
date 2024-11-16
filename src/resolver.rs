@@ -328,7 +328,7 @@ impl Project {
                         .chain(std::iter::once(alias.to_string()))
                         .collect(),
                     overridden.is_some(),
-                    pkg_ref.target_kind(),
+                    *target_version_id.target(),
                 ));
             }
         }

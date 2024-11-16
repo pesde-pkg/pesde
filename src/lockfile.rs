@@ -37,9 +37,9 @@ pub struct DependencyGraphNode {
 }
 
 impl DependencyGraphNode {
-    pub(crate) fn base_folder(&self, project_target: TargetKind) -> String {
+    pub(crate) fn base_folder(&self, version_id: &VersionId, project_target: TargetKind) -> String {
         if self.pkg_ref.use_new_structure() {
-            self.pkg_ref.target_kind().packages_folder(&project_target)
+            version_id.target().packages_folder(&project_target)
         } else {
             "..".to_string()
         }

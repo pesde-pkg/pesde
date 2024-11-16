@@ -272,8 +272,15 @@ impl PackageSource for GitPackageSource {
                                     )
                                 })?;
                                 let name = PackageNames::Wally(manifest.package.name);
-                                let version_id =
-                                    VersionId(manifest.package.version, TargetKind::Roblox);
+                                let version_id = VersionId(
+                                    manifest.package.version,
+                                    match manifest.package.realm {
+                                        crate::source::wally::manifest::Realm::Server => {
+                                            TargetKind::RobloxServer
+                                        }
+                                        _ => TargetKind::Roblox,
+                                    },
+                                );
 
                                 (name, version_id, dependencies)
                             }
@@ -300,7 +307,6 @@ impl PackageSource for GitPackageSource {
             }
         };
 
-        let target = *version_id.target();
         let new_structure = matches!(name, PackageNames::Pesde(_));
 
         Ok((
@@ -310,7 +316,6 @@ impl PackageSource for GitPackageSource {
                 GitPackageRef {
                     repo: self.repo_url.clone(),
                     tree_id: tree.id.to_string(),
-                    target,
                     new_structure,
                     dependencies,
                 },
@@ -333,10 +338,9 @@ impl PackageSource for GitPackageSource {
         match fs::read_to_string(&index_file).await {
             Ok(s) => {
                 log::debug!(
-                    "using cached index file for package {}#{} {}",
+                    "using cached index file for package {}#{}",
                     pkg_ref.repo,
-                    pkg_ref.tree_id,
-                    pkg_ref.target
+                    pkg_ref.tree_id
                 );
 
                 let fs = toml::from_str::<PackageFS>(&s).map_err(|e| {

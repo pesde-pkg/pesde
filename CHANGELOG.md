@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Fixed
+- Correctly link Wally server packages by @daimond113
+
 ## [0.5.0-rc.8] - 2024-11-12
 ### Added
 - Add `--index` flag to `publish` command to publish to a specific index by @daimond113

@@ -4,10 +4,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    manifest::{
-        target::{Target, TargetKind},
-        DependencyType,
-    },
+    manifest::{target::Target, DependencyType},
     names::PackageName,
     source::{pesde::PesdePackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
@@ -38,10 +35,6 @@ impl PackageRef for PesdePackageRef {
 
     fn use_new_structure(&self) -> bool {
         true
-    }
-
-    fn target_kind(&self) -> TargetKind {
-        self.target.kind()
     }
 
     fn source(&self) -> PackageSources {

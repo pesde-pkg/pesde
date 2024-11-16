@@ -3,10 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::{
-    manifest::{
-        target::{Target, TargetKind},
-        DependencyType,
-    },
+    manifest::{target::Target, DependencyType},
     source::{workspace::WorkspacePackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
 
@@ -28,10 +25,6 @@ impl PackageRef for WorkspacePackageRef {
 
     fn use_new_structure(&self) -> bool {
         true
-    }
-
-    fn target_kind(&self) -> TargetKind {
-        self.target.kind()
     }
 
     fn source(&self) -> PackageSources {

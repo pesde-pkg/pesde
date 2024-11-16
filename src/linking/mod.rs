@@ -51,12 +51,7 @@ impl Project {
                 let container_folder = node.node.container_folder(
                     &self
                         .package_dir()
-                        .join(
-                            manifest
-                                .target
-                                .kind()
-                                .packages_folder(&node.node.pkg_ref.target_kind()),
-                        )
+                        .join(manifest.target.kind().packages_folder(version_id.target()))
                         .join(PACKAGES_CONTAINER_NAME),
                     name,
                     version_id.version(),
@@ -130,12 +125,8 @@ impl Project {
             for (version_id, node) in versions {
                 let (node_container_folder, node_packages_folder) = {
                     let base_folder = create_and_canonicalize(
-                        self.package_dir().join(
-                            manifest
-                                .target
-                                .kind()
-                                .packages_folder(&node.node.pkg_ref.target_kind()),
-                        ),
+                        self.package_dir()
+                            .join(manifest.target.kind().packages_folder(version_id.target())),
                     )
                     .await?;
                     let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
@@ -214,10 +205,9 @@ impl Project {
 
                     let base_folder = create_and_canonicalize(
                         self.package_dir().join(
-                            node.node
-                                .pkg_ref
-                                .target_kind()
-                                .packages_folder(&dependency_node.node.pkg_ref.target_kind()),
+                            version_id
+                                .target()
+                                .packages_folder(dependency_version_id.target()),
                         ),
                     )
                     .await?;
@@ -230,8 +220,10 @@ impl Project {
                     );
 
                     let linker_folder = create_and_canonicalize(
-                        node_container_folder
-                            .join(node.node.base_folder(dependency_node.target.kind())),
+                        node_container_folder.join(
+                            node.node
+                                .base_folder(version_id, dependency_node.target.kind()),
+                        ),
                     )
                     .await?;
 

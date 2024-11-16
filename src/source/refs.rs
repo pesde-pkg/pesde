@@ -1,5 +1,5 @@
 use crate::{
-    manifest::{target::TargetKind, DependencyType},
+    manifest::DependencyType,
     source::{pesde, specifiers::DependencySpecifiers, traits::PackageRef, PackageSources},
 };
 use serde::{Deserialize, Serialize};
@@ -50,16 +50,6 @@ impl PackageRef for PackageRefs {
             PackageRefs::Wally(pkg_ref) => pkg_ref.use_new_structure(),
             PackageRefs::Git(pkg_ref) => pkg_ref.use_new_structure(),
             PackageRefs::Workspace(pkg_ref) => pkg_ref.use_new_structure(),
-        }
-    }
-
-    fn target_kind(&self) -> TargetKind {
-        match self {
-            PackageRefs::Pesde(pkg_ref) => pkg_ref.target_kind(),
-            #[cfg(feature = "wally-compat")]
-            PackageRefs::Wally(pkg_ref) => pkg_ref.target_kind(),
-            PackageRefs::Git(pkg_ref) => pkg_ref.target_kind(),
-            PackageRefs::Workspace(pkg_ref) => pkg_ref.target_kind(),
         }
     }
 

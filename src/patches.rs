@@ -1,7 +1,4 @@
-use crate::{
-    lockfile::DownloadedGraph, source::traits::PackageRef, Project, MANIFEST_FILE_NAME,
-    PACKAGES_CONTAINER_NAME,
-};
+use crate::{lockfile::DownloadedGraph, Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME};
 use fs_err::tokio as fs;
 use git2::{ApplyLocation, Diff, DiffFormat, DiffLineType, Repository, Signature};
 use relative_path::RelativePathBuf;
@@ -110,12 +107,7 @@ impl Project {
                 let container_folder = node.node.container_folder(
                     &self
                         .package_dir()
-                        .join(
-                            manifest
-                                .target
-                                .kind()
-                                .packages_folder(&node.node.pkg_ref.target_kind()),
-                        )
+                        .join(manifest.target.kind().packages_folder(version_id.target()))
                         .join(PACKAGES_CONTAINER_NAME),
                     &name,
                     version_id.version(),
