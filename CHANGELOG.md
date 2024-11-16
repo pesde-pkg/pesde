@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0-rc.9] - 2024-11-16
 ### Fixed
 - Correctly link Wally server packages by @daimond113
 
@@ -95,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make registry much easier to self-host by @daimond113
 - Start maintaining a changelog by @daimond113
 
+[0.5.0-rc.9]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.8..v0.5.0-rc.9
 [0.5.0-rc.8]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.7..v0.5.0-rc.8
 [0.5.0-rc.7]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.6..v0.5.0-rc.7
 [0.5.0-rc.6]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.5..v0.5.0-rc.6

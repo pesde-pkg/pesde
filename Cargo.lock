@@ -645,9 +645,9 @@ dependencies = [
 
 [[package]]
 name = "borsh"
-version = "1.5.2"
+version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5327f6c99920069d1fe374aa743be1af0031dea9f250852cdf1ae6a0861ee24"
+checksum = "2506947f73ad44e344215ccd6403ac2ae18cd8e046e581a441bf8d199f257f03"
 dependencies = [
  "cfg_aliases",
 ]
@@ -3639,7 +3639,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "pesde"
-version = "0.5.0-rc.8"
+version = "0.5.0-rc.9"
 dependencies = [
  "anyhow",
  "async-compression",
