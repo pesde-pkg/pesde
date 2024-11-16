@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fix `self-install` doing a cross-device move by @daimond113
 
+### Changed
+- Only store `pesde_version` executables in the version cache by @daimond113
+
 ## [0.5.0-rc.9] - 2024-11-16
 ### Fixed
 - Correctly link Wally server packages by @daimond113

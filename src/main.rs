@@ -1,7 +1,5 @@
 #[cfg(feature = "version-management")]
-use crate::cli::version::{
-    check_for_updates, current_version, get_or_download_version, max_installed_version,
-};
+use crate::cli::version::{check_for_updates, get_or_download_version};
 use crate::cli::{auth::get_tokens, display_err, home_dir, HOME_DIR};
 use anyhow::Context;
 use clap::Parser;
@@ -248,18 +246,10 @@ async fn run() -> anyhow::Result<()> {
             .ok()
             .and_then(|manifest| manifest.pesde_version);
 
-        // store the current version in case it needs to be used later
-        get_or_download_version(&reqwest, &current_version(), false).await?;
-
         let exe_path = if let Some(version) = target_version {
-            Some(get_or_download_version(&reqwest, &version, false).await?)
+            get_or_download_version(&reqwest, &version, false).await?
         } else {
             None
-        };
-        let exe_path = if let Some(exe_path) = exe_path {
-            exe_path
-        } else {
-            get_or_download_version(&reqwest, &max_installed_version().await?, false).await?
         };
 
         if let Some(exe_path) = exe_path {
@@ -277,13 +267,7 @@ async fn run() -> anyhow::Result<()> {
         );
     }
 
-    let cli = match Cli::try_parse() {
-        Ok(cli) => cli,
-        Err(err) => {
-            let _ = err.print();
-            std::process::exit(err.exit_code());
-        }
-    };
+    let cli = Cli::parse();
 
     cli.subcommand.run(project, multi, reqwest).await
 }

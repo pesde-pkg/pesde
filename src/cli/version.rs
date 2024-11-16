@@ -243,42 +243,6 @@ pub async fn get_or_download_version(
     })
 }
 
-pub async fn max_installed_version() -> anyhow::Result<Version> {
-    let versions_dir = home_dir()?.join("versions");
-    fs::create_dir_all(&versions_dir)
-        .await
-        .context("failed to create versions directory")?;
-
-    let mut read_dir = fs::read_dir(versions_dir)
-        .await
-        .context("failed to read versions directory")?;
-    let mut max_version = current_version();
-
-    while let Some(entry) = read_dir.next_entry().await? {
-        #[cfg(not(windows))]
-        let name = entry
-            .path()
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-        #[cfg(windows)]
-        let name = entry
-            .path()
-            .file_stem()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-
-        let version = Version::parse(&name).unwrap();
-        if version > max_version {
-            max_version = version;
-        }
-    }
-
-    Ok(max_version)
-}
-
 pub async fn update_bin_exe(downloaded_file: &Path) -> anyhow::Result<()> {
     let bin_exe_path = bin_dir().await?.join(format!(
         "{}{}",
