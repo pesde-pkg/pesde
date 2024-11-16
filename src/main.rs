@@ -249,17 +249,17 @@ async fn run() -> anyhow::Result<()> {
             .and_then(|manifest| manifest.pesde_version);
 
         // store the current version in case it needs to be used later
-        get_or_download_version(&reqwest, &current_version()).await?;
+        get_or_download_version(&reqwest, &current_version(), false).await?;
 
         let exe_path = if let Some(version) = target_version {
-            Some(get_or_download_version(&reqwest, &version).await?)
+            Some(get_or_download_version(&reqwest, &version, false).await?)
         } else {
             None
         };
         let exe_path = if let Some(exe_path) = exe_path {
             exe_path
         } else {
-            get_or_download_version(&reqwest, &max_installed_version().await?).await?
+            get_or_download_version(&reqwest, &max_installed_version().await?, false).await?
         };
 
         if let Some(exe_path) = exe_path {

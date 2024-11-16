@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Correctly link Wally server packages by @daimond113
 
+### Changed
+- `self-upgrade` now will check for updates by itself by default by @daimond113
+
 ## [0.5.0-rc.8] - 2024-11-12
 ### Added
 - Add `--index` flag to `publish` command to publish to a specific index by @daimond113

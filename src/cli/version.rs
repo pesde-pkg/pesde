@@ -1,9 +1,4 @@
-use crate::cli::{
-    bin_dir,
-    config::{read_config, write_config, CliConfig},
-    files::make_executable,
-    home_dir,
-};
+use crate::cli::{bin_dir, config::read_config, files::make_executable, home_dir};
 use anyhow::Context;
 use colored::Colorize;
 use fs_err::tokio as fs;
@@ -11,7 +6,10 @@ use futures::StreamExt;
 use reqwest::header::ACCEPT;
 use semver::Version;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::{
+    env::current_exe,
+    path::{Path, PathBuf},
+};
 use tokio::io::AsyncReadExt;
 
 pub fn current_version() -> Version {
@@ -38,11 +36,32 @@ fn get_repo() -> (String, String) {
     )
 }
 
+pub async fn get_latest_remote_version(reqwest: &reqwest::Client) -> anyhow::Result<Version> {
+    let (owner, repo) = get_repo();
+
+    let releases = reqwest
+        .get(format!(
+            "https://api.github.com/repos/{owner}/{repo}/releases",
+        ))
+        .send()
+        .await
+        .context("failed to send request to GitHub API")?
+        .error_for_status()
+        .context("failed to get GitHub API response")?
+        .json::<Vec<Release>>()
+        .await
+        .context("failed to parse GitHub API response")?;
+
+    releases
+        .into_iter()
+        .map(|release| Version::parse(release.tag_name.trim_start_matches('v')).unwrap())
+        .max()
+        .context("failed to find latest version")
+}
+
 const CHECK_INTERVAL: chrono::Duration = chrono::Duration::hours(6);
 
 pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> {
-    let (owner, repo) = get_repo();
-
     let config = read_config().await?;
 
     let version = if let Some((_, version)) = config
@@ -51,52 +70,66 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
     {
         version
     } else {
-        let releases = reqwest
-            .get(format!(
-                "https://api.github.com/repos/{owner}/{repo}/releases",
-            ))
-            .send()
-            .await
-            .context("failed to send request to GitHub API")?
-            .error_for_status()
-            .context("failed to get GitHub API response")?
-            .json::<Vec<Release>>()
-            .await
-            .context("failed to parse GitHub API response")?;
-
-        let version = releases
-            .into_iter()
-            .map(|release| Version::parse(release.tag_name.trim_start_matches('v')).unwrap())
-            .max()
-            .context("failed to find latest version")?;
-
-        write_config(&CliConfig {
-            last_checked_updates: Some((chrono::Utc::now(), version.clone())),
-            ..config
-        })
-        .await?;
-
-        version
+        get_latest_remote_version(reqwest).await?
     };
+    let current_version = current_version();
 
-    if version > current_version() {
-        let name = env!("CARGO_PKG_NAME");
+    if version > current_version {
+        let name = env!("CARGO_BIN_NAME");
+        let changelog = format!("{}/releases/tag/v{version}", env!("CARGO_PKG_REPOSITORY"),);
 
-        let unformatted_message = format!("a new version of {name} is available: {version}");
+        let unformatted_messages = [
+            "".to_string(),
+            format!("update available! {current_version} → {version}"),
+            format!("changelog: {changelog}"),
+            format!("run `{name} self-upgrade` to upgrade"),
+            "".to_string(),
+        ];
 
-        let message = format!(
-            "a new version of {} is available: {}",
-            name.cyan(),
-            version.to_string().yellow().bold()
-        );
+        let width = unformatted_messages
+            .iter()
+            .map(|s| s.chars().count())
+            .max()
+            .unwrap()
+            + 4;
 
-        let stars = "-"
-            .repeat(unformatted_message.len() + 4)
-            .bright_magenta()
-            .bold();
-        let column = "|".bright_magenta().bold();
+        let column = "│".bright_magenta();
 
-        println!("\n{stars}\n{column} {message} {column}\n{stars}\n");
+        let message = [
+            "".to_string(),
+            format!(
+                "update available! {} → {}",
+                current_version.to_string().red(),
+                version.to_string().green()
+            ),
+            format!("changelog: {}", changelog.blue()),
+            format!(
+                "run `{} {}` to upgrade",
+                name.blue(),
+                "self-upgrade".yellow()
+            ),
+            "".to_string(),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let text_length = unformatted_messages[i].chars().count();
+            let padding = (width as f32 - text_length as f32) / 2f32;
+            let padding_l = " ".repeat(padding.floor() as usize);
+            let padding_r = " ".repeat(padding.ceil() as usize);
+            format!("{column}{padding_l}{s}{padding_r}{column}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+        let lines = "─".repeat(width).bright_magenta();
+
+        let tl = "╭".bright_magenta();
+        let tr = "╮".bright_magenta();
+        let bl = "╰".bright_magenta();
+        let br = "╯".bright_magenta();
+
+        println!("\n{tl}{lines}{tr}\n{message}\n{bl}{lines}{br}\n");
     }
 
     Ok(())
@@ -169,6 +202,7 @@ pub async fn download_github_release(
 pub async fn get_or_download_version(
     reqwest: &reqwest::Client,
     version: &Version,
+    always_give_path: bool,
 ) -> anyhow::Result<Option<PathBuf>> {
     let path = home_dir()?.join("versions");
     fs::create_dir_all(&path)
@@ -177,7 +211,7 @@ pub async fn get_or_download_version(
 
     let path = path.join(format!("{version}{}", std::env::consts::EXE_SUFFIX));
 
-    let is_requested_version = *version == current_version();
+    let is_requested_version = !always_give_path && *version == current_version();
 
     if path.exists() {
         return Ok(if is_requested_version {
@@ -188,7 +222,7 @@ pub async fn get_or_download_version(
     }
 
     if is_requested_version {
-        fs::copy(std::env::current_exe()?, &path)
+        fs::copy(current_exe()?, &path)
             .await
             .context("failed to copy current executable to version directory")?;
     } else {
@@ -245,16 +279,39 @@ pub async fn max_installed_version() -> anyhow::Result<Version> {
     Ok(max_version)
 }
 
-pub async fn update_bin_exe() -> anyhow::Result<()> {
-    let copy_to = bin_dir().await?.join(format!(
+pub async fn update_bin_exe(downloaded_file: &Path) -> anyhow::Result<()> {
+    let bin_exe_path = bin_dir().await?.join(format!(
         "{}{}",
         env!("CARGO_BIN_NAME"),
         std::env::consts::EXE_SUFFIX
     ));
+    let mut downloaded_file = downloaded_file.to_path_buf();
 
-    fs::copy(std::env::current_exe()?, &copy_to)
+    if cfg!(target_os = "linux") && bin_exe_path.exists() {
+        fs::remove_file(&bin_exe_path)
+            .await
+            .context("failed to remove existing executable")?;
+    } else {
+        let tempfile = tempfile::Builder::new()
+            .make(|_| Ok(()))
+            .context("failed to create temporary file")?;
+        let path = tempfile.into_temp_path().to_path_buf();
+        #[cfg(windows)]
+        let path = path.with_extension("exe");
+
+        let current_exe = current_exe().context("failed to get current exe path")?;
+        if current_exe == downloaded_file {
+            downloaded_file = path.to_path_buf();
+        }
+
+        fs::rename(&bin_exe_path, &path)
+            .await
+            .context("failed to rename current executable")?;
+    }
+
+    fs::copy(downloaded_file, &bin_exe_path)
         .await
         .context("failed to copy executable to bin folder")?;
 
-    make_executable(&copy_to).await
+    make_executable(&bin_exe_path).await
 }
