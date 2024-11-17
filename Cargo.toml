@@ -96,6 +96,12 @@ members = ["registry"]
 [profile.dev.package.full_moon]
 opt-level = 3
 
+[profile.release]
+opt-level = "s"
+lto = true
+incremental = true
+codegen-units = 1
+
 [profile.release.package.pesde-registry]
 # add debug symbols for Sentry stack traces
 debug = "full"

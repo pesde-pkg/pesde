@@ -4,7 +4,7 @@ use fs_err::tokio as fs;
 use futures::StreamExt;
 use indicatif::MultiProgress;
 use pesde::{
-    lockfile::{DownloadedGraph, Lockfile},
+    lockfile::Lockfile,
     manifest::target::TargetKind,
     names::{PackageName, PackageNames},
     source::{version_id::VersionId, workspace::specifier::VersionTypeOrReq},
@@ -124,7 +124,10 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 
 impl VersionedPackageName {
     #[cfg(feature = "patches")]
-    fn get(self, graph: &DownloadedGraph) -> anyhow::Result<(PackageNames, VersionId)> {
+    fn get(
+        self,
+        graph: &pesde::lockfile::DownloadedGraph,
+    ) -> anyhow::Result<(PackageNames, VersionId)> {
         let version_id = match self.1 {
             Some(version) => version,
             None => {
