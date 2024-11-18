@@ -1,4 +1,9 @@
-use crate::cli::{bin_dir, config::read_config, files::make_executable, home_dir};
+use crate::cli::{
+    bin_dir,
+    config::{read_config, write_config, CliConfig},
+    files::make_executable,
+    home_dir,
+};
 use anyhow::Context;
 use colored::Colorize;
 use fs_err::tokio as fs;
@@ -70,7 +75,15 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
     {
         version
     } else {
-        get_latest_remote_version(reqwest).await?
+        let version = get_latest_remote_version(reqwest).await?;
+
+        write_config(&CliConfig {
+            last_checked_updates: Some((chrono::Utc::now(), version.clone())),
+            ..config
+        })
+        .await?;
+
+        version
     };
     let current_version = current_version();
 
