@@ -172,7 +172,7 @@ impl PackageFS {
                 let mut read_dirs = VecDeque::from([fs::read_dir(src.to_path_buf())]);
                 while let Some(read_dir) = read_dirs.pop_front() {
                     let mut read_dir = read_dir.await?;
-                    while let Some(entry) = read_dir.next_entry().await? {
+                    'entry: while let Some(entry) = read_dir.next_entry().await? {
                         let relative_path =
                             RelativePathBuf::from_path(entry.path().strip_prefix(src).unwrap())
                                 .unwrap();
@@ -185,9 +185,11 @@ impl PackageFS {
 
                             for other_target in TargetKind::VARIANTS {
                                 if target.packages_folder(other_target) == file_name {
-                                    continue;
+                                    continue 'entry;
                                 }
                             }
+
+                            fs::create_dir_all(relative_path.to_path(destination.as_ref())).await?;
 
                             read_dirs.push_back(fs::read_dir(entry.path()));
                             continue;
@@ -197,7 +199,13 @@ impl PackageFS {
                             continue;
                         }
 
-                        fs::copy(entry.path(), relative_path.to_path(destination.as_ref())).await?;
+                        let path = relative_path.to_path(destination.as_ref());
+
+                        if let Some(parent) = path.parent() {
+                            fs::create_dir_all(parent).await?;
+                        }
+
+                        fs::copy(entry.path(), path).await?;
                     }
                 }
             }

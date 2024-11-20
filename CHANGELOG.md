@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Add back mistakenly removed updates check caching by @daimond113
 - Set download error source to inner error to propagate the error by @daimond113
+- Correctly copy workspace packages by @daimond113
 
 ## [0.5.0-rc.10] - 2024-11-16
 ### Fixed
