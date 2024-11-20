@@ -164,6 +164,6 @@ pub mod errors {
 
         /// Error writing package contents
         #[error("failed to write package contents")]
-        WriteFailed(std::io::Error),
+        WriteFailed(#[source] std::io::Error),
     }
 }
