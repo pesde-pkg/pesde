@@ -8,9 +8,9 @@ A **binary package** is a package that contains a binary export.
 Binary packages can be run like a normal program. There are several ways to use
 binary packages with pesde.
 
-To make your own binary package, see the [guide](/quickstart#adding-a-main-script).
+## Using a binary package
 
-## Using `pesde x`
+### With `pesde x`
 
 The `pesde x` command can be used to run a one-off binary package. This is
 useful for running a binary package without installing it or outside of a pesde
@@ -21,7 +21,7 @@ pesde x pesde/hello
 # Hello, pesde! (pesde/hello@1.0.0, lune)
 ```
 
-## Installing a binary package
+### By installing
 
 Binary packages can be installed using the `pesde add` and `pesde install`
 commands.
@@ -35,9 +35,40 @@ pesde install
 ```
 
 This will add the binary package to your `PATH`, meaning that it can be run
-anywhere!
+anywhere in a project which has it installed under that alias!
 
 ```sh
 hello
 # Hello, pesde! (pesde/hello@1.0.0, lune)
 ```
+
+## Making a binary package
+
+To make a binary package you must use a target compatible with binary exports.
+These currently are `lune` and `luau`.
+
+Here is an example of a binary package:
+
+```toml title="pesde.toml"
+name = "pesde/hello"
+version = "1.0.0"
+license = "MIT"
+
+[target]
+environment = "lune"
+bin = "main.luau"
+```
+
+The `bin` field specifies the entry point for the binary package. This file
+will be run when the binary package is executed.
+
+```luau title="main.luau"
+print("Hello, pesde!")
+```
+
+Binary packages get access to custom variables provided by pesde. You can find
+them in the `_G` table. These are:
+
+- `PESDE_ROOT`: The root (where the pesde.toml is located) of where the package is
+  installed. This will be in a temporary directory if the package is run with
+  `pesde x`.
