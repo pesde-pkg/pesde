@@ -3,14 +3,15 @@ use crate::{
     names::PackageNames,
     source::{
         fs::PackageFS, specifiers::DependencySpecifiers, traits::PackageSource,
-        version_id::VersionId, workspace::pkg_ref::WorkspacePackageRef, ResolveResult,
+        version_id::VersionId, workspace::pkg_ref::WorkspacePackageRef, PackageSources,
+        ResolveResult,
     },
     Project, DEFAULT_INDEX_NAME,
 };
 use futures::StreamExt;
 use relative_path::RelativePathBuf;
 use reqwest::Client;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use tokio::pin;
 
 /// The workspace package reference
@@ -38,14 +39,15 @@ impl PackageSource for WorkspacePackageSource {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
-        package_target: TargetKind,
+        project_target: TargetKind,
+        _refreshed_sources: &mut HashSet<PackageSources>,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let (path, manifest) = 'finder: {
             let workspace_dir = project
                 .workspace_dir
                 .as_ref()
                 .unwrap_or(&project.package_dir);
-            let target = specifier.target.unwrap_or(package_target);
+            let target = specifier.target.unwrap_or(project_target);
 
             let members = project.workspace_members(workspace_dir).await?;
             pin!(members);

@@ -198,7 +198,7 @@ impl Project {
             }
 
             let (name, resolved) = source
-                .resolve(&specifier, self, target)
+                .resolve(&specifier, self, target, refreshed_sources)
                 .await
                 .map_err(|e| Box::new(e.into()))?;
 

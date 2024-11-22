@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashSet, str::FromStr};
 
 use anyhow::Context;
 use clap::Args;
@@ -133,7 +133,12 @@ impl AddCommand {
             .context("failed to refresh package source")?;
 
         let Some(version_id) = source
-            .resolve(&specifier, &project, manifest.target.kind())
+            .resolve(
+                &specifier,
+                &project,
+                manifest.target.kind(),
+                &mut HashSet::new(),
+            )
             .await
             .context("failed to resolve package")?
             .1

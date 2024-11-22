@@ -11,7 +11,7 @@ use crate::{
             manifest::{Realm, WallyManifest},
             pkg_ref::WallyPackageRef,
         },
-        IGNORED_DIRS, IGNORED_FILES,
+        PackageSources, ResolveResult, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project,
@@ -22,7 +22,11 @@ use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
 use tempfile::tempdir;
 use tokio::{io::AsyncWriteExt, sync::Mutex, task::spawn_blocking};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
@@ -98,14 +102,52 @@ impl PackageSource for WallyPackageSource {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
-        _package_target: TargetKind,
-    ) -> Result<crate::source::ResolveResult<Self::Ref>, Self::ResolveError> {
+        project_target: TargetKind,
+        refreshed_sources: &mut HashSet<PackageSources>,
+    ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let repo = gix::open(self.path(project)).map_err(Box::new)?;
         let tree = root_tree(&repo).map_err(Box::new)?;
         let (scope, name) = specifier.name.as_str();
         let string = match read_file(&tree, [scope, name]) {
             Ok(Some(s)) => s,
-            Ok(None) => return Err(Self::ResolveError::NotFound(specifier.name.to_string())),
+            Ok(None) => {
+                log::debug!(
+                    "{} not found in wally registry. searching in backup registries",
+                    specifier.name
+                );
+
+                let config = self.config(project).await.map_err(Box::new)?;
+                for registry in config.fallback_registries {
+                    let source = WallyPackageSource::new(registry.clone());
+                    if refreshed_sources.insert(PackageSources::Wally(source.clone())) {
+                        GitBasedSource::refresh(&source, project)
+                            .await
+                            .map_err(Box::new)?;
+                    }
+
+                    match Box::pin(source.resolve(
+                        specifier,
+                        project,
+                        project_target,
+                        refreshed_sources,
+                    ))
+                    .await
+                    {
+                        Ok((name, results)) => {
+                            log::debug!("found {} in backup registry {registry}", name);
+                            return Ok((name, results));
+                        }
+                        Err(errors::ResolveError::NotFound(_)) => {
+                            continue;
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    }
+                }
+
+                return Err(Self::ResolveError::NotFound(specifier.name.to_string()));
+            }
             Err(e) => {
                 return Err(Self::ResolveError::Read(
                     specifier.name.to_string(),
@@ -289,6 +331,8 @@ impl PackageSource for WallyPackageSource {
 #[derive(Debug, Clone, Deserialize)]
 pub struct WallyIndexConfig {
     api: url::Url,
+    #[serde(default, deserialize_with = "crate::util::deserialize_gix_url_vec")]
+    fallback_registries: Vec<gix::Url>,
 }
 
 /// Errors that can occur when interacting with a Wally package source
@@ -327,6 +371,18 @@ pub mod errors {
             String,
             #[source] crate::manifest::errors::AllDependenciesError,
         ),
+
+        /// Error reading config file
+        #[error("error reading config file")]
+        Config(#[from] Box<ConfigError>),
+
+        /// Error refreshing backup registry source
+        #[error("error refreshing backup registry source")]
+        Refresh(#[from] Box<crate::source::git_index::errors::RefreshError>),
+
+        /// Error resolving package in backup registries
+        #[error("error resolving package in backup registries")]
+        BackupResolve(#[from] Box<ResolveError>),
     }
 
     /// Errors that can occur when reading the config file for a Wally package source

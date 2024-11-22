@@ -1,5 +1,3 @@
-use std::{collections::BTreeMap, fmt::Debug};
-
 use crate::{
     manifest::target::{Target, TargetKind},
     names::PackageNames,
@@ -8,6 +6,10 @@ use crate::{
         version_id::VersionId,
     },
     Project,
+};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Debug,
 };
 
 /// Packages' filesystems
@@ -76,11 +78,12 @@ impl PackageSource for PackageSources {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
-        package_target: TargetKind,
+        project_target: TargetKind,
+        refreshed_sources: &mut HashSet<PackageSources>,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         match (self, specifier) {
             (PackageSources::Pesde(source), DependencySpecifiers::Pesde(specifier)) => source
-                .resolve(specifier, project, package_target)
+                .resolve(specifier, project, project_target, refreshed_sources)
                 .await
                 .map(|(name, results)| {
                     (
@@ -95,7 +98,7 @@ impl PackageSource for PackageSources {
 
             #[cfg(feature = "wally-compat")]
             (PackageSources::Wally(source), DependencySpecifiers::Wally(specifier)) => source
-                .resolve(specifier, project, package_target)
+                .resolve(specifier, project, project_target, refreshed_sources)
                 .await
                 .map(|(name, results)| {
                     (
@@ -109,7 +112,7 @@ impl PackageSource for PackageSources {
                 .map_err(Into::into),
 
             (PackageSources::Git(source), DependencySpecifiers::Git(specifier)) => source
-                .resolve(specifier, project, package_target)
+                .resolve(specifier, project, project_target, refreshed_sources)
                 .await
                 .map(|(name, results)| {
                     (
@@ -124,7 +127,7 @@ impl PackageSource for PackageSources {
 
             (PackageSources::Workspace(source), DependencySpecifiers::Workspace(specifier)) => {
                 source
-                    .resolve(specifier, project, package_target)
+                    .resolve(specifier, project, project_target, refreshed_sources)
                     .await
                     .map(|(name, results)| {
                         (

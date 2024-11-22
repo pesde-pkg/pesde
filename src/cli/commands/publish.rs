@@ -21,7 +21,7 @@ use pesde::{
 };
 use reqwest::{header::AUTHORIZATION, StatusCode};
 use semver::VersionReq;
-use std::path::Component;
+use std::{collections::HashSet, path::Component};
 use tempfile::Builder;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
@@ -334,7 +334,7 @@ impl PublishCommand {
                 }
                 DependencySpecifiers::Workspace(spec) => {
                     let pkg_ref = WorkspacePackageSource
-                        .resolve(spec, project, target_kind)
+                        .resolve(spec, project, target_kind, &mut HashSet::new())
                         .await
                         .context("failed to resolve workspace package")?
                         .1

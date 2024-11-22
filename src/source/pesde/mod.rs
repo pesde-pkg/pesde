@@ -1,14 +1,13 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Debug,
-    hash::Hash,
-    path::PathBuf,
-};
-
 use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    fmt::Debug,
+    hash::Hash,
+    path::PathBuf,
+};
 
 use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
@@ -22,7 +21,8 @@ use crate::{
     source::{
         fs::{store_in_cas, FSEntry, PackageFS},
         git_index::{read_file, root_tree, GitBasedSource},
-        DependencySpecifiers, PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
+        DependencySpecifiers, PackageSource, PackageSources, ResolveResult, VersionId,
+        IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project,
@@ -115,7 +115,8 @@ impl PackageSource for PesdePackageSource {
         &self,
         specifier: &Self::Specifier,
         project: &Project,
-        package_target: TargetKind,
+        project_target: TargetKind,
+        _refreshed_sources: &mut HashSet<PackageSources>,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let (scope, name) = specifier.name.as_str();
         let repo = gix::open(self.path(project)).map_err(Box::new)?;
@@ -142,7 +143,7 @@ impl PackageSource for PesdePackageSource {
                 .into_iter()
                 .filter(|(VersionId(version, target), _)| {
                     specifier.version.matches(version)
-                        && specifier.target.unwrap_or(package_target) == *target
+                        && specifier.target.unwrap_or(project_target) == *target
                 })
                 .map(|(id, entry)| {
                     let version = id.version().clone();

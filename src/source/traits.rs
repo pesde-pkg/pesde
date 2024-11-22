@@ -1,9 +1,4 @@
 #![allow(async_fn_in_trait)]
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Display},
-};
-
 use crate::{
     manifest::{
         target::{Target, TargetKind},
@@ -11,6 +6,10 @@ use crate::{
     },
     source::{DependencySpecifiers, PackageFS, PackageSources, ResolveResult},
     Project,
+};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::{Debug, Display},
 };
 
 /// A specifier for a dependency
@@ -50,6 +49,7 @@ pub trait PackageSource: Debug {
         specifier: &Self::Specifier,
         project: &Project,
         project_target: TargetKind,
+        refreshed_sources: &mut HashSet<PackageSources>,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError>;
 
     /// Downloads a package

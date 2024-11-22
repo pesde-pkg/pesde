@@ -1,11 +1,7 @@
-use std::collections::HashSet;
-
+use crate::cli::up_to_date_lockfile;
 use anyhow::Context;
 use clap::Args;
 use futures::future::try_join_all;
-use semver::VersionReq;
-
-use crate::cli::up_to_date_lockfile;
 use pesde::{
     refresh_sources,
     source::{
@@ -15,6 +11,9 @@ use pesde::{
     },
     Project,
 };
+use semver::VersionReq;
+use std::{collections::HashSet, sync::Arc};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Args)]
 pub struct OutdatedCommand {
@@ -53,12 +52,15 @@ impl OutdatedCommand {
         )
         .await?;
 
+        let refreshed_sources = Arc::new(Mutex::new(refreshed_sources));
+
         try_join_all(
             graph
                 .into_iter()
                 .flat_map(|(_, versions)| versions.into_iter())
                 .map(|(current_version_id, node)| {
                     let project = project.clone();
+                    let refreshed_sources = refreshed_sources.clone();
                     async move {
                         let Some((alias, mut specifier, _)) = node.node.direct else {
                             return Ok::<(), anyhow::Error>(());
@@ -88,7 +90,12 @@ impl OutdatedCommand {
                         }
 
                         let version_id = source
-                            .resolve(&specifier, &project, manifest_target_kind)
+                            .resolve(
+                                &specifier,
+                                &project,
+                                manifest_target_kind,
+                                &mut *refreshed_sources.lock().await,
+                            )
                             .await
                             .context("failed to resolve package versions")?
                             .1

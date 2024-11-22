@@ -13,7 +13,7 @@ use pesde::{
     Project,
 };
 use semver::VersionReq;
-use std::{env::current_dir, ffi::OsString, io::Write, process::Command};
+use std::{collections::HashSet, env::current_dir, ffi::OsString, io::Write, process::Command};
 
 #[derive(Debug, Args)]
 pub struct ExecuteCommand {
@@ -53,7 +53,7 @@ impl ExecuteCommand {
             };
 
             if let Some(res) = source
-                .resolve(&specifier, &project, TargetKind::Lune)
+                .resolve(&specifier, &project, TargetKind::Lune, &mut HashSet::new())
                 .await
                 .context("failed to resolve package")?
                 .1
@@ -63,7 +63,7 @@ impl ExecuteCommand {
             }
 
             source
-                .resolve(&specifier, &project, TargetKind::Luau)
+                .resolve(&specifier, &project, TargetKind::Luau, &mut HashSet::new())
                 .await
                 .context("failed to resolve package")?
                 .1

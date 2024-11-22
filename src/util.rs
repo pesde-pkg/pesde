@@ -61,6 +61,15 @@ pub fn deserialize_gix_url_map<'de, D: Deserializer<'de>>(
         .collect()
 }
 
+pub fn deserialize_gix_url_vec<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<gix::Url>, D::Error> {
+    Vec::<String>::deserialize(deserializer)?
+        .into_iter()
+        .map(|v| gix::Url::from_bytes(BStr::new(&v)).map_err(serde::de::Error::custom))
+        .collect()
+}
+
 pub fn deserialize_git_like_url<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<gix::Url, D::Error> {

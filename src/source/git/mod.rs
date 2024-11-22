@@ -1,7 +1,3 @@
-use gix::{bstr::BStr, traverse::tree::Recorder, ObjectId, Url};
-use relative_path::RelativePathBuf;
-use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::PathBuf, sync::Arc};
-
 use crate::{
     manifest::{
         target::{Target, TargetKind},
@@ -14,13 +10,22 @@ use crate::{
         git_index::{read_file, GitBasedSource},
         specifiers::DependencySpecifiers,
         traits::PackageRef,
-        PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
+        PackageSource, PackageSources, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project, DEFAULT_INDEX_NAME, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use fs_err::tokio as fs;
 use futures::future::try_join_all;
+use gix::{bstr::BStr, traverse::tree::Recorder, ObjectId, Url};
+use relative_path::RelativePathBuf;
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Debug,
+    hash::Hash,
+    path::PathBuf,
+    sync::Arc,
+};
 use tokio::{sync::Mutex, task::spawn_blocking};
 
 /// The Git package reference
@@ -74,6 +79,7 @@ impl PackageSource for GitPackageSource {
         specifier: &Self::Specifier,
         project: &Project,
         _project_target: TargetKind,
+        _refreshed_sources: &mut HashSet<PackageSources>,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         let repo = gix::open(self.path(project))
             .map_err(|e| errors::ResolveError::OpenRepo(Box::new(self.repo_url.clone()), e))?;
