@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Fix peer dependencies being resolved incorrectly by @daimond113
+- Set PESDE_ROOT to the correct path in `pesde run` by @daimond113
 
 ## [0.5.0-rc.11] - 2024-11-20
 ### Fixed

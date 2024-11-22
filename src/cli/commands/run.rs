@@ -1,13 +1,17 @@
 use crate::cli::{repos::update_scripts, up_to_date_lockfile};
 use anyhow::Context;
 use clap::Args;
+use futures::{StreamExt, TryStreamExt};
 use pesde::{
     linking::generator::generate_bin_linking_module,
     names::{PackageName, PackageNames},
-    Project, PACKAGES_CONTAINER_NAME,
+    Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
 };
 use relative_path::RelativePathBuf;
-use std::{env::current_dir, ffi::OsString, io::Write, path::PathBuf, process::Command};
+use std::{
+    collections::HashSet, env::current_dir, ffi::OsString, io::Write, path::PathBuf,
+    process::Command,
+};
 
 #[derive(Debug, Args)]
 pub struct RunCommand {
@@ -22,8 +26,7 @@ pub struct RunCommand {
 
 impl RunCommand {
     pub async fn run(self, project: Project) -> anyhow::Result<()> {
-        let run = |path: PathBuf| {
-            let package_dir = project.package_dir().to_path_buf();
+        let run = |root: PathBuf, file_path: PathBuf| {
             let fut = update_scripts(&project);
             async move {
                 fut.await.expect("failed to update scripts");
@@ -32,8 +35,8 @@ impl RunCommand {
                 caller
                     .write_all(
                         generate_bin_linking_module(
-                            package_dir,
-                            &format!("{:?}", path.to_string_lossy()),
+                            root,
+                            &format!("{:?}", file_path.to_string_lossy()),
                         )
                         .as_bytes(),
                     )
@@ -56,7 +59,11 @@ impl RunCommand {
 
         let Some(package_or_script) = self.package_or_script else {
             if let Some(script_path) = project.deser_manifest().await?.target.bin_path() {
-                run(script_path.to_path(project.package_dir())).await;
+                run(
+                    project.package_dir().to_owned(),
+                    script_path.to_path(project.package_dir()),
+                )
+                .await;
                 return Ok(());
             }
 
@@ -96,14 +103,20 @@ impl RunCommand {
                     version_id.version(),
                 );
 
-                run(bin_path.to_path(&container_folder)).await;
+                let path = bin_path.to_path(&container_folder);
+
+                run(path.clone(), path).await;
                 return Ok(());
             }
         }
 
         if let Ok(manifest) = project.deser_manifest().await {
             if let Some(script_path) = manifest.scripts.get(&package_or_script) {
-                run(script_path.to_path(project.package_dir())).await;
+                run(
+                    project.package_dir().to_path_buf(),
+                    script_path.to_path(project.package_dir()),
+                )
+                .await;
                 return Ok(());
             }
         };
@@ -115,7 +128,56 @@ impl RunCommand {
             anyhow::bail!("path `{}` does not exist", path.display());
         }
 
-        run(path).await;
+        let workspace_dir = project
+            .workspace_dir()
+            .unwrap_or_else(|| project.package_dir());
+
+        let members = match project.workspace_members(workspace_dir).await {
+            Ok(members) => members.boxed(),
+            Err(pesde::errors::WorkspaceMembersError::ManifestMissing(e))
+                if e.kind() == std::io::ErrorKind::NotFound =>
+            {
+                futures::stream::empty().boxed()
+            }
+            Err(e) => Err(e).context("failed to get workspace members")?,
+        };
+
+        let members = members
+            .map(|res| {
+                res.map_err(anyhow::Error::from)
+                    .and_then(|(path, _)| path.canonicalize().map_err(Into::into))
+            })
+            .chain(futures::stream::once(async {
+                workspace_dir.canonicalize().map_err(Into::into)
+            }))
+            .try_collect::<HashSet<_>>()
+            .await
+            .context("failed to collect workspace members")?;
+
+        let root = 'finder: {
+            let mut current_path = path.to_path_buf();
+            loop {
+                let canonical_path = current_path
+                    .canonicalize()
+                    .context("failed to canonicalize parent")?;
+
+                if members.contains(&canonical_path)
+                    && canonical_path.join(MANIFEST_FILE_NAME).exists()
+                {
+                    break 'finder canonical_path;
+                }
+
+                if let Some(parent) = current_path.parent() {
+                    current_path = parent.to_path_buf();
+                } else {
+                    break;
+                }
+            }
+
+            project.package_dir().to_path_buf()
+        };
+
+        run(root, path).await;
 
         Ok(())
     }
