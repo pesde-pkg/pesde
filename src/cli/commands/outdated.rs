@@ -54,7 +54,7 @@ impl OutdatedCommand {
 
         let refreshed_sources = Arc::new(Mutex::new(refreshed_sources));
 
-        try_join_all(
+        if try_join_all(
             graph
                 .into_iter()
                 .flat_map(|(_, versions)| versions.into_iter())
@@ -63,14 +63,14 @@ impl OutdatedCommand {
                     let refreshed_sources = refreshed_sources.clone();
                     async move {
                         let Some((alias, mut specifier, _)) = node.node.direct else {
-                            return Ok::<(), anyhow::Error>(());
+                            return Ok::<bool, anyhow::Error>(true);
                         };
 
                         if matches!(
                             specifier,
                             DependencySpecifiers::Git(_) | DependencySpecifiers::Workspace(_)
                         ) {
-                            return Ok(());
+                            return Ok(true);
                         }
 
                         let source = node.node.pkg_ref.source();
@@ -116,13 +116,20 @@ impl OutdatedCommand {
                                 current_version_id.version(),
                                 version_id.version()
                             );
+
+                            return Ok(false);
                         }
 
-                        Ok(())
+                        Ok(true)
                     }
                 }),
         )
-        .await?;
+        .await?
+        .into_iter()
+        .all(|b| b)
+        {
+            println!("all packages are up to date");
+        }
 
         Ok(())
     }
