@@ -37,7 +37,7 @@ impl Project {
         if let Some(previous_graph) = previous_graph {
             for (name, versions) in previous_graph {
                 for (version, node) in versions {
-                    let Some((_, specifier)) = &node.direct else {
+                    let Some((_, specifier, source_ty)) = &node.direct else {
                         // this is not a direct dependency, will be added if it's still being used later
                         continue;
                     };
@@ -47,7 +47,8 @@ impl Project {
                         continue;
                     }
 
-                    let Some(alias) = all_specifiers.remove(&(specifier.clone(), node.ty)) else {
+                    let Some(alias) = all_specifiers.remove(&(specifier.clone(), *source_ty))
+                    else {
                         log::debug!(
                             "dependency {name}@{version} from old dependency graph is no longer in the manifest",
                         );
@@ -60,7 +61,7 @@ impl Project {
                         name.clone(),
                         version.clone(),
                         DependencyGraphNode {
-                            direct: Some((alias.clone(), specifier.clone())),
+                            direct: Some((alias.clone(), specifier.clone(), *source_ty)),
                             ..node.clone()
                         },
                         true,
@@ -218,7 +219,7 @@ impl Project {
                 )));
             };
 
-            let ty = if depth == 0 && ty == DependencyType::Peer {
+            let resolved_ty = if depth == 0 && ty == DependencyType::Peer {
                 DependencyType::Standard
             } else {
                 ty
@@ -255,12 +256,14 @@ impl Project {
                     );
                 }
 
-                if already_resolved.ty == DependencyType::Peer && ty == DependencyType::Standard {
-                    already_resolved.ty = ty;
+                if already_resolved.resolved_ty == DependencyType::Peer
+                    && resolved_ty == DependencyType::Standard
+                {
+                    already_resolved.resolved_ty = resolved_ty;
                 }
 
                 if already_resolved.direct.is_none() && depth == 0 {
-                    already_resolved.direct = Some((alias.clone(), specifier.clone()));
+                    already_resolved.direct = Some((alias.clone(), specifier.clone(), ty));
                 }
 
                 continue;
@@ -268,13 +271,13 @@ impl Project {
 
             let node = DependencyGraphNode {
                 direct: if depth == 0 {
-                    Some((alias.clone(), specifier.clone()))
+                    Some((alias.clone(), specifier.clone(), ty))
                 } else {
                     None
                 },
                 pkg_ref: pkg_ref.clone(),
                 dependencies: Default::default(),
-                ty,
+                resolved_ty,
             };
             insert_node(
                 &mut graph,
@@ -335,7 +338,7 @@ impl Project {
 
         for (name, versions) in &graph {
             for (version_id, node) in versions {
-                if node.ty == DependencyType::Peer {
+                if node.resolved_ty == DependencyType::Peer {
                     log::warn!("peer dependency {name}@{version_id} was not resolved");
                 }
             }

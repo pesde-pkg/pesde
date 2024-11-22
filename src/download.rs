@@ -104,7 +104,7 @@ impl Project {
                     log::debug!("downloaded {name}@{version_id}");
 
                     if write {
-                        if !prod || node.ty != DependencyType::Dev {
+                        if !prod || node.resolved_ty != DependencyType::Dev {
                             match fs.write_to(container_folder, project.cas_dir(), true).await {
                                 Ok(_) => {}
                                 Err(e) => {

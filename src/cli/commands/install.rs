@@ -231,7 +231,7 @@ impl InstallCommand {
                     (
                         n,
                         v.into_iter()
-                            .filter(|(_, n)| n.node.ty != DependencyType::Dev)
+                            .filter(|(_, n)| n.node.resolved_ty != DependencyType::Dev)
                             .collect(),
                     )
                 })
@@ -268,7 +268,7 @@ impl InstallCommand {
                 .flat_map(|versions| versions.values())
                 .filter(|node| node.target.bin_path().is_some())
                 .filter_map(|node| node.node.direct.as_ref())
-                .map(|(alias, _)| alias)
+                .map(|(alias, _, _)| alias)
                 .filter(|alias| {
                     if *alias == env!("CARGO_BIN_NAME") {
                         log::warn!(

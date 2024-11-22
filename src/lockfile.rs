@@ -24,14 +24,14 @@ pub type Graph<Node> = BTreeMap<PackageNames, BTreeMap<VersionId, Node>>;
 /// A dependency graph node
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyGraphNode {
-    /// The alias and specifiers for the dependency, if it is a direct dependency (i.e. used by the current project)
+    /// The alias, specifier, and original (as in the manifest) type for the dependency, if it is a direct dependency (i.e. used by the current project)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub direct: Option<(String, DependencySpecifiers)>,
+    pub direct: Option<(String, DependencySpecifiers, DependencyType)>,
     /// The dependencies of the package
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<PackageNames, (VersionId, String)>,
-    /// The type of the dependency
-    pub ty: DependencyType,
+    /// The resolved (transformed, for example Peer -> Standard) type of the dependency
+    pub resolved_ty: DependencyType,
     /// The package reference
     pub pkg_ref: PackageRefs,
 }

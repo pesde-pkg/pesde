@@ -81,7 +81,7 @@ impl PublishCommand {
                         .filter_map(|(_, node)| node.node.direct.as_ref().map(|_| node))
                         .any(|node| {
                             node.target.build_files().is_none()
-                                && !matches!(node.node.ty, DependencyType::Dev)
+                                && !matches!(node.node.resolved_ty, DependencyType::Dev)
                         })
                     {
                         anyhow::bail!("roblox packages may not depend on non-roblox packages");

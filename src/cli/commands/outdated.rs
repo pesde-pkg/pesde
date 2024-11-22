@@ -60,7 +60,7 @@ impl OutdatedCommand {
                 .map(|(current_version_id, node)| {
                     let project = project.clone();
                     async move {
-                        let Some((alias, mut specifier)) = node.node.direct else {
+                        let Some((alias, mut specifier, _)) = node.node.direct else {
                             return Ok::<(), anyhow::Error>(());
                         };
 

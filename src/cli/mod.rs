@@ -79,7 +79,7 @@ pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Loc
             node.node
                 .direct
                 .as_ref()
-                .map(|(_, spec)| (spec, node.node.ty))
+                .map(|(_, spec, source_ty)| (spec, source_ty))
         })
         .collect::<HashSet<_>>();
 
@@ -87,7 +87,7 @@ pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Loc
         .all_dependencies()
         .context("failed to get all dependencies")?
         .iter()
-        .all(|(_, (spec, ty))| specs.contains(&(spec, *ty)));
+        .all(|(_, (spec, ty))| specs.contains(&(spec, ty)));
 
     log::debug!("dependencies are the same: {same_dependencies}");
 

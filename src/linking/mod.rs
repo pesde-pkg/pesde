@@ -137,7 +137,7 @@ impl Project {
                         version_id.version(),
                     );
 
-                    if let Some((alias, _)) = &node.node.direct.as_ref() {
+                    if let Some((alias, _, _)) = &node.node.direct.as_ref() {
                         if let Some((lib_file, types)) =
                             node.target.lib_path().and_then(|lib_file| {
                                 package_types
