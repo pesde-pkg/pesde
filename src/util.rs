@@ -1,6 +1,6 @@
 use crate::AuthConfig;
 use gix::bstr::BStr;
-use serde::{ser::SerializeMap, Deserialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serializer};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
@@ -35,17 +35,6 @@ pub fn deserialize_gix_url<'de, D: Deserializer<'de>>(
 ) -> Result<gix::Url, D::Error> {
     let s = String::deserialize(deserializer)?;
     gix::Url::from_bytes(BStr::new(&s)).map_err(serde::de::Error::custom)
-}
-
-pub fn serialize_gix_url_map<S: Serializer>(
-    url: &BTreeMap<String, gix::Url>,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    let mut map = serializer.serialize_map(Some(url.len()))?;
-    for (k, v) in url {
-        map.serialize_entry(k, &v.to_bstring().to_string())?;
-    }
-    map.end()
 }
 
 pub fn deserialize_gix_url_map<'de, D: Deserializer<'de>>(

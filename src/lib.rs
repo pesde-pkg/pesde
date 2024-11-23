@@ -16,7 +16,6 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
-use tokio::task::spawn_blocking;
 
 /// Downloading packages
 pub mod download;
@@ -193,29 +192,7 @@ impl Project {
             errors::WorkspaceMembersError::ManifestDeser(dir.to_path_buf(), Box::new(e))
         })?;
 
-        let mut members = HashSet::new();
-
-        for glob in &manifest.workspace_members {
-            let is_removal = glob.starts_with('!');
-            let glob = if is_removal { &glob[1..] } else { glob };
-
-            let path = dir.join(glob);
-            let paths = spawn_blocking(move || {
-                glob::glob(&path.as_os_str().to_string_lossy())?
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(errors::WorkspaceMembersError::Globbing)
-            })
-            .await
-            .unwrap()?;
-
-            if is_removal {
-                for path in paths {
-                    members.remove(&path);
-                }
-            } else {
-                members.extend(paths);
-            }
-        }
+        let members = matching_globs(dir, manifest.workspace_members, false).await?;
 
         Ok(stream! {
             for path in members {
@@ -230,6 +207,53 @@ impl Project {
             }
         })
     }
+}
+
+/// Gets all matching paths in a directory
+pub async fn matching_globs<P: AsRef<Path>>(
+    dir: P,
+    members: Vec<globset::Glob>,
+    relative: bool,
+) -> Result<HashSet<PathBuf>, errors::MatchingGlobsError> {
+    let mut positive_globset = globset::GlobSetBuilder::new();
+    let mut negative_globset = globset::GlobSetBuilder::new();
+
+    for pattern in members {
+        match pattern.glob().strip_prefix('!') {
+            Some(pattern) => negative_globset.add(globset::Glob::new(pattern)?),
+            None => positive_globset.add(pattern),
+        };
+    }
+
+    let positive_globset = positive_globset.build()?;
+    let negative_globset = negative_globset.build()?;
+
+    let mut read_dirs = vec![fs::read_dir(dir.as_ref().to_path_buf())];
+    let mut paths = HashSet::new();
+
+    while let Some(read_dir) = read_dirs.pop() {
+        let mut read_dir = read_dir.await?;
+        while let Some(entry) = read_dir.next_entry().await? {
+            let path = entry.path();
+            if entry.file_type().await?.is_dir() {
+                read_dirs.push(fs::read_dir(path));
+                continue;
+            }
+
+            let relative_path = path.strip_prefix(dir.as_ref()).unwrap();
+
+            if positive_globset.is_match(relative_path) && !negative_globset.is_match(relative_path)
+            {
+                paths.insert(if relative {
+                    relative_path.to_path_buf()
+                } else {
+                    path.to_path_buf()
+                });
+            }
+        }
+    }
+
+    Ok(paths)
 }
 
 /// Refreshes the sources asynchronously
@@ -312,12 +336,21 @@ pub mod errors {
         #[error("error interacting with the filesystem")]
         Io(#[from] std::io::Error),
 
-        /// An invalid glob pattern was found
-        #[error("invalid glob pattern")]
-        Glob(#[from] glob::PatternError),
+        /// An error occurred while globbing
+        #[error("error globbing")]
+        Globbing(#[from] MatchingGlobsError),
+    }
+
+    /// Errors that can occur when finding matching globs
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum MatchingGlobsError {
+        /// An error occurred interacting with the filesystem
+        #[error("error interacting with the filesystem")]
+        Io(#[from] std::io::Error),
 
         /// An error occurred while globbing
         #[error("error globbing")]
-        Globbing(#[from] glob::GlobError),
+        Globbing(#[from] globset::Error),
     }
 }

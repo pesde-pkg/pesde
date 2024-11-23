@@ -6,7 +6,7 @@ use clap::Parser;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;
-use pesde::{AuthConfig, Project, MANIFEST_FILE_NAME};
+use pesde::{matching_globs, AuthConfig, Project, MANIFEST_FILE_NAME};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -133,17 +133,9 @@ async fn run() -> anyhow::Result<()> {
                 return Ok(HashSet::new());
             }
 
-            manifest
-                .workspace_members
-                .iter()
-                .map(|member| path.join(member))
-                .map(|p| glob::glob(&p.to_string_lossy()))
-                .collect::<Result<Vec<_>, _>>()
-                .context("invalid glob patterns")?
-                .into_iter()
-                .flat_map(|paths| paths.into_iter())
-                .collect::<Result<HashSet<_>, _>>()
-                .context("failed to expand glob patterns")
+            matching_globs(path, manifest.workspace_members, false)
+                .await
+                .context("failed to get workspace members")
         }
 
         while let Some(path) = current_path {

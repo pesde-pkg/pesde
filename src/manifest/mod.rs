@@ -1,8 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
-
 use relative_path::RelativePathBuf;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
 
 use crate::{
     manifest::{overrides::OverrideKey, target::Target},
@@ -45,7 +44,7 @@ pub struct Manifest {
     /// The indices to use for the package
     #[serde(
         default,
-        serialize_with = "crate::util::serialize_gix_url_map",
+        skip_serializing,
         deserialize_with = "crate::util::deserialize_gix_url_map"
     )]
     pub indices: BTreeMap<String, gix::Url>,
@@ -53,8 +52,7 @@ pub struct Manifest {
     #[cfg(feature = "wally-compat")]
     #[serde(
         default,
-        skip_serializing_if = "BTreeMap::is_empty",
-        serialize_with = "crate::util::serialize_gix_url_map",
+        skip_serializing,
         deserialize_with = "crate::util::deserialize_gix_url_map"
     )]
     pub wally_indices: BTreeMap<String, gix::Url>,
@@ -63,7 +61,7 @@ pub struct Manifest {
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
     /// The files to include in the package
     #[serde(default)]
-    pub includes: BTreeSet<String>,
+    pub includes: Vec<globset::Glob>,
     /// The patches to apply to packages
     #[cfg(feature = "patches")]
     #[serde(default, skip_serializing)]
@@ -76,7 +74,7 @@ pub struct Manifest {
     pub pesde_version: Option<Version>,
     /// A list of globs pointing to workspace members' directories
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub workspace_members: Vec<String>,
+    pub workspace_members: Vec<globset::Glob>,
     /// The Roblox place of this project
     #[serde(default, skip_serializing)]
     pub place: BTreeMap<target::RobloxPlaceKind, String>,
@@ -90,6 +88,9 @@ pub struct Manifest {
     /// The dev dependencies of the package
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dev_dependencies: BTreeMap<String, DependencySpecifiers>,
+    /// The user-defined fields of the package
+    #[serde(flatten)]
+    pub user_defined_fields: HashMap<String, toml::Value>,
 }
 
 /// A dependency type
