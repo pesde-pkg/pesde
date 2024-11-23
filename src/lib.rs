@@ -16,6 +16,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
+use tokio::task::spawn_blocking;
 
 /// Downloading packages
 pub mod download;
@@ -192,15 +193,29 @@ impl Project {
             errors::WorkspaceMembersError::ManifestDeser(dir.to_path_buf(), Box::new(e))
         })?;
 
-        let members = manifest
-            .workspace_members
-            .into_iter()
-            .map(|glob| dir.join(glob))
-            .map(|path| glob::glob(&path.as_os_str().to_string_lossy()))
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flat_map(|paths| paths.into_iter())
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut members = HashSet::new();
+
+        for glob in &manifest.workspace_members {
+            let is_removal = glob.starts_with('!');
+            let glob = if is_removal { &glob[1..] } else { glob };
+
+            let path = dir.join(glob);
+            let paths = spawn_blocking(move || {
+                glob::glob(&path.as_os_str().to_string_lossy())?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(errors::WorkspaceMembersError::Globbing)
+            })
+            .await
+            .unwrap()?;
+
+            if is_removal {
+                for path in paths {
+                    members.remove(&path);
+                }
+            } else {
+                members.extend(paths);
+            }
+        }
 
         Ok(stream! {
             for path in members {
