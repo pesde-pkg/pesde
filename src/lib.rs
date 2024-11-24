@@ -16,6 +16,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
+use wax::Pattern;
 
 /// Downloading packages
 pub mod download;
@@ -192,7 +193,12 @@ impl Project {
             errors::WorkspaceMembersError::ManifestDeser(dir.to_path_buf(), Box::new(e))
         })?;
 
-        let members = matching_globs(dir, manifest.workspace_members, false).await?;
+        let members = matching_globs(
+            dir,
+            manifest.workspace_members.iter().map(|s| s.as_str()),
+            false,
+        )
+        .await?;
 
         Ok(stream! {
             for path in members {
@@ -210,40 +216,40 @@ impl Project {
 }
 
 /// Gets all matching paths in a directory
-pub async fn matching_globs<P: AsRef<Path>>(
+pub async fn matching_globs<'a, P: AsRef<Path>, I: IntoIterator<Item = &'a str>>(
     dir: P,
-    members: Vec<globset::Glob>,
+    globs: I,
     relative: bool,
 ) -> Result<HashSet<PathBuf>, errors::MatchingGlobsError> {
-    let mut positive_globset = globset::GlobSetBuilder::new();
-    let mut negative_globset = globset::GlobSetBuilder::new();
+    let (negative_globs, positive_globs): (Vec<&str>, Vec<&str>) =
+        globs.into_iter().partition(|glob| glob.starts_with('!'));
 
-    for pattern in members {
-        match pattern.glob().strip_prefix('!') {
-            Some(pattern) => negative_globset.add(globset::Glob::new(pattern)?),
-            None => positive_globset.add(pattern),
-        };
-    }
+    let negative_globs = wax::any(
+        negative_globs
+            .into_iter()
+            .map(|glob| wax::Glob::new(&glob[1..]))
+            .collect::<Result<Vec<_>, _>>()?,
+    )?;
+    let positive_globs = wax::any(
+        positive_globs
+            .into_iter()
+            .map(wax::Glob::new)
+            .collect::<Result<Vec<_>, _>>()?,
+    )?;
 
-    let positive_globset = positive_globset.build()?;
-    let negative_globset = negative_globset.build()?;
-
-    let mut read_dirs = vec![fs::read_dir(dir.as_ref().to_path_buf())];
+    let mut read_dirs = vec![fs::read_dir(dir.as_ref().to_path_buf()).await?];
     let mut paths = HashSet::new();
 
-    while let Some(read_dir) = read_dirs.pop() {
-        let mut read_dir = read_dir.await?;
+    while let Some(mut read_dir) = read_dirs.pop() {
         while let Some(entry) = read_dir.next_entry().await? {
             let path = entry.path();
             if entry.file_type().await?.is_dir() {
-                read_dirs.push(fs::read_dir(path));
-                continue;
+                read_dirs.push(fs::read_dir(&path).await?);
             }
 
             let relative_path = path.strip_prefix(dir.as_ref()).unwrap();
 
-            if positive_globset.is_match(relative_path) && !negative_globset.is_match(relative_path)
-            {
+            if positive_globs.is_match(relative_path) && !negative_globs.is_match(relative_path) {
                 paths.insert(if relative {
                     relative_path.to_path_buf()
                 } else {
@@ -349,8 +355,8 @@ pub mod errors {
         #[error("error interacting with the filesystem")]
         Io(#[from] std::io::Error),
 
-        /// An error occurred while globbing
-        #[error("error globbing")]
-        Globbing(#[from] globset::Error),
+        /// An error occurred while building a glob
+        #[error("error building glob")]
+        BuildGlob(#[from] wax::BuildError),
     }
 }

@@ -133,9 +133,13 @@ async fn run() -> anyhow::Result<()> {
                 return Ok(HashSet::new());
             }
 
-            matching_globs(path, manifest.workspace_members, false)
-                .await
-                .context("failed to get workspace members")
+            matching_globs(
+                path,
+                manifest.workspace_members.iter().map(|s| s.as_str()),
+                false,
+            )
+            .await
+            .context("failed to get workspace members")
         }
 
         while let Some(path) = current_path {

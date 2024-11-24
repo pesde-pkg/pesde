@@ -61,7 +61,7 @@ pub struct Manifest {
     pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
     /// The files to include in the package
     #[serde(default)]
-    pub includes: Vec<globset::Glob>,
+    pub includes: Vec<String>,
     /// The patches to apply to packages
     #[cfg(feature = "patches")]
     #[serde(default, skip_serializing)]
@@ -74,7 +74,7 @@ pub struct Manifest {
     pub pesde_version: Option<Version>,
     /// A list of globs pointing to workspace members' directories
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub workspace_members: Vec<globset::Glob>,
+    pub workspace_members: Vec<String>,
     /// The Roblox place of this project
     #[serde(default, skip_serializing)]
     pub place: BTreeMap<target::RobloxPlaceKind, String>,

@@ -119,9 +119,13 @@ impl PublishCommand {
             _ => None,
         };
 
-        let mut paths = matching_globs(project.package_dir(), manifest.includes.clone(), true)
-            .await
-            .context("failed to get included files")?;
+        let mut paths = matching_globs(
+            project.package_dir(),
+            manifest.includes.iter().map(|s| s.as_str()),
+            true,
+        )
+        .await
+        .context("failed to get included files")?;
 
         if paths.insert(PathBuf::from(MANIFEST_FILE_NAME)) {
             println!(

@@ -65,7 +65,7 @@ url = { version = "2.5.3", features = ["serde"] }
 chrono = { version = "0.4.38", features = ["serde"] }
 sha2 = "0.10.8"
 tempfile = "3.14.0"
-globset = { version = "0.4.15", features = ["serde1"] }
+wax = { version = "0.6.0", default-features = false }
 fs-err = { version = "3.0.0", features = ["tokio"] }
 
 # TODO: remove this when gitoxide adds support for: committing, pushing, adding
