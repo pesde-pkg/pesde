@@ -8,7 +8,7 @@ use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::BTreeMap,
     future::Future,
     path::{Path, PathBuf},
 };
@@ -169,44 +169,40 @@ impl PackageFS {
             PackageFS::Copy(src, target) => {
                 fs::create_dir_all(destination.as_ref()).await?;
 
-                let mut read_dirs = VecDeque::from([fs::read_dir(src.to_path_buf())]);
-                while let Some(read_dir) = read_dirs.pop_front() {
-                    let mut read_dir = read_dir.await?;
-                    'entry: while let Some(entry) = read_dir.next_entry().await? {
-                        let relative_path =
-                            RelativePathBuf::from_path(entry.path().strip_prefix(src).unwrap())
-                                .unwrap();
-                        let file_name = relative_path.file_name().unwrap();
+                let mut read_dir = fs::read_dir(src).await?;
+                'entry: while let Some(entry) = read_dir.next_entry().await? {
+                    let relative_path =
+                        RelativePathBuf::from_path(entry.path().strip_prefix(src).unwrap())
+                            .unwrap();
+                    let dest_path = relative_path.to_path(destination.as_ref());
+                    let file_name = relative_path.file_name().unwrap();
 
-                        if entry.file_type().await?.is_dir() {
-                            if IGNORED_DIRS.contains(&file_name) {
-                                continue;
-                            }
-
-                            for other_target in TargetKind::VARIANTS {
-                                if target.packages_folder(other_target) == file_name {
-                                    continue 'entry;
-                                }
-                            }
-
-                            fs::create_dir_all(relative_path.to_path(destination.as_ref())).await?;
-
-                            read_dirs.push_back(fs::read_dir(entry.path()));
+                    if entry.file_type().await?.is_dir() {
+                        if IGNORED_DIRS.contains(&file_name) {
                             continue;
                         }
 
-                        if IGNORED_FILES.contains(&file_name) {
-                            continue;
+                        for other_target in TargetKind::VARIANTS {
+                            if target.packages_folder(other_target) == file_name {
+                                continue 'entry;
+                            }
                         }
 
-                        let path = relative_path.to_path(destination.as_ref());
-
-                        if let Some(parent) = path.parent() {
-                            fs::create_dir_all(parent).await?;
-                        }
-
-                        fs::copy(entry.path(), path).await?;
+                        #[cfg(windows)]
+                        fs::symlink_dir(entry.path(), dest_path).await?;
+                        #[cfg(unix)]
+                        fs::symlink(entry.path(), dest_path).await?;
+                        continue;
                     }
+
+                    if IGNORED_FILES.contains(&file_name) {
+                        continue;
+                    }
+
+                    #[cfg(windows)]
+                    fs::symlink_file(entry.path(), dest_path).await?;
+                    #[cfg(unix)]
+                    fs::symlink(entry.path(), dest_path).await?;
                 }
             }
         }

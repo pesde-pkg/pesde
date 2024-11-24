@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Print that no updates are available in `outdated` command by @daimond113
 - Support negated globs in `workspace_members` field by @daimond113
 - Make `includes` use glob patterns by @daimond113
+- Use symlinks for workspace dependencies to not require reinstalling by @daimond113
 
 ## [0.5.0-rc.12] - 2024-11-22
 ### Added
