@@ -12,15 +12,14 @@ Before you can publish a package, you must configure the required fields in your
 
 ### `includes`
 
-The `includes` field is a list of files and directories that should be included
-in the package.
+The `includes` field is a list of globs that should be included in the package.
 
 ```toml
 includes = [
   "pesde.toml",
   "README.md",
   "LICENSE",
-  "init.luau",
+  "src/**/*.luau",
 ]
 ```
 

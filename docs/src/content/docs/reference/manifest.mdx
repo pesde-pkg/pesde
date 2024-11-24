@@ -71,8 +71,8 @@ package cannot be published to the registry.
 
 ### `includes`
 
-List of top-level files and directories to include in the package when
-publishing. Files not listed here will not be published.
+List of globs to include in the package when publishing. Files and directories
+not listed here will not be published.
 
 ```toml
 includes = [
@@ -80,7 +80,7 @@ includes = [
   "README.md",
   "LICENSE",
   "init.luau",
-  "docs",
+  "docs/**/*.md",
 ]
 ```
 
