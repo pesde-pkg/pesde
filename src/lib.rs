@@ -216,6 +216,78 @@ impl Project {
 }
 
 /// Gets all matching paths in a directory
+pub async fn matching_globs_old_behaviour<'a, P: AsRef<Path>, I: IntoIterator<Item = &'a str>>(
+    dir: P,
+    globs: I,
+    relative: bool,
+) -> Result<HashSet<PathBuf>, errors::MatchingGlobsError> {
+    let (negative_globs, positive_globs) = globs
+        .into_iter()
+        .partition::<Vec<_>, _>(|glob| glob.starts_with('!'));
+
+    let negative_globs = wax::any(
+        negative_globs
+            .into_iter()
+            .map(|glob| wax::Glob::new(&glob[1..]))
+            .collect::<Result<Vec<_>, _>>()?,
+    )?;
+
+    let (positive_globs, file_names) = positive_globs
+        .into_iter()
+        // only globs we can be sure of (maintaining compatibility with old "only file/dir name" system)
+        .partition::<Vec<_>, _>(|glob| glob.contains('/'));
+    let file_names = file_names.into_iter().collect::<HashSet<_>>();
+
+    let positive_globs = wax::any(
+        positive_globs
+            .into_iter()
+            .map(wax::Glob::new)
+            .collect::<Result<Vec<_>, _>>()?,
+    )?;
+
+    let mut read_dirs = vec![(fs::read_dir(dir.as_ref().to_path_buf()).await?, false)];
+    let mut paths = HashSet::new();
+
+    let mut is_root = true;
+
+    while let Some((mut read_dir, is_entire_dir_included)) = read_dirs.pop() {
+        while let Some(entry) = read_dir.next_entry().await? {
+            let path = entry.path();
+            let relative_path = path.strip_prefix(dir.as_ref()).unwrap();
+            let file_name = path.file_name().unwrap();
+            let mut is_filename_match = false;
+
+            if entry.file_type().await?.is_dir() {
+                is_filename_match =
+                    is_root && file_name.to_str().is_some_and(|s| file_names.contains(s));
+                read_dirs.push((
+                    fs::read_dir(&path).await?,
+                    is_entire_dir_included || is_filename_match,
+                ));
+                if is_filename_match {
+                    log::warn!("directory name usage found for {}. this is deprecated and will be removed in the future", path.display());
+                }
+            }
+
+            if (is_entire_dir_included || is_filename_match)
+                || (positive_globs.is_match(relative_path)
+                    && !negative_globs.is_match(relative_path))
+            {
+                paths.insert(if relative {
+                    relative_path.to_path_buf()
+                } else {
+                    path.to_path_buf()
+                });
+            }
+        }
+
+        is_root = false;
+    }
+
+    Ok(paths)
+}
+
+/// Gets all matching paths in a directory
 pub async fn matching_globs<'a, P: AsRef<Path>, I: IntoIterator<Item = &'a str>>(
     dir: P,
     globs: I,

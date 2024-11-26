@@ -6,7 +6,7 @@ use colored::Colorize;
 use fs_err::tokio as fs;
 use pesde::{
     manifest::{target::Target, DependencyType},
-    matching_globs,
+    matching_globs_old_behaviour,
     scripts::ScriptName,
     source::{
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
@@ -119,7 +119,7 @@ impl PublishCommand {
             _ => None,
         };
 
-        let mut paths = matching_globs(
+        let mut paths = matching_globs_old_behaviour(
             project.package_dir(),
             manifest.includes.iter().map(|s| s.as_str()),
             true,
@@ -288,12 +288,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                 continue;
             }
 
-            if path.is_dir() {
-                archive.append_dir(file_name, &path).await.context(format!(
-                    "failed to include directory `{}`",
-                    relative_path.display()
-                ))?;
-            } else {
+            if path.is_file() {
                 archive
                     .append_file(
                         &relative_path,
