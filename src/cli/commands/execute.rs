@@ -1,7 +1,8 @@
-use crate::cli::{config::read_config, VersionedPackageName};
+use crate::cli::{config::read_config, progress_bar, VersionedPackageName};
 use anyhow::Context;
 use clap::Args;
 use fs_err::tokio as fs;
+use indicatif::MultiProgress;
 use pesde::{
     linking::generator::generate_bin_linking_module,
     manifest::target::TargetKind,
@@ -31,7 +32,12 @@ pub struct ExecuteCommand {
 }
 
 impl ExecuteCommand {
-    pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+    pub async fn run(
+        self,
+        project: Project,
+        multi: MultiProgress,
+        reqwest: reqwest::Client,
+    ) -> anyhow::Result<()> {
         let index = match self.index {
             Some(index) => Some(index),
             None => read_config().await.ok().map(|c| c.default_index),
@@ -77,23 +83,53 @@ impl ExecuteCommand {
 
         log::info!("found package {}@{version}", pkg_ref.name);
 
+        let tmp_dir = project.cas_dir().join(".tmp");
+        fs::create_dir_all(&tmp_dir)
+            .await
+            .context("failed to create temporary directory")?;
+        let tempdir =
+            tempfile::tempdir_in(tmp_dir).context("failed to create temporary directory")?;
+
+        let project = Project::new(
+            tempdir.path(),
+            None::<std::path::PathBuf>,
+            project.data_dir(),
+            project.cas_dir(),
+            project.auth_config().clone(),
+        );
+
         let (fs, target) = source
             .download(&pkg_ref, &project, &reqwest)
             .await
             .context("failed to download package")?;
         let bin_path = target.bin_path().context("package has no binary export")?;
 
-        let tmp_dir = project.cas_dir().join(".tmp");
-        fs::create_dir_all(&tmp_dir)
-            .await
-            .context("failed to create temporary directory")?;
-
-        let tempdir =
-            tempfile::tempdir_in(tmp_dir).context("failed to create temporary directory")?;
-
         fs.write_to(tempdir.path(), project.cas_dir(), true)
             .await
             .context("failed to write package contents")?;
+
+        let mut refreshed_sources = HashSet::new();
+
+        let graph = project
+            .dependency_graph(None, &mut refreshed_sources, true)
+            .await
+            .context("failed to build dependency graph")?;
+
+        let rx = project
+            .download_graph(&graph, &mut refreshed_sources, &reqwest, true, true)
+            .await
+            .context("failed to download dependencies")?
+            .0;
+
+        progress_bar(
+            graph.values().map(|versions| versions.len() as u64).sum(),
+            rx,
+            &multi,
+            "📥 ".to_string(),
+            "downloading dependencies".to_string(),
+            "downloaded dependencies".to_string(),
+        )
+        .await?;
 
         let mut caller =
             tempfile::NamedTempFile::new_in(tempdir.path()).context("failed to create tempfile")?;

@@ -31,7 +31,7 @@ impl UpdateCommand {
         );
 
         let graph = project
-            .dependency_graph(None, &mut refreshed_sources)
+            .dependency_graph(None, &mut refreshed_sources, false)
             .await
             .context("failed to build dependency graph")?;
 

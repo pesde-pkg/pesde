@@ -230,9 +230,10 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                 );
             }
 
-            if roblox_target.as_mut().is_some_and(|build_files| {
-                build_files.insert(first_part.to_string())
-            }) {
+            if roblox_target
+                .as_mut()
+                .is_some_and(|build_files| build_files.insert(first_part.to_string()))
+            {
                 println!(
                     "{}: {name} was not in build files, adding {first_part}",
                     "warn".yellow().bold()

@@ -96,7 +96,7 @@ impl Subcommand {
             Subcommand::Add(add) => add.run(project).await,
             Subcommand::Update(update) => update.run(project, multi, reqwest).await,
             Subcommand::Outdated(outdated) => outdated.run(project).await,
-            Subcommand::Execute(execute) => execute.run(project, reqwest).await,
+            Subcommand::Execute(execute) => execute.run(project, multi, reqwest).await,
         }
     }
 }

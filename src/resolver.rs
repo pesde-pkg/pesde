@@ -19,6 +19,7 @@ impl Project {
         &self,
         previous_graph: Option<&DependencyGraph>,
         refreshed_sources: &mut HashSet<PackageSources>,
+        manifest_transformed: bool,
     ) -> Result<DependencyGraph, Box<errors::DependencyGraphError>> {
         let manifest = self
             .deser_manifest()
@@ -139,7 +140,7 @@ impl Project {
             );
             let source = match &specifier {
                 DependencySpecifiers::Pesde(specifier) => {
-                    let index_url = if depth == 0 || overridden {
+                    let index_url = if !manifest_transformed && (depth == 0 || overridden) {
                         let index_name = specifier.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
 
                         manifest
@@ -163,7 +164,7 @@ impl Project {
                 }
                 #[cfg(feature = "wally-compat")]
                 DependencySpecifiers::Wally(specifier) => {
-                    let index_url = if depth == 0 || overridden {
+                    let index_url = if !manifest_transformed && (depth == 0 || overridden) {
                         let index_name = specifier.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
 
                         manifest

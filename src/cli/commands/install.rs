@@ -195,7 +195,7 @@ impl InstallCommand {
         println!("{} 📦 building dependency graph", job(2));
 
         let graph = project
-            .dependency_graph(old_graph.as_ref(), &mut refreshed_sources)
+            .dependency_graph(old_graph.as_ref(), &mut refreshed_sources, false)
             .await
             .context("failed to build dependency graph")?;
 
