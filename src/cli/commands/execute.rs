@@ -5,7 +5,7 @@ use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
     linking::generator::generate_bin_linking_module,
-    manifest::target::TargetKind,
+    manifest::{target::TargetKind, DependencyType},
     names::PackageName,
     source::{
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
@@ -14,7 +14,9 @@ use pesde::{
     Project,
 };
 use semver::VersionReq;
-use std::{collections::HashSet, env::current_dir, ffi::OsString, io::Write, process::Command};
+use std::{
+    collections::HashSet, env::current_dir, ffi::OsString, io::Write, process::Command, sync::Arc,
+};
 
 #[derive(Debug, Args)]
 pub struct ExecuteCommand {
@@ -115,11 +117,10 @@ impl ExecuteCommand {
             .await
             .context("failed to build dependency graph")?;
 
-        let rx = project
+        let (rx, downloaded_graph) = project
             .download_graph(&graph, &mut refreshed_sources, &reqwest, true, true)
             .await
-            .context("failed to download dependencies")?
-            .0;
+            .context("failed to download dependencies")?;
 
         progress_bar(
             graph.values().map(|versions| versions.len() as u64).sum(),
@@ -130,6 +131,28 @@ impl ExecuteCommand {
             "downloaded dependencies".to_string(),
         )
         .await?;
+
+        let downloaded_graph = Arc::into_inner(downloaded_graph)
+            .unwrap()
+            .into_inner()
+            .unwrap();
+
+        project
+            .link_dependencies(
+                &downloaded_graph
+                    .into_iter()
+                    .map(|(n, v)| {
+                        (
+                            n,
+                            v.into_iter()
+                                .filter(|(_, n)| n.node.resolved_ty != DependencyType::Dev)
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            )
+            .await
+            .context("failed to link dependencies")?;
 
         let mut caller =
             tempfile::NamedTempFile::new_in(tempdir.path()).context("failed to create tempfile")?;
