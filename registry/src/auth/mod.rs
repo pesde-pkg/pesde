@@ -184,14 +184,10 @@ pub fn get_auth_from_env(config: &IndexConfig) -> Auth {
 }
 
 pub fn get_token_from_req(req: &ServiceRequest) -> Option<String> {
-    let token = match req
+    let token = req
         .headers()
         .get(AUTHORIZATION)
-        .and_then(|token| token.to_str().ok())
-    {
-        Some(token) => token,
-        None => return None,
-    };
+        .and_then(|token| token.to_str().ok())?;
 
     let token = if token.to_lowercase().starts_with("bearer ") {
         token[7..].to_string()

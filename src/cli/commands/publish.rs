@@ -230,7 +230,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                 );
             }
 
-            if roblox_target.as_mut().map_or(false, |build_files| {
+            if roblox_target.as_mut().is_some_and(|build_files| {
                 build_files.insert(first_part.to_string())
             }) {
                 println!(
