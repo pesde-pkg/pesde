@@ -52,7 +52,10 @@
 							: (dependencyInfo.target ?? $page.params.target ?? data.pkg.targets[0].kind)}
 						{@const isOfficialRegistry = isWally
 							? dependencyInfo.index.toLowerCase() === "https://github.com/upliftgames/wally-index"
-							: dependencyInfo.index.toLowerCase() === "https://github.com/daimond113/pesde-index"}
+							: [
+									"https://github.com/daimond113/pesde-index",
+									"https://github.com/pesde-pkg/index",
+								].includes(dependencyInfo.index.toLowerCase())}
 
 						<article
 							class={`bg-card relative overflow-hidden rounded px-5 py-4 transition ${

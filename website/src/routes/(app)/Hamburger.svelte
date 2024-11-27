@@ -60,7 +60,7 @@
 								</div>
 								<div class="flex items-center py-5">
 									<a
-										href="https://github.com/daimond113/pesde"
+										href="https://github.com/pesde-pkg/pesde"
 										target="_blank"
 										rel="noreferrer noopener"
 									>

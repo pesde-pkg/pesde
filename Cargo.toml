@@ -6,7 +6,7 @@ license = "MIT"
 authors = ["daimond113 <contact@daimond113.com>"]
 description = "A package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune"
 homepage = "https://pesde.daimond113.com"
-repository = "https://github.com/daimond113/pesde"
+repository = "https://github.com/pesde-pkg/pesde"
 include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [features]

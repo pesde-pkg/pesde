@@ -1,7 +1,7 @@
 <br>
 
 <div align="center">
-    <img src="https://raw.githubusercontent.com/daimond113/pesde/0.5/assets/logotype.svg" alt="pesde logo" width="200" />
+    <img src="https://raw.githubusercontent.com/pesde-pkg/pesde/0.5/assets/logotype.svg" alt="pesde logo" width="200" />
 </div>
 
 <br>
@@ -14,7 +14,7 @@ designed with multiple targets in mind, namely Roblox, Lune, and Luau.
 ## Installation
 
 pesde can be installed from GitHub Releases. You can find the latest release
-[here](https://github.com/daimond113/pesde/releases). Once you have downloaded
+[here](https://github.com/pesde-pkg/pesde/releases). Once you have downloaded
 the binary, run the following command to install it:
 
 ```sh

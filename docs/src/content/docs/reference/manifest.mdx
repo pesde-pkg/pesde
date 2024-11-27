@@ -28,7 +28,7 @@ may only contain lowercase letters, numbers, and underscores.
 
 The first one to publish to a given scope gets to own it. If you want multiple
 people to be able to publish to the same scope, you can send a pull request to
-the [pesde-index GitHub repository](https://github.com/daimond113/pesde-index)
+the [pesde-index GitHub repository](https://github.com/pesde-pkg/index)
 and add the GitHub user ID of the other person to the `owners` field of the
 `scope.toml` file of the given scope. For more information, see
 [policies](/registry/policies#package-ownership).
@@ -178,7 +178,7 @@ of files specified within the [`target.build_files`](#build_files) of the
 package.
 
 You can find template scripts inside the
-[`pesde-scripts` repository](https://github.com/daimond113/pesde-scripts)
+[`pesde-scripts` repository](https://github.com/pesde-pkg/scripts)
 for various sync tools.
 
 <LinkCard
@@ -190,7 +190,7 @@ for various sync tools.
 <LinkCard
 	title="Example script for Rojo"
 	description="An example script for generating configuration for Rojo."
-	href="https://github.com/daimond113/pesde-scripts/blob/master/lune/rojo/roblox_sync_config_generator.luau"
+	href="https://github.com/pesde-pkg/scripts/blob/master/lune/rojo/roblox_sync_config_generator.luau"
 />
 
 ### `sourcemap_generator`
@@ -205,7 +205,7 @@ through `process.args`.
 <LinkCard
 	title="Example script for Rojo"
 	description="An example script for generating configuration for Rojo."
-	href="https://github.com/daimond113/pesde-scripts/blob/master/lune/rojo/sourcemap_generator.luau"
+	href="https://github.com/pesde-pkg/scripts/blob/master/lune/rojo/sourcemap_generator.luau"
 />
 
 ## `[indices]`
@@ -215,7 +215,7 @@ installed from.
 
 ```toml
 [indices]
-default = "https://github.com/daimond113/pesde-index"
+default = "https://github.com/pesde-pkg/index"
 acme = "https://github.com/acme/pesde-index"
 ```
 

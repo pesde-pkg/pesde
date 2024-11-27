@@ -80,7 +80,7 @@ The registry is a web server that provides package downloads and the ability to
 publish packages.
 
 The official registry implementation is available in the
-[pesde GitHub repository](https://github.com/daimond113/pesde/tree/0.5/registry).
+[pesde GitHub repository](https://github.com/pesde-pkg/pesde/tree/0.5/registry).
 
 Configuring the registry is done using environment variables. In order to allow
 the registry to access the index repository, you must use an account that
@@ -97,7 +97,7 @@ for this purpose.
 ### General configuration
 
 - **INDEX_REPO_URL**: The URL of the index repository. This is required.\
-  Example: `https://github.com/daimond113/pesde-index.git`
+  Example: `https://github.com/pesde-pkg/index.git`
 
 - **GIT_USERNAME**: The username of a Git account that has push access to the
   index repository. This is required.
@@ -193,7 +193,7 @@ The registry supports [Sentry](https://sentry.io/) for error tracking.
 First clone the repository and navigate to the repository directory:
 
 ```sh
-git clone https://github.com/daimond113/pesde.git
+git clone https://github.com/pesde-pkg/pesde.git
 cd pesde
 ```
 

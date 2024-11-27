@@ -62,7 +62,7 @@
 					<a href="https://docs.pesde.daimond113.com/registry/policies">Policies</a>
 				</nav>
 
-				<a href="https://github.com/daimond113/pesde" target="_blank" rel="noreferrer noopener">
+				<a href="https://github.com/pesde-pkg/pesde" target="_blank" rel="noreferrer noopener">
 					<GitHub class="size-6" />
 				</a>
 			</div>

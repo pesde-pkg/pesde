@@ -10,7 +10,7 @@ export default defineConfig({
 		starlight({
 			title: "pesde docs",
 			social: {
-				github: "https://github.com/daimond113/pesde",
+				github: "https://github.com/pesde-pkg/pesde",
 			},
 			sidebar: [
 				{

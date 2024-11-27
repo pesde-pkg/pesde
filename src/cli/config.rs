@@ -25,12 +25,8 @@ pub struct CliConfig {
 impl Default for CliConfig {
     fn default() -> Self {
         Self {
-            default_index: "https://github.com/daimond113/pesde-index"
-                .try_into()
-                .unwrap(),
-            scripts_repo: "https://github.com/daimond113/pesde-scripts"
-                .try_into()
-                .unwrap(),
+            default_index: "https://github.com/pesde-pkg/index".try_into().unwrap(),
+            scripts_repo: "https://github.com/pesde-pkg/scripts".try_into().unwrap(),
 
             tokens: Tokens(Default::default()),
 

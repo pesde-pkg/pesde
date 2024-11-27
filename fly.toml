@@ -10,7 +10,7 @@ ADDRESS = '0.0.0.0'
 PORT = '8080'
 COMMITTER_GIT_NAME = 'pesde index updater'
 COMMITTER_GIT_EMAIL = 'pesde@daimond113.com'
-INDEX_REPO_URL = 'https://github.com/daimond113/pesde-index'
+INDEX_REPO_URL = 'https://github.com/pesde-pkg/index'
 
 [http_service]
 internal_port = 8080

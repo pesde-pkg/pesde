@@ -2,7 +2,7 @@
 name = "pesde-registry"
 version = "0.7.0"
 edition = "2021"
-repository = "https://github.com/daimond113/pesde-index"
+repository = "https://github.com/pesde-pkg/index"
 publish = false
 
 [dependencies]
