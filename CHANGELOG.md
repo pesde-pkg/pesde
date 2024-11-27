@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Install dependencies of packages in `x` command
 
+### Performance
+- Asyncify dependency linking by @daimond113
+
 ## [0.5.0-rc.12] - 2024-11-22
 ### Added
 - Support fallback Wally registries by @daimond113
