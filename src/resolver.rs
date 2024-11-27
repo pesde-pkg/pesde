@@ -19,7 +19,8 @@ impl Project {
         &self,
         previous_graph: Option<&DependencyGraph>,
         refreshed_sources: &mut HashSet<PackageSources>,
-        manifest_transformed: bool,
+        // used by `x` command - if true, specifier indices are expected to be URLs. will not do peer dependency checks
+        is_published_package: bool,
     ) -> Result<DependencyGraph, Box<errors::DependencyGraphError>> {
         let manifest = self
             .deser_manifest()
@@ -140,7 +141,7 @@ impl Project {
             );
             let source = match &specifier {
                 DependencySpecifiers::Pesde(specifier) => {
-                    let index_url = if !manifest_transformed && (depth == 0 || overridden) {
+                    let index_url = if !is_published_package && (depth == 0 || overridden) {
                         let index_name = specifier.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
 
                         manifest
@@ -164,7 +165,7 @@ impl Project {
                 }
                 #[cfg(feature = "wally-compat")]
                 DependencySpecifiers::Wally(specifier) => {
-                    let index_url = if !manifest_transformed && (depth == 0 || overridden) {
+                    let index_url = if !is_published_package && (depth == 0 || overridden) {
                         let index_name = specifier.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
 
                         manifest
@@ -220,7 +221,8 @@ impl Project {
                 )));
             };
 
-            let resolved_ty = if depth == 0 && ty == DependencyType::Peer {
+            let resolved_ty = if (is_published_package || depth == 0) && ty == DependencyType::Peer
+            {
                 DependencyType::Standard
             } else {
                 ty
