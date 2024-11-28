@@ -41,7 +41,7 @@ impl AuthImpl for GitHubAuth {
         {
             Ok(response) => match response.error_for_status_ref() {
                 Ok(_) => response,
-                Err(e) if e.status().is_some_and(|s| s == StatusCode::UNAUTHORIZED) => {
+                Err(e) if e.status().is_some_and(|s| s == StatusCode::NOT_FOUND) => {
                     return Ok(None);
                 }
                 Err(_) => {
