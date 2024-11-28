@@ -66,25 +66,6 @@ struct DocEntryInfo {
     collapsed: bool,
 }
 
-fn compare_repo_urls(this: &gix::Url, external: &gix::Url) -> bool {
-    let this = this.to_bstring().to_string().to_lowercase();
-    let external = external.to_bstring().to_string().to_lowercase();
-
-    let this = if this.ends_with(".git") {
-        &this[..this.len() - 4]
-    } else {
-        &this
-    };
-
-    let external = if external.ends_with(".git") {
-        &external[..external.len() - 4]
-    } else {
-        &external
-    };
-
-    this == external
-}
-
 pub async fn publish_package(
     app_state: web::Data<AppState>,
     bytes: Bytes,
@@ -321,8 +302,9 @@ pub async fn publish_package(
                         .index
                         .as_deref()
                         .filter(|index| match gix::Url::try_from(*index) {
-                            Ok(_) if config.other_registries_allowed => true,
-                            Ok(url) => compare_repo_urls(source.repo_url(), &url),
+                            Ok(url) => config
+                                .other_registries_allowed
+                                .is_allowed(source.repo_url().clone(), url),
                             Err(_) => false,
                         })
                         .is_none()

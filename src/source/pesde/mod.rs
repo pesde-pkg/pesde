@@ -265,6 +265,42 @@ fn default_archive_size() -> usize {
     4 * 1024 * 1024
 }
 
+/// The allowed registries for a package
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum AllowedRegistries {
+    /// All registries are allowed
+    All(bool),
+    /// Only specific registries are allowed
+    #[serde(deserialize_with = "crate::util::deserialize_gix_url_hashset")]
+    Specific(HashSet<Url>),
+}
+
+impl Default for AllowedRegistries {
+    fn default() -> Self {
+        Self::All(false)
+    }
+}
+
+impl AllowedRegistries {
+    /// Whether the given URL is allowed
+    pub fn is_allowed(&self, mut this: Url, mut external: Url) -> bool {
+        // strip .git suffix to allow for more flexible matching
+        this.path = this.path.strip_suffix(b".git").unwrap_or(&this.path).into();
+        external.path = external
+            .path
+            .strip_suffix(b".git")
+            .unwrap_or(&external.path)
+            .into();
+
+        this == external
+            || (match self {
+                Self::All(all) => *all,
+                Self::Specific(urls) => urls.contains(&this) || urls.contains(&external),
+            })
+    }
+}
+
 /// The configuration for the pesde index
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -278,7 +314,7 @@ pub struct IndexConfig {
     pub git_allowed: bool,
     /// Whether other registries are allowed as a source for publishing packages
     #[serde(default)]
-    pub other_registries_allowed: bool,
+    pub other_registries_allowed: AllowedRegistries,
     /// Whether Wally is allowed as a source for publishing packages
     #[serde(default)]
     pub wally_allowed: bool,

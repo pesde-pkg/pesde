@@ -2,7 +2,7 @@ use crate::AuthConfig;
 use gix::bstr::BStr;
 use serde::{Deserialize, Deserializer, Serializer};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 pub fn authenticate_conn(
     conn: &mut gix::remote::Connection<
@@ -54,6 +54,15 @@ pub fn deserialize_gix_url_vec<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Vec<gix::Url>, D::Error> {
     Vec::<String>::deserialize(deserializer)?
+        .into_iter()
+        .map(|v| gix::Url::from_bytes(BStr::new(&v)).map_err(serde::de::Error::custom))
+        .collect()
+}
+
+pub fn deserialize_gix_url_hashset<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<HashSet<gix::Url>, D::Error> {
+    HashSet::<String>::deserialize(deserializer)?
         .into_iter()
         .map(|v| gix::Url::from_bytes(BStr::new(&v)).map_err(serde::de::Error::custom))
         .collect()
