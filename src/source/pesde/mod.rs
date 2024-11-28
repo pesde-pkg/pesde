@@ -90,14 +90,6 @@ impl PesdePackageSource {
         .await
         .unwrap()
     }
-
-    /// The git2 repository for the index
-    #[cfg(feature = "git2")]
-    pub fn repo_git2(&self, project: &Project) -> Result<git2::Repository, git2::Error> {
-        let path = self.path(project);
-
-        git2::Repository::open_bare(&path)
-    }
 }
 
 impl PackageSource for PesdePackageSource {

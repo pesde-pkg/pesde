@@ -348,8 +348,9 @@ pub async fn publish_package(
             }
         }
 
-        let repo = source.repo_git2(&app_state.project)?;
+        let repo = Repository::open_bare(source.path(&app_state.project))?;
         let gix_repo = gix::open(repo.path())?;
+
         let gix_tree = root_tree(&gix_repo)?;
 
         let (scope, name) = manifest.name.as_str();

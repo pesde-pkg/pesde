@@ -10,25 +10,25 @@ actix-web = "4.9.0"
 actix-cors = "0.7.0"
 actix-governor = "0.7.0"
 dotenvy = "0.15.7"
-thiserror = "2.0.2"
+thiserror = "2.0.3"
 tantivy = "0.22.0"
 semver = "1.0.23"
 chrono = { version = "0.4.38", features = ["serde"] }
-url = "2.5.2"
+url = "2.5.4"
 futures = "0.3.31"
-tokio = "1.41.0"
+tokio = "1.41.1"
 tempfile = "3.14.0"
 fs-err = { version = "3.0.0", features = ["tokio"] }
 async-stream = "0.3.6"
 
 git2 = "0.19.0"
-gix = { version = "0.67.0", default-features = false, features = [
+gix = { version = "0.68.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
     "credentials",
 ] }
 
-serde = "1.0.214"
-serde_json = "1.0.132"
+serde = "1.0.215"
+serde_json = "1.0.133"
 serde_yaml = "0.9.34"
 toml = "0.8.19"
 convert_case = "0.6.0"
@@ -39,7 +39,7 @@ reqwest = { version = "0.12.9", features = ["json", "rustls-tls"] }
 constant_time_eq = "0.3.1"
 
 tokio-tar = "0.3.1"
-async-compression = { version = "0.4.17", features = ["tokio", "gzip"] }
+async-compression = { version = "0.4.18", features = ["tokio", "gzip"] }
 
 log = "0.4.22"
 pretty_env_logger = "0.5.0"
@@ -48,7 +48,4 @@ sentry = "0.34.0"
 sentry-log = "0.34.0"
 sentry-actix = "0.34.0"
 
-pesde = { path = "..", features = [
-  "wally-compat",
-  "git2",
-] }
+pesde = { path = "..", features = ["wally-compat"] }

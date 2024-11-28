@@ -11,28 +11,28 @@ include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHAN
 
 [features]
 bin = [
-    "clap",
-    "dirs",
-    "pretty_env_logger",
+    "dep:clap",
+    "dep:dirs",
+    "dep:pretty_env_logger",
     "reqwest/json",
-    "indicatif",
-    "indicatif-log-bridge",
-    "inquire",
-    "toml_edit",
-    "colored",
-    "anyhow",
-    "keyring",
-    "open",
+    "dep:indicatif",
+    "dep:indicatif-log-bridge",
+    "dep:inquire",
+    "dep:toml_edit",
+    "dep:colored",
+    "dep:anyhow",
+    "dep:keyring",
+    "dep:open",
     "gix/worktree-mutation",
-    "serde_json",
-    "winreg",
+    "dep:serde_json",
+    "dep:winreg",
     "fs-err/expose_original_error",
     "tokio/rt",
     "tokio/rt-multi-thread",
     "tokio/macros",
 ]
-wally-compat = ["async_zip", "serde_json"]
-patches = ["git2"]
+wally-compat = ["dep:async_zip", "dep:serde_json"]
+patches = ["dep:git2"]
 version-management = ["bin"]
 
 [[bin]]
@@ -44,24 +44,24 @@ required-features = ["bin"]
 uninlined_format_args = "warn"
 
 [dependencies]
-serde = { version = "1.0.214", features = ["derive"] }
+serde = { version = "1.0.215", features = ["derive"] }
 toml = "0.8.19"
 serde_with = "3.11.0"
-gix = { version = "0.67.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials", "parallel"] }
+gix = { version = "0.68.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials", "parallel"] }
 semver = { version = "1.0.23", features = ["serde"] }
 reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tls"] }
 tokio-tar = "0.3.1"
-async-compression = { version = "0.4.17", features = ["tokio", "gzip"] }
-pathdiff = "0.2.2"
+async-compression = { version = "0.4.18", features = ["tokio", "gzip"] }
+pathdiff = "0.2.3"
 relative-path = { version = "1.9.3", features = ["serde"] }
 log = "0.4.22"
-thiserror = "2.0.2"
-tokio = "1.41.0"
+thiserror = "2.0.3"
+tokio = "1.41.1"
 tokio-util = "0.7.12"
 async-stream = "0.3.6"
 futures = "0.3.31"
-full_moon = { version = "1.1.0", features = ["luau"] }
-url = { version = "2.5.3", features = ["serde"] }
+full_moon = { version = "1.1.2", features = ["luau"] }
+url = { version = "2.5.4", features = ["serde"] }
 chrono = { version = "0.4.38", features = ["serde"] }
 sha2 = "0.10.8"
 tempfile = "3.14.0"
@@ -72,17 +72,17 @@ fs-err = { version = "3.0.0", features = ["tokio"] }
 git2 = { version = "0.19.0", optional = true }
 
 async_zip = { version = "0.0.17", features = ["tokio", "deflate", "deflate64", "tokio-fs"], optional = true }
-serde_json = { version = "1.0.132", optional = true }
+serde_json = { version = "1.0.133", optional = true }
 
 anyhow = { version = "1.0.93", optional = true }
-open = { version = "5.3.0", optional = true }
+open = { version = "5.3.1", optional = true }
 keyring = { version = "3.6.1", features = ["crypto-rust", "windows-native", "apple-native", "async-secret-service", "async-io"], optional = true }
 colored = { version = "2.1.0", optional = true }
 toml_edit = { version = "0.22.22", optional = true }
-clap = { version = "4.5.20", features = ["derive"], optional = true }
+clap = { version = "4.5.21", features = ["derive"], optional = true }
 dirs = { version = "5.0.1", optional = true }
 pretty_env_logger = { version = "0.5.0", optional = true }
-indicatif = { version = "0.17.8", optional = true }
+indicatif = { version = "0.17.9", optional = true }
 indicatif-log-bridge = { version = "0.2.3", optional = true }
 inquire = { version = "0.7.5", optional = true }
 
