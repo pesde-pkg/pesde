@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support specifying which external registries are allowed on registries by @daimond113
 
 ### Fixed
-- Install dependencies of packages in `x` command
+- Install dependencies of packages in `x` command by @daimond113
 
 ### Performance
 - Asyncify dependency linking by @daimond113
