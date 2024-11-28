@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support negated globs in `workspace_members` field by @daimond113
 - Make `includes` use glob patterns by @daimond113
 - Use symlinks for workspace dependencies to not require reinstalling by @daimond113
+- Add `auth token` command to print the auth token for the index by @daimond113
 
 ### Fixed
 - Install dependencies of packages in `x` command

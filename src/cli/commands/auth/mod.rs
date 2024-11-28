@@ -4,6 +4,7 @@ use pesde::{errors::ManifestReadError, Project, DEFAULT_INDEX_NAME};
 
 mod login;
 mod logout;
+mod token;
 mod whoami;
 
 #[derive(Debug, Args)]
@@ -25,6 +26,8 @@ pub enum AuthCommands {
     /// Prints the username of the currently logged-in user
     #[clap(name = "whoami")]
     WhoAmI(whoami::WhoAmICommand),
+    /// Prints the token for an index
+    Token(token::TokenCommand),
 }
 
 impl AuthSubcommand {
@@ -64,6 +67,7 @@ impl AuthSubcommand {
             AuthCommands::Login(login) => login.run(index_url, project, reqwest).await,
             AuthCommands::Logout(logout) => logout.run(index_url).await,
             AuthCommands::WhoAmI(whoami) => whoami.run(index_url, reqwest).await,
+            AuthCommands::Token(token) => token.run(index_url).await,
         }
     }
 }
