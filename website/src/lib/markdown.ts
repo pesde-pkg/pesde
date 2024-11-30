@@ -18,15 +18,26 @@ import remarkGfm from "remark-gfm"
 import remarkGithubAdmonitionsToDirectives from "remark-github-admonitions-to-directives"
 import remarkParse from "remark-parse"
 import remarkRehype from "remark-rehype"
-import { createCssVariablesTheme, createHighlighter } from "shiki"
+import { createCssVariablesTheme, createHighlighter, loadWasm } from "shiki"
 import { unified } from "unified"
 import type { Node } from "unist"
 import { map } from "unist-util-map"
 
-const highlighter = createHighlighter({
-	themes: [],
-	langs: [],
-})
+// @ts-expect-error - typescript doesn't like the wasm import
+import onigWasm from "shiki/onig.wasm"
+
+const loadOnigWasm = (async () => {
+	await loadWasm(onigWasm())
+})()
+
+const highlighter = (async () => {
+	await loadOnigWasm
+
+	return await createHighlighter({
+		themes: [],
+		langs: [],
+	})
+})()
 
 const ADMONITION_TYPES = {
 	note: {
