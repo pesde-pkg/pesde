@@ -1,0 +1,6 @@
+name = "pesde"
+compatibility_date = "2024-11-30"
+pages_build_output_dir = ".svelte-kit/cloudflare"
+
+[vars]
+PUBLIC_REGISTRY_URL = "https://registry.pesde.daimond113.com/v0/"
