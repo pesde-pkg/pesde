@@ -255,11 +255,10 @@ pub async fn matching_globs_old_behaviour<'a, P: AsRef<Path>, I: IntoIterator<It
             let path = entry.path();
             let relative_path = path.strip_prefix(dir.as_ref()).unwrap();
             let file_name = path.file_name().unwrap();
-            let mut is_filename_match = false;
+            let is_filename_match =
+                is_root && file_name.to_str().is_some_and(|s| file_names.contains(s));
 
             if entry.file_type().await?.is_dir() {
-                is_filename_match =
-                    is_root && file_name.to_str().is_some_and(|s| file_names.contains(s));
                 read_dirs.push((
                     fs::read_dir(&path).await?,
                     is_entire_dir_included || is_filename_match,
