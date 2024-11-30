@@ -2,6 +2,8 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
+@import "admonitions.css";
+
 :root {
 	--color-background: 255 245 230;
 	--color-card: 245 230 210;
