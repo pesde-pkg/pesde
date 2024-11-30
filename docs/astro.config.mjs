@@ -2,10 +2,9 @@ import starlight from "@astrojs/starlight"
 import tailwind from "@astrojs/tailwind"
 import { defineConfig } from "astro/config"
 
-import vercel from "@astrojs/vercel/serverless"
-
 // https://astro.build/config
 export default defineConfig({
+	site: "https://docs.pesde.daimond113.com",
 	integrations: [
 		starlight({
 			title: "pesde docs",
@@ -105,6 +104,4 @@ export default defineConfig({
 	vite: {
 		envDir: "..",
 	},
-	output: "hybrid",
-	adapter: vercel(),
 })

@@ -14,7 +14,6 @@
     "@astrojs/starlight": "^0.28.2",
     "@astrojs/starlight-tailwind": "^2.0.3",
     "@astrojs/tailwind": "^5.1.1",
-    "@astrojs/vercel": "^7.8.1",
     "@fontsource-variable/nunito-sans": "^5.1.0",
     "@shikijs/rehype": "^1.21.0",
     "astro": "^4.15.9",
