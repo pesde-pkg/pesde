@@ -92,13 +92,23 @@ body {
 }
 
 .admonition {
-	@apply my-4 rounded-sm border-l-4 px-4 py-3 prose-p:my-1;
+	@apply my-4 rounded-sm border-l-4 px-4 py-3 prose-p:my-2 prose-pre:my-4;
 	border-color: var(--admonition-border);
 	background-color: var(--admonition-bg);
+	--shiki-background: rgb(255 255 255 / 0.3);
 }
 
 .admonition * {
 	color: theme(colors.light);
+}
+
+.admonition a,
+.admonition a * {
+	color: var(--admonition-text);
+}
+
+.admonition pre {
+	@apply border border-[--admonition-border];
 }
 
 .admonition-title {
@@ -118,9 +128,15 @@ body {
 	.admonition {
 		border-color: var(--admonition-border-dark);
 		background-color: var(--admonition-bg-dark);
+		--shiki-background: rgb(0 0 0 / 0.3);
 	}
 
 	.admonition-title * {
+		color: var(--admonition-text-dark);
+	}
+
+	.admonition a,
+	.admonition a * {
 		color: var(--admonition-text-dark);
 	}
 }
