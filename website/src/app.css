@@ -90,3 +90,87 @@ body {
 	-ms-overflow-style: none;
 	scrollbar-width: none;
 }
+
+.admonition {
+	@apply my-4 rounded-sm border-l-4 px-4 py-3 prose-p:my-1;
+	border-color: var(--admonition-border);
+	background-color: var(--admonition-bg);
+}
+
+.admonition * {
+	color: theme(colors.light);
+}
+
+.admonition-title {
+	@apply flex items-center space-x-2 text-lg font-semibold;
+}
+
+.admonition-title * {
+	color: var(--admonition-text);
+}
+
+.admonition-icon {
+	@apply inline-block size-6 bg-current;
+	mask-image: var(--admonition-icon);
+}
+
+@media (prefers-color-scheme: dark) {
+	.admonition {
+		border-color: var(--admonition-border-dark);
+		background-color: var(--admonition-bg-dark);
+	}
+
+	.admonition-title * {
+		color: var(--admonition-text-dark);
+	}
+}
+
+.admonition-note {
+	--admonition-bg: theme(colors.blue.600 / 0.1);
+	--admonition-border: theme(colors.blue.600 / 0.4);
+	--admonition-text: theme(colors.blue.950);
+	--admonition-bg-dark: theme(colors.blue.500 / 0.1);
+	--admonition-border-dark: theme(colors.blue.500 / 0.6);
+	--admonition-text-dark: theme(colors.blue.100);
+	--admonition-icon: url(lucide-static/icons/info.svg);
+}
+
+.admonition-tip {
+	--admonition-bg: theme(colors.green.600 / 0.1);
+	--admonition-border: theme(colors.green.600 / 0.4);
+	--admonition-text: theme(colors.green.950);
+	--admonition-bg-dark: theme(colors.green.500 / 0.1);
+	--admonition-border-dark: theme(colors.green.500 / 0.6);
+	--admonition-text-dark: theme(colors.green.100);
+	--admonition-icon: url(lucide-static/icons/lightbulb.svg);
+}
+
+.admonition-info {
+	--admonition-bg: theme(colors.purple.600 / 0.1);
+	--admonition-border: theme(colors.purple.600 / 0.4);
+	--admonition-text: theme(colors.purple.950);
+	--admonition-bg-dark: theme(colors.purple.500 / 0.1);
+	--admonition-border-dark: theme(colors.purple.500 / 0.6);
+	--admonition-text-dark: theme(colors.purple.100);
+	--admonition-icon: url(lucide-static/icons/message-square-warning.svg);
+}
+
+.admonition-warning {
+	--admonition-bg: theme(colors.yellow.600 / 0.1);
+	--admonition-border: theme(colors.yellow.600 / 0.4);
+	--admonition-text: theme(colors.yellow.950);
+	--admonition-bg-dark: theme(colors.yellow.500 / 0.1);
+	--admonition-border-dark: theme(colors.yellow.500 / 0.6);
+	--admonition-text-dark: theme(colors.yellow.100);
+	--admonition-icon: url(lucide-static/icons/triangle-alert.svg);
+}
+
+.admonition-danger {
+	--admonition-bg: theme(colors.red.600 / 0.1);
+	--admonition-border: theme(colors.red.600 / 0.4);
+	--admonition-text: theme(colors.red.950);
+	--admonition-bg-dark: theme(colors.red.500 / 0.1);
+	--admonition-border-dark: theme(colors.red.500 / 0.6);
+	--admonition-text-dark: theme(colors.red.100);
+	--admonition-icon: url(lucide-static/icons/octagon-alert.svg);
+}
