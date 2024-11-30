@@ -4,3 +4,6 @@ pages_build_output_dir = ".svelte-kit/cloudflare"
 
 [vars]
 PUBLIC_REGISTRY_URL = "https://registry.pesde.daimond113.com/v0/"
+
+[observability]
+enabled = true
