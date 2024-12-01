@@ -2,7 +2,7 @@
 use crate::cli::version::{check_for_updates, get_or_download_version};
 use crate::cli::{auth::get_tokens, display_err, home_dir, HOME_DIR};
 use anyhow::Context;
-use clap::Parser;
+use clap::{builder::styling::AnsiColor, Parser};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;
@@ -16,12 +16,19 @@ use tempfile::NamedTempFile;
 mod cli;
 pub mod util;
 
+const STYLES: clap::builder::Styles = clap::builder::Styles::styled()
+    .header(AnsiColor::Yellow.on_default().underline())
+    .usage(AnsiColor::Yellow.on_default().underline())
+    .literal(AnsiColor::Green.on_default().bold())
+    .placeholder(AnsiColor::Cyan.on_default());
+
 #[derive(Parser, Debug)]
 #[clap(
     version,
-    about = "A package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune"
+    about = "A package manager for the Luau programming language",
+    long_about = "A package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune"
 )]
-#[command(disable_version_flag = true)]
+#[command(disable_version_flag = true, styles = STYLES)]
 struct Cli {
     /// Print version
     #[arg(short = 'v', short_alias = 'V', long, action = clap::builder::ArgAction::Version)]
