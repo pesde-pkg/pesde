@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Add improved CLI styling by @daimond113
 
+### Fixed
+- Link dependencies before type extraction to support more use cases
+
 ## [0.5.0-rc.14] - 2024-11-30
 ### Fixed
 - Fix `includes` not supporting root files by @daimond113

@@ -1,10 +1,13 @@
 use crate::{
     linking::generator::get_file_types,
     lockfile::DownloadedGraph,
+    manifest::Manifest,
+    names::PackageNames,
     scripts::{execute_script, ScriptName},
     source::{
         fs::{cas_path, store_in_cas},
         traits::PackageRef,
+        version_id::VersionId,
     },
     Project, LINK_LIB_NO_FILE_FOUND, PACKAGES_CONTAINER_NAME,
 };
@@ -30,6 +33,12 @@ async fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<Pat
 async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
     let hash = store_in_cas(cas_dir, contents.as_bytes(), |_| async { Ok(()) }).await?;
 
+    match fs::remove_file(&destination).await {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    };
+
     fs::hard_link(cas_path(&hash, cas_dir), destination).await
 }
 
@@ -41,6 +50,14 @@ impl Project {
     ) -> Result<(), errors::LinkingError> {
         let manifest = self.deser_manifest().await?;
         let manifest_target_kind = manifest.target.kind();
+        let manifest = Arc::new(manifest);
+
+        // step 1. link all packages (and their dependencies) temporarily without types
+        // we do this separately to allow the required tools for the scripts to be installed
+        self.link(graph, &manifest, &Arc::new(Default::default()))
+            .await?;
+
+        // step 2. extract the types from libraries
         let roblox_sync_config_gen_script = manifest
             .scripts
             .get(&ScriptName::RobloxSyncConfigGenerator.to_string());
@@ -127,8 +144,18 @@ impl Project {
             .into_iter()
             .collect::<HashMap<_, _>>();
 
-        let manifest = Arc::new(manifest);
         let package_types = Arc::new(package_types);
+        // step 3. link all packages (and their dependencies), this time with types
+        self.link(graph, &manifest, &package_types).await
+    }
+
+    async fn link(
+        &self,
+        graph: &DownloadedGraph,
+        manifest: &Arc<Manifest>,
+        package_types: &Arc<HashMap<&PackageNames, HashMap<&VersionId, Vec<String>>>>,
+    ) -> Result<(), errors::LinkingError> {
+        static NO_TYPES: Vec<String> = Vec::new();
 
         try_join_all(graph.iter().flat_map(|(name, versions)| {
             versions.iter().map(|(version_id, node)| {
@@ -140,7 +167,7 @@ impl Project {
                     let (node_container_folder, node_packages_folder) = {
                         let base_folder = create_and_canonicalize(
                             self.package_dir()
-                                .join(manifest_target_kind.packages_folder(version_id.target())),
+                                .join(manifest.target.kind().packages_folder(version_id.target())),
                         )
                         .await?;
                         let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
@@ -152,14 +179,7 @@ impl Project {
                         );
 
                         if let Some((alias, _, _)) = &node.node.direct.as_ref() {
-                            if let Some((lib_file, types)) =
-                                node.target.lib_path().and_then(|lib_file| {
-                                    package_types
-                                        .get(&name)
-                                        .and_then(|v| v.get(version_id))
-                                        .map(|types| (lib_file, types))
-                                })
-                            {
+                            if let Some(lib_file) = node.target.lib_path() {
                                 write_cas(
                                     base_folder.join(format!("{alias}.luau")),
                                     self.cas_dir(),
@@ -174,7 +194,10 @@ impl Project {
                                             container_folder.strip_prefix(&base_folder).unwrap(),
                                             &manifest,
                                         )?,
-                                        types,
+                                        package_types
+                                            .get(&name)
+                                            .and_then(|v| v.get(version_id))
+                                            .unwrap_or(&NO_TYPES),
                                     ),
                                 )
                                 .await?;
@@ -258,7 +281,7 @@ impl Project {
                                 package_types
                                     .get(dependency_name)
                                     .and_then(|v| v.get(dependency_version_id))
-                                    .unwrap(),
+                                    .unwrap_or(&NO_TYPES),
                             ),
                         )
                         .await?;
