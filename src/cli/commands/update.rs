@@ -5,6 +5,7 @@ use colored::Colorize;
 use indicatif::MultiProgress;
 use pesde::{lockfile::Lockfile, Project};
 use std::{collections::HashSet, sync::Arc};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Args, Copy, Clone)]
 pub struct UpdateCommand {}
@@ -34,6 +35,7 @@ impl UpdateCommand {
             .dependency_graph(None, &mut refreshed_sources, false)
             .await
             .context("failed to build dependency graph")?;
+        let graph = Arc::new(graph);
 
         update_scripts(&project).await?;
 
@@ -46,7 +48,14 @@ impl UpdateCommand {
 
                 graph: {
                     let (rx, downloaded_graph) = project
-                        .download_graph(&graph, &mut refreshed_sources, &reqwest, false, false)
+                        .download_and_link(
+                            &graph,
+                            &Arc::new(Mutex::new(refreshed_sources)),
+                            &reqwest,
+                            false,
+                            false,
+                            |_| async { Ok::<_, std::io::Error>(()) },
+                        )
                         .await
                         .context("failed to download dependencies")?;
 
@@ -60,10 +69,9 @@ impl UpdateCommand {
                     )
                     .await?;
 
-                    Arc::into_inner(downloaded_graph)
-                        .unwrap()
-                        .into_inner()
-                        .unwrap()
+                    downloaded_graph
+                        .await
+                        .context("failed to download dependencies")?
                 },
 
                 workspace: run_on_workspace_members(&project, |project| {

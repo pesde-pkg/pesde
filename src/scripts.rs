@@ -2,10 +2,12 @@ use crate::Project;
 use std::{
     ffi::OsStr,
     fmt::{Display, Formatter},
-    io::{BufRead, BufReader},
     path::Path,
-    process::{Command, Stdio},
-    thread::spawn,
+    process::Stdio,
+};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
 };
 
 /// Script names used by pesde
@@ -28,7 +30,7 @@ impl Display for ScriptName {
     }
 }
 
-pub(crate) fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
+pub(crate) async fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
     script_name: ScriptName,
     script_path: &Path,
     args: A,
@@ -47,14 +49,14 @@ pub(crate) fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
         .spawn()
     {
         Ok(mut child) => {
-            let stdout = BufReader::new(child.stdout.take().unwrap());
-            let stderr = BufReader::new(child.stderr.take().unwrap());
+            let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
+            let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
 
             let script = script_name.to_string();
             let script_2 = script.to_string();
 
-            spawn(move || {
-                for line in stderr.lines() {
+            tokio::spawn(async move {
+                while let Some(line) = stderr.next_line().await.transpose() {
                     match line {
                         Ok(line) => {
                             log::error!("[{script}]: {line}");
@@ -69,7 +71,7 @@ pub(crate) fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
 
             let mut stdout_str = String::new();
 
-            for line in stdout.lines() {
+            while let Some(line) = stdout.next_line().await.transpose() {
                 match line {
                     Ok(line) => {
                         if return_stdout {

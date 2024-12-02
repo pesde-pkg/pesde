@@ -20,6 +20,8 @@ use wax::Pattern;
 
 /// Downloading packages
 pub mod download;
+/// Utility for downloading and linking in the correct order
+pub mod download_and_link;
 /// Linking packages
 pub mod linking;
 /// Lockfile

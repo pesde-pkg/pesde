@@ -47,106 +47,114 @@ impl Project {
     pub async fn link_dependencies(
         &self,
         graph: &DownloadedGraph,
+        with_types: bool,
     ) -> Result<(), errors::LinkingError> {
         let manifest = self.deser_manifest().await?;
         let manifest_target_kind = manifest.target.kind();
         let manifest = Arc::new(manifest);
 
-        // step 1. link all packages (and their dependencies) temporarily without types
+        // step 1. link all non-wally packages (and their dependencies) temporarily without types
         // we do this separately to allow the required tools for the scripts to be installed
         self.link(graph, &manifest, &Arc::new(Default::default()))
             .await?;
 
-        // step 2. extract the types from libraries
+        if !with_types {
+            return Ok(());
+        }
+
+        // step 2. extract the types from libraries, prepare Roblox packages for syncing
         let roblox_sync_config_gen_script = manifest
             .scripts
             .get(&ScriptName::RobloxSyncConfigGenerator.to_string());
 
-        let package_types = try_join_all(
-            graph
-                .iter()
-                .map(|(name, versions)| async move {
-                    Ok::<_, errors::LinkingError>((name, try_join_all(versions.iter().map(|(version_id, node)| async move {
-                        let Some(lib_file) = node.target.lib_path() else {
+        let package_types = try_join_all(graph.iter().map(|(name, versions)| async move {
+            Ok::<_, errors::LinkingError>((
+                name,
+                try_join_all(versions.iter().map(|(version_id, node)| async move {
+                    let Some(lib_file) = node.target.lib_path() else {
+                        return Ok((version_id, vec![]));
+                    };
+
+                    let container_folder = node.node.container_folder(
+                        &self
+                            .package_dir()
+                            .join(manifest_target_kind.packages_folder(version_id.target()))
+                            .join(PACKAGES_CONTAINER_NAME),
+                        name,
+                        version_id.version(),
+                    );
+
+                    let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
+                        let lib_file = lib_file.to_path(&container_folder);
+
+                        let contents = match fs::read_to_string(&lib_file).await {
+                            Ok(contents) => contents,
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                return Err(errors::LinkingError::LibFileNotFound(
+                                    lib_file.display().to_string(),
+                                ));
+                            }
+                            Err(e) => return Err(e.into()),
+                        };
+
+                        let types = match spawn_blocking(move || get_file_types(&contents))
+                            .await
+                            .unwrap()
+                        {
+                            Ok(types) => types,
+                            Err(e) => {
+                                return Err(errors::LinkingError::FullMoon(
+                                    lib_file.display().to_string(),
+                                    e,
+                                ))
+                            }
+                        };
+
+                        log::debug!("{name}@{version_id} has {} exported types", types.len());
+
+                        types
+                    } else {
+                        vec![]
+                    };
+
+                    if let Some(build_files) = Some(&node.target)
+                        .filter(|_| !node.node.pkg_ref.like_wally())
+                        .and_then(|t| t.build_files())
+                    {
+                        let Some(script_path) = roblox_sync_config_gen_script else {
+                            log::warn!("not having a `{}` script in the manifest might cause issues with Roblox linking", ScriptName::RobloxSyncConfigGenerator);
                             return Ok((version_id, vec![]));
                         };
 
-                        let container_folder = node.node.container_folder(
-                            &self
-                                .package_dir()
-                                .join(manifest_target_kind.packages_folder(version_id.target()))
-                                .join(PACKAGES_CONTAINER_NAME),
-                            name,
-                            version_id.version(),
-                        );
+                        execute_script(
+                            ScriptName::RobloxSyncConfigGenerator,
+                            &script_path.to_path(self.package_dir()),
+                            std::iter::once(container_folder.as_os_str())
+                                .chain(build_files.iter().map(OsStr::new)),
+                            self,
+                            false,
+                        ).await
+                            .map_err(|e| {
+                                errors::LinkingError::GenerateRobloxSyncConfig(
+                                    container_folder.display().to_string(),
+                                    e,
+                                )
+                            })?;
+                    }
 
-                        let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
-                            let lib_file = lib_file.to_path(&container_folder);
-
-                            let contents = match fs::read_to_string(&lib_file).await {
-                                Ok(contents) => contents,
-                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                                    return Err(errors::LinkingError::LibFileNotFound(
-                                        lib_file.display().to_string(),
-                                    ));
-                                }
-                                Err(e) => return Err(e.into()),
-                            };
-
-                            let types = match spawn_blocking(move || get_file_types(&contents)).await.unwrap() {
-                                Ok(types) => types,
-                                Err(e) => {
-                                    return Err(errors::LinkingError::FullMoon(
-                                        lib_file.display().to_string(),
-                                        e,
-                                    ))
-                                }
-                            };
-
-                            log::debug!("{name}@{version_id} has {} exported types", types.len());
-
-                            types
-                        } else {
-                            vec![]
-                        };
-
-                        if let Some(build_files) = Some(&node.target)
-                            .filter(|_| !node.node.pkg_ref.like_wally())
-                            .and_then(|t| t.build_files())
-                        {
-                            let Some(script_path) = roblox_sync_config_gen_script else {
-                                log::warn!("not having a `{}` script in the manifest might cause issues with Roblox linking", ScriptName::RobloxSyncConfigGenerator);
-                                return Ok((version_id, vec![]));
-                            };
-
-                            execute_script(
-                                ScriptName::RobloxSyncConfigGenerator,
-                                &script_path.to_path(self.package_dir()),
-                                std::iter::once(container_folder.as_os_str())
-                                    .chain(build_files.iter().map(OsStr::new)),
-                                self,
-                                false,
-                            )
-                                .map_err(|e| {
-                                    errors::LinkingError::GenerateRobloxSyncConfig(
-                                        container_folder.display().to_string(),
-                                        e,
-                                    )
-                                })?;
-                        }
-
-                        Ok((version_id, types))
-                    })).await?.into_iter().collect::<HashMap<_, _>>()))
-                }
-                )
-        )
+                    Ok((version_id, types))
+                }))
+                    .await?
+                    .into_iter()
+                    .collect::<HashMap<_, _>>(),
+            ))
+        }))
             .await?
             .into_iter()
             .collect::<HashMap<_, _>>();
 
-        let package_types = Arc::new(package_types);
         // step 3. link all packages (and their dependencies), this time with types
-        self.link(graph, &manifest, &package_types).await
+        self.link(graph, &manifest, &Arc::new(package_types)).await
     }
 
     async fn link(

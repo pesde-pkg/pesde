@@ -16,7 +16,7 @@ use std::{
 
 type MultithreadedGraph = Arc<Mutex<DownloadedGraph>>;
 
-type MultithreadDownloadJob = (
+pub(crate) type MultithreadDownloadJob = (
     tokio::sync::mpsc::Receiver<Result<String, errors::DownloadGraphError>>,
     MultithreadedGraph,
 );
@@ -30,6 +30,7 @@ impl Project {
         reqwest: &reqwest::Client,
         prod: bool,
         write: bool,
+        wally: bool,
     ) -> Result<MultithreadDownloadJob, errors::DownloadGraphError> {
         let manifest = self.deser_manifest().await?;
         let manifest_target_kind = manifest.target.kind();
@@ -53,15 +54,22 @@ impl Project {
         )
         .await?;
 
+        let project = Arc::new(self.clone());
+
         for (name, versions) in graph {
             for (version_id, node) in versions {
+                // we need to download pesde packages first, since scripts (for target finding for example) can depend on them
+                if node.pkg_ref.like_wally() != wally {
+                    continue;
+                }
+
                 let tx = tx.clone();
 
                 let name = name.clone();
                 let version_id = version_id.clone();
                 let node = node.clone();
 
-                let project = Arc::new(self.clone());
+                let project = project.clone();
                 let reqwest = reqwest.clone();
                 let downloaded_graph = downloaded_graph.clone();
 

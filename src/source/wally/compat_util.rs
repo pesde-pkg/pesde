@@ -39,7 +39,8 @@ pub(crate) async fn find_lib_path(
         [package_dir],
         project,
         true,
-    )?;
+    )
+    .await?;
 
     if let Some(result) = result.filter(|result| !result.is_empty()) {
         let node: SourcemapNode = serde_json::from_str(&result)?;

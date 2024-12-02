@@ -8,9 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Add improved CLI styling by @daimond113
+- Install pesde dependencies before Wally to support scripts packages by @daimond113
 
 ### Fixed
-- Link dependencies before type extraction to support more use cases
+- Link dependencies before type extraction to support more use cases by @daimond113
 
 ## [0.5.0-rc.14] - 2024-11-30
 ### Fixed
