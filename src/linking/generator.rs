@@ -69,10 +69,29 @@ pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
 fn luau_style_path(path: &Path) -> String {
     let path = path
         .components()
-        .filter_map(|ct| match ct {
+        .zip(
+            path.components()
+                .skip(1)
+                .map(Some)
+                .chain(std::iter::repeat(None)),
+        )
+        .filter_map(|(ct, next_ct)| match ct {
             Component::CurDir => Some(".".to_string()),
             Component::ParentDir => Some("..".to_string()),
-            Component::Normal(part) => Some(format!("{}", part.to_string_lossy())),
+            Component::Normal(part) => {
+                let str = part.to_string_lossy();
+
+                Some(
+                    (if next_ct.is_some() {
+                        &str
+                    } else {
+                        str.strip_suffix(".luau")
+                            .or_else(|| str.strip_suffix(".lua"))
+                            .unwrap_or(&str)
+                    })
+                    .to_string(),
+                )
+            }
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -126,14 +145,26 @@ pub fn get_lib_require_path(
 
         let path = path
             .components()
-            .filter_map(|component| match component {
+            .zip(
+                path.components()
+                    .skip(1)
+                    .map(Some)
+                    .chain(std::iter::repeat(None)),
+            )
+            .filter_map(|(component, next_comp)| match component {
                 Component::ParentDir => Some(".Parent".to_string()),
                 Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
+                    let str = part.to_string_lossy();
+
                     Some(format!(
                         "[{:?}]",
-                        part.to_string_lossy()
-                            .trim_end_matches(".lua")
-                            .trim_end_matches(".luau")
+                        if next_comp.is_some() {
+                            &str
+                        } else {
+                            str.strip_suffix(".luau")
+                                .or_else(|| str.strip_suffix(".lua"))
+                                .unwrap_or(&str)
+                        }
                     ))
                 }
                 _ => None,
