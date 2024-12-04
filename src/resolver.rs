@@ -129,9 +129,7 @@ impl Project {
             })
             .collect::<VecDeque<_>>();
 
-        while let Some((specifier, ty, dependant, path, overridden, target)) =
-            queue.pop_front()
-        {
+        while let Some((specifier, ty, dependant, path, overridden, target)) = queue.pop_front() {
             let alias = path.last().unwrap().clone();
             let depth = path.len() - 1;
 
@@ -323,8 +321,7 @@ impl Project {
                     log::debug!(
                         "{}overridden specifier found for {} ({dependency_spec})",
                         "\t".repeat(depth),
-                        path
-                            .iter()
+                        path.iter()
                             .map(|s| s.as_str())
                             .chain(std::iter::once(dependency_alias.as_str()))
                             .collect::<Vec<_>>()
