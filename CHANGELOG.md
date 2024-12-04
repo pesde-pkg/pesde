@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Link dependencies before type extraction to support more use cases by @daimond113
 - Strip `.luau` extension from linker modules' require paths to comply with Luau by @daimond113
+- Correctly handle graph paths for resolving overriden packages by @daimond113
 
 ## [0.5.0-rc.14] - 2024-11-30
 ### Fixed

@@ -119,7 +119,6 @@ impl Project {
             .into_iter()
             .map(|((spec, ty), alias)| {
                 (
-                    alias.to_string(),
                     spec,
                     ty,
                     None::<(PackageNames, VersionId)>,
@@ -130,14 +129,16 @@ impl Project {
             })
             .collect::<VecDeque<_>>();
 
-        while let Some((alias, specifier, ty, dependant, path, overridden, target)) =
+        while let Some((specifier, ty, dependant, path, overridden, target)) =
             queue.pop_front()
         {
+            let alias = path.last().unwrap().clone();
             let depth = path.len() - 1;
 
             log::debug!(
-                "{}resolving {specifier} ({alias}) from {dependant:?}",
-                "\t".repeat(depth)
+                "{}resolving {specifier} from {}",
+                "\t".repeat(depth),
+                path.join(">")
             );
             let source = match &specifier {
                 DependencySpecifiers::Pesde(specifier) => {
@@ -255,7 +256,8 @@ impl Project {
                     != std::mem::discriminant(pkg_ref)
                 {
                     log::warn!(
-                        "resolved package {name}@{target_version_id} has a different source than the previously resolved one, this may cause issues",
+                        "resolved package {name}@{target_version_id} has a different source than the previously resolved one at {}, this may cause issues",
+                        path.join(">")
                     );
                 }
 
@@ -319,19 +321,24 @@ impl Project {
 
                 if overridden.is_some() {
                     log::debug!(
-                        "{}overridden specifier found for {dependency_alias} ({dependency_spec})",
-                        "\t".repeat(depth)
+                        "{}overridden specifier found for {} ({dependency_spec})",
+                        "\t".repeat(depth),
+                        path
+                            .iter()
+                            .map(|s| s.as_str())
+                            .chain(std::iter::once(dependency_alias.as_str()))
+                            .collect::<Vec<_>>()
+                            .join(">"),
                     );
                 }
 
                 queue.push_back((
-                    dependency_alias,
                     overridden.cloned().unwrap_or(dependency_spec),
                     dependency_ty,
                     Some((name.clone(), target_version_id.clone())),
                     path.iter()
                         .cloned()
-                        .chain(std::iter::once(alias.to_string()))
+                        .chain(std::iter::once(dependency_alias))
                         .collect(),
                     overridden.is_some(),
                     *target_version_id.target(),
