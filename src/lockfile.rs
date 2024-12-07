@@ -52,6 +52,18 @@ impl DependencyGraphNode {
         name: &PackageNames,
         version: &Version,
     ) -> PathBuf {
+        if self.pkg_ref.like_wally() {
+            return path
+                .as_ref()
+                .join(format!(
+                    "{}_{}@{}",
+                    name.as_str().0,
+                    name.as_str().1,
+                    version
+                ))
+                .join(name.as_str().1);
+        }
+
         path.as_ref()
             .join(name.escaped())
             .join(version.to_string())
