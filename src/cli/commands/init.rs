@@ -5,11 +5,12 @@ use colored::Colorize;
 use inquire::validator::Validation;
 use pesde::{
     errors::ManifestReadError,
-    manifest::target::TargetKind,
+    manifest::{target::TargetKind, DependencyType},
     names::PackageName,
     source::{
         git_index::GitBasedSource,
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
+        specifiers::DependencySpecifiers,
         traits::PackageSource,
     },
     Project, DEFAULT_INDEX_NAME, SCRIPTS_LINK_FOLDER,
@@ -158,11 +159,28 @@ impl InitCommand {
                     ));
                 }
 
-                let field = &mut manifest["dev_dependencies"]
-                    .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))["scripts"];
+                let dev_deps = &mut manifest["dev_dependencies"]
+                    .or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
+
+                let field = &mut dev_deps["scripts"];
                 field["name"] = toml_edit::value(pkg_ref.name.to_string());
                 field["version"] = toml_edit::value(format!("^{}", v_id.version()));
                 field["target"] = toml_edit::value(v_id.target().to_string());
+
+                for (alias, (spec, ty)) in pkg_ref.dependencies {
+                    if ty != DependencyType::Peer {
+                        continue;
+                    }
+
+                    let DependencySpecifiers::Pesde(spec) = spec else {
+                        continue;
+                    };
+
+                    let field = &mut dev_deps[alias];
+                    field["name"] = toml_edit::value(spec.name.to_string());
+                    field["version"] = toml_edit::value(spec.version.to_string());
+                    field["target"] = toml_edit::value(v_id.target().to_string());
+                }
             } else {
                 println!(
                     "{}",
