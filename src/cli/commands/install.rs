@@ -1,6 +1,5 @@
 use crate::cli::{
-    bin_dir, files::make_executable, progress_bar, repos::update_scripts, run_on_workspace_members,
-    up_to_date_lockfile,
+    bin_dir, files::make_executable, progress_bar, run_on_workspace_members, up_to_date_lockfile,
 };
 use anyhow::Context;
 use clap::Args;
@@ -139,9 +138,6 @@ impl InstallCommand {
             }
         };
 
-        let project_2 = project.clone();
-        let update_scripts_handle = tokio::spawn(async move { update_scripts(&project_2).await });
-
         println!(
             "\n{}\n",
             format!("[now installing {} {}]", manifest.name, manifest.target)
@@ -203,8 +199,6 @@ impl InstallCommand {
             .await
             .context("failed to build dependency graph")?;
         let graph = Arc::new(graph);
-
-        update_scripts_handle.await??;
 
         let bin_folder = bin_dir().await?;
 

@@ -14,9 +14,6 @@ repository contains a list of scripts for different sync tools. If the tool
 you are using is not supported, you can write your own script and submit a PR
 to get it added.
 
-These scripts are automatically cloned into the `~/.pesde/scripts` folder and
-kept up to date when you use pesde.
-
 ## Usage with Rojo
 
 [Rojo](https://rojo.space/) is a popular tool for syncing files into Roblox
@@ -34,8 +31,8 @@ optionally submit a PR to help others using the same tool as you get started
 quicker.
 
 Scaffold your project with `pesde init`, select the `roblox` or `roblox_server`
-target, and then replace the `.pesde/roblox_sync_config_generator.luau` script
-with the one you want to use.
+target, and then create a `.pesde/roblox_sync_config_generator.luau` script
+and put it's path in the manifest.
 
 ## Authoring packages
 

@@ -148,6 +148,7 @@ pub mod errors {
 
     /// An error that can occur when downloading and linking dependencies
     #[derive(Debug, Error)]
+    #[non_exhaustive]
     pub enum DownloadAndLinkError<E> {
         /// An error occurred while downloading the graph
         #[error("error downloading graph")]

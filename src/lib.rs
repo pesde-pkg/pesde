@@ -50,6 +50,8 @@ pub const DEFAULT_INDEX_NAME: &str = "default";
 /// The name of the packages container
 pub const PACKAGES_CONTAINER_NAME: &str = ".pesde";
 pub(crate) const LINK_LIB_NO_FILE_FOUND: &str = "____pesde_no_export_file_found";
+/// The folder in which scripts are linked
+pub const SCRIPTS_LINK_FOLDER: &str = ".pesde";
 
 /// Struct containing the authentication configuration
 #[derive(Debug, Default, Clone)]

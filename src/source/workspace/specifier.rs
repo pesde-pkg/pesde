@@ -108,6 +108,7 @@ pub mod errors {
 
     /// Errors that can occur when parsing a version type
     #[derive(Debug, Error)]
+    #[non_exhaustive]
     pub enum VersionTypeFromStr {
         /// The version type is invalid
         #[error("invalid version type {0}")]
@@ -116,6 +117,7 @@ pub mod errors {
 
     /// Errors that can occur when parsing a version type or requirement
     #[derive(Debug, Error)]
+    #[non_exhaustive]
     pub enum VersionTypeOrReqFromStr {
         /// The version requirement is invalid
         #[error("invalid version requirement {0}")]

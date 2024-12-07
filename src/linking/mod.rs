@@ -1,6 +1,6 @@
 use crate::{
     linking::generator::get_file_types,
-    lockfile::DownloadedGraph,
+    lockfile::{DownloadedDependencyGraphNode, DownloadedGraph},
     manifest::Manifest,
     names::PackageNames,
     scripts::{execute_script, ScriptName},
@@ -9,7 +9,7 @@ use crate::{
         traits::PackageRef,
         version_id::VersionId,
     },
-    Project, LINK_LIB_NO_FILE_FOUND, PACKAGES_CONTAINER_NAME,
+    Project, LINK_LIB_NO_FILE_FOUND, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
 use futures::future::try_join_all;
@@ -157,14 +157,93 @@ impl Project {
         self.link(graph, &manifest, &Arc::new(package_types)).await
     }
 
+    #[allow(clippy::too_many_arguments)]
+    async fn link_files(
+        &self,
+        base_folder: &Path,
+        container_folder: &Path,
+        root_container_folder: &Path,
+        relative_container_folder: &Path,
+        node: &DownloadedDependencyGraphNode,
+        name: &PackageNames,
+        version_id: &VersionId,
+        alias: &str,
+        package_types: &HashMap<&PackageNames, HashMap<&VersionId, Vec<String>>>,
+        manifest: &Manifest,
+    ) -> Result<(), errors::LinkingError> {
+        static NO_TYPES: Vec<String> = Vec::new();
+
+        if let Some(lib_file) = node.target.lib_path() {
+            let lib_module = generator::generate_lib_linking_module(
+                &generator::get_lib_require_path(
+                    &node.target.kind(),
+                    base_folder,
+                    lib_file,
+                    container_folder,
+                    node.node.pkg_ref.use_new_structure(),
+                    root_container_folder,
+                    relative_container_folder,
+                    manifest,
+                )?,
+                package_types
+                    .get(name)
+                    .and_then(|v| v.get(version_id))
+                    .unwrap_or(&NO_TYPES),
+            );
+
+            write_cas(
+                base_folder.join(format!("{alias}.luau")),
+                self.cas_dir(),
+                &lib_module,
+            )
+            .await?;
+        }
+
+        if let Some(bin_file) = node.target.bin_path() {
+            let bin_module = generator::generate_bin_linking_module(
+                container_folder,
+                &generator::get_bin_require_path(base_folder, bin_file, container_folder),
+            );
+
+            write_cas(
+                base_folder.join(format!("{alias}.bin.luau")),
+                self.cas_dir(),
+                &bin_module,
+            )
+            .await?;
+        }
+
+        if let Some(scripts) = node.target.scripts() {
+            let scripts_base =
+                create_and_canonicalize(self.package_dir().join(SCRIPTS_LINK_FOLDER).join(alias))
+                    .await?;
+
+            for (script_name, script_path) in scripts {
+                let script_module =
+                    generator::generate_script_linking_module(&generator::get_script_require_path(
+                        &scripts_base,
+                        script_path,
+                        container_folder,
+                    ));
+
+                write_cas(
+                    scripts_base.join(format!("{script_name}.luau")),
+                    self.cas_dir(),
+                    &script_module,
+                )
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+
     async fn link(
         &self,
         graph: &DownloadedGraph,
         manifest: &Arc<Manifest>,
         package_types: &Arc<HashMap<&PackageNames, HashMap<&VersionId, Vec<String>>>>,
     ) -> Result<(), errors::LinkingError> {
-        static NO_TYPES: Vec<String> = Vec::new();
-
         try_join_all(graph.iter().flat_map(|(name, versions)| {
             versions.iter().map(|(version_id, node)| {
                 let name = name.clone();
@@ -186,46 +265,20 @@ impl Project {
                             version_id.version(),
                         );
 
-                        if let Some((alias, _, _)) = &node.node.direct.as_ref() {
-                            if let Some(lib_file) = node.target.lib_path() {
-                                write_cas(
-                                    base_folder.join(format!("{alias}.luau")),
-                                    self.cas_dir(),
-                                    &generator::generate_lib_linking_module(
-                                        &generator::get_lib_require_path(
-                                            &node.target.kind(),
-                                            &base_folder,
-                                            lib_file,
-                                            &container_folder,
-                                            node.node.pkg_ref.use_new_structure(),
-                                            &base_folder,
-                                            container_folder.strip_prefix(&base_folder).unwrap(),
-                                            &manifest,
-                                        )?,
-                                        package_types
-                                            .get(&name)
-                                            .and_then(|v| v.get(version_id))
-                                            .unwrap_or(&NO_TYPES),
-                                    ),
-                                )
-                                .await?;
-                            };
-
-                            if let Some(bin_file) = node.target.bin_path() {
-                                write_cas(
-                                    base_folder.join(format!("{alias}.bin.luau")),
-                                    self.cas_dir(),
-                                    &generator::generate_bin_linking_module(
-                                        &container_folder,
-                                        &generator::get_bin_require_path(
-                                            &base_folder,
-                                            bin_file,
-                                            &container_folder,
-                                        ),
-                                    ),
-                                )
-                                .await?;
-                            }
+                        if let Some((alias, _, _)) = &node.node.direct {
+                            self.link_files(
+                                &base_folder,
+                                &container_folder,
+                                &base_folder,
+                                container_folder.strip_prefix(&base_folder).unwrap(),
+                                node,
+                                &name,
+                                version_id,
+                                alias,
+                                &package_types,
+                                &manifest,
+                            )
+                            .await?;
                         }
 
                         (container_folder, base_folder)
@@ -242,10 +295,6 @@ impl Project {
                                 dependency_name.to_string(),
                                 dependency_version_id.to_string(),
                             ));
-                        };
-
-                        let Some(lib_file) = dependency_node.target.lib_path() else {
-                            continue;
                         };
 
                         let base_folder = create_and_canonicalize(
@@ -272,25 +321,17 @@ impl Project {
                         )
                         .await?;
 
-                        write_cas(
-                            linker_folder.join(format!("{dependency_alias}.luau")),
-                            self.cas_dir(),
-                            &generator::generate_lib_linking_module(
-                                &generator::get_lib_require_path(
-                                    &dependency_node.target.kind(),
-                                    &linker_folder,
-                                    lib_file,
-                                    &container_folder,
-                                    dependency_node.node.pkg_ref.use_new_structure(),
-                                    &node_packages_folder,
-                                    container_folder.strip_prefix(&base_folder).unwrap(),
-                                    &manifest,
-                                )?,
-                                package_types
-                                    .get(dependency_name)
-                                    .and_then(|v| v.get(dependency_version_id))
-                                    .unwrap_or(&NO_TYPES),
-                            ),
+                        self.link_files(
+                            &linker_folder,
+                            &container_folder,
+                            &node_packages_folder,
+                            container_folder.strip_prefix(&base_folder).unwrap(),
+                            dependency_node,
+                            dependency_name,
+                            dependency_version_id,
+                            dependency_alias,
+                            &package_types,
+                            &manifest,
                         )
                         .await?;
                     }

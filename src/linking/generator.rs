@@ -199,12 +199,30 @@ pub fn get_bin_require_path(
     luau_style_path(&path)
 }
 
+/// Generate a linking module for a script
+pub fn generate_script_linking_module(require_path: &str) -> String {
+    format!(r#"return require({require_path})"#)
+}
+
+/// Get the require path for a script
+pub fn get_script_require_path(
+    base_dir: &Path,
+    script_file: &RelativePathBuf,
+    destination_dir: &Path,
+) -> String {
+    let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
+    let path = script_file.to_path(path);
+
+    luau_style_path(&path)
+}
+
 /// Errors for the linking module utilities
 pub mod errors {
     use thiserror::Error;
 
     /// An error occurred while getting the require path for a library
     #[derive(Debug, Error)]
+    #[non_exhaustive]
     pub enum GetLibRequirePath {
         /// The path for the RobloxPlaceKind could not be found
         #[error("could not find the path for the RobloxPlaceKind {0}")]

@@ -4,17 +4,13 @@ use fs_err::tokio as fs;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CliConfig {
     #[serde(
         serialize_with = "crate::util::serialize_gix_url",
         deserialize_with = "crate::util::deserialize_gix_url"
     )]
     pub default_index: gix::Url,
-    #[serde(
-        serialize_with = "crate::util::serialize_gix_url",
-        deserialize_with = "crate::util::deserialize_gix_url"
-    )]
-    pub scripts_repo: gix::Url,
 
     pub tokens: Tokens,
 
@@ -26,7 +22,6 @@ impl Default for CliConfig {
     fn default() -> Self {
         Self {
             default_index: "https://github.com/pesde-pkg/index".try_into().unwrap(),
-            scripts_repo: "https://github.com/pesde-pkg/scripts".try_into().unwrap(),
 
             tokens: Tokens(Default::default()),
 

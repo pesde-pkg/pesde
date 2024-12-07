@@ -1,4 +1,4 @@
-use crate::cli::{progress_bar, repos::update_scripts, run_on_workspace_members};
+use crate::cli::{progress_bar, run_on_workspace_members};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
@@ -36,8 +36,6 @@ impl UpdateCommand {
             .await
             .context("failed to build dependency graph")?;
         let graph = Arc::new(graph);
-
-        update_scripts(&project).await?;
 
         project
             .write_lockfile(Lockfile {

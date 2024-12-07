@@ -1,4 +1,4 @@
-use crate::cli::{repos::update_scripts, up_to_date_lockfile};
+use crate::cli::up_to_date_lockfile;
 use anyhow::Context;
 use clap::Args;
 use futures::{StreamExt, TryStreamExt};
@@ -27,34 +27,29 @@ pub struct RunCommand {
 impl RunCommand {
     pub async fn run(self, project: Project) -> anyhow::Result<()> {
         let run = |root: PathBuf, file_path: PathBuf| {
-            let fut = update_scripts(&project);
-            async move {
-                fut.await.expect("failed to update scripts");
-
-                let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
-                caller
-                    .write_all(
-                        generate_bin_linking_module(
-                            root,
-                            &format!("{:?}", file_path.to_string_lossy()),
-                        )
-                        .as_bytes(),
+            let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
+            caller
+                .write_all(
+                    generate_bin_linking_module(
+                        root,
+                        &format!("{:?}", file_path.to_string_lossy()),
                     )
-                    .expect("failed to write to tempfile");
+                    .as_bytes(),
+                )
+                .expect("failed to write to tempfile");
 
-                let status = Command::new("lune")
-                    .arg("run")
-                    .arg(caller.path())
-                    .arg("--")
-                    .args(&self.args)
-                    .current_dir(current_dir().expect("failed to get current directory"))
-                    .status()
-                    .expect("failed to run script");
+            let status = Command::new("lune")
+                .arg("run")
+                .arg(caller.path())
+                .arg("--")
+                .args(&self.args)
+                .current_dir(current_dir().expect("failed to get current directory"))
+                .status()
+                .expect("failed to run script");
 
-                drop(caller);
+            drop(caller);
 
-                std::process::exit(status.code().unwrap_or(1))
-            }
+            std::process::exit(status.code().unwrap_or(1))
         };
 
         let Some(package_or_script) = self.package_or_script else {
@@ -62,8 +57,7 @@ impl RunCommand {
                 run(
                     project.package_dir().to_owned(),
                     script_path.to_path(project.package_dir()),
-                )
-                .await;
+                );
                 return Ok(());
             }
 
@@ -105,7 +99,7 @@ impl RunCommand {
 
                 let path = bin_path.to_path(&container_folder);
 
-                run(path.clone(), path).await;
+                run(path.clone(), path);
                 return Ok(());
             }
         }
@@ -115,8 +109,7 @@ impl RunCommand {
                 run(
                     project.package_dir().to_path_buf(),
                     script_path.to_path(project.package_dir()),
-                )
-                .await;
+                );
                 return Ok(());
             }
         };
@@ -177,7 +170,7 @@ impl RunCommand {
             project.package_dir().to_path_buf()
         };
 
-        run(root, path).await;
+        run(root, path);
 
         Ok(())
     }

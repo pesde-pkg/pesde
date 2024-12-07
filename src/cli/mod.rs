@@ -24,7 +24,6 @@ pub mod auth;
 pub mod commands;
 pub mod config;
 pub mod files;
-pub mod repos;
 #[cfg(feature = "version-management")]
 pub mod version;
 

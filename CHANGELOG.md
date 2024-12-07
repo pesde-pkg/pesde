@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Add improved CLI styling by @daimond113
 - Install pesde dependencies before Wally to support scripts packages by @daimond113
+- Support packages exporting scripts by @daimond113
+
+### Removed
+- Remove special scripts repo handling to favour standard packages by @daimond113
 
 ### Fixed
 - Link dependencies before type extraction to support more use cases by @daimond113

@@ -101,15 +101,21 @@ impl PublishCommand {
             }
         }
 
+        let canonical_package_dir = project
+            .package_dir()
+            .canonicalize()
+            .context("failed to canonicalize package directory")?;
+
         let mut archive = tokio_tar::Builder::new(
             async_compression::tokio::write::GzipEncoder::with_quality(vec![], Level::Best),
         );
 
         let mut display_build_files: Vec<String> = vec![];
 
-        let (lib_path, bin_path, target_kind) = (
+        let (lib_path, bin_path, scripts, target_kind) = (
             manifest.target.lib_path().cloned(),
             manifest.target.bin_path().cloned(),
+            manifest.target.scripts().cloned(),
             manifest.target.kind(),
         );
 
@@ -188,21 +194,24 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                 continue;
             };
 
-            let export_path = relative_export_path
-                .to_path(project.package_dir())
+            let export_path = relative_export_path.to_path(&canonical_package_dir);
+
+            let contents = match fs::read_to_string(&export_path).await {
+                Ok(contents) => contents,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    anyhow::bail!("{name} does not exist");
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::IsADirectory => {
+                    anyhow::bail!("{name} must point to a file");
+                }
+                Err(e) => {
+                    return Err(e).context(format!("failed to read {name}"));
+                }
+            };
+
+            let export_path = export_path
                 .canonicalize()
                 .context(format!("failed to canonicalize {name}"))?;
-            if !export_path.exists() {
-                anyhow::bail!("{name} points to non-existent file");
-            }
-
-            if !export_path.is_file() {
-                anyhow::bail!("{name} must point to a file");
-            }
-
-            let contents = fs::read_to_string(&export_path)
-                .await
-                .context(format!("failed to read {name}"))?;
 
             if let Err(err) = full_moon::parse(&contents).map_err(|errs| {
                 errs.into_iter()
@@ -223,7 +232,12 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                 _ => anyhow::bail!("{name} must be within project directory"),
             };
 
-            if paths.insert(PathBuf::from(relative_export_path.as_str())) {
+            if paths.insert(
+                export_path
+                    .strip_prefix(&canonical_package_dir)
+                    .unwrap()
+                    .to_path_buf(),
+            ) {
                 println!(
                     "{}: {name} was not included, adding {relative_export_path}",
                     "warn".yellow().bold()
@@ -266,6 +280,50 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                     display_build_files.push(build_file.clone());
                 } else {
                     display_build_files.push(format!("{build_file}/*"));
+                }
+            }
+        }
+
+        if let Some(scripts) = scripts {
+            for (name, path) in scripts {
+                let script_path = path.to_path(&canonical_package_dir);
+
+                let contents = match fs::read_to_string(&script_path).await {
+                    Ok(contents) => contents,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        anyhow::bail!("script {name} does not exist");
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::IsADirectory => {
+                        anyhow::bail!("script {name} must point to a file");
+                    }
+                    Err(e) => {
+                        return Err(e).context(format!("failed to read script {name}"));
+                    }
+                };
+
+                let script_path = script_path
+                    .canonicalize()
+                    .context(format!("failed to canonicalize script {name}"))?;
+
+                if let Err(err) = full_moon::parse(&contents).map_err(|errs| {
+                    errs.into_iter()
+                        .map(|err| err.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }) {
+                    anyhow::bail!("script {name} is not a valid Luau file: {err}");
+                }
+
+                if paths.insert(
+                    script_path
+                        .strip_prefix(&canonical_package_dir)
+                        .unwrap()
+                        .to_path_buf(),
+                ) {
+                    println!(
+                        "{}: script {name} was not included, adding {path}",
+                        "warn".yellow().bold()
+                    );
                 }
             }
         }

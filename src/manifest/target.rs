@@ -2,7 +2,7 @@ use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fmt::{Display, Formatter},
     str::FromStr,
 };
@@ -68,6 +68,11 @@ impl TargetKind {
 
         format!("{dependency}_packages")
     }
+
+    /// Returns whether this target is a Roblox target
+    pub fn is_roblox(&self) -> bool {
+        matches!(self, TargetKind::Roblox | TargetKind::RobloxServer)
+    }
 }
 
 /// A target of a package
@@ -77,7 +82,7 @@ pub enum Target {
     /// A Roblox target
     Roblox {
         /// The path to the lib export file
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         lib: Option<RelativePathBuf>,
         /// The files to include in the sync tool's config
         #[serde(default)]
@@ -86,7 +91,7 @@ pub enum Target {
     /// A Roblox server target
     RobloxServer {
         /// The path to the lib export file
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         lib: Option<RelativePathBuf>,
         /// The files to include in the sync tool's config
         #[serde(default)]
@@ -95,19 +100,22 @@ pub enum Target {
     /// A Lune target
     Lune {
         /// The path to the lib export file
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         lib: Option<RelativePathBuf>,
         /// The path to the bin export file
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         bin: Option<RelativePathBuf>,
+        /// The exported scripts
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        scripts: BTreeMap<String, RelativePathBuf>,
     },
     /// A Luau target
     Luau {
         /// The path to the lib export file
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         lib: Option<RelativePathBuf>,
         /// The path to the bin export file
-        #[serde(default)]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         bin: Option<RelativePathBuf>,
     },
 }
@@ -148,6 +156,14 @@ impl Target {
         match self {
             Target::Roblox { build_files, .. } => Some(build_files),
             Target::RobloxServer { build_files, .. } => Some(build_files),
+            _ => None,
+        }
+    }
+
+    /// Returns the scripts exported by this target
+    pub fn scripts(&self) -> Option<&BTreeMap<String, RelativePathBuf>> {
+        match self {
+            Target::Lune { scripts, .. } => Some(scripts),
             _ => None,
         }
     }
