@@ -45,12 +45,8 @@ fn bin_link_file(alias: &str) -> String {
         .collect::<Vec<_>>()
         .join(", ");
 
-    #[cfg(not(unix))]
-    let prefix = String::new();
-    #[cfg(unix)]
-    let prefix = "#!/usr/bin/env -S lune run\n";
     format!(
-        r#"{prefix}local process = require("@lune/process")
+        r#"local process = require("@lune/process")
 local fs = require("@lune/fs")
 local stdio = require("@lune/stdio")
 
@@ -234,26 +230,41 @@ impl InstallCommand {
                                     .map(|alias| {
                                         let bin_folder = bin_folder.clone();
                                         async move {
-                                            let bin_file = bin_folder.join(alias);
+                                            let bin_exec_file = bin_folder.join(alias).with_extension(std::env::consts::EXE_EXTENSION);
+
+                                            let impl_folder = bin_folder.join(".impl");
+                                            fs::create_dir_all(&impl_folder).await.context("failed to create bin link folder")?;
+
+                                            let bin_file = impl_folder.join(alias).with_extension("luau");
                                             fs::write(&bin_file, bin_link_file(alias))
                                                 .await
                                                 .context("failed to write bin link file")?;
 
-                                            make_executable(&bin_file)
-                                                .await
-                                                .context("failed to make bin link executable")?;
 
                                             #[cfg(windows)]
                                             {
-                                                let bin_file = bin_file.with_extension(std::env::consts::EXE_EXTENSION);
                                                 fs::copy(
                                                     std::env::current_exe()
                                                         .context("failed to get current executable path")?,
-                                                    &bin_file,
+                                                    &bin_exec_file,
                                                 )
                                                     .await
                                                     .context("failed to copy bin link file")?;
                                             }
+
+                                            #[cfg(not(windows))]
+                                            {
+                                                fs::write(
+                                                    &bin_exec_file,
+                                                    format!(r#"#!/bin/sh
+lune run "$(dirname "$0")/.impl/{alias}.luau" -- "$@""#
+                                                    ),
+                                                )
+                                                    .await
+                                                    .context("failed to link bin link file")?;
+                                            }
+
+                                            make_executable(&bin_exec_file).await.context("failed to make bin link file executable")?;
 
                                             Ok::<_, CallbackError>(())
                                         }

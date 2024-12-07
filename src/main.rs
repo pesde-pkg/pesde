@@ -114,7 +114,12 @@ async fn run() -> anyhow::Result<()> {
         // on unix systems
         let status = std::process::Command::new("lune")
             .arg("run")
-            .arg(exe.with_extension(""))
+            .arg(
+                exe.parent()
+                    .map(|p| p.join(".impl").join(exe.file_name().unwrap()))
+                    .unwrap_or(exe)
+                    .with_extension("luau"),
+            )
             .arg("--")
             .args(std::env::args_os().skip(1))
             .current_dir(cwd)
