@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Fixed
+- Do not require lib or bin exports if package exports scripts by @daimond113
+
 ## [0.5.0-rc.15] - 2024-12-08
+Release not available on GitHub and yanked from crates.io due to issues while publishing.
+
 ### Added
 - Add improved CLI styling by @daimond113
 - Install pesde dependencies before Wally to support scripts packages by @daimond113

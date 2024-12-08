@@ -68,7 +68,10 @@ impl PublishCommand {
             return Ok(());
         }
 
-        if manifest.target.lib_path().is_none() && manifest.target.bin_path().is_none() {
+        if manifest.target.lib_path().is_none()
+            && manifest.target.bin_path().is_none()
+            && manifest.target.scripts().is_none_or(|s| s.is_empty())
+        {
             anyhow::bail!("no exports found in target");
         }
 
