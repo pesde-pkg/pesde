@@ -117,6 +117,9 @@ pub enum Target {
         /// The path to the bin export file
         #[serde(default, skip_serializing_if = "Option::is_none")]
         bin: Option<RelativePathBuf>,
+        /// The exported scripts
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        scripts: BTreeMap<String, RelativePathBuf>,
     },
 }
 
@@ -164,6 +167,7 @@ impl Target {
     pub fn scripts(&self) -> Option<&BTreeMap<String, RelativePathBuf>> {
         match self {
             Target::Lune { scripts, .. } => Some(scripts),
+            Target::Luau { scripts, .. } => Some(scripts),
             _ => None,
         }
     }
