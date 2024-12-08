@@ -213,7 +213,7 @@ impl Project {
             .await?;
         }
 
-        if let Some(scripts) = node.target.scripts() {
+        if let Some(scripts) = node.target.scripts().filter(|s| !s.is_empty()) {
             let scripts_base =
                 create_and_canonicalize(self.package_dir().join(SCRIPTS_LINK_FOLDER).join(alias))
                     .await?;
