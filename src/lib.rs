@@ -185,6 +185,7 @@ impl Project {
     pub async fn workspace_members<P: AsRef<Path>>(
         &self,
         dir: P,
+        can_ref_self: bool,
     ) -> Result<
         impl Stream<Item = Result<(PathBuf, Manifest), errors::WorkspaceMembersError>>,
         errors::WorkspaceMembersError,
@@ -201,6 +202,7 @@ impl Project {
             dir,
             manifest.workspace_members.iter().map(|s| s.as_str()),
             false,
+            can_ref_self,
         )
         .await?;
 
@@ -295,9 +297,12 @@ pub async fn matching_globs<'a, P: AsRef<Path>, I: IntoIterator<Item = &'a str>>
     dir: P,
     globs: I,
     relative: bool,
+    can_ref_self: bool,
 ) -> Result<HashSet<PathBuf>, errors::MatchingGlobsError> {
-    let (negative_globs, positive_globs): (Vec<&str>, Vec<&str>) =
+    let (negative_globs, mut positive_globs): (HashSet<&str>, _) =
         globs.into_iter().partition(|glob| glob.starts_with('!'));
+
+    let include_self = positive_globs.remove(".") && can_ref_self;
 
     let negative_globs = wax::any(
         negative_globs
@@ -314,6 +319,14 @@ pub async fn matching_globs<'a, P: AsRef<Path>, I: IntoIterator<Item = &'a str>>
 
     let mut read_dirs = vec![fs::read_dir(dir.as_ref().to_path_buf()).await?];
     let mut paths = HashSet::new();
+
+    if include_self {
+        paths.insert(if relative {
+            PathBuf::new()
+        } else {
+            dir.as_ref().to_path_buf()
+        });
+    }
 
     while let Some(mut read_dir) = read_dirs.pop() {
         while let Some(entry) = read_dir.next_entry().await? {

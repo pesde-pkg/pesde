@@ -125,7 +125,7 @@ impl RunCommand {
             .workspace_dir()
             .unwrap_or_else(|| project.package_dir());
 
-        let members = match project.workspace_members(workspace_dir).await {
+        let members = match project.workspace_members(workspace_dir, false).await {
             Ok(members) => members.boxed(),
             Err(pesde::errors::WorkspaceMembersError::ManifestMissing(e))
                 if e.kind() == std::io::ErrorKind::NotFound =>

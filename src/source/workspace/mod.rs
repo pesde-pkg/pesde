@@ -49,7 +49,7 @@ impl PackageSource for WorkspacePackageSource {
                 .unwrap_or(&project.package_dir);
             let target = specifier.target.unwrap_or(project_target);
 
-            let members = project.workspace_members(workspace_dir).await?;
+            let members = project.workspace_members(workspace_dir, true).await?;
             pin!(members);
 
             while let Some((path, manifest)) = members.next().await.transpose()? {

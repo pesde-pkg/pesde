@@ -248,7 +248,9 @@ pub async fn run_on_workspace_members<F: Future<Output = anyhow::Result<()>>>(
         return Ok(Default::default());
     }
 
-    let members_future = project.workspace_members(project.package_dir()).await?;
+    let members_future = project
+        .workspace_members(project.package_dir(), true)
+        .await?;
     pin!(members_future);
 
     let mut results = BTreeMap::<PackageName, BTreeMap<TargetKind, RelativePathBuf>>::new();
@@ -257,7 +259,10 @@ pub async fn run_on_workspace_members<F: Future<Output = anyhow::Result<()>>>(
         let relative_path =
             RelativePathBuf::from_path(path.strip_prefix(project.package_dir()).unwrap()).unwrap();
 
-        f(shift_project_dir(project, path)).await?;
+        // don't run on the current workspace root
+        if relative_path != "" {
+            f(shift_project_dir(project, path)).await?;
+        }
 
         results
             .entry(manifest.name)

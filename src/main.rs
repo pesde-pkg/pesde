@@ -149,6 +149,7 @@ async fn run() -> anyhow::Result<()> {
                 path,
                 manifest.workspace_members.iter().map(|s| s.as_str()),
                 false,
+                false,
             )
             .await
             .context("failed to get workspace members")
