@@ -257,7 +257,7 @@ impl InstallCommand {
                                                 fs::write(
                                                     &bin_exec_file,
                                                     format!(r#"#!/bin/sh
-lune run "$(dirname "$0")/.impl/{alias}.luau" -- "$@""#
+exec lune run "$(dirname "$0")/.impl/{alias}.luau" -- "$@""#
                                                     ),
                                                 )
                                                     .await
