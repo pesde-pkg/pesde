@@ -179,7 +179,8 @@ impl InitCommand {
                     let field = &mut dev_deps[alias];
                     field["name"] = toml_edit::value(spec.name.to_string());
                     field["version"] = toml_edit::value(spec.version.to_string());
-                    field["target"] = toml_edit::value(v_id.target().to_string());
+                    field["target"] =
+                        toml_edit::value(spec.target.unwrap_or_else(|| *v_id.target()).to_string());
                 }
             } else {
                 println!(
