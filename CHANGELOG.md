@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0-rc.15] - 2024-12-08
 ### Added
 - Add improved CLI styling by @daimond113
 - Install pesde dependencies before Wally to support scripts packages by @daimond113
@@ -151,6 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make registry much easier to self-host by @daimond113
 - Start maintaining a changelog by @daimond113
 
+[0.5.0-rc.15]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.14..v0.5.0-rc.15
 [0.5.0-rc.14]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.13..v0.5.0-rc.14
 [0.5.0-rc.13]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.12..v0.5.0-rc.13
 [0.5.0-rc.12]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.11..v0.5.0-rc.12
