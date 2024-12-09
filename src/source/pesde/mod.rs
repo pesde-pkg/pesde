@@ -316,9 +316,9 @@ pub struct IndexConfig {
     /// The maximum size of an archive in bytes
     #[serde(default = "default_archive_size")]
     pub max_archive_size: usize,
-    /// The package to use for default script implementations
+    /// The packages to display in the CLI for default script implementations
     #[serde(default)]
-    pub scripts_package: Option<PackageName>,
+    pub scripts_packages: Vec<PackageName>,
 }
 
 impl IndexConfig {

@@ -16,10 +16,25 @@ use pesde::{
     Project, DEFAULT_INDEX_NAME, SCRIPTS_LINK_FOLDER,
 };
 use semver::VersionReq;
-use std::{collections::HashSet, str::FromStr};
+use std::{collections::HashSet, fmt::Display, str::FromStr};
 
 #[derive(Debug, Args)]
 pub struct InitCommand {}
+
+#[derive(Debug)]
+enum PackageNameOrCustom {
+    PackageName(PackageName),
+    Custom,
+}
+
+impl Display for PackageNameOrCustom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PackageNameOrCustom::PackageName(n) => write!(f, "{n}"),
+            PackageNameOrCustom::Custom => write!(f, "custom"),
+        }
+    }
+}
 
 impl InitCommand {
     pub async fn run(self, project: Project) -> anyhow::Result<()> {
@@ -127,7 +142,45 @@ impl InitCommand {
                 .await
                 .context("failed to get source config")?;
 
-            if let Some(scripts_pkg_name) = config.scripts_package {
+            let scripts_package = inquire::Select::new(
+                "which scripts package do you want to use?",
+                config
+                    .scripts_packages
+                    .into_iter()
+                    .map(PackageNameOrCustom::PackageName)
+                    .chain(std::iter::once(PackageNameOrCustom::Custom))
+                    .collect(),
+            )
+            .prompt()
+            .unwrap();
+
+            let scripts_package = match scripts_package {
+                PackageNameOrCustom::PackageName(p) => Some(p),
+                PackageNameOrCustom::Custom => {
+                    let name = inquire::Text::new("which package to use?")
+                        .with_validator(|name: &str| {
+                            if name.is_empty() {
+                                return Ok(Validation::Valid);
+                            }
+
+                            Ok(match PackageName::from_str(name) {
+                                Ok(_) => Validation::Valid,
+                                Err(e) => Validation::Invalid(e.to_string().into()),
+                            })
+                        })
+                        .with_help_message("leave empty for none")
+                        .prompt()
+                        .unwrap();
+
+                    if name.is_empty() {
+                        None
+                    } else {
+                        Some(PackageName::from_str(&name).unwrap())
+                    }
+                }
+            };
+
+            if let Some(scripts_pkg_name) = scripts_package {
                 let (v_id, pkg_ref) = source
                     .resolve(
                         &PesdeDependencySpecifier {
@@ -185,7 +238,7 @@ impl InitCommand {
             } else {
                 println!(
                     "{}",
-                    "configured index hasn't a configured scripts package".red()
+                    "no scripts package configured, this can cause issues with Roblox compatibility".red()
                 );
                 if !inquire::prompt_confirmation("initialize regardless?").unwrap() {
                     return Ok(());
