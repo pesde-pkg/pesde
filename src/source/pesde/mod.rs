@@ -295,7 +295,6 @@ impl AllowedRegistries {
 
 /// The configuration for the pesde index
 #[derive(Deserialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
 pub struct IndexConfig {
     /// The URL of the API
     pub api: url::Url,
