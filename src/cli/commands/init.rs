@@ -142,22 +142,26 @@ impl InitCommand {
                 .await
                 .context("failed to get source config")?;
 
-            let scripts_package = inquire::Select::new(
-                "which scripts package do you want to use?",
-                config
-                    .scripts_packages
-                    .into_iter()
-                    .map(PackageNameOrCustom::PackageName)
-                    .chain(std::iter::once(PackageNameOrCustom::Custom))
-                    .collect(),
-            )
-            .prompt()
-            .unwrap();
+            let scripts_package = if config.scripts_packages.is_empty() {
+                PackageNameOrCustom::Custom
+            } else {
+                inquire::Select::new(
+                    "which scripts package do you want to use?",
+                    config
+                        .scripts_packages
+                        .into_iter()
+                        .map(PackageNameOrCustom::PackageName)
+                        .chain(std::iter::once(PackageNameOrCustom::Custom))
+                        .collect(),
+                )
+                .prompt()
+                .unwrap()
+            };
 
             let scripts_package = match scripts_package {
                 PackageNameOrCustom::PackageName(p) => Some(p),
                 PackageNameOrCustom::Custom => {
-                    let name = inquire::Text::new("which package to use?")
+                    let name = inquire::Text::new("which scripts package to use?")
                         .with_validator(|name: &str| {
                             if name.is_empty() {
                                 return Ok(Validation::Valid);
