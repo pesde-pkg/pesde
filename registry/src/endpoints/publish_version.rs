@@ -304,7 +304,7 @@ pub async fn publish_package(
                         .filter(|index| match gix::Url::try_from(*index) {
                             Ok(url) => config
                                 .other_registries_allowed
-                                .is_allowed(source.repo_url().clone(), url),
+                                .is_allowed_or_same(source.repo_url().clone(), url),
                             Err(_) => false,
                         })
                         .is_none()
@@ -315,16 +315,13 @@ pub async fn publish_package(
                     }
                 }
                 DependencySpecifiers::Wally(specifier) => {
-                    if !config.wally_allowed {
-                        return Err(Error::InvalidArchive(
-                            "wally dependencies are not allowed".into(),
-                        ));
-                    }
-
                     if specifier
                         .index
-                        .as_ref()
-                        .filter(|index| index.parse::<url::Url>().is_ok())
+                        .as_deref()
+                        .filter(|index| match gix::Url::try_from(*index) {
+                            Ok(url) => config.wally_allowed.is_allowed(url),
+                            Err(_) => false,
+                        })
                         .is_none()
                     {
                         return Err(Error::InvalidArchive(format!(
@@ -332,15 +329,15 @@ pub async fn publish_package(
                         )));
                     }
                 }
-                DependencySpecifiers::Git(_) => {
-                    if !config.git_allowed {
+                DependencySpecifiers::Git(specifier) => {
+                    if !config.git_allowed.is_allowed(specifier.repo.clone()) {
                         return Err(Error::InvalidArchive(
                             "git dependencies are not allowed".into(),
                         ));
                     }
                 }
                 DependencySpecifiers::Workspace(_) => {
-                    // workspace specifiers are to be transformed into Pesde specifiers by the sender
+                    // workspace specifiers are to be transformed into pesde specifiers by the sender
                     return Err(Error::InvalidArchive(
                         "non-transformed workspace dependency".into(),
                     ));

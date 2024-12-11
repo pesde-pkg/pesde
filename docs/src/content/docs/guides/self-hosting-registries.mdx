@@ -19,10 +19,10 @@ To create an index, create a new repository and add a `config.toml` file with
 the following content:
 
 ```toml title="config.toml"
-# The URL of the registry API
+# the URL of the registry API
 api = "https://registry.acme.local/"
 
-# Package download URL (optional)
+# package download URL (optional)
 download = "{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}"
 
 # the client ID of the GitHub OAuth app (optional)
@@ -33,13 +33,16 @@ git_allowed = true
 
 # whether to allow packages which depend on packages from other registries
 # (default: false)
-other_registries_allowed = true
+other_registries_allowed = ["https://git.acme.local/index"]
 
 # whether to allow packages with Wally dependencies (default: false)
 wally_allowed = false
 
 # the maximum size of the archive in bytes (default: 4MB)
 max_archive_size = 4194304
+
+# the scripts packages present in the `init` command selection by default
+scripts_packages = ["pesde/scripts_rojo"]
 ```
 
 - **api**: The URL of the registry API. See below for more information.
@@ -60,17 +63,23 @@ max_archive_size = 4194304
 - **github_oauth_client_id**: This is required if you use GitHub OAuth for
   authentication. See below for more information.
 
-- **git_allowed**: Whether to allow packages with Git dependencies. This is
-  optional and defaults to `false`.
+- **git_allowed**: Whether to allow packages with Git dependencies. This can be
+  either a bool or a list of allowed repository URLs. This is optional and
+  defaults to `false`.
 
 - **other_registries_allowed**: Whether to allow packages which depend on
-  packages from other registries. This is optional and defaults to `false`.
+  packages from other registries. This can be either a bool or a list of
+  allowed index repository URLs. This is optional and defaults to `false`.
 
-- **wally_allowed**: Whether to allow packages with Wally dependencies. This is
+- **wally_allowed**: Whether to allow packages with Wally dependencies. This can
+  be either a bool or a list of allowed index repository URLs. This is
   optional and defaults to `false`.
 
 - **max_archive_size**: The maximum size of the archive in bytes. This is
   optional and defaults to `4194304` (4MB).
+
+- **scripts_packages**: The scripts packages present in the `init` command
+  selection by default. This is optional and defaults to none.
 
 You should then push this repository to [GitHub](https://github.com/).
 
@@ -88,8 +97,8 @@ has access to the index repository. We recommend using a separate account
 for this purpose.
 
 <Aside>
-	For a GitHub account the password **must** be a personal access token. For
-	instructions on how to create a personal access token, see the [GitHub
+	For a GitHub account the password **must** be a personal access token. For instructions on how to
+	create a personal access token, see the [GitHub
 	documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens).
 	The access token must have read and write access to the index repository.
 </Aside>

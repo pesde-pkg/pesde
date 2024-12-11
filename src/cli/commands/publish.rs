@@ -9,6 +9,7 @@ use pesde::{
     matching_globs_old_behaviour,
     scripts::ScriptName,
     source::{
+        git_index::GitBasedSource,
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
         traits::PackageSource,
@@ -362,10 +363,6 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
             }
         }
 
-        #[cfg(feature = "wally-compat")]
-        let mut has_wally = false;
-        let mut has_git = false;
-
         for specifier in manifest
             .dependencies
             .values_mut()
@@ -389,8 +386,6 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                 }
                 #[cfg(feature = "wally-compat")]
                 DependencySpecifiers::Wally(specifier) => {
-                    has_wally = true;
-
                     let index_name = specifier
                         .index
                         .as_deref()
@@ -406,9 +401,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                             .to_string(),
                     );
                 }
-                DependencySpecifiers::Git(_) => {
-                    has_git = true;
-                }
+                DependencySpecifiers::Git(_) => {}
                 DependencySpecifiers::Workspace(spec) => {
                     let pkg_ref = WorkspacePackageSource
                         .resolve(spec, project, target_kind, &mut HashSet::new())
@@ -570,8 +563,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
             .get(&self.index)
             .context(format!("missing index {}", self.index))?;
         let source = PesdePackageSource::new(index_url.clone());
-        source
-            .refresh(project)
+        PackageSource::refresh(&source, project)
             .await
             .context("failed to refresh source")?;
         let config = source
@@ -587,15 +579,31 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
             );
         }
 
-        manifest.all_dependencies().context("dependency conflict")?;
+        let deps = manifest.all_dependencies().context("dependency conflict")?;
 
-        if !config.git_allowed && has_git {
-            anyhow::bail!("git dependencies are not allowed on this index");
-        }
-
-        #[cfg(feature = "wally-compat")]
-        if !config.wally_allowed && has_wally {
-            anyhow::bail!("wally dependencies are not allowed on this index");
+        if let Some((disallowed, _)) = deps.iter().find(|(_, (spec, _))| match spec {
+            DependencySpecifiers::Pesde(spec) => {
+                !config.other_registries_allowed.is_allowed_or_same(
+                    source.repo_url().clone(),
+                    manifest
+                        .indices
+                        .get(spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
+                        .unwrap()
+                        .clone(),
+                )
+            }
+            DependencySpecifiers::Git(spec) => !config.git_allowed.is_allowed(spec.repo.clone()),
+            #[cfg(feature = "wally-compat")]
+            DependencySpecifiers::Wally(spec) => !config.wally_allowed.is_allowed(
+                manifest
+                    .wally_indices
+                    .get(spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
+                    .unwrap()
+                    .clone(),
+            ),
+            _ => false,
+        }) {
+            anyhow::bail!("dependency `{disallowed}` is not allowed on this index");
         }
 
         if self.dry_run {

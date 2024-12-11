@@ -274,22 +274,30 @@ impl Default for AllowedRegistries {
     }
 }
 
-impl AllowedRegistries {
-    /// Whether the given URL is allowed
-    pub fn is_allowed(&self, mut this: Url, mut external: Url) -> bool {
-        // strip .git suffix to allow for more flexible matching
-        this.path = this.path.strip_suffix(b".git").unwrap_or(&this.path).into();
-        external.path = external
-            .path
-            .strip_suffix(b".git")
-            .unwrap_or(&external.path)
-            .into();
+// strips .git suffix to allow for more flexible matching
+fn simplify_url(mut url: Url) -> Url {
+    url.path = url.path.strip_suffix(b".git").unwrap_or(&url.path).into();
+    url
+}
 
-        this == external
-            || (match self {
-                Self::All(all) => *all,
-                Self::Specific(urls) => urls.contains(&this) || urls.contains(&external),
-            })
+impl AllowedRegistries {
+    fn _is_allowed(&self, url: &Url) -> bool {
+        match self {
+            Self::All(all) => *all,
+            Self::Specific(urls) => urls.contains(url),
+        }
+    }
+
+    /// Whether the given URL is allowed
+    pub fn is_allowed(&self, url: Url) -> bool {
+        self._is_allowed(&simplify_url(url))
+    }
+
+    /// Whether the given URL is allowed, or is the same as the given URL
+    pub fn is_allowed_or_same(&self, this: Url, external: Url) -> bool {
+        let this = simplify_url(this);
+        let external = simplify_url(external);
+        (this == external) || self._is_allowed(&external) || self._is_allowed(&this)
     }
 }
 
@@ -302,13 +310,13 @@ pub struct IndexConfig {
     pub download: Option<String>,
     /// Whether Git is allowed as a source for publishing packages
     #[serde(default)]
-    pub git_allowed: bool,
+    pub git_allowed: AllowedRegistries,
     /// Whether other registries are allowed as a source for publishing packages
     #[serde(default)]
     pub other_registries_allowed: AllowedRegistries,
     /// Whether Wally is allowed as a source for publishing packages
     #[serde(default)]
-    pub wally_allowed: bool,
+    pub wally_allowed: AllowedRegistries,
     /// The OAuth client ID for GitHub
     #[serde(default)]
     pub github_oauth_client_id: Option<String>,
