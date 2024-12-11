@@ -8,6 +8,8 @@ pub struct TargetInfo {
     kind: TargetKind,
     lib: bool,
     bin: bool,
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    scripts: BTreeSet<String>,
 }
 
 impl From<Target> for TargetInfo {
@@ -22,6 +24,10 @@ impl From<&Target> for TargetInfo {
             kind: target.kind(),
             lib: target.lib_path().is_some(),
             bin: target.bin_path().is_some(),
+            scripts: target
+                .scripts()
+                .map(|scripts| scripts.keys().cloned().collect())
+                .unwrap_or_default(),
         }
     }
 }

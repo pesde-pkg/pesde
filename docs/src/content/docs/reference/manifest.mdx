@@ -155,6 +155,18 @@ build_files = [
 These files are passed to [`roblox_sync_config_generator`](#roblox_sync_config_generator)
 when the package is installed in order to generate the necessary configuration.
 
+### `scripts`
+
+**Allowed in:** `luau`, `lune`
+
+A list of scripts that will be linked to the project's `.pesde` directory, and
+copied over to the [scripts](#scripts-1) section when initialising a project with
+this package.
+
+```toml
+scripts = { roblox_sync_config_generator = "scripts/roblox_sync_config_generator.luau" }
+```
+
 ## `[scripts]`
 
 The `[scripts]` section contains scripts that can be run using the `pesde run`

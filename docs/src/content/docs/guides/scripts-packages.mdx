@@ -1,0 +1,53 @@
+---
+title: Using Scripts Packages
+description: Learn how to use scripts packages.
+---
+
+A **scripts package** is a package that contains scripts. The scripts provided
+by the package are linked in `.pesde/{alias}/{script_name}.luau` of the project
+that uses the package.
+
+## Using a scripts package
+
+Scripts packages can be installed using the `pesde add` and `pesde install`
+commands.
+
+This requires a `pesde.toml` file to be present in the current directory, and
+will add the scripts package to the `dependencies` section of the file.
+
+```sh
+pesde add pesde/scripts_rojo
+pesde install
+```
+
+This will add the scripts package to your project, and installing will put the
+scripts at `.pesde/scripts_rojo/{script_name}.luau`. You can then add the scripts
+to your manifest, for example:
+
+```toml title="pesde.toml"
+[scripts]
+roblox_sync_config_generator = ".pesde/scripts_rojo/roblox_sync_config_generator.luau"
+```
+
+## Making a scripts package
+
+To make a scripts package you must use a target compatible with scripts exports.
+These currently are `lune` and `luau`.
+
+Here is an example of a scripts package:
+
+```toml title="pesde.toml"
+name = "pesde/scripts_rojo"
+version = "1.0.0"
+license = "MIT"
+
+[target]
+environment = "lune"
+
+[target.scripts]
+roblox_sync_config_generator = "roblox_sync_config_generator.luau"
+```
+
+The `scripts` table in the target is a map of script names to the path of the
+script in the package. The scripts will be linked in the project that uses the
+package at `.pesde/{alias}/{script_name}.luau`.

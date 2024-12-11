@@ -2,7 +2,7 @@
 	import { page } from "$app/stores"
 	import GitHub from "$lib/components/GitHub.svelte"
 	import type { TargetInfo } from "$lib/registry-api"
-	import { BinaryIcon, Globe, Icon, LibraryIcon, Mail } from "lucide-svelte"
+	import { BinaryIcon, Globe, Icon, LibraryIcon, Mail, ScrollIcon } from "lucide-svelte"
 	import type { ComponentType } from "svelte"
 	import TargetSelector from "../../TargetSelector.svelte"
 	import Command from "./Command.svelte"
@@ -36,11 +36,13 @@
 	const exportNames: Partial<Record<keyof TargetInfo, string>> = {
 		lib: "Library",
 		bin: "Binary",
+		scripts: "Scripts",
 	}
 
 	const exportIcons: Partial<Record<keyof TargetInfo, ComponentType<Icon>>> = {
 		lib: LibraryIcon,
 		bin: BinaryIcon,
+		scripts: ScrollIcon,
 	}
 
 	const exportEntries = $derived(
@@ -92,19 +94,29 @@
 		<ul class="mb-6 space-y-0.5">
 			{#each exportEntries as [exportKey, exportName]}
 				{@const Icon = exportIcons[exportKey as keyof TargetInfo]}
-				<li class="flex items-center">
-					<Icon aria-hidden="true" class="text-primary mr-2 size-5" />
-					{exportName}
+				<li>
+					<div class="flex items-center">
+						<Icon aria-hidden="true" class="text-primary mr-2 size-5" />
+						{exportName}
+					</div>
+					{#if exportKey === "bin"}
+						<p class="text-body/80 mb-4 mt-3 text-sm">
+							This package provides a binary that can be executed after installation, or globally
+							via:
+						</p>
+						<Command command={xCommand} class="mb-6" />
+					{:else if exportKey === "scripts"}
+						<div class="text-body/80 mt-3 flex flex-wrap gap-2 text-sm">
+							{#each currentTarget?.scripts ?? [] as script}
+								<div class="bg-card text-heading w-max truncate rounded px-3 py-2" title={script}>
+									{script}
+								</div>
+							{/each}
+						</div>
+					{/if}
 				</li>
 			{/each}
 		</ul>
-
-		{#if currentTarget?.bin}
-			<p class="text-body/80 -mt-3 mb-4 text-sm">
-				This package provides a binary that can be executed after installation, or globally via:
-			</p>
-			<Command command={xCommand} class="mb-6" />
-		{/if}
 
 		{#if data.pkg.authors && data.pkg.authors.length > 0}
 			<h2 class="text-heading mb-2 text-lg font-semibold">Authors</h2>

@@ -26,6 +26,7 @@ export type TargetInfo = {
 	kind: TargetKind
 	lib: boolean
 	bin: boolean
+	scripts?: string[]
 }
 
 export type TargetKind = "roblox" | "roblox_server" | "lune" | "luau"
