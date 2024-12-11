@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Allow multiple, user selectable scripts packages to be selected (& custom packages inputted) in `init` command by @daimond113
+- Support granular control over which repositories are allowed in various specifier types by @daimond113
 
 ### Performance
 - Use `exec` in Unix bin linking to reduce the number of processes by @daimond113
