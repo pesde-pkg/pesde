@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0-rc.18] - 2024-12-12
 ### Fixed
 - Correctly resolve URLs in `publish` command by @daimond113 
 
@@ -167,6 +167,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make registry much easier to self-host by @daimond113
 - Start maintaining a changelog by @daimond113
 
+[0.5.0-rc.18]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.17..v0.5.0-rc.18
 [0.5.0-rc.17]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.16..v0.5.0-rc.17
 [0.5.0-rc.16]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.15..v0.5.0-rc.16
 [0.5.0-rc.15]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.14..v0.5.0-rc.15
