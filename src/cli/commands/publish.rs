@@ -585,22 +585,14 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
             DependencySpecifiers::Pesde(spec) => {
                 !config.other_registries_allowed.is_allowed_or_same(
                     source.repo_url().clone(),
-                    manifest
-                        .indices
-                        .get(spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
-                        .unwrap()
-                        .clone(),
+                    gix::Url::try_from(spec.index.as_deref().unwrap()).unwrap(),
                 )
             }
             DependencySpecifiers::Git(spec) => !config.git_allowed.is_allowed(spec.repo.clone()),
             #[cfg(feature = "wally-compat")]
-            DependencySpecifiers::Wally(spec) => !config.wally_allowed.is_allowed(
-                manifest
-                    .wally_indices
-                    .get(spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
-                    .unwrap()
-                    .clone(),
-            ),
+            DependencySpecifiers::Wally(spec) => !config
+                .wally_allowed
+                .is_allowed(gix::Url::try_from(spec.index.as_deref().unwrap()).unwrap()),
             _ => false,
         }) {
             anyhow::bail!("dependency `{disallowed}` is not allowed on this index");
