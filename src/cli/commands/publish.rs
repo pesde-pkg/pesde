@@ -499,6 +499,16 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                         .bin_path()
                         .map_or("(none)".to_string(), |p| p.to_string())
                 );
+                println!(
+                    "\tscripts: {}",
+                    manifest
+                        .target
+                        .scripts()
+                        .filter(|s| !s.is_empty())
+                        .map_or("(none)".to_string(), |s| {
+                            s.keys().cloned().collect::<Vec<_>>().join(", ")
+                        })
+                );
             }
 
             println!(
