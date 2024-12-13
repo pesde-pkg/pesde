@@ -123,7 +123,7 @@ impl Project {
                     {
                         let Some(script_path) = roblox_sync_config_gen_script else {
                             log::warn!("not having a `{}` script in the manifest might cause issues with Roblox linking", ScriptName::RobloxSyncConfigGenerator);
-                            return Ok((version_id, vec![]));
+                            return Ok((version_id, types));
                         };
 
                         execute_script(
