@@ -1,13 +1,13 @@
 use crate::cli::{
     config::read_config,
     version::{
-        current_version, get_latest_remote_version, get_or_download_version, update_bin_exe,
+        current_version, get_latest_remote_version, get_or_download_version, no_build_metadata,
+        update_bin_exe,
     },
 };
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
-use semver::BuildMetadata;
 
 #[derive(Debug, Args)]
 pub struct SelfUpgradeCommand {
@@ -28,17 +28,14 @@ impl SelfUpgradeCommand {
             get_latest_remote_version(&reqwest).await?
         };
 
-        if latest_version <= current_version() {
+        let latest_version_no_metadata = no_build_metadata(&latest_version);
+
+        if latest_version_no_metadata <= current_version() {
             println!("already up to date");
             return Ok(());
         }
 
-        let display_latest_version = {
-            let mut ver = latest_version.clone();
-            // remove build metadata to make it more readable
-            ver.build = BuildMetadata::EMPTY;
-            ver.to_string().yellow().bold()
-        };
+        let display_latest_version = latest_version_no_metadata.to_string().yellow().bold();
 
         if !inquire::prompt_confirmation(format!(
             "are you sure you want to upgrade {} from {} to {display_latest_version}?",

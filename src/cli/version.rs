@@ -64,6 +64,12 @@ pub async fn get_latest_remote_version(reqwest: &reqwest::Client) -> anyhow::Res
         .context("failed to find latest version")
 }
 
+pub fn no_build_metadata(version: &Version) -> Version {
+    let mut version = version.clone();
+    version.build = semver::BuildMetadata::EMPTY;
+    version
+}
+
 const CHECK_INTERVAL: chrono::Duration = chrono::Duration::hours(6);
 
 pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> {
@@ -86,71 +92,67 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
         version
     };
     let current_version = current_version();
+    let version_no_metadata = no_build_metadata(&version);
 
-    if version > current_version {
-        let name = env!("CARGO_BIN_NAME");
-        let changelog = format!("{}/releases/tag/v{version}", env!("CARGO_PKG_REPOSITORY"));
-
-        let display_version = {
-            let mut ver = version.clone();
-            // remove build metadata to make it more readable
-            ver.build = semver::BuildMetadata::EMPTY;
-            ver.to_string()
-        };
-
-        let unformatted_messages = [
-            "".to_string(),
-            format!("update available! {current_version} → {display_version}"),
-            format!("changelog: {changelog}"),
-            format!("run `{name} self-upgrade` to upgrade"),
-            "".to_string(),
-        ];
-
-        let width = unformatted_messages
-            .iter()
-            .map(|s| s.chars().count())
-            .max()
-            .unwrap()
-            + 4;
-
-        let column = "│".bright_magenta();
-
-        let message = [
-            "".to_string(),
-            format!(
-                "update available! {} → {}",
-                current_version.to_string().red(),
-                display_version.green()
-            ),
-            format!("changelog: {}", changelog.blue()),
-            format!(
-                "run `{} {}` to upgrade",
-                name.blue(),
-                "self-upgrade".yellow()
-            ),
-            "".to_string(),
-        ]
-        .into_iter()
-        .enumerate()
-        .map(|(i, s)| {
-            let text_length = unformatted_messages[i].chars().count();
-            let padding = (width as f32 - text_length as f32) / 2f32;
-            let padding_l = " ".repeat(padding.floor() as usize);
-            let padding_r = " ".repeat(padding.ceil() as usize);
-            format!("{column}{padding_l}{s}{padding_r}{column}")
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-        let lines = "─".repeat(width).bright_magenta();
-
-        let tl = "╭".bright_magenta();
-        let tr = "╮".bright_magenta();
-        let bl = "╰".bright_magenta();
-        let br = "╯".bright_magenta();
-
-        println!("\n{tl}{lines}{tr}\n{message}\n{bl}{lines}{br}\n");
+    if version_no_metadata <= current_version {
+        return Ok(());
     }
+
+    let name = env!("CARGO_BIN_NAME");
+    let changelog = format!("{}/releases/tag/v{version}", env!("CARGO_PKG_REPOSITORY"));
+
+    let unformatted_messages = [
+        "".to_string(),
+        format!("update available! {current_version} → {version_no_metadata}"),
+        format!("changelog: {changelog}"),
+        format!("run `{name} self-upgrade` to upgrade"),
+        "".to_string(),
+    ];
+
+    let width = unformatted_messages
+        .iter()
+        .map(|s| s.chars().count())
+        .max()
+        .unwrap()
+        + 4;
+
+    let column = "│".bright_magenta();
+
+    let message = [
+        "".to_string(),
+        format!(
+            "update available! {} → {}",
+            current_version.to_string().red(),
+            version_no_metadata.to_string().green()
+        ),
+        format!("changelog: {}", changelog.blue()),
+        format!(
+            "run `{} {}` to upgrade",
+            name.blue(),
+            "self-upgrade".yellow()
+        ),
+        "".to_string(),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, s)| {
+        let text_length = unformatted_messages[i].chars().count();
+        let padding = (width as f32 - text_length as f32) / 2f32;
+        let padding_l = " ".repeat(padding.floor() as usize);
+        let padding_r = " ".repeat(padding.ceil() as usize);
+        format!("{column}{padding_l}{s}{padding_r}{column}")
+    })
+    .collect::<Vec<_>>()
+    .join("\n");
+
+    let lines = "─".repeat(width).bright_magenta();
+
+    let tl = "╭".bright_magenta();
+    let tr = "╮".bright_magenta();
+    let bl = "╰".bright_magenta();
+    let br = "╯".bright_magenta();
+
+    println!("\n{tl}{lines}{tr}\n{message}\n{bl}{lines}{br}\n");
 
     Ok(())
 }
