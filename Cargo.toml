@@ -44,25 +44,25 @@ required-features = ["bin"]
 uninlined_format_args = "warn"
 
 [dependencies]
-serde = { version = "1.0.215", features = ["derive"] }
+serde = { version = "1.0.216", features = ["derive"] }
 toml = "0.8.19"
 serde_with = "3.11.0"
 gix = { version = "0.68.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials", "parallel"] }
-semver = { version = "1.0.23", features = ["serde"] }
+semver = { version = "1.0.24", features = ["serde"] }
 reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tls"] }
 tokio-tar = "0.3.1"
 async-compression = { version = "0.4.18", features = ["tokio", "gzip"] }
 pathdiff = "0.2.3"
 relative-path = { version = "1.9.3", features = ["serde"] }
 log = "0.4.22"
-thiserror = "2.0.5"
+thiserror = "2.0.7"
 tokio = { version = "1.42.0", features = ["process"] }
 tokio-util = "0.7.13"
 async-stream = "0.3.6"
 futures = "0.3.31"
 full_moon = { version = "1.1.2", features = ["luau"] }
 url = { version = "2.5.4", features = ["serde"] }
-chrono = { version = "0.4.38", features = ["serde"] }
+chrono = { version = "0.4.39", features = ["serde"] }
 sha2 = "0.10.8"
 tempfile = "3.14.0"
 wax = { version = "0.6.0", default-features = false }

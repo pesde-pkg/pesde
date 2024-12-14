@@ -8,12 +8,12 @@ publish = false
 [dependencies]
 actix-web = "4.9.0"
 actix-cors = "0.7.0"
-actix-governor = "0.7.0"
+actix-governor = "0.8.0"
 dotenvy = "0.15.7"
-thiserror = "2.0.5"
+thiserror = "2.0.7"
 tantivy = "0.22.0"
-semver = "1.0.23"
-chrono = { version = "0.4.38", features = ["serde"] }
+semver = "1.0.24"
+chrono = { version = "0.4.39", features = ["serde"] }
 url = "2.5.4"
 futures = "0.3.31"
 tokio = "1.42.0"
@@ -27,7 +27,7 @@ gix = { version = "0.68.0", default-features = false, features = [
     "credentials",
 ] }
 
-serde = "1.0.215"
+serde = "1.0.216"
 serde_json = "1.0.133"
 serde_yaml = "0.9.34"
 toml = "0.8.19"
