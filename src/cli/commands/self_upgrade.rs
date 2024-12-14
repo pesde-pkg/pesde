@@ -7,6 +7,7 @@ use crate::cli::{
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
+use semver::BuildMetadata;
 
 #[derive(Debug, Args)]
 pub struct SelfUpgradeCommand {
@@ -32,11 +33,17 @@ impl SelfUpgradeCommand {
             return Ok(());
         }
 
+        let display_latest_version = {
+            let mut ver = latest_version.clone();
+            // remove build metadata to make it more readable
+            ver.build = BuildMetadata::EMPTY;
+            ver.to_string().yellow().bold()
+        };
+
         if !inquire::prompt_confirmation(format!(
-            "are you sure you want to upgrade {} from {} to {}?",
+            "are you sure you want to upgrade {} from {} to {display_latest_version}?",
             env!("CARGO_BIN_NAME").cyan(),
-            current_version().to_string().yellow().bold(),
-            latest_version.to_string().yellow().bold()
+            env!("CARGO_PKG_VERSION").yellow().bold()
         ))? {
             println!("cancelled upgrade");
             return Ok(());
@@ -47,10 +54,7 @@ impl SelfUpgradeCommand {
             .unwrap();
         update_bin_exe(&path).await?;
 
-        println!(
-            "upgraded to version {}!",
-            latest_version.to_string().yellow().bold()
-        );
+        println!("upgraded to version {display_latest_version}!",);
 
         Ok(())
     }

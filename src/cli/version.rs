@@ -59,7 +59,7 @@ pub async fn get_latest_remote_version(reqwest: &reqwest::Client) -> anyhow::Res
 
     releases
         .into_iter()
-        .map(|release| Version::parse(release.tag_name.trim_start_matches('v')).unwrap())
+        .filter_map(|release| Version::parse(release.tag_name.trim_start_matches('v')).ok())
         .max()
         .context("failed to find latest version")
 }
@@ -89,11 +89,18 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 
     if version > current_version {
         let name = env!("CARGO_BIN_NAME");
-        let changelog = format!("{}/releases/tag/v{version}", env!("CARGO_PKG_REPOSITORY"),);
+        let changelog = format!("{}/releases/tag/v{version}", env!("CARGO_PKG_REPOSITORY"));
+
+        let display_version = {
+            let mut ver = version.clone();
+            // remove build metadata to make it more readable
+            ver.build = semver::BuildMetadata::EMPTY;
+            ver.to_string()
+        };
 
         let unformatted_messages = [
             "".to_string(),
-            format!("update available! {current_version} → {version}"),
+            format!("update available! {current_version} → {display_version}"),
             format!("changelog: {changelog}"),
             format!("run `{name} self-upgrade` to upgrade"),
             "".to_string(),
@@ -113,7 +120,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
             format!(
                 "update available! {} → {}",
                 current_version.to_string().red(),
-                version.to_string().green()
+                display_version.green()
             ),
             format!("changelog: {}", changelog.blue()),
             format!(
