@@ -10,16 +10,23 @@ jobs:
   prepare:
     name: Prepare
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract_version.outputs.VERSION }}
+      found: ${{ steps.ensure_not_published.outputs.FOUND }}
     steps:
       - uses: actions/checkout@v4
       - name: Extract version
+        id: extract_version
         shell: bash
         run: |
           VERSION=$(echo ${{ github.ref_name }} | cut -d'+' -f1 | cut -c 2-)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Ensure not published
+        id: ensure_not_published
         shell: bash
+        env:
+          VERSION: ${{ steps.extract_version.outputs.VERSION }}
         run: |          
           CRATE_NAME="${{ env.CRATE_NAME }}"
           if [ ${#CRATE_NAME} -eq 1 ]; then
@@ -33,7 +40,7 @@ jobs:
           fi
 
           FOUND=$(curl -sSL --fail-with-body "https://index.crates.io/$DIR/${{ env.CRATE_NAME }}" | jq -s 'any(.[]; .vers == "${{ env.VERSION }}")')
-          echo "FOUND=$FOUND" >> $GITHUB_ENV
+          echo "FOUND=$FOUND" >> "$GITHUB_OUTPUT"
 
   build:
     strategy:
@@ -61,7 +68,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     name: Build for ${{ matrix.host }}-${{ matrix.arch }}
     needs: [ prepare ]
-    if: ${{ env.FOUND == 'false' }}
+    if: ${{ needs.prepare.outputs.found == 'false' }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -122,7 +131,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: read
-    needs: [ publish ]
+    needs: [ prepare, publish ]
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
