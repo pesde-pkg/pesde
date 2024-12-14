@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Add Roblox types in linker modules even with no config generator script by @daimond113
 
+### Changed
+- Remove lower bound limit of 3 characters for pesde package names by @daimond113
+
 ## [0.5.0-rc.18] - 2024-12-12
 ### Fixed
 - Correctly resolve URLs in `publish` command by @daimond113 

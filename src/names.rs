@@ -35,8 +35,16 @@ impl FromStr for PackageName {
             .ok_or(Self::Err::InvalidFormat(s.to_string()))?;
 
         for (reason, part) in [(ErrorReason::Scope, scope), (ErrorReason::Name, name)] {
-            if part.len() < 3 || part.len() > 32 {
-                return Err(Self::Err::InvalidLength(reason, part.to_string()));
+            let min_len = match reason {
+                ErrorReason::Scope => 3,
+                ErrorReason::Name => 1,
+            };
+
+            if !(min_len..=32).contains(&part.len()) {
+                return Err(match reason {
+                    ErrorReason::Scope => Self::Err::InvalidScopeLength(part.to_string()),
+                    ErrorReason::Name => Self::Err::InvalidNameLength(part.to_string()),
+                });
             }
 
             if part.chars().all(|c| c.is_ascii_digit()) {
@@ -231,9 +239,13 @@ pub mod errors {
         #[error("package {0} `{1}` starts or ends with an underscore")]
         PrePostfixUnderscore(ErrorReason, String),
 
-        /// The package name is not within 3-32 characters long
-        #[error("package {0} `{1}` is not within 3-32 characters long")]
-        InvalidLength(ErrorReason, String),
+        /// The package name's scope part is not within 3-32 characters long
+        #[error("package scope `{0}` is not within 3-32 characters long")]
+        InvalidScopeLength(String),
+
+        /// The package name's name part is not within 1-32 characters long
+        #[error("package name `{0}` is not within 1-32 characters long")]
+        InvalidNameLength(String),
     }
 
     /// Errors that can occur when working with Wally package names
