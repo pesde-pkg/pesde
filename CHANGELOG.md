@@ -92,4 +92,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Asyncify dependency linking by @daimond113
 - Use `exec` in Unix bin linking to reduce the number of processes by @daimond113
 
-[0.5.0]: https://github.com/daimond113/pesde/compare/v0.4.7..v0.5.0
+[0.5.0]: https://github.com/daimond113/pesde/compare/v0.4.7..v0.5.0%2Bregistry.0.1.0
