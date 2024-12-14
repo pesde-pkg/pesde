@@ -5,171 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2024-12-14
 ### Added
-- Display included scripts in `publish` command by @daimond113
-
-### Fixed
-- Add Roblox types in linker modules even with no config generator script by @daimond113
-- Gracefully handle unparsable tag names when checking for updates & don't display build metadata by @daimond113
-
-### Changed
-- Remove lower bound limit of 3 characters for pesde package names by @daimond113
-
-## [0.5.0-rc.18] - 2024-12-12
-### Fixed
-- Correctly resolve URLs in `publish` command by @daimond113 
-
-## [0.5.0-rc.17] - 2024-12-11
-### Added
-- Allow multiple, user selectable scripts packages to be selected (& custom packages inputted) in `init` command by @daimond113
-- Support granular control over which repositories are allowed in various specifier types by @daimond113
-
-### Performance
-- Use `exec` in Unix bin linking to reduce the number of processes by @daimond113
-
-## [0.5.0-rc.16] - 2024-12-08
-### Fixed
-- Do not require lib or bin exports if package exports scripts by @daimond113
-
-## [0.5.0-rc.15] - 2024-12-08
-### Added
-- Add improved CLI styling by @daimond113
-- Install pesde dependencies before Wally to support scripts packages by @daimond113
-- Support packages exporting scripts by @daimond113
-- Support using workspace root as a member by @daimond113
-
-### Removed
-- Remove special scripts repo handling to favour standard packages by @daimond113
-
-### Fixed
-- Link dependencies before type extraction to support more use cases by @daimond113
-- Strip `.luau` extension from linker modules' require paths to comply with Luau by @daimond113
-- Correctly handle graph paths for resolving overriden packages by @daimond113
-- Do not require `--` in bin package executables on Unix by @daimond113
-
-## [0.5.0-rc.14] - 2024-11-30
-### Fixed
-- Fix `includes` not supporting root files by @daimond113
-
-## [0.5.0-rc.13] - 2024-11-28
-### Added
+- Add support for multiple targets under the same package name in workspace members by @daimond113
+- Add `yes` argument to skip all prompts in publish command by @daimond113
+- Publish all workspace members when publishing a workspace by @daimond113
+- Inform user about not finding any bin package when using its bin invocation by @daimond113
+- Support full version requirements in workspace version field by @daimond113
+- Improved authentication system for registry changes by @daimond113
+- New website by @lukadev-0
+- Add `--index` flag to `publish` command to publish to a specific index by @daimond113
+- Support fallback Wally registries by @daimond113
 - Print that no updates are available in `outdated` command by @daimond113
 - Support negated globs in `workspace_members` field by @daimond113
 - Make `includes` use glob patterns by @daimond113
 - Use symlinks for workspace dependencies to not require reinstalling by @daimond113
 - Add `auth token` command to print the auth token for the index by @daimond113
 - Support specifying which external registries are allowed on registries by @daimond113
+- Add improved CLI styling by @daimond113
+- Install pesde dependencies before Wally to support scripts packages by @daimond113
+- Support packages exporting scripts by @daimond113
+- Support using workspace root as a member by @daimond113
+- Allow multiple, user selectable scripts packages to be selected (& custom packages inputted) in `init` command by @daimond113
+- Support granular control over which repositories are allowed in various specifier types by @daimond113
+- Display included scripts in `publish` command by @daimond113
 
 ### Fixed
-- Install dependencies of packages in `x` command by @daimond113
-
-### Performance
-- Asyncify dependency linking by @daimond113
-
-## [0.5.0-rc.12] - 2024-11-22
-### Added
-- Support fallback Wally registries by @daimond113
-
-### Fixed
-- Fix peer dependencies being resolved incorrectly by @daimond113
-- Set PESDE_ROOT to the correct path in `pesde run` by @daimond113
-
-## [0.5.0-rc.11] - 2024-11-20
-### Fixed
-- Add back mistakenly removed updates check caching by @daimond113
-- Set download error source to inner error to propagate the error by @daimond113
-- Correctly copy workspace packages by @daimond113
-
-## [0.5.0-rc.10] - 2024-11-16
-### Fixed
-- Fix `self-install` doing a cross-device move by @daimond113
-
-### Changed
-- Only store `pesde_version` executables in the version cache by @daimond113
-
-## [0.5.0-rc.9] - 2024-11-16
-### Fixed
-- Correctly link Wally server packages by @daimond113
-
-### Changed
-- `self-upgrade` now will check for updates by itself by default by @daimond113
-
-## [0.5.0-rc.8] - 2024-11-12
-### Added
-- Add `--index` flag to `publish` command to publish to a specific index by @daimond113
-
-### Fixed
+- Fix versions with dots not being handled correctly by @daimond113
+- Use workspace specifiers' `target` field when resolving by @daimond113
+- Add feature gates to `wally-compat` specific code in init command by @daimond113
+- Remove duplicated manifest file name in `publish` command by @daimond113
+- Allow use of Luau packages in `execute` command by @daimond113
+- Fix `self-upgrade` overwriting its own binary by @daimond113
+- Correct `pesde.toml` inclusion message in `publish` command by @daimond113
+- Allow writes to files when `link` is false in PackageFS::write_to by @daimond113
+- Handle missing revisions in AnyPackageIdentifier::from_str by @daimond113
+- Make GitHub OAuth client ID config optional by @daimond113
+- Use updated aliases when reusing lockfile dependencies by @daimond113
+- Listen for device flow completion without requiring pressing enter by @daimond113
+- Sync scripts repo in background by @daimond113
+- Don't make CAS files read-only on Windows (file removal is disallowed if the file is read-only) by @daimond113
+- Validate package names are lowercase by @daimond113
 - Use a different algorithm for finding a CAS directory to avoid issues with mounted drives by @daimond113
 - Remove default.project.json from Git pesde dependencies by @daimond113
 - Correctly (de)serialize workspace specifiers by @daimond113
 - Fix CAS finder algorithm issues with Windows by @daimond113
 - Fix CAS finder algorithm's AlreadyExists error by @daimond113
 - Use moved path when setting file to read-only by @daimond113
+- Correctly link Wally server packages by @daimond113
+- Fix `self-install` doing a cross-device move by @daimond113
+- Add back mistakenly removed updates check caching by @daimond113
+- Set download error source to inner error to propagate the error by @daimond113
+- Correctly copy workspace packages by @daimond113
+- Fix peer dependencies being resolved incorrectly by @daimond113
+- Set PESDE_ROOT to the correct path in `pesde run` by @daimond113
+- Install dependencies of packages in `x` command by @daimond113
+- Fix `includes` not supporting root files by @daimond113
+- Link dependencies before type extraction to support more use cases by @daimond113
+- Strip `.luau` extension from linker modules' require paths to comply with Luau by @daimond113
+- Correctly handle graph paths for resolving overriden packages by @daimond113
+- Do not require `--` in bin package executables on Unix by @daimond113
+- Do not require lib or bin exports if package exports scripts by @daimond113
+- Correctly resolve URLs in `publish` command by @daimond113
+- Add Roblox types in linker modules even with no config generator script by @daimond113
 
-### Changed
-- Switched to fs-err for better errors with file system operations by @daimond113
-- Use body bytes over multipart for publishing packages by @daimond113
+### Removed
+- Remove special scripts repo handling to favour standard packages by @daimond113
 
-### Performance
-- Switch to async Rust by @daimond113
-
-## [0.5.0-rc.7] - 2024-10-30
-### Added
-- New website by @lukadev-0
-
-### Fixed
-- Use updated aliases when reusing lockfile dependencies by @daimond113
-- Listen for device flow completion without requiring pressing enter by @daimond113
-- Sync scripts repo in background by @daimond113
-- Don't make CAS files read-only on Windows (file removal is disallowed if the file is read-only) by @daimond113 
-- Validate package names are lowercase by @daimond113
-
-### Performance
-- Clone dependency repos shallowly by @daimond113
-
-### Changed
-- Optimize boolean expression in `publish` command by @daimond113
-
-## [0.5.0-rc.6] - 2024-10-14
-### Added
-- Support full version requirements in workspace version field by @daimond113 
-- Improved authentication system for registry changes by @daimond113 
-
-### Fixed
-- Correct `pesde.toml` inclusion message in `publish` command by @daimond113
-- Allow writes to files when `link` is false in PackageFS::write_to by @daimond113
-- Handle missing revisions in AnyPackageIdentifier::from_str by @daimond113
-- Make GitHub OAuth client ID config optional by @daimond113
-
-## [0.5.0-rc.5] - 2024-10-12
-### Added
-- Inform user about not finding any bin package when using its bin invocation by @daimond113
-
-### Fixed
-- Fix `self-upgrade` overwriting its own binary by @daimond113
-- Allow use of Luau packages in `execute` command by @daimond113
-- Remove duplicated manifest file name in `publish` command by @daimond113
-
-## [0.5.0-rc.4] - 2024-10-12
-### Added
-- Add `yes` argument to skip all prompts in publish command by @daimond113
-- Publish all workspace members when publishing a workspace by @daimond113
-
-### Fixed
-- Add feature gates to `wally-compat` specific code in init command by @daimond113
-
-## [0.5.0-rc.3] - 2024-10-06
-### Fixed
-- Use workspace specifiers' `target` field when resolving by @daimond113
-
-## [0.5.0-rc.2] - 2024-10-06
-### Added
-- Add support for multiple targets under the same package name in workspace members by @daimond113
-### Fixed
-- Fix versions with dots not being handled correctly by @daimond113
-
-## [0.5.0-rc.1] - 2024-10-06
 ### Changed
 - Rewrite the entire project in a more maintainable way by @daimond113
 - Support workspaces by @daimond113
@@ -177,22 +79,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support multiple targets for a single package by @daimond113
 - Make registry much easier to self-host by @daimond113
 - Start maintaining a changelog by @daimond113
+- Optimize boolean expression in `publish` command by @daimond113
+- Switched to fs-err for better errors with file system operations by @daimond113
+- Use body bytes over multipart for publishing packages by @daimond113
+- `self-upgrade` now will check for updates by itself by default by @daimond113
+- Only store `pesde_version` executables in the version cache by @daimond113
+- Remove lower bound limit of 3 characters for pesde package names by @daimond113
 
-[0.5.0-rc.18]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.17..v0.5.0-rc.18
-[0.5.0-rc.17]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.16..v0.5.0-rc.17
-[0.5.0-rc.16]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.15..v0.5.0-rc.16
-[0.5.0-rc.15]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.14..v0.5.0-rc.15
-[0.5.0-rc.14]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.13..v0.5.0-rc.14
-[0.5.0-rc.13]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.12..v0.5.0-rc.13
-[0.5.0-rc.12]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.11..v0.5.0-rc.12
-[0.5.0-rc.11]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.10..v0.5.0-rc.11
-[0.5.0-rc.10]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.9..v0.5.0-rc.10
-[0.5.0-rc.9]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.8..v0.5.0-rc.9
-[0.5.0-rc.8]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.7..v0.5.0-rc.8
-[0.5.0-rc.7]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.6..v0.5.0-rc.7
-[0.5.0-rc.6]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.5..v0.5.0-rc.6
-[0.5.0-rc.5]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.4..v0.5.0-rc.5
-[0.5.0-rc.4]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.3..v0.5.0-rc.4
-[0.5.0-rc.3]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.2..v0.5.0-rc.3
-[0.5.0-rc.2]: https://github.com/daimond113/pesde/compare/v0.5.0-rc.1..v0.5.0-rc.2
-[0.5.0-rc.1]: https://github.com/daimond113/pesde/compare/v0.4.7..v0.5.0-rc.1
+### Performance
+- Clone dependency repos shallowly by @daimond113
+- Switch to async Rust by @daimond113
+- Asyncify dependency linking by @daimond113
+- Use `exec` in Unix bin linking to reduce the number of processes by @daimond113
+
+[0.5.0]: https://github.com/daimond113/pesde/compare/v0.4.7..v0.5.0

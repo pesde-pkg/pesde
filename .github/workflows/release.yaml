@@ -4,8 +4,37 @@ on:
     tags:
       - v*
 env:
+  CRATE_NAME: pesde
   BIN_NAME: pesde
 jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract version
+        shell: bash
+        run: |
+          VERSION=$(echo ${{ github.ref_name }} | cut -d'+' -f1 | cut -c 2-)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Ensure not published
+        shell: bash
+        run: |          
+          CRATE_NAME="${{ env.CRATE_NAME }}"
+          if [ ${#CRATE_NAME} -eq 1 ]; then
+            DIR="1"
+          elif [ ${#CRATE_NAME} -eq 2 ]; then
+            DIR="2"
+          elif [ ${#CRATE_NAME} -eq 3 ]; then
+            DIR="3/${CRATE_NAME:0:1}"
+          else
+            DIR="${CRATE_NAME:0:2}/${CRATE_NAME:2:2}"
+          fi
+
+          FOUND=$(curl -sSL --fail-with-body "https://index.crates.io/$DIR/${{ env.CRATE_NAME }}" | jq -s 'any(.[]; .vers == "${{ env.VERSION }}")')
+          echo "FOUND=$FOUND" >> $GITHUB_ENV
+
   build:
     strategy:
       matrix:
@@ -31,13 +60,15 @@ jobs:
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     name: Build for ${{ matrix.host }}-${{ matrix.arch }}
+    needs: [ prepare ]
+    if: ${{ env.FOUND == 'false' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Set env
         shell: bash
         run: |
-          ARCHIVE_NAME=${{ env.BIN_NAME }}-$(echo ${{ github.ref_name }} | cut -c 2-)-${{ matrix.host }}-${{ matrix.arch }}
+          ARCHIVE_NAME=${{ env.BIN_NAME }}-${{ env.VERSION }}-${{ matrix.host }}-${{ matrix.arch }}
 
           echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
 
@@ -91,7 +122,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: read
-    needs: [ build, publish ]
+    needs: [ publish ]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -107,7 +138,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          name: v${{ env.VERSION }}
           draft: true
-          prerelease: ${{ startsWith(github.ref_name, 'v0') }}
+          prerelease: ${{ startsWith(env.VERSION, '0') }}
           files: artifacts/*
