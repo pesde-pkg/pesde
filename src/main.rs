@@ -4,14 +4,18 @@ use crate::cli::{auth::get_tokens, display_err, home_dir, HOME_DIR};
 use anyhow::Context;
 use clap::{builder::styling::AnsiColor, Parser};
 use fs_err::tokio as fs;
-use indicatif::MultiProgress;
-use indicatif_log_bridge::LogWrapper;
 use pesde::{matching_globs, AuthConfig, Project, MANIFEST_FILE_NAME};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
 };
 use tempfile::NamedTempFile;
+use tracing::instrument;
+use tracing_indicatif::IndicatifLayer;
+use tracing_subscriber::{
+    filter::LevelFilter, fmt::time::uptime, layer::SubscriberExt, util::SubscriberInitExt,
+    EnvFilter,
+};
 
 mod cli;
 pub mod util;
@@ -38,6 +42,7 @@ struct Cli {
     subcommand: cli::commands::Subcommand,
 }
 
+#[instrument(level = "trace")]
 async fn get_linkable_dir(path: &Path) -> PathBuf {
     let mut curr_path = PathBuf::new();
     let file_to_try = NamedTempFile::new_in(path).expect("failed to create temporary file");
@@ -68,7 +73,7 @@ async fn get_linkable_dir(path: &Path) -> PathBuf {
 
         if fs::hard_link(file_to_try.path(), &try_path).await.is_ok() {
             if let Err(err) = fs::remove_file(&try_path).await {
-                log::warn!(
+                tracing::warn!(
                     "failed to remove temporary file at {}: {err}",
                     try_path.display()
                 );
@@ -128,6 +133,29 @@ async fn run() -> anyhow::Result<()> {
 
         std::process::exit(status.code().unwrap());
     }
+
+    let indicatif_layer = IndicatifLayer::new();
+
+    let tracing_env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy()
+        .add_directive("reqwest=info".parse().unwrap())
+        .add_directive("rustls=info".parse().unwrap())
+        .add_directive("tokio_util=info".parse().unwrap())
+        .add_directive("goblin=info".parse().unwrap())
+        .add_directive("tower=info".parse().unwrap())
+        .add_directive("hyper=info".parse().unwrap())
+        .add_directive("h2=info".parse().unwrap());
+
+    tracing_subscriber::registry()
+        .with(tracing_env_filter)
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(indicatif_layer.get_stderr_writer())
+                .with_timer(uptime()),
+        )
+        .with(indicatif_layer)
+        .init();
 
     let (project_root_dir, project_workspace_dir) = 'finder: {
         let mut current_path = Some(cwd.clone());
@@ -191,16 +219,13 @@ async fn run() -> anyhow::Result<()> {
         (project_root.unwrap_or_else(|| cwd.clone()), workspace_dir)
     };
 
-    let multi = {
-        let logger = pretty_env_logger::formatted_builder()
-            .parse_env(pretty_env_logger::env_logger::Env::default().default_filter_or("info"))
-            .build();
-        let multi = MultiProgress::new();
-
-        LogWrapper::new(multi.clone(), logger).try_init().unwrap();
-
-        multi
-    };
+    tracing::trace!(
+        "project root: {}\nworkspace root: {}",
+        project_root_dir.display(),
+        project_workspace_dir
+            .as_ref()
+            .map_or("none".to_string(), |p| p.display().to_string())
+    );
 
     let home_dir = home_dir()?;
     let data_dir = home_dir.join("data");
@@ -217,7 +242,7 @@ async fn run() -> anyhow::Result<()> {
     }
     .join("cas");
 
-    log::debug!("using cas dir in {}", cas_dir.display());
+    tracing::debug!("using cas dir in {}", cas_dir.display());
 
     let project = Project::new(
         project_root_dir,
@@ -278,7 +303,7 @@ async fn run() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
-    cli.subcommand.run(project, multi, reqwest).await
+    cli.subcommand.run(project, reqwest).await
 }
 
 #[tokio::main]

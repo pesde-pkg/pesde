@@ -15,7 +15,8 @@ use std::{
     env::current_exe,
     path::{Path, PathBuf},
 };
-use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWrite;
+use tracing::instrument;
 
 pub fn current_version() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
@@ -33,14 +34,20 @@ struct Asset {
     url: url::Url,
 }
 
+#[instrument(level = "trace")]
 fn get_repo() -> (String, String) {
     let mut parts = env!("CARGO_PKG_REPOSITORY").split('/').skip(3);
-    (
+    let (owner, repo) = (
         parts.next().unwrap().to_string(),
         parts.next().unwrap().to_string(),
-    )
+    );
+
+    tracing::trace!("repository for updates: {owner}/{repo}");
+
+    (owner, repo)
 }
 
+#[instrument(skip(reqwest), level = "trace")]
 pub async fn get_latest_remote_version(reqwest: &reqwest::Client) -> anyhow::Result<Version> {
     let (owner, repo) = get_repo();
 
@@ -72,6 +79,7 @@ pub fn no_build_metadata(version: &Version) -> Version {
 
 const CHECK_INTERVAL: chrono::Duration = chrono::Duration::hours(6);
 
+#[instrument(skip(reqwest), level = "trace")]
 pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> {
     let config = read_config().await?;
 
@@ -79,8 +87,10 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
         .last_checked_updates
         .filter(|(time, _)| chrono::Utc::now() - *time < CHECK_INTERVAL)
     {
+        tracing::debug!("using cached version");
         version
     } else {
+        tracing::debug!("checking for updates");
         let version = get_latest_remote_version(reqwest).await?;
 
         write_config(&CliConfig {
@@ -157,10 +167,12 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
     Ok(())
 }
 
-pub async fn download_github_release(
+#[instrument(skip(reqwest, writer), level = "trace")]
+pub async fn download_github_release<W: AsyncWrite + Unpin>(
     reqwest: &reqwest::Client,
     version: &Version,
-) -> anyhow::Result<Vec<u8>> {
+    mut writer: W,
+) -> anyhow::Result<()> {
     let (owner, repo) = get_repo();
 
     let release = reqwest
@@ -211,16 +223,13 @@ pub async fn download_github_release(
         .context("archive has no entry")?
         .context("failed to get first archive entry")?;
 
-    let mut result = Vec::new();
-
-    entry
-        .read_to_end(&mut result)
+    tokio::io::copy(&mut entry, &mut writer)
         .await
-        .context("failed to read archive entry bytes")?;
-
-    Ok(result)
+        .context("failed to write archive entry to file")
+        .map(|_| ())
 }
 
+#[instrument(skip(reqwest), level = "trace")]
 pub async fn get_or_download_version(
     reqwest: &reqwest::Client,
     version: &Version,
@@ -236,6 +245,8 @@ pub async fn get_or_download_version(
     let is_requested_version = !always_give_path && *version == current_version();
 
     if path.exists() {
+        tracing::debug!("version already exists");
+
         return Ok(if is_requested_version {
             None
         } else {
@@ -244,14 +255,20 @@ pub async fn get_or_download_version(
     }
 
     if is_requested_version {
+        tracing::debug!("copying current executable to version directory");
         fs::copy(current_exe()?, &path)
             .await
             .context("failed to copy current executable to version directory")?;
     } else {
-        let bytes = download_github_release(reqwest, version).await?;
-        fs::write(&path, bytes)
-            .await
-            .context("failed to write downloaded version file")?;
+        tracing::debug!("downloading version");
+        download_github_release(
+            reqwest,
+            version,
+            fs::File::create(&path)
+                .await
+                .context("failed to create version file")?,
+        )
+        .await?;
     }
 
     make_executable(&path)
@@ -265,6 +282,7 @@ pub async fn get_or_download_version(
     })
 }
 
+#[instrument(level = "trace")]
 pub async fn update_bin_exe(downloaded_file: &Path) -> anyhow::Result<()> {
     let bin_exe_path = bin_dir().await?.join(format!(
         "{}{}",

@@ -2,7 +2,6 @@ use anyhow::Context;
 use colored::Colorize;
 use fs_err::tokio as fs;
 use futures::StreamExt;
-use indicatif::MultiProgress;
 use pesde::{
     lockfile::Lockfile,
     manifest::target::TargetKind,
@@ -19,6 +18,7 @@ use std::{
     time::Duration,
 };
 use tokio::pin;
+use tracing::instrument;
 
 pub mod auth;
 pub mod commands;
@@ -43,6 +43,7 @@ pub async fn bin_dir() -> anyhow::Result<PathBuf> {
     Ok(bin_dir)
 }
 
+#[instrument(skip(project), ret(level = "trace"), level = "debug")]
 pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Lockfile>> {
     let manifest = project.deser_manifest().await?;
     let lockfile = match project.deser_lockfile().await {
@@ -56,17 +57,17 @@ pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Loc
     };
 
     if manifest.overrides != lockfile.overrides {
-        log::debug!("overrides are different");
+        tracing::debug!("overrides are different");
         return Ok(None);
     }
 
     if manifest.target.kind() != lockfile.target {
-        log::debug!("target kind is different");
+        tracing::debug!("target kind is different");
         return Ok(None);
     }
 
     if manifest.name != lockfile.name || manifest.version != lockfile.version {
-        log::debug!("name or version is different");
+        tracing::debug!("name or version is different");
         return Ok(None);
     }
 
@@ -88,7 +89,7 @@ pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Loc
         .iter()
         .all(|(_, (spec, ty))| specs.contains(&(spec, ty)));
 
-    log::debug!("dependencies are the same: {same_dependencies}");
+    tracing::debug!("dependencies are the same: {same_dependencies}");
 
     Ok(if same_dependencies {
         Some(lockfile)
@@ -133,7 +134,7 @@ impl VersionedPackageName {
                 let versions = graph.get(&self.0).context("package not found in graph")?;
                 if versions.len() == 1 {
                     let version = versions.keys().next().unwrap().clone();
-                    log::debug!("only one version found, using {version}");
+                    tracing::debug!("only one version found, using {version}");
                     version
                 } else {
                     anyhow::bail!(
@@ -195,21 +196,18 @@ pub fn parse_gix_url(s: &str) -> Result<gix::Url, gix::url::parse::Error> {
 pub async fn progress_bar<E: std::error::Error + Into<anyhow::Error>>(
     len: u64,
     mut rx: tokio::sync::mpsc::Receiver<Result<String, E>>,
-    multi: &MultiProgress,
     prefix: String,
     progress_msg: String,
     finish_msg: String,
 ) -> anyhow::Result<()> {
-    let bar = multi.add(
-        indicatif::ProgressBar::new(len)
-            .with_style(
-                indicatif::ProgressStyle::default_bar()
-                    .template("{prefix}[{elapsed_precise}] {bar:40.208/166} {pos}/{len} {msg}")?
-                    .progress_chars("█▓▒░ "),
-            )
-            .with_prefix(prefix)
-            .with_message(progress_msg),
-    );
+    let bar = indicatif::ProgressBar::new(len)
+        .with_style(
+            indicatif::ProgressStyle::default_bar()
+                .template("{prefix}[{elapsed_precise}] {bar:40.208/166} {pos}/{len} {msg}")?
+                .progress_chars("█▓▒░ "),
+        )
+        .with_prefix(prefix)
+        .with_message(progress_msg);
     bar.enable_steady_tick(Duration::from_millis(100));
 
     while let Some(result) = rx.recv().await {

@@ -1,5 +1,5 @@
 use crate::{
-    lockfile::{insert_node, DependencyGraph, DependencyGraphNode},
+    lockfile::{DependencyGraph, DependencyGraphNode},
     manifest::DependencyType,
     names::PackageNames,
     source::{
@@ -11,10 +11,55 @@ use crate::{
     },
     Project, DEFAULT_INDEX_NAME,
 };
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{btree_map::Entry, HashMap, HashSet, VecDeque};
+use tracing::instrument;
+
+fn insert_node(
+    graph: &mut DependencyGraph,
+    name: PackageNames,
+    version: VersionId,
+    mut node: DependencyGraphNode,
+    is_top_level: bool,
+) {
+    if !is_top_level && node.direct.take().is_some() {
+        tracing::debug!(
+            "tried to insert {name}@{version} as direct dependency from a non top-level context",
+        );
+    }
+
+    match graph
+        .entry(name.clone())
+        .or_default()
+        .entry(version.clone())
+    {
+        Entry::Vacant(entry) => {
+            entry.insert(node);
+        }
+        Entry::Occupied(existing) => {
+            let current_node = existing.into_mut();
+
+            match (&current_node.direct, &node.direct) {
+                (Some(_), Some(_)) => {
+                    tracing::warn!("duplicate direct dependency for {name}@{version}");
+                }
+
+                (None, Some(_)) => {
+                    current_node.direct = node.direct;
+                }
+
+                (_, _) => {}
+            }
+        }
+    }
+}
 
 impl Project {
     /// Create a dependency graph from the project's manifest
+    #[instrument(
+        skip(self, previous_graph, refreshed_sources),
+        ret(level = "trace"),
+        level = "debug"
+    )]
     pub async fn dependency_graph(
         &self,
         previous_graph: Option<&DependencyGraph>,
@@ -51,13 +96,13 @@ impl Project {
 
                     let Some(alias) = all_specifiers.remove(&(specifier.clone(), *source_ty))
                     else {
-                        log::debug!(
+                        tracing::debug!(
                             "dependency {name}@{version} from old dependency graph is no longer in the manifest",
                         );
                         continue;
                     };
 
-                    log::debug!("resolved {}@{} from old dependency graph", name, version);
+                    tracing::debug!("resolved {}@{} from old dependency graph", name, version);
                     insert_node(
                         &mut graph,
                         name.clone(),
@@ -80,7 +125,7 @@ impl Project {
                             .get(dep_name)
                             .and_then(|v| v.get(dep_version))
                         {
-                            log::debug!(
+                            tracing::debug!(
                                 "{}resolved dependency {}@{} from {}@{}",
                                 "\t".repeat(depth),
                                 dep_name,
@@ -102,7 +147,7 @@ impl Project {
                                 .map(|(name, (version, _))| (name, version, depth + 1))
                                 .for_each(|dep| queue.push_back(dep));
                         } else {
-                            log::warn!(
+                            tracing::warn!(
                                 "dependency {}@{} from {}@{} not found in previous graph",
                                 dep_name,
                                 dep_version,
@@ -133,7 +178,7 @@ impl Project {
             let alias = path.last().unwrap().clone();
             let depth = path.len() - 1;
 
-            log::debug!(
+            tracing::debug!(
                 "{}resolving {specifier} from {}",
                 "\t".repeat(depth),
                 path.join(">")
@@ -243,7 +288,7 @@ impl Project {
                 .get_mut(&name)
                 .and_then(|versions| versions.get_mut(&target_version_id))
             {
-                log::debug!(
+                tracing::debug!(
                     "{}{}@{} already resolved",
                     "\t".repeat(depth),
                     name,
@@ -253,7 +298,7 @@ impl Project {
                 if std::mem::discriminant(&already_resolved.pkg_ref)
                     != std::mem::discriminant(pkg_ref)
                 {
-                    log::warn!(
+                    tracing::warn!(
                         "resolved package {name}@{target_version_id} has a different source than the previously resolved one at {}, this may cause issues",
                         path.join(">")
                     );
@@ -290,7 +335,7 @@ impl Project {
                 depth == 0,
             );
 
-            log::debug!(
+            tracing::debug!(
                 "{}resolved {}@{} from new dependency graph",
                 "\t".repeat(depth),
                 name,
@@ -318,7 +363,7 @@ impl Project {
                 });
 
                 if overridden.is_some() {
-                    log::debug!(
+                    tracing::debug!(
                         "{}overridden specifier found for {} ({dependency_spec})",
                         "\t".repeat(depth),
                         path.iter()
@@ -346,7 +391,7 @@ impl Project {
         for (name, versions) in &graph {
             for (version_id, node) in versions {
                 if node.resolved_ty == DependencyType::Peer {
-                    log::warn!("peer dependency {name}@{version_id} was not resolved");
+                    tracing::warn!("peer dependency {name}@{version_id} was not resolved");
                 }
             }
         }

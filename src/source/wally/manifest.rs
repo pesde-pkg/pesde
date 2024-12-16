@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 
-use semver::{Version, VersionReq};
-use serde::{Deserialize, Deserializer};
-
 use crate::{
     manifest::{errors, DependencyType},
     names::wally::WallyPackageName,
     source::{specifiers::DependencySpecifiers, wally::specifier::WallyDependencySpecifier},
 };
+use semver::{Version, VersionReq};
+use serde::{Deserialize, Deserializer};
+use tracing::instrument;
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -63,6 +63,7 @@ pub struct WallyManifest {
 
 impl WallyManifest {
     /// Get all dependencies from the manifest
+    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub fn all_dependencies(
         &self,
     ) -> Result<

@@ -1,13 +1,13 @@
-use relative_path::RelativePathBuf;
-use semver::Version;
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
-
 use crate::{
     manifest::{overrides::OverrideKey, target::Target},
     names::PackageName,
     source::specifiers::DependencySpecifiers,
 };
+use relative_path::RelativePathBuf;
+use semver::Version;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
+use tracing::instrument;
 
 /// Overrides
 pub mod overrides;
@@ -107,6 +107,7 @@ pub enum DependencyType {
 
 impl Manifest {
     /// Get all dependencies from the manifest
+    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub fn all_dependencies(
         &self,
     ) -> Result<

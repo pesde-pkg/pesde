@@ -6,7 +6,6 @@ use clap::Args;
 use colored::{ColoredString, Colorize};
 use fs_err::tokio as fs;
 use futures::future::try_join_all;
-use indicatif::MultiProgress;
 use pesde::{
     download_and_link::filter_graph, lockfile::Lockfile, manifest::target::TargetKind, Project,
     MANIFEST_FILE_NAME,
@@ -89,12 +88,7 @@ fn job(n: u8) -> ColoredString {
 struct CallbackError(#[from] anyhow::Error);
 
 impl InstallCommand {
-    pub async fn run(
-        self,
-        project: Project,
-        multi: MultiProgress,
-        reqwest: reqwest::Client,
-    ) -> anyhow::Result<()> {
+    pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
         let mut refreshed_sources = HashSet::new();
 
         let manifest = project
@@ -116,10 +110,10 @@ impl InstallCommand {
             match project.deser_lockfile().await {
                 Ok(lockfile) => {
                     if lockfile.overrides != manifest.overrides {
-                        log::debug!("overrides are different");
+                        tracing::debug!("overrides are different");
                         None
                     } else if lockfile.target != manifest.target.kind() {
-                        log::debug!("target kind is different");
+                        tracing::debug!("target kind is different");
                         None
                     } else {
                         Some(lockfile)
@@ -153,7 +147,7 @@ impl InstallCommand {
                 deleted_folders
                     .entry(folder.to_string())
                     .or_insert_with(|| async move {
-                        log::debug!("deleting the {folder} folder");
+                        tracing::debug!("deleting the {folder} folder");
 
                         if let Some(e) = fs::remove_dir_all(package_dir.join(&folder))
                             .await
@@ -219,7 +213,7 @@ impl InstallCommand {
                                     .map(|(alias, _, _)| alias)
                                     .filter(|alias| {
                                         if *alias == env!("CARGO_BIN_NAME") {
-                                            log::warn!(
+                                            tracing::warn!(
                                             "package {alias} has the same name as the CLI, skipping bin link"
                                         );
                                             return false;
@@ -281,7 +275,6 @@ exec lune run "$(dirname "$0")/.impl/{alias}.luau" -- "$@""#
             progress_bar(
                 graph.values().map(|versions| versions.len() as u64).sum(),
                 rx,
-                &multi,
                 format!("{} 📥 ", job(3)),
                 "downloading dependencies".to_string(),
                 "downloaded dependencies".to_string(),
@@ -303,7 +296,6 @@ exec lune run "$(dirname "$0")/.impl/{alias}.luau" -- "$@""#
             progress_bar(
                 manifest.patches.values().map(|v| v.len() as u64).sum(),
                 rx,
-                &multi,
                 format!("{} 🩹 ", job(JOBS - 1)),
                 "applying patches".to_string(),
                 "applied patches".to_string(),
@@ -323,9 +315,8 @@ exec lune run "$(dirname "$0")/.impl/{alias}.luau" -- "$@""#
                 graph: downloaded_graph,
 
                 workspace: run_on_workspace_members(&project, |project| {
-                    let multi = multi.clone();
                     let reqwest = reqwest.clone();
-                    async move { Box::pin(self.run(project, multi, reqwest)).await }
+                    async move { Box::pin(self.run(project, reqwest)).await }
                 })
                 .await?,
             })

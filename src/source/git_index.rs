@@ -1,8 +1,11 @@
 #![allow(async_fn_in_trait)]
+
 use crate::{util::authenticate_conn, Project};
 use fs_err::tokio as fs;
 use gix::remote::Direction;
+use std::fmt::Debug;
 use tokio::task::spawn_blocking;
+use tracing::instrument;
 
 /// A trait for sources that are based on Git repositories
 pub trait GitBasedSource {
@@ -90,7 +93,11 @@ pub trait GitBasedSource {
 }
 
 /// Reads a file from a tree
-pub fn read_file<I: IntoIterator<Item = P> + Clone, P: ToString + PartialEq<gix::bstr::BStr>>(
+#[instrument(skip(tree), ret, level = "trace")]
+pub fn read_file<
+    I: IntoIterator<Item = P> + Clone + Debug,
+    P: ToString + PartialEq<gix::bstr::BStr>,
+>(
     tree: &gix::Tree,
     file_path: I,
 ) -> Result<Option<String>, errors::ReadFile> {
@@ -120,6 +127,7 @@ pub fn read_file<I: IntoIterator<Item = P> + Clone, P: ToString + PartialEq<gix:
 }
 
 /// Gets the root tree of a repository
+#[instrument(skip(repo), level = "trace")]
 pub fn root_tree(repo: &gix::Repository) -> Result<gix::Tree, errors::TreeError> {
     // this is a bare repo, so this is the actual path
     let path = repo.path().to_path_buf();

@@ -2,7 +2,6 @@ use crate::cli::{progress_bar, run_on_workspace_members};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
-use indicatif::MultiProgress;
 use pesde::{lockfile::Lockfile, Project};
 use std::{collections::HashSet, sync::Arc};
 use tokio::sync::Mutex;
@@ -11,12 +10,7 @@ use tokio::sync::Mutex;
 pub struct UpdateCommand {}
 
 impl UpdateCommand {
-    pub async fn run(
-        self,
-        project: Project,
-        multi: MultiProgress,
-        reqwest: reqwest::Client,
-    ) -> anyhow::Result<()> {
+    pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
         let mut refreshed_sources = HashSet::new();
 
         let manifest = project
@@ -60,7 +54,6 @@ impl UpdateCommand {
                     progress_bar(
                         graph.values().map(|versions| versions.len() as u64).sum(),
                         rx,
-                        &multi,
                         "📥 ".to_string(),
                         "downloading dependencies".to_string(),
                         "downloaded dependencies".to_string(),
@@ -73,9 +66,8 @@ impl UpdateCommand {
                 },
 
                 workspace: run_on_workspace_members(&project, |project| {
-                    let multi = multi.clone();
                     let reqwest = reqwest.clone();
-                    async move { Box::pin(self.run(project, multi, reqwest)).await }
+                    async move { Box::pin(self.run(project, reqwest)).await }
                 })
                 .await?,
             })

@@ -3,6 +3,7 @@ use fs_err::tokio as fs;
 use git2::{ApplyLocation, Diff, DiffFormat, DiffLineType, Repository, Signature};
 use relative_path::RelativePathBuf;
 use std::path::Path;
+use tracing::instrument;
 
 /// Set up a git repository for patches
 pub fn setup_patches_repo<P: AsRef<Path>>(dir: P) -> Result<Repository, git2::Error> {
@@ -69,6 +70,7 @@ pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
 
 impl Project {
     /// Apply patches to the project's dependencies
+    #[instrument(skip(self, graph), level = "debug")]
     pub async fn apply_patches(
         &self,
         graph: &DownloadedGraph,
@@ -97,7 +99,7 @@ impl Project {
                     .get(&name)
                     .and_then(|versions| versions.get(&version_id))
                 else {
-                    log::warn!(
+                    tracing::warn!(
                         "patch for {name}@{version_id} not applied because it is not in the graph"
                     );
                     tx.send(Ok(format!("{name}@{version_id}"))).await.unwrap();
@@ -114,7 +116,7 @@ impl Project {
                 );
 
                 tokio::spawn(async move {
-                    log::debug!("applying patch to {name}@{version_id}");
+                    tracing::debug!("applying patch to {name}@{version_id}");
 
                     let patch = match fs::read(&patch_path).await {
                         Ok(patch) => patch,
@@ -195,7 +197,9 @@ impl Project {
                         }
                     }
 
-                    log::debug!("patch applied to {name}@{version_id}, removing .git directory");
+                    tracing::debug!(
+                        "patch applied to {name}@{version_id}, removing .git directory"
+                    );
 
                     if let Err(e) = fs::remove_dir_all(container_folder.join(".git")).await {
                         tx.send(Err(errors::ApplyPatchesError::DotGitRemove(e)))

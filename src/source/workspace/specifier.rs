@@ -19,7 +19,7 @@ impl DependencySpecifier for WorkspaceDependencySpecifier {}
 
 impl Display for WorkspaceDependencySpecifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "workspace:{}{}", self.version, self.name)
+        write!(f, "{}@workspace:{}", self.name, self.version)
     }
 }
 

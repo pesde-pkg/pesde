@@ -13,6 +13,7 @@ use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
 };
+use tracing::instrument;
 
 type MultithreadedGraph = Arc<Mutex<DownloadedGraph>>;
 
@@ -23,6 +24,7 @@ pub(crate) type MultithreadDownloadJob = (
 
 impl Project {
     /// Downloads a graph of dependencies
+    #[instrument(skip(self, graph, refreshed_sources, reqwest), level = "debug")]
     pub async fn download_graph(
         &self,
         graph: &DependencyGraph,
@@ -98,7 +100,7 @@ impl Project {
 
                     let project = project.clone();
 
-                    log::debug!("downloading {name}@{version_id}");
+                    tracing::debug!("downloading {name}@{version_id}");
 
                     let (fs, target) =
                         match source.download(&node.pkg_ref, &project, &reqwest).await {
@@ -109,7 +111,7 @@ impl Project {
                             }
                         };
 
-                    log::debug!("downloaded {name}@{version_id}");
+                    tracing::debug!("downloaded {name}@{version_id}");
 
                     if write {
                         if !prod || node.resolved_ty != DependencyType::Dev {
@@ -123,7 +125,7 @@ impl Project {
                                 }
                             };
                         } else {
-                            log::debug!("skipping writing {name}@{version_id} to disk, dev dependency in prod mode");
+                            tracing::debug!("skipping writing {name}@{version_id} to disk, dev dependency in prod mode");
                         }
                     }
 

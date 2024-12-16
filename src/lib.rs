@@ -14,8 +14,10 @@ use futures::{future::try_join_all, Stream};
 use gix::sec::identity::Account;
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     path::{Path, PathBuf},
 };
+use tracing::instrument;
 use wax::Pattern;
 
 /// Downloading packages
@@ -149,29 +151,35 @@ impl Project {
     }
 
     /// Read the manifest file
+    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub async fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
         let string = fs::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME)).await?;
         Ok(string)
     }
 
+    // TODO: cache the manifest
     /// Deserialize the manifest file
+    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub async fn deser_manifest(&self) -> Result<Manifest, errors::ManifestReadError> {
         let string = fs::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME)).await?;
         Ok(toml::from_str(&string)?)
     }
 
     /// Write the manifest file
+    #[instrument(skip(self, manifest), level = "debug")]
     pub async fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
         fs::write(self.package_dir.join(MANIFEST_FILE_NAME), manifest.as_ref()).await
     }
 
     /// Deserialize the lockfile
+    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub async fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
         let string = fs::read_to_string(self.package_dir.join(LOCKFILE_FILE_NAME)).await?;
         Ok(toml::from_str(&string)?)
     }
 
     /// Write the lockfile
+    #[instrument(skip(self, lockfile), level = "debug")]
     pub async fn write_lockfile(
         &self,
         lockfile: Lockfile,
@@ -182,7 +190,8 @@ impl Project {
     }
 
     /// Get the workspace members
-    pub async fn workspace_members<P: AsRef<Path>>(
+    #[instrument(skip(self), level = "debug")]
+    pub async fn workspace_members<P: AsRef<Path> + Debug>(
         &self,
         dir: P,
         can_ref_self: bool,
@@ -222,7 +231,16 @@ impl Project {
 }
 
 /// Gets all matching paths in a directory
-pub async fn matching_globs_old_behaviour<'a, P: AsRef<Path>, I: IntoIterator<Item = &'a str>>(
+#[deprecated(
+    since = "0.5.0-rc.13",
+    note = "use `matching_globs` instead, which does not have the old behaviour of including whole directories by their name (`src` instead of `src/**`)"
+)]
+#[instrument(ret, level = "trace")]
+pub async fn matching_globs_old_behaviour<
+    'a,
+    P: AsRef<Path> + Debug,
+    I: IntoIterator<Item = &'a str> + Debug,
+>(
     dir: P,
     globs: I,
     relative: bool,
@@ -270,7 +288,7 @@ pub async fn matching_globs_old_behaviour<'a, P: AsRef<Path>, I: IntoIterator<It
                     is_entire_dir_included || is_filename_match,
                 ));
                 if is_filename_match {
-                    log::warn!("directory name usage found for {}. this is deprecated and will be removed in the future", path.display());
+                    tracing::warn!("directory name usage found for {}. this is deprecated and will be removed in the future", path.display());
                 }
             }
 
@@ -293,7 +311,8 @@ pub async fn matching_globs_old_behaviour<'a, P: AsRef<Path>, I: IntoIterator<It
 }
 
 /// Gets all matching paths in a directory
-pub async fn matching_globs<'a, P: AsRef<Path>, I: IntoIterator<Item = &'a str>>(
+#[instrument(ret, level = "trace")]
+pub async fn matching_globs<'a, P: AsRef<Path> + Debug, I: IntoIterator<Item = &'a str> + Debug>(
     dir: P,
     globs: I,
     relative: bool,

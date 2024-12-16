@@ -30,6 +30,7 @@ use std::{
 use tempfile::tempdir;
 use tokio::{io::AsyncWriteExt, sync::Mutex, task::spawn_blocking};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
+use tracing::instrument;
 
 pub(crate) mod compat_util;
 pub(crate) mod manifest;
@@ -68,6 +69,7 @@ impl WallyPackageSource {
     }
 
     /// Reads the config file
+    #[instrument(skip_all, ret(level = "trace"), level = "debug")]
     pub async fn config(&self, project: &Project) -> Result<WallyIndexConfig, errors::ConfigError> {
         let repo_url = self.repo_url.clone();
         let path = self.path(project);
@@ -94,10 +96,12 @@ impl PackageSource for WallyPackageSource {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
+    #[instrument(skip_all, level = "debug")]
     async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
         GitBasedSource::refresh(self, project).await
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn resolve(
         &self,
         specifier: &Self::Specifier,
@@ -111,7 +115,7 @@ impl PackageSource for WallyPackageSource {
         let string = match read_file(&tree, [scope, name]) {
             Ok(Some(s)) => s,
             Ok(None) => {
-                log::debug!(
+                tracing::debug!(
                     "{} not found in wally registry. searching in backup registries",
                     specifier.name
                 );
@@ -134,7 +138,7 @@ impl PackageSource for WallyPackageSource {
                     .await
                     {
                         Ok((name, results)) => {
-                            log::debug!("found {} in backup registry {registry}", name);
+                            tracing::debug!("found {} in backup registry {registry}", name);
                             return Ok((name, results));
                         }
                         Err(errors::ResolveError::NotFound(_)) => {
@@ -162,7 +166,7 @@ impl PackageSource for WallyPackageSource {
             .collect::<Result<_, _>>()
             .map_err(|e| Self::ResolveError::Parse(specifier.name.to_string(), e))?;
 
-        log::debug!("{} has {} possible entries", specifier.name, entries.len());
+        tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
         Ok((
             PackageNames::Wally(specifier.name.clone()),
@@ -192,6 +196,7 @@ impl PackageSource for WallyPackageSource {
         ))
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn download(
         &self,
         pkg_ref: &Self::Ref,
@@ -207,7 +212,7 @@ impl PackageSource for WallyPackageSource {
 
         let tempdir = match fs::read_to_string(&index_file).await {
             Ok(s) => {
-                log::debug!(
+                tracing::debug!(
                     "using cached index file for package {}@{}",
                     pkg_ref.name,
                     pkg_ref.version
@@ -240,7 +245,7 @@ impl PackageSource for WallyPackageSource {
             );
 
         if let Some(token) = project.auth_config.tokens().get(&self.repo_url) {
-            log::debug!("using token for {}", self.repo_url);
+            tracing::debug!("using token for {}", self.repo_url);
             request = request.header(AUTHORIZATION, token);
         }
 

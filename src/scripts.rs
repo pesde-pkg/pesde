@@ -1,7 +1,7 @@
 use crate::Project;
 use std::{
     ffi::OsStr,
-    fmt::{Display, Formatter},
+    fmt::{Debug, Display, Formatter},
     path::Path,
     process::Stdio,
 };
@@ -9,6 +9,7 @@ use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
 };
+use tracing::instrument;
 
 /// Script names used by pesde
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -30,7 +31,8 @@ impl Display for ScriptName {
     }
 }
 
-pub(crate) async fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
+#[instrument(skip(project), level = "debug")]
+pub(crate) async fn execute_script<A: IntoIterator<Item = S> + Debug, S: AsRef<OsStr> + Debug>(
     script_name: ScriptName,
     script_path: &Path,
     args: A,
@@ -59,10 +61,10 @@ pub(crate) async fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
                 while let Some(line) = stderr.next_line().await.transpose() {
                     match line {
                         Ok(line) => {
-                            log::error!("[{script}]: {line}");
+                            tracing::error!("[{script}]: {line}");
                         }
                         Err(e) => {
-                            log::error!("ERROR IN READING STDERR OF {script}: {e}");
+                            tracing::error!("ERROR IN READING STDERR OF {script}: {e}");
                             break;
                         }
                     }
@@ -78,11 +80,11 @@ pub(crate) async fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
                             stdout_str.push_str(&line);
                             stdout_str.push('\n');
                         } else {
-                            log::info!("[{script_2}]: {line}");
+                            tracing::info!("[{script_2}]: {line}");
                         }
                     }
                     Err(e) => {
-                        log::error!("ERROR IN READING STDOUT OF {script_2}: {e}");
+                        tracing::error!("ERROR IN READING STDOUT OF {script_2}: {e}");
                         break;
                     }
                 }
@@ -95,7 +97,7 @@ pub(crate) async fn execute_script<A: IntoIterator<Item = S>, S: AsRef<OsStr>>(
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            log::warn!("Lune could not be found in PATH: {e}");
+            tracing::warn!("Lune could not be found in PATH: {e}");
 
             Ok(None)
         }

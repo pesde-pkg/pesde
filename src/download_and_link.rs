@@ -11,6 +11,7 @@ use std::{
     sync::{Arc, Mutex as StdMutex},
 };
 use tokio::sync::Mutex;
+use tracing::instrument;
 
 /// Filters a graph to only include production dependencies, if `prod` is `true`
 pub fn filter_graph(graph: &DownloadedGraph, prod: bool) -> DownloadedGraph {
@@ -33,8 +34,16 @@ pub fn filter_graph(graph: &DownloadedGraph, prod: bool) -> DownloadedGraph {
         .collect()
 }
 
+/// Receiver for dependencies downloaded and linked
+pub type DownloadAndLinkReceiver =
+    tokio::sync::mpsc::Receiver<Result<String, crate::download::errors::DownloadGraphError>>;
+
 impl Project {
     /// Downloads a graph of dependencies and links them in the correct order
+    #[instrument(
+        skip(self, graph, refreshed_sources, reqwest, pesde_cb),
+        level = "debug"
+    )]
     pub async fn download_and_link<
         F: FnOnce(&Arc<DownloadedGraph>) -> R + Send + 'static,
         R: Future<Output = Result<(), E>> + Send,
@@ -49,9 +58,7 @@ impl Project {
         pesde_cb: F,
     ) -> Result<
         (
-            tokio::sync::mpsc::Receiver<
-                Result<String, crate::download::errors::DownloadGraphError>,
-            >,
+            DownloadAndLinkReceiver,
             impl Future<Output = Result<DownloadedGraph, errors::DownloadAndLinkError<E>>>,
         ),
         errors::DownloadAndLinkError<E>,

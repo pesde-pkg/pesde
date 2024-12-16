@@ -11,6 +11,7 @@ use crate::{
     Project, LINK_LIB_NO_FILE_FOUND,
 };
 use fs_err::tokio as fs;
+use tracing::instrument;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,7 +20,8 @@ struct SourcemapNode {
     file_paths: Vec<RelativePathBuf>,
 }
 
-pub(crate) async fn find_lib_path(
+#[instrument(skip(project, package_dir), level = "debug")]
+async fn find_lib_path(
     project: &Project,
     package_dir: &Path,
 ) -> Result<Option<RelativePathBuf>, errors::FindLibPathError> {
@@ -29,7 +31,7 @@ pub(crate) async fn find_lib_path(
         .scripts
         .get(&ScriptName::SourcemapGenerator.to_string())
     else {
-        log::warn!("no sourcemap generator script found in manifest");
+        tracing::warn!("no sourcemap generator script found in manifest");
         return Ok(None);
     };
 
@@ -55,6 +57,7 @@ pub(crate) async fn find_lib_path(
 
 pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
 
+#[instrument(skip(project, tempdir), level = "debug")]
 pub(crate) async fn get_target(
     project: &Project,
     tempdir: &TempDir,

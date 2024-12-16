@@ -30,6 +30,7 @@ use crate::{
 use fs_err::tokio as fs;
 use futures::StreamExt;
 use tokio::task::spawn_blocking;
+use tracing::instrument;
 
 /// The pesde package reference
 pub mod pkg_ref;
@@ -73,6 +74,7 @@ impl PesdePackageSource {
     }
 
     /// Reads the config file
+    #[instrument(skip_all, ret(level = "trace"), level = "debug")]
     pub async fn config(&self, project: &Project) -> Result<IndexConfig, errors::ConfigError> {
         let repo_url = self.repo_url.clone();
         let path = self.path(project);
@@ -99,10 +101,12 @@ impl PackageSource for PesdePackageSource {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
+    #[instrument(skip_all, level = "debug")]
     async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
         GitBasedSource::refresh(self, project).await
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn resolve(
         &self,
         specifier: &Self::Specifier,
@@ -127,7 +131,7 @@ impl PackageSource for PesdePackageSource {
         let entries: IndexFile = toml::from_str(&string)
             .map_err(|e| Self::ResolveError::Parse(specifier.name.to_string(), e))?;
 
-        log::debug!("{} has {} possible entries", specifier.name, entries.len());
+        tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
         Ok((
             PackageNames::Pesde(specifier.name.clone()),
@@ -155,6 +159,7 @@ impl PackageSource for PesdePackageSource {
         ))
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn download(
         &self,
         pkg_ref: &Self::Ref,
@@ -171,7 +176,7 @@ impl PackageSource for PesdePackageSource {
 
         match fs::read_to_string(&index_file).await {
             Ok(s) => {
-                log::debug!(
+                tracing::debug!(
                     "using cached index file for package {}@{} {}",
                     pkg_ref.name,
                     pkg_ref.version,
@@ -192,7 +197,7 @@ impl PackageSource for PesdePackageSource {
         let mut request = reqwest.get(&url).header(ACCEPT, "application/octet-stream");
 
         if let Some(token) = project.auth_config.tokens().get(&self.repo_url) {
-            log::debug!("using token for {}", self.repo_url);
+            tracing::debug!("using token for {}", self.repo_url);
             request = request.header(AUTHORIZATION, token);
         }
 

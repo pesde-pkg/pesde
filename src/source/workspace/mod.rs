@@ -13,6 +13,7 @@ use relative_path::RelativePathBuf;
 use reqwest::Client;
 use std::collections::{BTreeMap, HashSet};
 use tokio::pin;
+use tracing::instrument;
 
 /// The workspace package reference
 pub mod pkg_ref;
@@ -35,6 +36,7 @@ impl PackageSource for WorkspacePackageSource {
         Ok(())
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn resolve(
         &self,
         specifier: &Self::Specifier,
@@ -126,6 +128,7 @@ impl PackageSource for WorkspacePackageSource {
         ))
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn download(
         &self,
         pkg_ref: &Self::Ref,

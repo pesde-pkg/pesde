@@ -14,7 +14,7 @@ use relative_path::RelativePathBuf;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
+    collections::BTreeMap,
     path::{Path, PathBuf},
 };
 
@@ -73,45 +73,6 @@ impl DependencyGraphNode {
 
 /// A graph of `DependencyGraphNode`s
 pub type DependencyGraph = Graph<DependencyGraphNode>;
-
-pub(crate) fn insert_node(
-    graph: &mut DependencyGraph,
-    name: PackageNames,
-    version: VersionId,
-    mut node: DependencyGraphNode,
-    is_top_level: bool,
-) {
-    if !is_top_level && node.direct.take().is_some() {
-        log::debug!(
-            "tried to insert {name}@{version} as direct dependency from a non top-level context",
-        );
-    }
-
-    match graph
-        .entry(name.clone())
-        .or_default()
-        .entry(version.clone())
-    {
-        Entry::Vacant(entry) => {
-            entry.insert(node);
-        }
-        Entry::Occupied(existing) => {
-            let current_node = existing.into_mut();
-
-            match (&current_node.direct, &node.direct) {
-                (Some(_), Some(_)) => {
-                    log::warn!("duplicate direct dependency for {name}@{version}");
-                }
-
-                (None, Some(_)) => {
-                    current_node.direct = node.direct;
-                }
-
-                (_, _) => {}
-            }
-        }
-    }
-}
 
 /// A downloaded dependency graph node, i.e. a `DependencyGraphNode` with a `Target`
 #[derive(Serialize, Deserialize, Debug, Clone)]

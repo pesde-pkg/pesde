@@ -20,6 +20,7 @@ use std::{
     sync::Arc,
 };
 use tokio::task::spawn_blocking;
+use tracing::instrument;
 
 /// Generates linking modules for a project
 pub mod generator;
@@ -44,6 +45,7 @@ async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std:
 
 impl Project {
     /// Links the dependencies of the project
+    #[instrument(skip(self, graph), level = "debug")]
     pub async fn link_dependencies(
         &self,
         graph: &DownloadedGraph,
@@ -110,7 +112,7 @@ impl Project {
                             }
                         };
 
-                        log::debug!("{name}@{version_id} has {} exported types", types.len());
+                        tracing::debug!("{name}@{version_id} has {} exported types", types.len());
 
                         types
                     } else {
@@ -122,7 +124,7 @@ impl Project {
                         .and_then(|t| t.build_files())
                     {
                         let Some(script_path) = roblox_sync_config_gen_script else {
-                            log::warn!("not having a `{}` script in the manifest might cause issues with Roblox linking", ScriptName::RobloxSyncConfigGenerator);
+                            tracing::warn!("not having a `{}` script in the manifest might cause issues with Roblox linking", ScriptName::RobloxSyncConfigGenerator);
                             return Ok((version_id, types));
                         };
 

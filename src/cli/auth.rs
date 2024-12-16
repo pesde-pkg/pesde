@@ -5,6 +5,7 @@ use keyring::Entry;
 use reqwest::header::AUTHORIZATION;
 use serde::{ser::SerializeMap, Deserialize, Serialize};
 use std::collections::BTreeMap;
+use tracing::instrument;
 
 #[derive(Debug, Clone)]
 pub struct Tokens(pub BTreeMap<gix::Url, String>);
@@ -37,15 +38,20 @@ impl<'de> Deserialize<'de> for Tokens {
     }
 }
 
+#[instrument(level = "trace")]
 pub async fn get_tokens() -> anyhow::Result<Tokens> {
     let config = read_config().await?;
     if !config.tokens.0.is_empty() {
+        tracing::debug!("using tokens from config");
         return Ok(config.tokens);
     }
 
     match Entry::new("tokens", env!("CARGO_PKG_NAME")) {
         Ok(entry) => match entry.get_password() {
-            Ok(token) => return serde_json::from_str(&token).context("failed to parse tokens"),
+            Ok(token) => {
+                tracing::debug!("using tokens from keyring");
+                return serde_json::from_str(&token).context("failed to parse tokens");
+            }
             Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoEntry) => {}
             Err(e) => return Err(e.into()),
         },
@@ -56,15 +62,21 @@ pub async fn get_tokens() -> anyhow::Result<Tokens> {
     Ok(Tokens(BTreeMap::new()))
 }
 
+#[instrument(level = "trace")]
 pub async fn set_tokens(tokens: Tokens) -> anyhow::Result<()> {
     let entry = Entry::new("tokens", env!("CARGO_PKG_NAME"))?;
     let json = serde_json::to_string(&tokens).context("failed to serialize tokens")?;
 
     match entry.set_password(&json) {
-        Ok(()) => return Ok(()),
+        Ok(()) => {
+            tracing::debug!("tokens saved to keyring");
+            return Ok(());
+        }
         Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoEntry) => {}
         Err(e) => return Err(e.into()),
     }
+
+    tracing::debug!("tokens saved to config");
 
     let mut config = read_config().await?;
     config.tokens = tokens;
@@ -86,6 +98,7 @@ struct UserResponse {
     login: String,
 }
 
+#[instrument(level = "trace")]
 pub async fn get_token_login(
     reqwest: &reqwest::Client,
     access_token: &str,

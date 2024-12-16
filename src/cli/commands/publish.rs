@@ -4,6 +4,7 @@ use async_compression::Level;
 use clap::Args;
 use colored::Colorize;
 use fs_err::tokio as fs;
+#[allow(deprecated)]
 use pesde::{
     manifest::{target::Target, DependencyType},
     matching_globs_old_behaviour,
@@ -129,6 +130,7 @@ impl PublishCommand {
             _ => None,
         };
 
+        #[allow(deprecated)]
         let mut paths = matching_globs_old_behaviour(
             project.package_dir(),
             manifest.includes.iter().map(|s| s.as_str()),
@@ -624,7 +626,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
             .body(archive);
 
         if let Some(token) = project.auth_config().tokens().get(index_url) {
-            log::debug!("using token for {index_url}");
+            tracing::debug!("using token for {index_url}");
             request = request.header(AUTHORIZATION, token);
         }
 

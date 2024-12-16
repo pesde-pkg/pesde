@@ -27,6 +27,7 @@ use std::{
     sync::Arc,
 };
 use tokio::{sync::Mutex, task::spawn_blocking};
+use tracing::instrument;
 
 /// The Git package reference
 pub mod pkg_ref;
@@ -70,10 +71,12 @@ impl PackageSource for GitPackageSource {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
+    #[instrument(skip_all, level = "debug")]
     async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
         GitBasedSource::refresh(self, project).await
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn resolve(
         &self,
         specifier: &Self::Specifier,
@@ -329,6 +332,7 @@ impl PackageSource for GitPackageSource {
         ))
     }
 
+    #[instrument(skip_all, level = "debug")]
     async fn download(
         &self,
         pkg_ref: &Self::Ref,
@@ -343,7 +347,7 @@ impl PackageSource for GitPackageSource {
 
         match fs::read_to_string(&index_file).await {
             Ok(s) => {
-                log::debug!(
+                tracing::debug!(
                     "using cached index file for package {}#{}",
                     pkg_ref.repo,
                     pkg_ref.tree_id
@@ -487,7 +491,7 @@ impl PackageSource for GitPackageSource {
                     }
 
                     if pkg_ref.use_new_structure() && name == "default.project.json" {
-                        log::debug!(
+                        tracing::debug!(
                             "removing default.project.json from {}#{} at {path} - using new structure",
                             pkg_ref.repo,
                             pkg_ref.tree_id

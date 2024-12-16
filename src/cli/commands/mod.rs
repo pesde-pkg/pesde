@@ -1,4 +1,3 @@
-use indicatif::MultiProgress;
 use pesde::Project;
 
 mod add;
@@ -72,18 +71,13 @@ pub enum Subcommand {
 }
 
 impl Subcommand {
-    pub async fn run(
-        self,
-        project: Project,
-        multi: MultiProgress,
-        reqwest: reqwest::Client,
-    ) -> anyhow::Result<()> {
+    pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
         match self {
             Subcommand::Auth(auth) => auth.run(project, reqwest).await,
             Subcommand::Config(config) => config.run().await,
             Subcommand::Init(init) => init.run(project).await,
             Subcommand::Run(run) => run.run(project).await,
-            Subcommand::Install(install) => install.run(project, multi, reqwest).await,
+            Subcommand::Install(install) => install.run(project, reqwest).await,
             Subcommand::Publish(publish) => publish.run(project, reqwest).await,
             #[cfg(feature = "version-management")]
             Subcommand::SelfInstall(self_install) => self_install.run().await,
@@ -94,9 +88,9 @@ impl Subcommand {
             #[cfg(feature = "version-management")]
             Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(reqwest).await,
             Subcommand::Add(add) => add.run(project).await,
-            Subcommand::Update(update) => update.run(project, multi, reqwest).await,
+            Subcommand::Update(update) => update.run(project, reqwest).await,
             Subcommand::Outdated(outdated) => outdated.run(project).await,
-            Subcommand::Execute(execute) => execute.run(project, multi, reqwest).await,
+            Subcommand::Execute(execute) => execute.run(project, reqwest).await,
         }
     }
 }

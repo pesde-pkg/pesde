@@ -2,7 +2,6 @@ use crate::cli::{config::read_config, progress_bar, VersionedPackageName};
 use anyhow::Context;
 use clap::Args;
 use fs_err::tokio as fs;
-use indicatif::MultiProgress;
 use pesde::{
     linking::generator::generate_bin_linking_module,
     manifest::target::TargetKind,
@@ -35,12 +34,7 @@ pub struct ExecuteCommand {
 }
 
 impl ExecuteCommand {
-    pub async fn run(
-        self,
-        project: Project,
-        multi: MultiProgress,
-        reqwest: reqwest::Client,
-    ) -> anyhow::Result<()> {
+    pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
         let index = match self.index {
             Some(index) => Some(index),
             None => read_config().await.ok().map(|c| c.default_index),
@@ -84,7 +78,7 @@ impl ExecuteCommand {
             );
         };
 
-        log::info!("found package {}@{version}", pkg_ref.name);
+        println!("using {}@{version}", pkg_ref.name);
 
         let tmp_dir = project.cas_dir().join(".tmp");
         fs::create_dir_all(&tmp_dir)
@@ -134,7 +128,6 @@ impl ExecuteCommand {
         progress_bar(
             graph.values().map(|versions| versions.len() as u64).sum(),
             rx,
-            &multi,
             "📥 ".to_string(),
             "downloading dependencies".to_string(),
             "downloaded dependencies".to_string(),

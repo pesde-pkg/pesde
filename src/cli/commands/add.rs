@@ -2,6 +2,7 @@ use std::{collections::HashSet, str::FromStr};
 
 use anyhow::Context;
 use clap::Args;
+use colored::Colorize;
 use semver::VersionReq;
 
 use crate::cli::{config::read_config, AnyPackageIdentifier, VersionedPackageName};
@@ -62,7 +63,7 @@ impl AddCommand {
                         .cloned();
 
                     if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
-                        log::error!("index {index} not found");
+                        println!("{}: index {index} not found", "error".red().bold());
                         return Ok(());
                     }
 
@@ -89,7 +90,7 @@ impl AddCommand {
                         .cloned();
 
                     if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
-                        log::error!("wally index {index} not found");
+                        println!("{}: wally index {index} not found", "error".red().bold());
                         return Ok(());
                     }
 
@@ -145,7 +146,7 @@ impl AddCommand {
             .pop_last()
             .map(|(v_id, _)| v_id)
         else {
-            log::error!("no versions found for package {specifier}");
+            println!("{}: no versions found for package", "error".red().bold());
 
             return Ok(());
         };

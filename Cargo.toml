@@ -13,10 +13,10 @@ include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHAN
 bin = [
     "dep:clap",
     "dep:dirs",
-    "dep:pretty_env_logger",
+    "dep:tracing-subscriber",
     "reqwest/json",
     "dep:indicatif",
-    "dep:indicatif-log-bridge",
+    "dep:tracing-indicatif",
     "dep:inquire",
     "dep:toml_edit",
     "dep:colored",
@@ -54,7 +54,7 @@ tokio-tar = "0.3.1"
 async-compression = { version = "0.4.18", features = ["tokio", "gzip"] }
 pathdiff = "0.2.3"
 relative-path = { version = "1.9.3", features = ["serde"] }
-log = "0.4.22"
+tracing = { version = "0.1.41", features = ["attributes"] }
 thiserror = "2.0.7"
 tokio = { version = "1.42.0", features = ["process"] }
 tokio-util = "0.7.13"
@@ -81,9 +81,9 @@ colored = { version = "2.1.0", optional = true }
 toml_edit = { version = "0.22.22", optional = true }
 clap = { version = "4.5.23", features = ["derive"], optional = true }
 dirs = { version = "5.0.1", optional = true }
-pretty_env_logger = { version = "0.5.0", optional = true }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"], optional = true }
 indicatif = { version = "0.17.9", optional = true }
-indicatif-log-bridge = { version = "0.2.3", optional = true }
+tracing-indicatif = { version = "0.3.8", optional = true }
 inquire = { version = "0.7.5", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]

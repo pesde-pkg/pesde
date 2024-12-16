@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
+    fmt::Debug,
     future::Future,
     path::{Path, PathBuf},
 };
@@ -17,6 +18,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     pin,
 };
+use tracing::instrument;
 
 /// A file system entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,7 +127,8 @@ pub(crate) async fn store_in_cas<
 
 impl PackageFS {
     /// Write the package to the given destination
-    pub async fn write_to<P: AsRef<Path>, Q: AsRef<Path>>(
+    #[instrument(skip(self), level = "debug")]
+    pub async fn write_to<P: AsRef<Path> + Debug, Q: AsRef<Path> + Debug>(
         &self,
         destination: P,
         cas_path: Q,
@@ -211,7 +214,8 @@ impl PackageFS {
     }
 
     /// Returns the contents of the file with the given hash
-    pub async fn read_file<P: AsRef<Path>, H: AsRef<str>>(
+    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
+    pub async fn read_file<P: AsRef<Path> + Debug, H: AsRef<str> + Debug>(
         &self,
         file_hash: H,
         cas_path: P,
