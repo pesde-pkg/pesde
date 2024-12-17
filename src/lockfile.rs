@@ -32,6 +32,9 @@ pub struct DependencyGraphNode {
     pub dependencies: BTreeMap<PackageNames, (VersionId, String)>,
     /// The resolved (transformed, for example Peer -> Standard) type of the dependency
     pub resolved_ty: DependencyType,
+    /// Whether the resolved type should be Peer if this isn't depended on
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_peer: bool,
     /// The package reference
     pub pkg_ref: PackageRefs,
 }

@@ -179,7 +179,7 @@ impl Project {
             let depth = path.len() - 1;
 
             tracing::debug!(
-                "{}resolving {specifier} from {}",
+                "{}resolving {specifier} ({ty:?}) from {}",
                 "\t".repeat(depth),
                 path.join(">")
             );
@@ -304,10 +304,12 @@ impl Project {
                     );
                 }
 
-                if already_resolved.resolved_ty == DependencyType::Peer
-                    && resolved_ty == DependencyType::Standard
-                {
+                if already_resolved.resolved_ty == DependencyType::Peer {
                     already_resolved.resolved_ty = resolved_ty;
+                }
+
+                if ty == DependencyType::Peer && depth == 0 {
+                    already_resolved.is_peer = true;
                 }
 
                 if already_resolved.direct.is_none() && depth == 0 {
@@ -326,6 +328,11 @@ impl Project {
                 pkg_ref: pkg_ref.clone(),
                 dependencies: Default::default(),
                 resolved_ty,
+                is_peer: if depth == 0 {
+                    false
+                } else {
+                    ty == DependencyType::Peer
+                },
             };
             insert_node(
                 &mut graph,
@@ -388,8 +395,12 @@ impl Project {
             }
         }
 
-        for (name, versions) in &graph {
+        for (name, versions) in &mut graph {
             for (version_id, node) in versions {
+                if node.is_peer && node.direct.is_none() {
+                    node.resolved_ty = DependencyType::Peer;
+                }
+
                 if node.resolved_ty == DependencyType::Peer {
                     tracing::warn!("peer dependency {name}@{version_id} was not resolved");
                 }
