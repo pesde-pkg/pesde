@@ -57,7 +57,7 @@ impl Project {
 
         // step 1. link all non-wally packages (and their dependencies) temporarily without types
         // we do this separately to allow the required tools for the scripts to be installed
-        self.link(graph, &manifest, &Arc::new(Default::default()))
+        self.link(graph, &manifest, &Arc::new(Default::default()), false)
             .await?;
 
         if !with_types {
@@ -156,7 +156,8 @@ impl Project {
             .collect::<HashMap<_, _>>();
 
         // step 3. link all packages (and their dependencies), this time with types
-        self.link(graph, &manifest, &Arc::new(package_types)).await
+        self.link(graph, &manifest, &Arc::new(package_types), true)
+            .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -245,6 +246,7 @@ impl Project {
         graph: &DownloadedGraph,
         manifest: &Arc<Manifest>,
         package_types: &Arc<HashMap<&PackageNames, HashMap<&VersionId, Vec<String>>>>,
+        is_complete: bool,
     ) -> Result<(), errors::LinkingError> {
         try_join_all(graph.iter().flat_map(|(name, versions)| {
             versions.iter().map(|(version_id, node)| {
@@ -299,10 +301,14 @@ impl Project {
                             .get(dependency_name)
                             .and_then(|v| v.get(dependency_version_id))
                         else {
-                            return Err(errors::LinkingError::DependencyNotFound(
-                                dependency_name.to_string(),
-                                dependency_version_id.to_string(),
-                            ));
+                            if is_complete {
+                                return Err(errors::LinkingError::DependencyNotFound(
+                                    format!("{dependency_name}@{dependency_version_id}"),
+                                    format!("{name}@{version_id}"),
+                                ));
+                            }
+
+                            continue;
                         };
 
                         let base_folder = create_and_canonicalize(
@@ -371,7 +377,7 @@ pub mod errors {
         Io(#[from] std::io::Error),
 
         /// A dependency was not found
-        #[error("dependency not found: {0}@{1}")]
+        #[error("dependency `{0}` of `{1}` not found")]
         DependencyNotFound(String, String),
 
         /// The library file was not found

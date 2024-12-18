@@ -11,7 +11,7 @@ use std::{
     sync::{Arc, Mutex as StdMutex},
 };
 use tokio::sync::Mutex;
-use tracing::instrument;
+use tracing::{instrument, Instrument};
 
 /// Filters a graph to only include production dependencies, if `prod` is `true`
 pub fn filter_graph(graph: &DownloadedGraph, prod: bool) -> DownloadedGraph {
@@ -85,6 +85,7 @@ impl Project {
                 // step 1. download pesde dependencies
                 let (mut pesde_rx, pesde_graph) = this
                     .download_graph(&graph, &mut refreshed_sources, &reqwest, prod, write, false)
+                    .instrument(tracing::debug_span!("download (pesde)"))
                     .await?;
 
                 while let Some(result) = pesde_rx.recv().await {
@@ -96,6 +97,7 @@ impl Project {
                 // step 2. link pesde dependencies. do so without types
                 if write {
                     this.link_dependencies(&filter_graph(&pesde_graph, prod), false)
+                        .instrument(tracing::debug_span!("link (pesde)"))
                         .await?;
                 }
 
@@ -110,6 +112,7 @@ impl Project {
                 // step 3. download wally dependencies
                 let (mut wally_rx, wally_graph) = this
                     .download_graph(&graph, &mut refreshed_sources, &reqwest, prod, write, true)
+                    .instrument(tracing::debug_span!("download (wally)"))
                     .await?;
 
                 while let Some(result) = wally_rx.recv().await {
@@ -139,6 +142,7 @@ impl Project {
                 // step 4. link ALL dependencies. do so with types
                 if write {
                     this.link_dependencies(&filter_graph(&graph, prod), true)
+                        .instrument(tracing::debug_span!("link (all)"))
                         .await?;
                 }
 

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Change dependency types for removed peer dependencies by @daimond113
 - Resolve version to correct tag for `pesde_version` field by @daimond113
+- Do not error on missing dependencies until full linking by @daimond113
 
 ### Changed
 - Switch from `log` to `tracing` for logging by @daimond113
