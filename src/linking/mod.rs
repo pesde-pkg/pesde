@@ -20,7 +20,7 @@ use std::{
     sync::Arc,
 };
 use tokio::task::spawn_blocking;
-use tracing::instrument;
+use tracing::{instrument, Instrument};
 
 /// Generates linking modules for a project
 pub mod generator;
@@ -112,7 +112,7 @@ impl Project {
                             }
                         };
 
-                        tracing::debug!("{name}@{version_id} has {} exported types", types.len());
+                        tracing::debug!("contains {} exported types", types.len());
 
                         types
                     } else {
@@ -145,7 +145,7 @@ impl Project {
                     }
 
                     Ok((version_id, types))
-                }))
+                }.instrument(tracing::debug_span!("extract types", name = name.to_string(), version_id = version_id.to_string()))))
                     .await?
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
@@ -252,6 +252,12 @@ impl Project {
                 let manifest = manifest.clone();
                 let package_types = package_types.clone();
 
+                let span = tracing::debug_span!(
+                    "link",
+                    name = name.to_string(),
+                    version_id = version_id.to_string()
+                );
+
                 async move {
                     let (node_container_folder, node_packages_folder) = {
                         let base_folder = create_and_canonicalize(
@@ -340,6 +346,7 @@ impl Project {
 
                     Ok(())
                 }
+                .instrument(span)
             })
         }))
         .await

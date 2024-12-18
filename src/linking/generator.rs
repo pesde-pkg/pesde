@@ -117,18 +117,10 @@ pub fn get_lib_require_path(
 ) -> Result<String, errors::GetLibRequirePath> {
     let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
     let path = if use_new_structure {
-        tracing::debug!(
-            "using new structure for require path with {:?} of {}",
-            lib_file,
-            container_dir.display()
-        );
+        tracing::debug!("using new structure for require path with {lib_file:?}");
         lib_file.to_path(path)
     } else {
-        tracing::debug!(
-            "using old structure for require path with {:?} of {}",
-            lib_file,
-            container_dir.display()
-        );
+        tracing::debug!("using old structure for require path with {lib_file:?}");
         path
     };
 

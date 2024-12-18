@@ -151,6 +151,7 @@ async fn run() -> anyhow::Result<()> {
         .with(tracing_env_filter)
         .with(
             tracing_subscriber::fmt::layer()
+                .pretty()
                 .with_writer(indicatif_layer.get_stderr_writer())
                 .with_timer(uptime()),
         )

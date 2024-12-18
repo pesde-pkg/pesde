@@ -13,7 +13,7 @@ use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
 };
-use tracing::instrument;
+use tracing::{instrument, Instrument};
 
 type MultithreadedGraph = Arc<Mutex<DownloadedGraph>>;
 
@@ -71,76 +71,87 @@ impl Project {
                 let version_id = version_id.clone();
                 let node = node.clone();
 
+                let span = tracing::debug_span!(
+                    "download",
+                    name = name.to_string(),
+                    version_id = version_id.to_string()
+                );
+
                 let project = project.clone();
                 let reqwest = reqwest.clone();
                 let downloaded_graph = downloaded_graph.clone();
 
                 let package_dir = self.package_dir().to_path_buf();
 
-                tokio::spawn(async move {
-                    let source = node.pkg_ref.source();
+                tokio::spawn(
+                    async move {
+                        let source = node.pkg_ref.source();
 
-                    let container_folder = node.container_folder(
-                        &package_dir
-                            .join(manifest_target_kind.packages_folder(version_id.target()))
-                            .join(PACKAGES_CONTAINER_NAME),
-                        &name,
-                        version_id.version(),
-                    );
+                        let container_folder = node.container_folder(
+                            &package_dir
+                                .join(manifest_target_kind.packages_folder(version_id.target()))
+                                .join(PACKAGES_CONTAINER_NAME),
+                            &name,
+                            version_id.version(),
+                        );
 
-                    match fs::create_dir_all(&container_folder).await {
-                        Ok(_) => {}
-                        Err(e) => {
-                            tx.send(Err(errors::DownloadGraphError::Io(e)))
-                                .await
-                                .unwrap();
-                            return;
-                        }
-                    }
-
-                    let project = project.clone();
-
-                    tracing::debug!("downloading {name}@{version_id}");
-
-                    let (fs, target) =
-                        match source.download(&node.pkg_ref, &project, &reqwest).await {
-                            Ok(target) => target,
+                        match fs::create_dir_all(&container_folder).await {
+                            Ok(_) => {}
                             Err(e) => {
-                                tx.send(Err(Box::new(e).into())).await.unwrap();
+                                tx.send(Err(errors::DownloadGraphError::Io(e)))
+                                    .await
+                                    .unwrap();
                                 return;
                             }
-                        };
+                        }
 
-                    tracing::debug!("downloaded {name}@{version_id}");
+                        let project = project.clone();
 
-                    if write {
-                        if !prod || node.resolved_ty != DependencyType::Dev {
-                            match fs.write_to(container_folder, project.cas_dir(), true).await {
-                                Ok(_) => {}
+                        tracing::debug!("downloading");
+
+                        let (fs, target) =
+                            match source.download(&node.pkg_ref, &project, &reqwest).await {
+                                Ok(target) => target,
                                 Err(e) => {
-                                    tx.send(Err(errors::DownloadGraphError::WriteFailed(e)))
-                                        .await
-                                        .unwrap();
+                                    tx.send(Err(Box::new(e).into())).await.unwrap();
                                     return;
                                 }
                             };
-                        } else {
-                            tracing::debug!("skipping writing {name}@{version_id} to disk, dev dependency in prod mode");
+
+                        tracing::debug!("downloaded");
+
+                        if write {
+                            if !prod || node.resolved_ty != DependencyType::Dev {
+                                match fs.write_to(container_folder, project.cas_dir(), true).await {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        tx.send(Err(errors::DownloadGraphError::WriteFailed(e)))
+                                            .await
+                                            .unwrap();
+                                        return;
+                                    }
+                                };
+                            } else {
+                                tracing::debug!(
+                                    "skipping write to disk, dev dependency in prod mode"
+                                );
+                            }
                         }
+
+                        let display_name = format!("{name}@{version_id}");
+
+                        {
+                            let mut downloaded_graph = downloaded_graph.lock().unwrap();
+                            downloaded_graph
+                                .entry(name)
+                                .or_default()
+                                .insert(version_id, DownloadedDependencyGraphNode { node, target });
+                        }
+
+                        tx.send(Ok(display_name)).await.unwrap();
                     }
-
-                    let display_name = format!("{name}@{version_id}");
-
-                    {
-                        let mut downloaded_graph = downloaded_graph.lock().unwrap();
-                        downloaded_graph
-                            .entry(name)
-                            .or_default()
-                            .insert(version_id, DownloadedDependencyGraphNode { node, target });
-                    }
-
-                    tx.send(Ok(display_name)).await.unwrap();
-                });
+                    .instrument(span),
+                );
             }
         }
 
