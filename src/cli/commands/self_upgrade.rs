@@ -1,8 +1,8 @@
 use crate::cli::{
     config::read_config,
     version::{
-        current_version, get_latest_remote_version, get_or_download_version, no_build_metadata,
-        update_bin_exe,
+        current_version, get_or_download_version, get_remote_version, no_build_metadata,
+        update_bin_exe, TagInfo, VersionType,
     },
 };
 use anyhow::Context;
@@ -25,7 +25,7 @@ impl SelfUpgradeCommand {
                 .context("no cached version found")?
                 .1
         } else {
-            get_latest_remote_version(&reqwest).await?
+            get_remote_version(&reqwest, VersionType::Latest).await?
         };
 
         let latest_version_no_metadata = no_build_metadata(&latest_version);
@@ -46,12 +46,12 @@ impl SelfUpgradeCommand {
             return Ok(());
         }
 
-        let path = get_or_download_version(&reqwest, &latest_version, true)
+        let path = get_or_download_version(&reqwest, &TagInfo::Complete(latest_version), true)
             .await?
             .unwrap();
         update_bin_exe(&path).await?;
 
-        println!("upgraded to version {display_latest_version}!",);
+        println!("upgraded to version {display_latest_version}!");
 
         Ok(())
     }

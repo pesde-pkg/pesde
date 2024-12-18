@@ -47,11 +47,20 @@ fn get_repo() -> (String, String) {
     (owner, repo)
 }
 
+#[derive(Debug)]
+pub enum VersionType {
+    Latest,
+    Specific(Version),
+}
+
 #[instrument(skip(reqwest), level = "trace")]
-pub async fn get_latest_remote_version(reqwest: &reqwest::Client) -> anyhow::Result<Version> {
+pub async fn get_remote_version(
+    reqwest: &reqwest::Client,
+    ty: VersionType,
+) -> anyhow::Result<Version> {
     let (owner, repo) = get_repo();
 
-    let releases = reqwest
+    let mut releases = reqwest
         .get(format!(
             "https://api.github.com/repos/{owner}/{repo}/releases",
         ))
@@ -62,13 +71,17 @@ pub async fn get_latest_remote_version(reqwest: &reqwest::Client) -> anyhow::Res
         .context("failed to get GitHub API response")?
         .json::<Vec<Release>>()
         .await
-        .context("failed to parse GitHub API response")?;
-
-    releases
+        .context("failed to parse GitHub API response")?
         .into_iter()
-        .filter_map(|release| Version::parse(release.tag_name.trim_start_matches('v')).ok())
-        .max()
-        .context("failed to find latest version")
+        .filter_map(|release| Version::parse(release.tag_name.trim_start_matches('v')).ok());
+
+    match ty {
+        VersionType::Latest => releases.max(),
+        VersionType::Specific(version) => {
+            releases.find(|v| no_build_metadata(v) == no_build_metadata(&version))
+        }
+    }
+    .context("failed to find latest version")
 }
 
 pub fn no_build_metadata(version: &Version) -> Version {
@@ -91,7 +104,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
         version
     } else {
         tracing::debug!("checking for updates");
-        let version = get_latest_remote_version(reqwest).await?;
+        let version = get_remote_version(reqwest, VersionType::Latest).await?;
 
         write_config(&CliConfig {
             last_checked_updates: Some((chrono::Utc::now(), version.clone())),
@@ -229,10 +242,16 @@ pub async fn download_github_release<W: AsyncWrite + Unpin>(
         .map(|_| ())
 }
 
+#[derive(Debug)]
+pub enum TagInfo {
+    Complete(Version),
+    Incomplete(Version),
+}
+
 #[instrument(skip(reqwest), level = "trace")]
 pub async fn get_or_download_version(
     reqwest: &reqwest::Client,
-    version: &Version,
+    tag: &TagInfo,
     always_give_path: bool,
 ) -> anyhow::Result<Option<PathBuf>> {
     let path = home_dir()?.join("versions");
@@ -240,7 +259,17 @@ pub async fn get_or_download_version(
         .await
         .context("failed to create versions directory")?;
 
-    let path = path.join(format!("{version}{}", std::env::consts::EXE_SUFFIX));
+    let version = match tag {
+        TagInfo::Complete(version) => version,
+        // don't fetch the version since it could be cached
+        TagInfo::Incomplete(version) => version,
+    };
+
+    let path = path.join(format!(
+        "{}{}",
+        no_build_metadata(version),
+        std::env::consts::EXE_SUFFIX
+    ));
 
     let is_requested_version = !always_give_path && *version == current_version();
 
@@ -260,10 +289,19 @@ pub async fn get_or_download_version(
             .await
             .context("failed to copy current executable to version directory")?;
     } else {
+        let version = match tag {
+            TagInfo::Complete(version) => version.clone(),
+            TagInfo::Incomplete(version) => {
+                get_remote_version(reqwest, VersionType::Specific(version.clone()))
+                    .await
+                    .context("failed to get remote version")?
+            }
+        };
+
         tracing::debug!("downloading version");
         download_github_release(
             reqwest,
-            version,
+            &version,
             fs::File::create(&path)
                 .await
                 .context("failed to create version file")?,

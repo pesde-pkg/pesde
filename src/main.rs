@@ -1,5 +1,5 @@
 #[cfg(feature = "version-management")]
-use crate::cli::version::{check_for_updates, get_or_download_version};
+use crate::cli::version::{check_for_updates, get_or_download_version, TagInfo};
 use crate::cli::{auth::get_tokens, display_err, home_dir, HOME_DIR};
 use anyhow::Context;
 use clap::{builder::styling::AnsiColor, Parser};
@@ -281,7 +281,7 @@ async fn run() -> anyhow::Result<()> {
             .and_then(|manifest| manifest.pesde_version);
 
         let exe_path = if let Some(version) = target_version {
-            get_or_download_version(&reqwest, &version, false).await?
+            get_or_download_version(&reqwest, &TagInfo::Incomplete(version), false).await?
         } else {
             None
         };
