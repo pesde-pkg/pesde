@@ -105,7 +105,7 @@ pub async fn make_search(
 
     while let Some((pkg_name, mut file)) = stream.next().await {
         let Some((_, latest_entry)) = file.pop_last() else {
-            log::warn!("no versions found for {pkg_name}");
+            tracing::error!("no versions found for {pkg_name}");
             continue;
         };
 

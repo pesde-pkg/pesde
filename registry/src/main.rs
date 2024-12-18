@@ -6,19 +6,22 @@ use crate::{
 use actix_cors::Cors;
 use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::{
-    middleware::{from_fn, Compress, Logger, NormalizePath, TrailingSlash},
+    middleware::{from_fn, Compress, NormalizePath, TrailingSlash},
     rt::System,
     web,
     web::PayloadConfig,
     App, HttpServer,
 };
 use fs_err::tokio as fs;
-use log::info;
 use pesde::{
     source::{pesde::PesdePackageSource, traits::PackageSource},
     AuthConfig, Project,
 };
 use std::{env::current_dir, path::PathBuf};
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{
+    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+};
 
 mod auth;
 mod endpoints;
@@ -116,12 +119,12 @@ async fn run() -> std::io::Result<()> {
     let app_data = web::Data::new(AppState {
         storage: {
             let storage = get_storage_from_env();
-            info!("storage: {storage}");
+            tracing::info!("storage: {storage}");
             storage
         },
         auth: {
             let auth = get_auth_from_env(&config);
-            info!("auth: {auth}");
+            tracing::info!("auth: {auth}");
             auth
         },
         source: tokio::sync::Mutex::new(source),
@@ -140,14 +143,12 @@ async fn run() -> std::io::Result<()> {
         .finish()
         .unwrap();
 
-    info!("listening on {address}:{port}");
-
     HttpServer::new(move || {
         App::new()
             .wrap(sentry_actix::Sentry::with_transaction())
             .wrap(NormalizePath::new(TrailingSlash::Trim))
             .wrap(Cors::permissive())
-            .wrap(Logger::default())
+            .wrap(tracing_actix_web::TracingLogger::default())
             .wrap(Compress::default())
             .app_data(app_data.clone())
             .route(
@@ -200,12 +201,25 @@ async fn run() -> std::io::Result<()> {
 fn main() -> std::io::Result<()> {
     let _ = dotenvy::dotenv();
 
-    let mut log_builder = pretty_env_logger::formatted_builder();
-    log_builder.parse_env(pretty_env_logger::env_logger::Env::default().default_filter_or("info"));
+    let tracing_env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy()
+        .add_directive("reqwest=info".parse().unwrap())
+        .add_directive("rustls=info".parse().unwrap())
+        .add_directive("tokio_util=info".parse().unwrap())
+        .add_directive("goblin=info".parse().unwrap())
+        .add_directive("tower=info".parse().unwrap())
+        .add_directive("hyper=info".parse().unwrap())
+        .add_directive("h2=info".parse().unwrap());
 
-    let logger = sentry::integrations::log::SentryLogger::with_dest(log_builder.build());
-    log::set_boxed_logger(Box::new(logger)).unwrap();
-    log::set_max_level(log::LevelFilter::Info);
+    tracing_subscriber::registry()
+        .with(tracing_env_filter)
+        .with(
+            tracing_subscriber::fmt::layer()
+                .compact()
+                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE),
+        )
+        .init();
 
     let guard = sentry::init(sentry::ClientOptions {
         release: sentry::release_name!(),
@@ -218,9 +232,9 @@ fn main() -> std::io::Result<()> {
 
     if guard.is_enabled() {
         std::env::set_var("RUST_BACKTRACE", "full");
-        info!("sentry initialized");
+        tracing::info!("sentry initialized");
     } else {
-        info!("sentry **NOT** initialized");
+        tracing::info!("sentry **NOT** initialized");
     }
 
     System::new().block_on(run())

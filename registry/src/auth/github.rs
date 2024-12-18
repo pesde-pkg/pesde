@@ -45,7 +45,7 @@ impl AuthImpl for GitHubAuth {
                     return Ok(None);
                 }
                 Err(_) => {
-                    log::error!(
+                    tracing::error!(
                         "failed to get user: {}",
                         response.into_error().await.unwrap_err()
                     );
@@ -53,7 +53,7 @@ impl AuthImpl for GitHubAuth {
                 }
             },
             Err(e) => {
-                log::error!("failed to get user: {e}");
+                tracing::error!("failed to get user: {e}");
                 return Ok(None);
             }
         };
@@ -61,7 +61,7 @@ impl AuthImpl for GitHubAuth {
         let user_id = match response.json::<UserResponse>().await {
             Ok(resp) => resp.user.id,
             Err(e) => {
-                log::error!("failed to get user: {e}");
+                tracing::error!("failed to get user: {e}");
                 return Ok(None);
             }
         };

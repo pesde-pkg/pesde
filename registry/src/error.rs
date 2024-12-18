@@ -1,5 +1,4 @@
 use actix_web::{body::BoxBody, HttpResponse, ResponseError};
-use log::error;
 use pesde::source::git_index::errors::{ReadFile, RefreshError, TreeError};
 use serde::Serialize;
 use thiserror::Error;
@@ -67,7 +66,7 @@ impl ResponseError for Error {
                 error: format!("archive is invalid: {e}"),
             }),
             e => {
-                log::error!("unhandled error: {e:?}");
+                tracing::error!("unhandled error: {e:?}");
                 HttpResponse::InternalServerError().finish()
             }
         }
