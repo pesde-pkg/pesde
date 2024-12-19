@@ -219,6 +219,7 @@ fn main() -> std::io::Result<()> {
                 .compact()
                 .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE),
         )
+        .with(sentry::integrations::tracing::layer())
         .init();
 
     let guard = sentry::init(sentry::ClientOptions {
