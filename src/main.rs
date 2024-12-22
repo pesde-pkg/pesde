@@ -11,10 +11,10 @@ use std::{
 };
 use tempfile::NamedTempFile;
 use tracing::instrument;
-use tracing_indicatif::IndicatifLayer;
+use tracing_indicatif::{filter::IndicatifFilter, IndicatifLayer};
 use tracing_subscriber::{
     filter::LevelFilter, fmt::time::uptime, layer::SubscriberExt, util::SubscriberInitExt,
-    EnvFilter,
+    EnvFilter, Layer,
 };
 
 mod cli;
@@ -134,7 +134,7 @@ async fn run() -> anyhow::Result<()> {
         std::process::exit(status.code().unwrap());
     }
 
-    let indicatif_layer = IndicatifLayer::new();
+    let indicatif_layer = IndicatifLayer::new().with_filter(IndicatifFilter::new(false));
 
     let tracing_env_filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
@@ -152,7 +152,7 @@ async fn run() -> anyhow::Result<()> {
         .with(
             tracing_subscriber::fmt::layer()
                 .pretty()
-                .with_writer(indicatif_layer.get_stderr_writer())
+                .with_writer(indicatif_layer.inner().get_stderr_writer())
                 .with_timer(uptime()),
         )
         .with(indicatif_layer)

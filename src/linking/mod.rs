@@ -254,7 +254,7 @@ impl Project {
                 let manifest = manifest.clone();
                 let package_types = package_types.clone();
 
-                let span = tracing::debug_span!(
+                let span = tracing::info_span!(
                     "link",
                     name = name.to_string(),
                     version_id = version_id.to_string()

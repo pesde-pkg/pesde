@@ -71,7 +71,7 @@ impl Project {
                 let version_id = version_id.clone();
                 let node = node.clone();
 
-                let span = tracing::debug_span!(
+                let span = tracing::info_span!(
                     "download",
                     name = name.to_string(),
                     version_id = version_id.to_string()

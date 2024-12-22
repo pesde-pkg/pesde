@@ -102,7 +102,7 @@ impl Project {
                         continue;
                     };
 
-                    let span = tracing::debug_span!("resolve from old graph", alias);
+                    let span = tracing::info_span!("resolve from old graph", alias);
                     let _guard = span.enter();
 
                     tracing::debug!("resolved {}@{} from old dependency graph", name, version);
@@ -131,7 +131,7 @@ impl Project {
 
                     while let Some((dep_name, dep_version, path)) = queue.pop_front() {
                         let inner_span =
-                            tracing::debug_span!("resolve dependency", path = path.join(">"));
+                            tracing::info_span!("resolve dependency", path = path.join(">"));
                         let _inner_guard = inner_span.enter();
                         if let Some(dep_node) = previous_graph
                             .get(dep_name)
@@ -399,7 +399,7 @@ impl Project {
 
                 Ok(())
             }
-                .instrument(tracing::debug_span!("resolve new/changed", path = path.join(">")))
+                .instrument(tracing::info_span!("resolve new/changed", path = path.join(">")))
                 .await?;
         }
 
