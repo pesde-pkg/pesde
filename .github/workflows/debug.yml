@@ -43,7 +43,7 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
     - name: Compile in debug mode
-      run: cargo build --bins --all-features --exclude-features version-management --target ${{ matrix.target }} --locked
+      run: cargo build --bins --no-default-features --features bin,patches,wally-compat --target ${{ matrix.target }} --locked
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
