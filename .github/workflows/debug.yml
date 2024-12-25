@@ -6,6 +6,7 @@ on:
 
 jobs:
   get-version:
+    name: Get build version
     runs-on: ubuntu-latest
     outputs:
       version: v${{ steps.get_version.outputs.value }}+rev.g${{ steps.trim_sha.outputs.trimmed_sha }}
