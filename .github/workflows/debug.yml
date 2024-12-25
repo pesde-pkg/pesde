@@ -24,7 +24,7 @@ jobs:
         id: trim_sha
         run: |
           commit_sha=${{ github.sha }}
-          echo "trimmed_sha=${commit_sha:0:7}" | tee $GITHUB_ENV
+          echo "trimmed_sha=${commit_sha:0:7}" | tee $GITHUB_OUTPUT
   build:
     strategy:
       matrix:
