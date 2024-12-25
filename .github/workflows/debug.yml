@@ -1,0 +1,79 @@
+name: Debug
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  get-version:
+    name: Get build version
+    runs-on: ubuntu-latest
+    outputs:
+      version: v${{ steps.get_version.outputs.value }}+rev.g${{ steps.trim_sha.outputs.trimmed_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+    
+      - name: Get package version
+        uses: SebRollen/toml-action@v1.2.0
+        id: get_version
+        with:
+          file: Cargo.toml
+          field: package.version
+
+      - name: Trim commit SHA
+        id: trim_sha
+        run: |
+          commit_sha=${{ github.sha }}
+          echo "trimmed_sha=${commit_sha:0:7}" | tee $GITHUB_OUTPUT
+  build:
+    strategy:
+      matrix:
+        include:
+          - job-name: windows-x86_64
+            target: x86_64-pc-windows-msvc
+            runs-on: windows-latest
+            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-windows-x86_64
+
+          - job-name: linux-x86_64
+            target: x86_64-unknown-linux-gnu
+            runs-on: ubuntu-latest
+            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-linux-x86_64
+
+          - job-name: macos-x86_64
+            target: x86_64-apple-darwin
+            runs-on: macos-13
+            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-macos-x86_64
+
+          - job-name: macos-aarch64
+            target: aarch64-apple-darwin
+            runs-on: macos-latest
+            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-macos-aarch64
+
+    name: Build for ${{ matrix.job-name }}
+    runs-on: ${{ matrix.runs-on }}
+    needs: get-version
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Linux build dependencies
+      if: ${{ matrix.runs-on == 'ubuntu-latest' }}
+      run: |
+        sudo apt-get update
+        sudo apt-get install libdbus-1-dev pkg-config
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Compile in debug mode
+      run: cargo build --bins --no-default-features --features bin,patches,wally-compat --target ${{ matrix.target }} --locked
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact-name }}
+        if-no-files-found: error
+        path: |
+          target/${{ matrix.target }}/debug/pesde.exe
+          target/${{ matrix.target }}/debug/pesde
