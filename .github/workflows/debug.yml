@@ -19,32 +19,33 @@ jobs:
             runs-on: ubuntu-latest
             artifact-name: pesde-debug-${{ github.sha }}-linux-x86_64
 
-          - job-name: Linux aarch64
-            target: aarch64-unknown-linux-gnu
-            runs-on: ubuntu-latest
-            artifact-name: pesde-debug-${{ github.sha }}-linux-aarch64
-
           - job-name: macOS x86_64
             target: x86_64-apple-darwin
-            runs-on: macos-latest
+            runs-on: macos-13
             artifact-name: pesde-debug-${{ github.sha }}-macos-x86_64
 
           - job-name: macOS aarch64
             target: aarch64-apple-darwin
             runs-on: macos-latest
             artifact-name: pesde-debug-${{ github.sha }}-macos-aarch64
+
     name: Build for ${{ matrix.job-name }}
     runs-on: ${{ matrix.runs-on }}
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+    - name: Install Linux build dependencies
+      if: ${{ matrix.runs-on == 'ubuntu-latest' }}
+      run: |
+        sudo apt-get update
+        sudo apt-get install libdbus-1-dev pkg-config
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
     - name: Compile in debug mode
-      run: cargo build --target ${{ matrix.target }}
+      run: cargo build --bins --all-features --exclude-features version-management --target ${{ matrix.target }} --locked
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact-name }}
         path: target/${{ matrix.target }}/debug/pesde*
