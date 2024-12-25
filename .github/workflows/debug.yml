@@ -10,7 +10,9 @@ jobs:
     steps:
       - name: Trim commit SHA
         id: trim_sha
-        run: echo "trimmed_sha=${{ github.sha:0:7 }}" >> $GITHUB_ENV
+        run: |
+          commit_sha=${{ github.sha }}
+          echo "trimmed_sha=${commit_sha:0:7}" >> $GITHUB_ENV
   build:
     strategy:
       matrix:
