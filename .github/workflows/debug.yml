@@ -10,6 +10,9 @@ jobs:
     outputs:
       version: v${{ steps.get_version.outputs.value }}+rev.g${{ steps.trim_sha.outputs.trimmed_sha }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+    
       - name: Get package version
         uses: SebRollen/toml-action@v1.2.0
         id: get_version
