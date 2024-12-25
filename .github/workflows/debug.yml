@@ -5,6 +5,12 @@ on:
   pull_request:
 
 jobs:
+  get-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trim commit SHA
+        id: trim_sha
+        run: echo "trimmed_sha='r$(echo ${{ github.sha }} | cut -c1-7)'" >> $GITHUB_ENV
   build:
     strategy:
       matrix:
@@ -12,26 +18,26 @@ jobs:
           - job-name: Windows x86_64
             target: x86_64-pc-windows-msvc
             runs-on: windows-latest
-            artifact-name: pesde-debug-${{ github.sha }}-windows-x86_64
+            artifact-name: pesde-debug-${{ needs.get-version.outputs.trimmed_sha }}-windows-x86_64
 
           - job-name: Linux x86_64
             target: x86_64-unknown-linux-gnu
             runs-on: ubuntu-latest
-            artifact-name: pesde-debug-${{ github.sha }}-linux-x86_64
+            artifact-name: pesde-debug-${{ needs.get-version.outputs.trimmed_sha }}-linux-x86_64
 
           - job-name: macOS x86_64
             target: x86_64-apple-darwin
             runs-on: macos-13
-            artifact-name: pesde-debug-${{ github.sha }}-macos-x86_64
+            artifact-name: pesde-debug-${{ needs.get-version.outputs.trimmed_sha }}-macos-x86_64
 
           - job-name: macOS aarch64
             target: aarch64-apple-darwin
             runs-on: macos-latest
-            artifact-name: pesde-debug-${{ github.sha }}-macos-aarch64
+            artifact-name: pesde-debug-${{ needs.get-version.outputs.trimmed_sha }}-macos-aarch64
 
     name: Build for ${{ matrix.job-name }}
     runs-on: ${{ matrix.runs-on }}
-
+    needs: get-version
     steps:
     - name: Checkout
       uses: actions/checkout@v4
