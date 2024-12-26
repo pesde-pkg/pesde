@@ -4,12 +4,14 @@ use crate::{
         target::{Target, TargetKind},
         DependencyType,
     },
+    reporters::DownloadProgressReporter,
     source::{DependencySpecifiers, PackageFS, PackageSources, ResolveResult},
     Project,
 };
 use std::{
     collections::{BTreeMap, HashSet},
     fmt::{Debug, Display},
+    sync::Arc,
 };
 
 /// A specifier for a dependency
@@ -58,5 +60,6 @@ pub trait PackageSource: Debug {
         pkg_ref: &Self::Ref,
         project: &Project,
         reqwest: &reqwest::Client,
+        reporter: Arc<impl DownloadProgressReporter>,
     ) -> Result<(PackageFS, Target), Self::DownloadError>;
 }

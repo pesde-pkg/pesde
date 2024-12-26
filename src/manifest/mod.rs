@@ -94,7 +94,7 @@ pub struct Manifest {
 }
 
 /// A dependency type
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum DependencyType {
     /// A standard dependency

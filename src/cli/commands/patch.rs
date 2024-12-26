@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::cli::{up_to_date_lockfile, VersionedPackageName};
 use anyhow::Context;
 use clap::Args;
@@ -49,7 +51,7 @@ impl PatchCommand {
         fs::create_dir_all(&directory).await?;
 
         source
-            .download(&node.node.pkg_ref, &project, &reqwest)
+            .download(&node.node.pkg_ref, &project, &reqwest, Arc::new(()))
             .await?
             .0
             .write_to(&directory, project.cas_dir(), false)

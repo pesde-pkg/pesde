@@ -1,6 +1,7 @@
 use crate::{
     manifest::target::{Target, TargetKind},
     names::PackageNames,
+    reporters::DownloadProgressReporter,
     source::{
         fs::{store_in_cas, FSEntry, PackageFS},
         git_index::{read_file, root_tree, GitBasedSource},
@@ -202,6 +203,7 @@ impl PackageSource for WallyPackageSource {
         pkg_ref: &Self::Ref,
         project: &Project,
         reqwest: &reqwest::Client,
+        _reporter: Arc<impl DownloadProgressReporter>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let config = self.config(project).await.map_err(Box::new)?;
         let index_file = project

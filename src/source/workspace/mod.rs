@@ -1,6 +1,7 @@
 use crate::{
     manifest::target::{Target, TargetKind},
     names::PackageNames,
+    reporters::DownloadProgressReporter,
     source::{
         fs::PackageFS, specifiers::DependencySpecifiers, traits::PackageSource,
         version_id::VersionId, workspace::pkg_ref::WorkspacePackageRef, PackageSources,
@@ -11,7 +12,10 @@ use crate::{
 use futures::StreamExt;
 use relative_path::RelativePathBuf;
 use reqwest::Client;
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 use tokio::pin;
 use tracing::instrument;
 
@@ -134,6 +138,7 @@ impl PackageSource for WorkspacePackageSource {
         pkg_ref: &Self::Ref,
         project: &Project,
         _reqwest: &Client,
+        _reporter: Arc<impl DownloadProgressReporter>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let path = pkg_ref.path.to_path(project.workspace_dir.clone().unwrap());
 

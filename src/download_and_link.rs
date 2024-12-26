@@ -1,14 +1,18 @@
 use crate::{
+    download::DownloadGraphOptions,
     lockfile::{DependencyGraph, DownloadedGraph},
     manifest::DependencyType,
+    reporters::DownloadsReporter,
     source::PackageSources,
     Project,
 };
-use futures::FutureExt;
+use futures::TryStreamExt;
 use std::{
     collections::HashSet,
-    future::Future,
-    sync::{Arc, Mutex as StdMutex},
+    convert::Infallible,
+    future::{self, Future},
+    num::NonZeroUsize,
+    sync::Arc,
 };
 use tokio::sync::Mutex;
 use tracing::{instrument, Instrument};
@@ -38,118 +42,242 @@ pub fn filter_graph(graph: &DownloadedGraph, prod: bool) -> DownloadedGraph {
 pub type DownloadAndLinkReceiver =
     tokio::sync::mpsc::Receiver<Result<String, crate::download::errors::DownloadGraphError>>;
 
+/// Hooks to perform actions after certain events during download and linking.
+#[allow(unused_variables)]
+pub trait DownloadAndLinkHooks {
+    /// The error type for the hooks.
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Called after scripts have been downloaded. The `downloaded_graph`
+    /// contains all downloaded packages.
+    fn on_scripts_downloaded(
+        &self,
+        downloaded_graph: &DownloadedGraph,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        future::ready(Ok(()))
+    }
+
+    /// Called after binary dependencies have been downloaded. The
+    /// `downloaded_graph` contains all downloaded packages.
+    fn on_bins_downloaded(
+        &self,
+        downloaded_graph: &DownloadedGraph,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        future::ready(Ok(()))
+    }
+
+    /// Called after all dependencies have been downloaded. The
+    /// `downloaded_graph` contains all downloaded packages.
+    fn on_all_downloaded(
+        &self,
+        downloaded_graph: &DownloadedGraph,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        future::ready(Ok(()))
+    }
+}
+
+impl DownloadAndLinkHooks for () {
+    type Error = Infallible;
+}
+
+/// Options for downloading and linking.
+#[derive(Debug)]
+pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
+    /// The reqwest client.
+    pub reqwest: reqwest::Client,
+    /// The downloads reporter.
+    pub reporter: Option<Arc<Reporter>>,
+    /// The download and link hooks.
+    pub hooks: Option<Arc<Hooks>>,
+    /// The refreshed sources.
+    pub refreshed_sources: Arc<Mutex<HashSet<PackageSources>>>,
+    /// Whether to skip dev dependencies.
+    pub prod: bool,
+    /// Whether to write the downloaded packages to disk.
+    pub write: bool,
+    /// The max number of concurrent network requests.
+    pub network_concurrency: NonZeroUsize,
+}
+
+impl<Reporter, Hooks> DownloadAndLinkOptions<Reporter, Hooks>
+where
+    Reporter: for<'a> DownloadsReporter<'a> + Send + Sync + 'static,
+    Hooks: DownloadAndLinkHooks + Send + Sync + 'static,
+{
+    /// Creates a new download options with the given reqwest client and reporter.
+    pub fn new(reqwest: reqwest::Client) -> Self {
+        Self {
+            reqwest,
+            reporter: None,
+            hooks: None,
+            refreshed_sources: Default::default(),
+            prod: false,
+            write: true,
+            network_concurrency: NonZeroUsize::new(16).unwrap(),
+        }
+    }
+
+    /// Sets the downloads reporter.
+    pub fn reporter(mut self, reporter: impl Into<Arc<Reporter>>) -> Self {
+        self.reporter.replace(reporter.into());
+        self
+    }
+
+    /// Sets the download and link hooks.
+    pub fn hooks(mut self, hooks: impl Into<Arc<Hooks>>) -> Self {
+        self.hooks.replace(hooks.into());
+        self
+    }
+
+    /// Sets the refreshed sources.
+    pub fn refreshed_sources(
+        mut self,
+        refreshed_sources: impl Into<Arc<Mutex<HashSet<PackageSources>>>>,
+    ) -> Self {
+        self.refreshed_sources = refreshed_sources.into();
+        self
+    }
+
+    /// Sets whether to skip dev dependencies.
+    pub fn prod(mut self, prod: bool) -> Self {
+        self.prod = prod;
+        self
+    }
+
+    /// Sets whether to write the downloaded packages to disk.
+    pub fn write(mut self, write: bool) -> Self {
+        self.write = write;
+        self
+    }
+
+    /// Sets the max number of concurrent network requests.
+    pub fn network_concurrency(mut self, network_concurrency: NonZeroUsize) -> Self {
+        self.network_concurrency = network_concurrency;
+        self
+    }
+}
+
+impl Clone for DownloadAndLinkOptions {
+    fn clone(&self) -> Self {
+        Self {
+            reqwest: self.reqwest.clone(),
+            reporter: self.reporter.clone(),
+            hooks: self.hooks.clone(),
+            refreshed_sources: self.refreshed_sources.clone(),
+            prod: self.prod,
+            write: self.write,
+            network_concurrency: self.network_concurrency,
+        }
+    }
+}
+
 impl Project {
     /// Downloads a graph of dependencies and links them in the correct order
-    #[instrument(
-        skip(self, graph, refreshed_sources, reqwest, pesde_cb),
-        level = "debug"
-    )]
-    pub async fn download_and_link<
-        F: FnOnce(&Arc<DownloadedGraph>) -> R + Send + 'static,
-        R: Future<Output = Result<(), E>> + Send,
-        E: Send + Sync + 'static,
-    >(
+    #[instrument(skip_all, fields(prod = options.prod, write = options.write), level = "debug")]
+    pub async fn download_and_link<Reporter, Hooks>(
         &self,
         graph: &Arc<DependencyGraph>,
-        refreshed_sources: &Arc<Mutex<HashSet<PackageSources>>>,
-        reqwest: &reqwest::Client,
-        prod: bool,
-        write: bool,
-        pesde_cb: F,
-    ) -> Result<
-        (
-            DownloadAndLinkReceiver,
-            impl Future<Output = Result<DownloadedGraph, errors::DownloadAndLinkError<E>>>,
-        ),
-        errors::DownloadAndLinkError<E>,
-    > {
-        let (tx, rx) = tokio::sync::mpsc::channel(
-            graph
-                .iter()
-                .map(|(_, versions)| versions.len())
-                .sum::<usize>()
-                .max(1),
-        );
-        let downloaded_graph = Arc::new(StdMutex::new(DownloadedGraph::default()));
+        options: DownloadAndLinkOptions<Reporter, Hooks>,
+    ) -> Result<DownloadedGraph, errors::DownloadAndLinkError<Hooks::Error>>
+    where
+        Reporter: for<'a> DownloadsReporter<'a> + 'static,
+        Hooks: DownloadAndLinkHooks + 'static,
+    {
+        let DownloadAndLinkOptions {
+            reqwest,
+            reporter,
+            hooks,
+            refreshed_sources,
+            prod,
+            write,
+            network_concurrency,
+        } = options;
 
-        let this = self.clone();
         let graph = graph.clone();
         let reqwest = reqwest.clone();
-        let refreshed_sources = refreshed_sources.clone();
 
-        Ok((
-            rx,
-            tokio::spawn(async move {
-                let mut refreshed_sources = refreshed_sources.lock().await;
+        let mut refreshed_sources = refreshed_sources.lock().await;
+        let mut downloaded_graph = DownloadedGraph::new();
 
-                // step 1. download pesde dependencies
-                let (mut pesde_rx, pesde_graph) = this
-                    .download_graph(&graph, &mut refreshed_sources, &reqwest, prod, write, false)
-                    .instrument(tracing::debug_span!("download (pesde)"))
-                    .await?;
+        let mut download_graph_options = DownloadGraphOptions::<Reporter>::new(reqwest.clone())
+            .prod(prod)
+            .write(write)
+            .network_concurrency(network_concurrency);
 
-                while let Some(result) = pesde_rx.recv().await {
-                    tx.send(result).await.unwrap();
-                }
+        if let Some(reporter) = reporter {
+            download_graph_options = download_graph_options.reporter(reporter.clone());
+        }
 
-                let pesde_graph = Arc::into_inner(pesde_graph).unwrap().into_inner().unwrap();
+        // step 1. download pesde dependencies
+        self.download_graph(
+            &graph,
+            &mut refreshed_sources,
+            download_graph_options.clone(),
+        )
+        .instrument(tracing::debug_span!("download (pesde)"))
+        .await?
+        .try_for_each(|(downloaded_node, name, version_id)| {
+            downloaded_graph
+                .entry(name)
+                .or_default()
+                .insert(version_id, downloaded_node);
 
-                // step 2. link pesde dependencies. do so without types
-                if write {
-                    this.link_dependencies(&filter_graph(&pesde_graph, prod), false)
-                        .instrument(tracing::debug_span!("link (pesde)"))
-                        .await?;
-                }
+            future::ready(Ok(()))
+        })
+        .await?;
 
-                let pesde_graph = Arc::new(pesde_graph);
+        // step 2. link pesde dependencies. do so without types
+        if write {
+            self.link_dependencies(&filter_graph(&downloaded_graph, prod), false)
+                .instrument(tracing::debug_span!("link (pesde)"))
+                .await?;
+        }
 
-                pesde_cb(&pesde_graph)
-                    .await
-                    .map_err(errors::DownloadAndLinkError::PesdeCallback)?;
+        if let Some(ref hooks) = hooks {
+            hooks
+                .on_scripts_downloaded(&downloaded_graph)
+                .await
+                .map_err(errors::DownloadAndLinkError::Hook)?;
 
-                let pesde_graph = Arc::into_inner(pesde_graph).unwrap();
+            hooks
+                .on_bins_downloaded(&downloaded_graph)
+                .await
+                .map_err(errors::DownloadAndLinkError::Hook)?;
+        }
 
-                // step 3. download wally dependencies
-                let (mut wally_rx, wally_graph) = this
-                    .download_graph(&graph, &mut refreshed_sources, &reqwest, prod, write, true)
-                    .instrument(tracing::debug_span!("download (wally)"))
-                    .await?;
+        // step 3. download wally dependencies
+        self.download_graph(
+            &graph,
+            &mut refreshed_sources,
+            download_graph_options.clone().wally(true),
+        )
+        .instrument(tracing::debug_span!("download (wally)"))
+        .await?
+        .try_for_each(|(downloaded_node, name, version_id)| {
+            downloaded_graph
+                .entry(name)
+                .or_default()
+                .insert(version_id, downloaded_node);
 
-                while let Some(result) = wally_rx.recv().await {
-                    tx.send(result).await.unwrap();
-                }
+            future::ready(Ok(()))
+        })
+        .await?;
 
-                let wally_graph = Arc::into_inner(wally_graph).unwrap().into_inner().unwrap();
+        // step 4. link ALL dependencies. do so with types
+        if write {
+            self.link_dependencies(&filter_graph(&downloaded_graph, prod), true)
+                .instrument(tracing::debug_span!("link (all)"))
+                .await?;
+        }
 
-                {
-                    let mut downloaded_graph = downloaded_graph.lock().unwrap();
-                    downloaded_graph.extend(pesde_graph);
-                    for (name, versions) in wally_graph {
-                        for (version_id, node) in versions {
-                            downloaded_graph
-                                .entry(name.clone())
-                                .or_default()
-                                .insert(version_id, node);
-                        }
-                    }
-                }
+        if let Some(ref hooks) = hooks {
+            hooks
+                .on_all_downloaded(&downloaded_graph)
+                .await
+                .map_err(errors::DownloadAndLinkError::Hook)?;
+        }
 
-                let graph = Arc::into_inner(downloaded_graph)
-                    .unwrap()
-                    .into_inner()
-                    .unwrap();
-
-                // step 4. link ALL dependencies. do so with types
-                if write {
-                    this.link_dependencies(&filter_graph(&graph, prod), true)
-                        .instrument(tracing::debug_span!("link (all)"))
-                        .await?;
-                }
-
-                Ok(graph)
-            })
-            .map(|r| r.unwrap()),
-        ))
+        Ok(downloaded_graph)
     }
 }
 
@@ -170,7 +298,7 @@ pub mod errors {
         Linking(#[from] crate::linking::errors::LinkingError),
 
         /// An error occurred while executing the pesde callback
-        #[error("error executing pesde callback")]
-        PesdeCallback(#[source] E),
+        #[error("error executing hook")]
+        Hook(#[source] E),
     }
 }

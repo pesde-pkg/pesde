@@ -1,84 +1,42 @@
-use crate::cli::{progress_bar, run_on_workspace_members};
-use anyhow::Context;
+use crate::cli::{
+    install::{install, InstallOptions},
+    run_on_workspace_members,
+};
 use clap::Args;
-use colored::Colorize;
-use pesde::{lockfile::Lockfile, Project};
-use std::{collections::HashSet, sync::Arc};
-use tokio::sync::Mutex;
+use pesde::Project;
+use std::num::NonZeroUsize;
 
 #[derive(Debug, Args, Copy, Clone)]
-pub struct UpdateCommand {}
+pub struct UpdateCommand {
+    /// Update the dependencies but don't install them
+    #[arg(long)]
+    no_install: bool,
+
+    /// The maximum number of concurrent network requests
+    #[arg(long, default_value = "16")]
+    network_concurrency: NonZeroUsize,
+}
 
 impl UpdateCommand {
     pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
-        let mut refreshed_sources = HashSet::new();
+        let options = InstallOptions {
+            locked: false,
+            prod: false,
+            write: !self.no_install,
+            network_concurrency: self.network_concurrency,
+            use_lockfile: false,
+        };
 
-        let manifest = project
-            .deser_manifest()
-            .await
-            .context("failed to read manifest")?;
+        install(&options, &project, reqwest.clone(), true).await?;
 
-        println!(
-            "\n{}\n",
-            format!("[now updating {} {}]", manifest.name, manifest.target)
-                .bold()
-                .on_bright_black()
-        );
-
-        let graph = project
-            .dependency_graph(None, &mut refreshed_sources, false)
-            .await
-            .context("failed to build dependency graph")?;
-        let graph = Arc::new(graph);
-
-        project
-            .write_lockfile(Lockfile {
-                name: manifest.name,
-                version: manifest.version,
-                target: manifest.target.kind(),
-                overrides: manifest.overrides,
-
-                graph: {
-                    let (rx, downloaded_graph) = project
-                        .download_and_link(
-                            &graph,
-                            &Arc::new(Mutex::new(refreshed_sources)),
-                            &reqwest,
-                            false,
-                            false,
-                            |_| async { Ok::<_, std::io::Error>(()) },
-                        )
-                        .await
-                        .context("failed to download dependencies")?;
-
-                    progress_bar(
-                        graph.values().map(|versions| versions.len() as u64).sum(),
-                        rx,
-                        "📥 ".to_string(),
-                        "downloading dependencies".to_string(),
-                        "downloaded dependencies".to_string(),
-                    )
-                    .await?;
-
-                    downloaded_graph
-                        .await
-                        .context("failed to download dependencies")?
-                },
-
-                workspace: run_on_workspace_members(&project, |project| {
-                    let reqwest = reqwest.clone();
-                    async move { Box::pin(self.run(project, reqwest)).await }
-                })
-                .await?,
-            })
-            .await
-            .context("failed to write lockfile")?;
-
-        println!(
-            "\n\n{}. run `{} install` in order to install the new dependencies",
-            "✅ done".green(),
-            env!("CARGO_BIN_NAME")
-        );
+        run_on_workspace_members(&project, |project| {
+            let reqwest = reqwest.clone();
+            async move {
+                install(&options, &project, reqwest, false).await?;
+                Ok(())
+            }
+        })
+        .await?;
 
         Ok(())
     }
