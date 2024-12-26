@@ -16,7 +16,6 @@ bin = [
     "dep:tracing-subscriber",
     "reqwest/json",
     "dep:indicatif",
-
     "dep:inquire",
     "dep:toml_edit",
     "dep:colored",
@@ -100,3 +99,7 @@ opt-level = "s"
 lto = true
 incremental = true
 codegen-units = 1
+
+[profile.release.package.pesde-registry]
+# add debug symbols for Sentry stack traces
+debug = "full"
