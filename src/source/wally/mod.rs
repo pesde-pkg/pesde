@@ -18,7 +18,7 @@ use crate::{
     Project,
 };
 use fs_err::tokio as fs;
-use futures::future::try_join_all;
+use futures::{future::try_join_all, StreamExt};
 use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
@@ -29,8 +29,12 @@ use std::{
     sync::Arc,
 };
 use tempfile::tempdir;
-use tokio::{io::AsyncWriteExt, sync::Mutex, task::spawn_blocking};
-use tokio_util::compat::FuturesAsyncReadCompatExt;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::Mutex,
+    task::spawn_blocking,
+};
+use tokio_util::{compat::FuturesAsyncReadCompatExt, io::StreamReader};
 use tracing::instrument;
 
 pub(crate) mod compat_util;
@@ -203,7 +207,7 @@ impl PackageSource for WallyPackageSource {
         pkg_ref: &Self::Ref,
         project: &Project,
         reqwest: &reqwest::Client,
-        _reporter: Arc<impl DownloadProgressReporter>,
+        reporter: Arc<impl DownloadProgressReporter>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let config = self.config(project).await.map_err(Box::new)?;
         let index_file = project
@@ -252,12 +256,30 @@ impl PackageSource for WallyPackageSource {
         }
 
         let response = request.send().await?.error_for_status()?;
-        let mut bytes = response.bytes().await?;
 
-        let archive = async_zip::tokio::read::seek::ZipFileReader::with_tokio(
-            std::io::Cursor::new(&mut bytes),
-        )
-        .await?;
+        let total_len = response.content_length().unwrap_or(0);
+        reporter.report_progress(total_len, 0);
+
+        let mut bytes_downloaded = 0;
+        let bytes = response
+            .bytes_stream()
+            .inspect(|chunk| {
+                chunk.as_ref().ok().inspect(|chunk| {
+                    bytes_downloaded += chunk.len() as u64;
+                    reporter.report_progress(total_len, bytes_downloaded);
+                });
+            })
+            .map(|result| {
+                result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+            });
+
+        let mut bytes = StreamReader::new(bytes);
+        let mut buf = vec![];
+        bytes.read_to_end(&mut buf).await?;
+
+        let archive =
+            async_zip::tokio::read::seek::ZipFileReader::with_tokio(std::io::Cursor::new(&mut buf))
+                .await?;
 
         let entries = (0..archive.file().entries().len())
             .map(|index| {
@@ -329,6 +351,8 @@ impl PackageSource for WallyPackageSource {
         fs::write(&index_file, toml::to_string(&fs)?)
             .await
             .map_err(errors::DownloadError::WriteIndex)?;
+
+        reporter.report_done();
 
         Ok((fs, get_target(project, &tempdir).await?))
     }

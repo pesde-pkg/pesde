@@ -71,6 +71,7 @@ pub struct CliReporter<W = Stdout> {
     writer: Mutex<W>,
     child_style: ProgressStyle,
     child_style_with_bytes: ProgressStyle,
+    child_style_with_bytes_without_total: ProgressStyle,
     multi_progress: MultiProgress,
     root_progress: ProgressBar,
 }
@@ -86,6 +87,10 @@ impl<W> CliReporter<W> {
             child_style: ProgressStyle::with_template(&"{msg}".dimmed().to_string()).unwrap(),
             child_style_with_bytes: ProgressStyle::with_template(
                 &"{msg} {bytes}/{total_bytes}".dimmed().to_string(),
+            )
+            .unwrap(),
+            child_style_with_bytes_without_total: ProgressStyle::with_template(
+                &"{msg} {bytes}".dimmed().to_string(),
             )
             .unwrap(),
             multi_progress,
@@ -135,7 +140,15 @@ impl<W: Write + Send + Sync + 'static> DownloadProgressReporter
             progress.set_position(len);
 
             self.set_progress.call_once(|| {
-                progress.set_style(self.root_reporter.child_style_with_bytes.clone());
+                if total > 0 {
+                    progress.set_style(self.root_reporter.child_style_with_bytes.clone());
+                } else {
+                    progress.set_style(
+                        self.root_reporter
+                            .child_style_with_bytes_without_total
+                            .clone(),
+                    );
+                }
             });
         }
     }
