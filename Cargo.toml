@@ -16,7 +16,7 @@ bin = [
     "dep:tracing-subscriber",
     "reqwest/json",
     "dep:indicatif",
-    "dep:tracing-indicatif",
+
     "dep:inquire",
     "dep:toml_edit",
     "dep:colored",
@@ -83,7 +83,6 @@ clap = { version = "4.5.23", features = ["derive"], optional = true }
 dirs = { version = "5.0.1", optional = true }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"], optional = true }
 indicatif = { version = "0.17.9", optional = true }
-tracing-indicatif = { version = "0.3.8", optional = true }
 inquire = { version = "0.7.5", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -101,7 +100,3 @@ opt-level = "s"
 lto = true
 incremental = true
 codegen-units = 1
-
-[profile.release.package.pesde-registry]
-# add debug symbols for Sentry stack traces
-debug = "full"
