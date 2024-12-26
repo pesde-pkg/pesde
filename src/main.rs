@@ -13,8 +13,7 @@ use tempfile::NamedTempFile;
 use tracing::instrument;
 use tracing_indicatif::{filter::IndicatifFilter, IndicatifLayer};
 use tracing_subscriber::{
-    filter::LevelFilter, fmt::time::uptime, layer::SubscriberExt, util::SubscriberInitExt,
-    EnvFilter, Layer,
+    filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
 };
 
 mod cli;
@@ -147,14 +146,23 @@ async fn run() -> anyhow::Result<()> {
         .add_directive("hyper=info".parse().unwrap())
         .add_directive("h2=info".parse().unwrap());
 
+    let fmt_layer =
+        tracing_subscriber::fmt::layer().with_writer(indicatif_layer.inner().get_stderr_writer());
+
+    #[cfg(debug_assertions)]
+    let fmt_layer = fmt_layer.with_timer(tracing_subscriber::fmt::time::uptime());
+
+    #[cfg(not(debug_assertions))]
+    let fmt_layer = fmt_layer
+        .pretty()
+        .with_timer(())
+        .with_line_number(false)
+        .with_file(false)
+        .with_target(false);
+
     tracing_subscriber::registry()
         .with(tracing_env_filter)
-        .with(
-            tracing_subscriber::fmt::layer()
-                .pretty()
-                .with_writer(indicatif_layer.inner().get_stderr_writer())
-                .with_timer(uptime()),
-        )
+        .with(fmt_layer)
         .with(indicatif_layer)
         .init();
 
