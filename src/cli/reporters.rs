@@ -13,7 +13,7 @@ use pesde::reporters::{
     DownloadProgressReporter, DownloadsReporter, PatchProgressReporter, PatchesReporter,
 };
 
-pub const TICK_CHARS: &str = "⣷⣯⣟⣿⢿⣻⣽⣾";
+pub const TICK_CHARS: &str = "⣷⣯⣟⡿⢿⣻⣽⣾";
 
 pub fn root_progress_style() -> ProgressStyle {
     ProgressStyle::with_template("{prefix:.dim}{msg:>8.green} {spinner} [{elapsed_precise}]")
