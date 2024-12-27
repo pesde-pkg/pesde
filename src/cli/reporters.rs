@@ -16,14 +16,14 @@ use pesde::reporters::{
 pub const TICK_CHARS: &str = "⣷⣯⣟⡿⢿⣻⣽⣾";
 
 pub fn root_progress_style() -> ProgressStyle {
-    ProgressStyle::with_template("{prefix:.dim}{msg:>8.green} {spinner} [{elapsed_precise}]")
+    ProgressStyle::with_template("{prefix:.dim}{msg:>8.214/yellow} {spinner} [{elapsed_precise}]")
         .unwrap()
         .tick_chars(TICK_CHARS)
 }
 
 pub fn root_progress_style_with_progress() -> ProgressStyle {
     ProgressStyle::with_template(
-        "{prefix:.dim}{msg:>8.green} {spinner} [{elapsed_precise}] {bar:20} {pos}/{len}",
+        "{prefix:.dim}{msg:>8.214/yellow} {spinner} [{elapsed_precise}] {bar:20} {pos}/{len}",
     )
     .unwrap()
     .tick_chars(TICK_CHARS)
