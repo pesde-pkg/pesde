@@ -1,8 +1,14 @@
-use crate::{lockfile::DownloadedGraph, Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME};
+use crate::{
+    lockfile::DownloadedGraph,
+    reporters::{PatchProgressReporter, PatchesReporter},
+    Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
+};
 use fs_err::tokio as fs;
+use futures::TryFutureExt;
 use git2::{ApplyLocation, Diff, DiffFormat, DiffLineType, Repository, Signature};
 use relative_path::RelativePathBuf;
-use std::path::Path;
+use std::{path::Path, sync::Arc};
+use tokio::task::JoinSet;
 use tracing::instrument;
 
 /// Set up a git repository for patches
@@ -70,28 +76,21 @@ pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
 
 impl Project {
     /// Apply patches to the project's dependencies
-    #[instrument(skip(self, graph), level = "debug")]
-    pub async fn apply_patches(
+    #[instrument(skip(self, graph, reporter), level = "debug")]
+    pub async fn apply_patches<Reporter>(
         &self,
         graph: &DownloadedGraph,
-    ) -> Result<
-        tokio::sync::mpsc::Receiver<Result<String, errors::ApplyPatchesError>>,
-        errors::ApplyPatchesError,
-    > {
+        reporter: Arc<Reporter>,
+    ) -> Result<(), errors::ApplyPatchesError>
+    where
+        Reporter: for<'a> PatchesReporter<'a> + Send + Sync + 'static,
+    {
         let manifest = self.deser_manifest().await?;
-        let (tx, rx) = tokio::sync::mpsc::channel(
-            manifest
-                .patches
-                .values()
-                .map(|v| v.len())
-                .sum::<usize>()
-                .max(1),
-        );
+
+        let mut tasks = JoinSet::<Result<_, errors::ApplyPatchesError>>::new();
 
         for (name, versions) in manifest.patches {
             for (version_id, patch_path) in versions {
-                let tx = tx.clone();
-
                 let name = name.clone();
                 let patch_path = patch_path.to_path(self.package_dir());
 
@@ -102,7 +101,6 @@ impl Project {
                     tracing::warn!(
                         "patch for {name}@{version_id} not applied because it is not in the graph"
                     );
-                    tx.send(Ok(format!("{name}@{version_id}"))).await.unwrap();
                     continue;
                 };
 
@@ -115,41 +113,23 @@ impl Project {
                     version_id.version(),
                 );
 
-                tokio::spawn(async move {
+                let reporter = reporter.clone();
+
+                tasks.spawn(async move {
                     tracing::debug!("applying patch to {name}@{version_id}");
 
-                    let patch = match fs::read(&patch_path).await {
-                        Ok(patch) => patch,
-                        Err(e) => {
-                            tx.send(Err(errors::ApplyPatchesError::PatchRead(e)))
-                                .await
-                                .unwrap();
-                            return;
-                        }
-                    };
+                    let display_name = format!("{name}@{version_id}");
+                    let progress_reporter = reporter.report_patch(&display_name);
 
-                    let patch = match Diff::from_buffer(&patch) {
-                        Ok(patch) => patch,
-                        Err(e) => {
-                            tx.send(Err(errors::ApplyPatchesError::Git(e)))
-                                .await
-                                .unwrap();
-                            return;
-                        }
-                    };
+                    let patch = fs::read(&patch_path)
+                        .await
+                        .map_err(errors::ApplyPatchesError::PatchRead)?;
+                    let patch = Diff::from_buffer(&patch)?;
 
                     {
-                        let repo = match setup_patches_repo(&container_folder) {
-                            Ok(repo) => repo,
-                            Err(e) => {
-                                tx.send(Err(errors::ApplyPatchesError::Git(e)))
-                                    .await
-                                    .unwrap();
-                                return;
-                            }
-                        };
+                        let repo = setup_patches_repo(&container_folder)?;
 
-                        let modified_files = patch
+                        let mut apply_delta_tasks = patch
                             .deltas()
                             .filter(|delta| matches!(delta.status(), git2::Delta::Modified))
                             .filter_map(|delta| delta.new_file().path())
@@ -159,61 +139,45 @@ impl Project {
                                     .to_path(&container_folder)
                             })
                             .filter(|path| path.is_file())
-                            .collect::<Vec<_>>();
-
-                        for path in modified_files {
-                            // there is no way (as far as I know) to check if it's hardlinked
-                            // so, we always unlink it
-                            let content = match fs::read(&path).await {
-                                Ok(content) => content,
-                                Err(e) => {
-                                    tx.send(Err(errors::ApplyPatchesError::File(e)))
-                                        .await
-                                        .unwrap();
-                                    return;
+                            .map(|path| {
+                                async {
+                                    // so, we always unlink it
+                                    let content = fs::read(&path).await?;
+                                    fs::remove_file(&path).await?;
+                                    fs::write(path, content).await?;
+                                    Ok(())
                                 }
-                            };
+                                .map_err(errors::ApplyPatchesError::File)
+                            })
+                            .collect::<JoinSet<_>>();
 
-                            if let Err(e) = fs::remove_file(&path).await {
-                                tx.send(Err(errors::ApplyPatchesError::File(e)))
-                                    .await
-                                    .unwrap();
-                                return;
-                            }
-
-                            if let Err(e) = fs::write(path, content).await {
-                                tx.send(Err(errors::ApplyPatchesError::File(e)))
-                                    .await
-                                    .unwrap();
-                                return;
-                            }
+                        while let Some(res) = apply_delta_tasks.join_next().await {
+                            res.unwrap()?;
                         }
 
-                        if let Err(e) = repo.apply(&patch, ApplyLocation::Both, None) {
-                            tx.send(Err(errors::ApplyPatchesError::Git(e)))
-                                .await
-                                .unwrap();
-                            return;
-                        }
+                        repo.apply(&patch, ApplyLocation::Both, None)?;
                     }
 
                     tracing::debug!(
                         "patch applied to {name}@{version_id}, removing .git directory"
                     );
 
-                    if let Err(e) = fs::remove_dir_all(container_folder.join(".git")).await {
-                        tx.send(Err(errors::ApplyPatchesError::DotGitRemove(e)))
-                            .await
-                            .unwrap();
-                        return;
-                    }
+                    fs::remove_dir_all(container_folder.join(".git"))
+                        .await
+                        .map_err(errors::ApplyPatchesError::DotGitRemove)?;
 
-                    tx.send(Ok(format!("{name}@{version_id}"))).await.unwrap();
+                    progress_reporter.report_done();
+
+                    Ok(())
                 });
             }
         }
 
-        Ok(rx)
+        while let Some(res) = tasks.join_next().await {
+            res.unwrap()?
+        }
+
+        Ok(())
     }
 }
 

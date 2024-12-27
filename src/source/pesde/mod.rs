@@ -7,7 +7,9 @@ use std::{
     fmt::Debug,
     hash::Hash,
     path::PathBuf,
+    sync::Arc,
 };
+use tokio_util::io::StreamReader;
 
 use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
@@ -18,6 +20,7 @@ use crate::{
         DependencyType,
     },
     names::{PackageName, PackageNames},
+    reporters::DownloadProgressReporter,
     source::{
         fs::{store_in_cas, FSEntry, PackageFS},
         git_index::{read_file, root_tree, GitBasedSource},
@@ -165,6 +168,7 @@ impl PackageSource for PesdePackageSource {
         pkg_ref: &Self::Ref,
         project: &Project,
         reqwest: &reqwest::Client,
+        reporter: Arc<impl DownloadProgressReporter>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let config = self.config(project).await.map_err(Box::new)?;
         let index_file = project
@@ -202,9 +206,26 @@ impl PackageSource for PesdePackageSource {
         }
 
         let response = request.send().await?.error_for_status()?;
-        let bytes = response.bytes().await?;
 
-        let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes.as_ref());
+        let total_len = response.content_length().unwrap_or(0);
+        reporter.report_progress(total_len, 0);
+
+        let mut bytes_downloaded = 0;
+        let bytes = response
+            .bytes_stream()
+            .inspect(|chunk| {
+                chunk.as_ref().ok().inspect(|chunk| {
+                    bytes_downloaded += chunk.len() as u64;
+                    reporter.report_progress(total_len, bytes_downloaded);
+                });
+            })
+            .map(|result| {
+                result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+            });
+
+        let bytes = StreamReader::new(bytes);
+
+        let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes);
         let mut archive = tokio_tar::Archive::new(&mut decoder);
 
         let mut entries = BTreeMap::new();
@@ -253,6 +274,8 @@ impl PackageSource for PesdePackageSource {
         fs::write(&index_file, toml::to_string(&fs)?)
             .await
             .map_err(errors::DownloadError::WriteIndex)?;
+
+        reporter.report_done();
 
         Ok((fs, pkg_ref.target.clone()))
     }

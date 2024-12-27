@@ -1,6 +1,7 @@
 use crate::{
     manifest::target::{Target, TargetKind},
     names::PackageNames,
+    reporters::DownloadProgressReporter,
     source::{
         fs::PackageFS, refs::PackageRefs, specifiers::DependencySpecifiers, traits::*,
         version_id::VersionId,
@@ -10,6 +11,7 @@ use crate::{
 use std::{
     collections::{BTreeMap, HashSet},
     fmt::Debug,
+    sync::Arc,
 };
 
 /// Packages' filesystems
@@ -152,26 +154,27 @@ impl PackageSource for PackageSources {
         pkg_ref: &Self::Ref,
         project: &Project,
         reqwest: &reqwest::Client,
+        reporter: Arc<impl DownloadProgressReporter>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         match (self, pkg_ref) {
             (PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => source
-                .download(pkg_ref, project, reqwest)
+                .download(pkg_ref, project, reqwest, reporter)
                 .await
                 .map_err(Into::into),
 
             #[cfg(feature = "wally-compat")]
             (PackageSources::Wally(source), PackageRefs::Wally(pkg_ref)) => source
-                .download(pkg_ref, project, reqwest)
+                .download(pkg_ref, project, reqwest, reporter)
                 .await
                 .map_err(Into::into),
 
             (PackageSources::Git(source), PackageRefs::Git(pkg_ref)) => source
-                .download(pkg_ref, project, reqwest)
+                .download(pkg_ref, project, reqwest, reporter)
                 .await
                 .map_err(Into::into),
 
             (PackageSources::Workspace(source), PackageRefs::Workspace(pkg_ref)) => source
-                .download(pkg_ref, project, reqwest)
+                .download(pkg_ref, project, reqwest, reporter)
                 .await
                 .map_err(Into::into),
 

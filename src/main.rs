@@ -4,16 +4,18 @@ use crate::cli::{auth::get_tokens, display_err, home_dir, HOME_DIR};
 use anyhow::Context;
 use clap::{builder::styling::AnsiColor, Parser};
 use fs_err::tokio as fs;
+use indicatif::MultiProgress;
 use pesde::{matching_globs, AuthConfig, Project, MANIFEST_FILE_NAME};
 use std::{
     collections::HashSet,
+    io,
     path::{Path, PathBuf},
+    sync::Mutex,
 };
 use tempfile::NamedTempFile;
 use tracing::instrument;
-use tracing_indicatif::{filter::IndicatifFilter, IndicatifLayer};
 use tracing_subscriber::{
-    filter::LevelFilter, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
+    filter::LevelFilter, fmt::MakeWriter, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 
 mod cli;
@@ -88,6 +90,50 @@ async fn get_linkable_dir(path: &Path) -> PathBuf {
     );
 }
 
+pub static PROGRESS_BARS: Mutex<Option<MultiProgress>> = Mutex::new(None);
+
+#[derive(Clone, Copy)]
+pub struct IndicatifWriter;
+
+impl IndicatifWriter {
+    fn suspend<F: FnOnce() -> R, R>(f: F) -> R {
+        match *PROGRESS_BARS.lock().unwrap() {
+            Some(ref progress_bars) => progress_bars.suspend(f),
+            None => f(),
+        }
+    }
+}
+
+impl io::Write for IndicatifWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        Self::suspend(|| io::stderr().write(buf))
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Self::suspend(|| io::stderr().flush())
+    }
+
+    fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
+        Self::suspend(|| io::stderr().write_vectored(bufs))
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        Self::suspend(|| io::stderr().write_all(buf))
+    }
+
+    fn write_fmt(&mut self, fmt: std::fmt::Arguments<'_>) -> io::Result<()> {
+        Self::suspend(|| io::stderr().write_fmt(fmt))
+    }
+}
+
+impl<'a> MakeWriter<'a> for IndicatifWriter {
+    type Writer = IndicatifWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        *self
+    }
+}
+
 async fn run() -> anyhow::Result<()> {
     let cwd = std::env::current_dir().expect("failed to get current working directory");
 
@@ -133,8 +179,6 @@ async fn run() -> anyhow::Result<()> {
         std::process::exit(status.code().unwrap());
     }
 
-    let indicatif_layer = IndicatifLayer::new().with_filter(IndicatifFilter::new(false));
-
     let tracing_env_filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy()
@@ -146,8 +190,7 @@ async fn run() -> anyhow::Result<()> {
         .add_directive("hyper=info".parse().unwrap())
         .add_directive("h2=info".parse().unwrap());
 
-    let fmt_layer =
-        tracing_subscriber::fmt::layer().with_writer(indicatif_layer.inner().get_stderr_writer());
+    let fmt_layer = tracing_subscriber::fmt::layer().with_writer(IndicatifWriter);
 
     #[cfg(debug_assertions)]
     let fmt_layer = fmt_layer.with_timer(tracing_subscriber::fmt::time::uptime());
@@ -163,7 +206,6 @@ async fn run() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(tracing_env_filter)
         .with(fmt_layer)
-        .with(indicatif_layer)
         .init();
 
     let (project_root_dir, project_workspace_dir) = 'finder: {

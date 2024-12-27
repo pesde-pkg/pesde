@@ -15,7 +15,6 @@ use std::{
     future::Future,
     path::PathBuf,
     str::FromStr,
-    time::Duration,
 };
 use tokio::pin;
 use tracing::instrument;
@@ -24,6 +23,8 @@ pub mod auth;
 pub mod commands;
 pub mod config;
 pub mod files;
+pub mod install;
+pub mod reporters;
 #[cfg(feature = "version-management")]
 pub mod version;
 
@@ -191,39 +192,6 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 
 pub fn parse_gix_url(s: &str) -> Result<gix::Url, gix::url::parse::Error> {
     s.try_into()
-}
-
-pub async fn progress_bar<E: std::error::Error + Into<anyhow::Error>>(
-    len: u64,
-    mut rx: tokio::sync::mpsc::Receiver<Result<String, E>>,
-    prefix: String,
-    progress_msg: String,
-    finish_msg: String,
-) -> anyhow::Result<()> {
-    let bar = indicatif::ProgressBar::new(len)
-        .with_style(
-            indicatif::ProgressStyle::default_bar()
-                .template("{prefix}[{elapsed_precise}] {bar:40.208/166} {pos}/{len} {msg}")?
-                .progress_chars("█▓▒░ "),
-        )
-        .with_prefix(prefix)
-        .with_message(progress_msg);
-    bar.enable_steady_tick(Duration::from_millis(100));
-
-    while let Some(result) = rx.recv().await {
-        bar.inc(1);
-
-        match result {
-            Ok(text) => {
-                bar.set_message(text);
-            }
-            Err(e) => return Err(e.into()),
-        }
-    }
-
-    bar.finish_with_message(finish_msg);
-
-    Ok(())
 }
 
 pub fn shift_project_dir(project: &Project, pkg_dir: PathBuf) -> Project {

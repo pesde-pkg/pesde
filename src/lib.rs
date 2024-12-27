@@ -35,6 +35,7 @@ pub mod names;
 /// Patching packages
 #[cfg(feature = "patches")]
 pub mod patches;
+pub mod reporters;
 /// Resolving packages
 pub mod resolver;
 /// Running scripts
@@ -182,9 +183,9 @@ impl Project {
     #[instrument(skip(self, lockfile), level = "debug")]
     pub async fn write_lockfile(
         &self,
-        lockfile: Lockfile,
+        lockfile: &Lockfile,
     ) -> Result<(), errors::LockfileWriteError> {
-        let string = toml::to_string(&lockfile)?;
+        let string = toml::to_string(lockfile)?;
         fs::write(self.package_dir.join(LOCKFILE_FILE_NAME), string).await?;
         Ok(())
     }

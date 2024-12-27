@@ -4,6 +4,7 @@ use crate::{
         Manifest,
     },
     names::PackageNames,
+    reporters::DownloadProgressReporter,
     source::{
         fs::{store_in_cas, FSEntry, PackageFS},
         git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
@@ -338,6 +339,7 @@ impl PackageSource for GitPackageSource {
         pkg_ref: &Self::Ref,
         project: &Project,
         _reqwest: &reqwest::Client,
+        _reporter: Arc<impl DownloadProgressReporter>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let index_file = project
             .cas_dir

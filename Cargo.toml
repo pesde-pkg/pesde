@@ -16,7 +16,6 @@ bin = [
     "dep:tracing-subscriber",
     "reqwest/json",
     "dep:indicatif",
-    "dep:tracing-indicatif",
     "dep:inquire",
     "dep:toml_edit",
     "dep:colored",
@@ -49,7 +48,7 @@ toml = "0.8.19"
 serde_with = "3.11.0"
 gix = { version = "0.68.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials", "parallel"] }
 semver = { version = "1.0.24", features = ["serde"] }
-reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tls", "stream"] }
 tokio-tar = "0.3.1"
 async-compression = { version = "0.4.18", features = ["tokio", "gzip"] }
 pathdiff = "0.2.3"
@@ -83,7 +82,6 @@ clap = { version = "4.5.23", features = ["derive"], optional = true }
 dirs = { version = "5.0.1", optional = true }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"], optional = true }
 indicatif = { version = "0.17.9", optional = true }
-tracing-indicatif = { version = "0.3.8", optional = true }
 inquire = { version = "0.7.5", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]

@@ -1,8 +1,15 @@
-use crate::cli::{config::read_config, progress_bar, VersionedPackageName};
+use crate::cli::{
+    config::read_config,
+    reporters::{self, CliReporter},
+    VersionedPackageName,
+};
 use anyhow::Context;
 use clap::Args;
+use colored::Colorize;
 use fs_err::tokio as fs;
+use indicatif::MultiProgress;
 use pesde::{
+    download_and_link::DownloadAndLinkOptions,
     linking::generator::generate_bin_linking_module,
     manifest::target::TargetKind,
     names::PackageName,
@@ -14,7 +21,12 @@ use pesde::{
 };
 use semver::VersionReq;
 use std::{
-    collections::HashSet, env::current_dir, ffi::OsString, io::Write, process::Command, sync::Arc,
+    collections::HashSet,
+    env::current_dir,
+    ffi::OsString,
+    io::{Stderr, Write},
+    process::Command,
+    sync::Arc,
 };
 use tokio::sync::Mutex;
 
@@ -35,108 +47,122 @@ pub struct ExecuteCommand {
 
 impl ExecuteCommand {
     pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
-        let index = match self.index {
-            Some(index) => Some(index),
-            None => read_config().await.ok().map(|c| c.default_index),
-        }
-        .context("no index specified")?;
-        let source = PesdePackageSource::new(index);
-        source
-            .refresh(&project)
-            .await
-            .context("failed to refresh source")?;
+        let multi_progress = MultiProgress::new();
+        crate::PROGRESS_BARS
+            .lock()
+            .unwrap()
+            .replace(multi_progress.clone());
 
-        let version_req = self.package.1.unwrap_or(VersionReq::STAR);
-        let Some((version, pkg_ref)) = ('finder: {
-            let specifier = PesdeDependencySpecifier {
-                name: self.package.0.clone(),
-                version: version_req.clone(),
-                index: None,
-                target: None,
-            };
+        let (tempdir, bin_path) = reporters::run_with_reporter_and_writer(
+            std::io::stderr(),
+            |multi_progress, root_progress, reporter| async {
+                let multi_progress = multi_progress;
+                let root_progress = root_progress;
 
-            if let Some(res) = source
-                .resolve(&specifier, &project, TargetKind::Lune, &mut HashSet::new())
-                .await
-                .context("failed to resolve package")?
-                .1
-                .pop_last()
-            {
-                break 'finder Some(res);
-            }
+                root_progress.set_message("resolve");
 
-            source
-                .resolve(&specifier, &project, TargetKind::Luau, &mut HashSet::new())
-                .await
-                .context("failed to resolve package")?
-                .1
-                .pop_last()
-        }) else {
-            anyhow::bail!(
-                "no Lune or Luau package could be found for {}@{version_req}",
-                self.package.0,
-            );
-        };
+                let index = match self.index {
+                    Some(index) => Some(index),
+                    None => read_config().await.ok().map(|c| c.default_index),
+                }
+                .context("no index specified")?;
+                let source = PesdePackageSource::new(index);
+                source
+                    .refresh(&project)
+                    .await
+                    .context("failed to refresh source")?;
 
-        println!("using {}@{version}", pkg_ref.name);
+                let version_req = self.package.1.unwrap_or(VersionReq::STAR);
+                let Some((version, pkg_ref)) = ('finder: {
+                    let specifier = PesdeDependencySpecifier {
+                        name: self.package.0.clone(),
+                        version: version_req.clone(),
+                        index: None,
+                        target: None,
+                    };
 
-        let tmp_dir = project.cas_dir().join(".tmp");
-        fs::create_dir_all(&tmp_dir)
-            .await
-            .context("failed to create temporary directory")?;
-        let tempdir =
-            tempfile::tempdir_in(tmp_dir).context("failed to create temporary directory")?;
+                    if let Some(res) = source
+                        .resolve(&specifier, &project, TargetKind::Lune, &mut HashSet::new())
+                        .await
+                        .context("failed to resolve package")?
+                        .1
+                        .pop_last()
+                    {
+                        break 'finder Some(res);
+                    }
 
-        let project = Project::new(
-            tempdir.path(),
-            None::<std::path::PathBuf>,
-            project.data_dir(),
-            project.cas_dir(),
-            project.auth_config().clone(),
-        );
+                    source
+                        .resolve(&specifier, &project, TargetKind::Luau, &mut HashSet::new())
+                        .await
+                        .context("failed to resolve package")?
+                        .1
+                        .pop_last()
+                }) else {
+                    anyhow::bail!(
+                        "no Lune or Luau package could be found for {}@{version_req}",
+                        self.package.0,
+                    );
+                };
 
-        let (fs, target) = source
-            .download(&pkg_ref, &project, &reqwest)
-            .await
-            .context("failed to download package")?;
-        let bin_path = target.bin_path().context("package has no binary export")?;
+                let tmp_dir = project.cas_dir().join(".tmp");
+                fs::create_dir_all(&tmp_dir)
+                    .await
+                    .context("failed to create temporary directory")?;
+                let tempdir = tempfile::tempdir_in(tmp_dir)
+                    .context("failed to create temporary directory")?;
 
-        fs.write_to(tempdir.path(), project.cas_dir(), true)
-            .await
-            .context("failed to write package contents")?;
+                let project = Project::new(
+                    tempdir.path(),
+                    None::<std::path::PathBuf>,
+                    project.data_dir(),
+                    project.cas_dir(),
+                    project.auth_config().clone(),
+                );
 
-        let mut refreshed_sources = HashSet::new();
+                let (fs, target) = source
+                    .download(&pkg_ref, &project, &reqwest, Arc::new(()))
+                    .await
+                    .context("failed to download package")?;
+                let bin_path = target.bin_path().context("package has no binary export")?;
 
-        let graph = project
-            .dependency_graph(None, &mut refreshed_sources, true)
-            .await
-            .context("failed to build dependency graph")?;
-        let graph = Arc::new(graph);
+                fs.write_to(tempdir.path(), project.cas_dir(), true)
+                    .await
+                    .context("failed to write package contents")?;
 
-        let (rx, downloaded_graph) = project
-            .download_and_link(
-                &graph,
-                &Arc::new(Mutex::new(refreshed_sources)),
-                &reqwest,
-                true,
-                true,
-                |_| async { Ok::<_, std::io::Error>(()) },
-            )
-            .await
-            .context("failed to download dependencies")?;
+                let mut refreshed_sources = HashSet::new();
 
-        progress_bar(
-            graph.values().map(|versions| versions.len() as u64).sum(),
-            rx,
-            "📥 ".to_string(),
-            "downloading dependencies".to_string(),
-            "downloaded dependencies".to_string(),
+                let graph = project
+                    .dependency_graph(None, &mut refreshed_sources, true)
+                    .await
+                    .context("failed to build dependency graph")?;
+
+                multi_progress.suspend(|| {
+                    eprintln!(
+                        "{}",
+                        format!("using {}", format!("{}@{version}", pkg_ref.name).bold()).dimmed()
+                    )
+                });
+
+                root_progress.reset();
+                root_progress.set_message("download");
+                root_progress.set_style(reporters::root_progress_style_with_progress());
+
+                project
+                    .download_and_link(
+                        &Arc::new(graph),
+                        DownloadAndLinkOptions::<CliReporter<Stderr>, ()>::new(reqwest)
+                            .reporter(reporter)
+                            .refreshed_sources(Mutex::new(refreshed_sources))
+                            .prod(true)
+                            .write(true),
+                    )
+                    .await
+                    .context("failed to download and link dependencies")?;
+
+                anyhow::Ok((tempdir, bin_path.clone()))
+            },
         )
         .await?;
-
-        downloaded_graph
-            .await
-            .context("failed to download & link dependencies")?;
 
         let mut caller =
             tempfile::NamedTempFile::new_in(tempdir.path()).context("failed to create tempfile")?;
