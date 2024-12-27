@@ -190,8 +190,7 @@ async fn run() -> anyhow::Result<()> {
         .add_directive("hyper=info".parse().unwrap())
         .add_directive("h2=info".parse().unwrap());
 
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_writer(IndicatifWriter);
+    let fmt_layer = tracing_subscriber::fmt::layer().with_writer(IndicatifWriter);
 
     #[cfg(debug_assertions)]
     let fmt_layer = fmt_layer.with_timer(tracing_subscriber::fmt::time::uptime());
