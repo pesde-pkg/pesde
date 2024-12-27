@@ -191,7 +191,6 @@ async fn run() -> anyhow::Result<()> {
         .add_directive("h2=info".parse().unwrap());
 
     let fmt_layer = tracing_subscriber::fmt::layer()
-        .pretty()
         .with_writer(IndicatifWriter);
 
     #[cfg(debug_assertions)]
