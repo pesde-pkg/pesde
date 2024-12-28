@@ -96,7 +96,7 @@ impl OutdatedCommand {
                             .1
                             .pop_last()
                             .map(|(v_id, _)| v_id)
-                            .context(format!("no versions of {specifier} found"))?;
+                            .with_context(|| format!("no versions of {specifier} found"))?;
 
                         if version_id != current_version_id {
                             println!(

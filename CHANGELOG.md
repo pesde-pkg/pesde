@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Performance
 - Use `Arc` for more efficient cloning of multiple structs by @daimond113
 - Avoid cloning where possible by @daimond113
+- Remove unnecessary mutex in Wally package download by @daimond113
+- Lazily format error messages by @daimond113
 
 ## [0.5.2] - 2024-12-19
 ### Fixed

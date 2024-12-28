@@ -224,7 +224,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 
             let export_path = export_path
                 .canonicalize()
-                .context(format!("failed to canonicalize {name}"))?;
+                .with_context(|| format!("failed to canonicalize {name}"))?;
 
             if let Err(err) = full_moon::parse(&contents).map_err(|errs| {
                 errs.into_iter()
@@ -238,7 +238,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
             let first_part = relative_export_path
                 .components()
                 .next()
-                .context(format!("{name} must contain at least one part"))?;
+                .with_context(|| format!("{name} must contain at least one part"))?;
 
             let first_part = match first_part {
                 relative_path::Component::Normal(part) => part,
@@ -316,7 +316,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 
                 let script_path = script_path
                     .canonicalize()
-                    .context(format!("failed to canonicalize script {name}"))?;
+                    .with_context(|| format!("failed to canonicalize script {name}"))?;
 
                 if let Err(err) = full_moon::parse(&contents).map_err(|errs| {
                     errs.into_iter()
@@ -365,7 +365,9 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                         &relative_path,
                         fs::File::open(&path)
                             .await
-                            .context(format!("failed to read `{}`", relative_path.display()))?
+                            .with_context(|| {
+                                format!("failed to read `{}`", relative_path.display())
+                            })?
                             .file_mut(),
                     )
                     .await?;
@@ -391,7 +393,9 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                         manifest
                             .indices
                             .get(&index_name)
-                            .context(format!("index {index_name} not found in indices field"))?
+                            .with_context(|| {
+                                format!("index {index_name} not found in indices field")
+                            })?
                             .to_string(),
                     );
                 }
@@ -406,9 +410,9 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                         manifest
                             .wally_indices
                             .get(&index_name)
-                            .context(format!(
-                                "index {index_name} not found in wally_indices field"
-                            ))?
+                            .with_context(|| {
+                                format!("index {index_name} not found in wally_indices field")
+                            })?
                             .to_string(),
                     );
                 }
@@ -452,7 +456,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                             }
                             VersionTypeOrReq::Req(r) => r,
                             v => VersionReq::parse(&format!("{v}{}", manifest.version))
-                                .context(format!("failed to parse version for {v}"))?,
+                                .with_context(|| format!("failed to parse version for {v}"))?,
                         },
                         index: Some(
                             manifest
@@ -589,7 +593,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
         let index_url = manifest
             .indices
             .get(&self.index)
-            .context(format!("missing index {}", self.index))?;
+            .with_context(|| format!("missing index {}", self.index))?;
         let source = PesdePackageSource::new(index_url.clone());
         refreshed_sources
             .refresh(
