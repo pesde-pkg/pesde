@@ -18,7 +18,7 @@ use crate::{
     Project,
 };
 use fs_err::tokio as fs;
-use futures::{future::try_join_all, StreamExt};
+use futures::StreamExt;
 use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
@@ -281,14 +281,14 @@ impl PackageSource for WallyPackageSource {
             });
 
         let mut bytes = StreamReader::new(bytes);
-        let mut buf = vec![];
+        let mut buf = Vec::with_capacity(total_len as usize);
         bytes.read_to_end(&mut buf).await?;
 
-        let archive =
+        let mut archive =
             async_zip::tokio::read::seek::ZipFileReader::with_tokio(std::io::Cursor::new(&mut buf))
                 .await?;
 
-        let entries = (0..archive.file().entries().len())
+        let archive_entries = (0..archive.file().entries().len())
             .map(|index| {
                 let entry = archive.file().entries().get(index).unwrap();
                 let relative_path = RelativePathBuf::from_path(entry.filename().as_str()?).unwrap();
@@ -296,57 +296,40 @@ impl PackageSource for WallyPackageSource {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let archive = Arc::new(Mutex::new(archive));
+        let mut entries = BTreeMap::new();
 
-        // todo: remove this asyncification, since the Mutex makes it sequential anyway
-        let entries = try_join_all(
-            entries
-                .into_iter()
-                .filter(|(_, is_dir, relative_path)| {
-                    let name = relative_path.file_name().unwrap_or("");
+        for (index, is_dir, relative_path) in archive_entries {
+            let name = relative_path.file_name().unwrap_or("");
+            if if is_dir {
+                IGNORED_DIRS.contains(&name)
+            } else {
+                IGNORED_FILES.contains(&name)
+            } {
+                continue;
+            }
 
-                    if *is_dir {
-                        return !IGNORED_DIRS.contains(&name);
-                    }
+            let path = relative_path.to_path(tempdir.path());
 
-                    !IGNORED_FILES.contains(&name)
-                })
-                .map(|(index, is_dir, relative_path)| {
-                    let tempdir_path = tempdir.path().to_path_buf();
-                    let archive = archive.clone();
+            if is_dir {
+                fs::create_dir_all(&path).await?;
+                entries.insert(relative_path, FSEntry::Directory);
+                continue;
+            }
 
-                    async move {
-                        let path = relative_path.to_path(tempdir_path);
+            let entry_reader = archive.reader_without_entry(index).await?;
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).await?;
+            }
 
-                        if is_dir {
-                            fs::create_dir_all(&path).await?;
-                            return Ok::<_, errors::DownloadError>((
-                                relative_path,
-                                FSEntry::Directory,
-                            ));
-                        }
+            let writer = Arc::new(Mutex::new(fs::File::create(&path).await?));
+            let hash = store_in_cas(project.cas_dir(), entry_reader.compat(), |bytes| {
+                let writer = writer.clone();
+                async move { writer.lock().await.write_all(&bytes).await }
+            })
+            .await?;
 
-                        let mut archive = archive.lock().await;
-                        let entry_reader = archive.reader_without_entry(index).await?;
-                        if let Some(parent) = path.parent() {
-                            fs::create_dir_all(parent).await?;
-                        }
-
-                        let writer = Arc::new(Mutex::new(fs::File::create(&path).await?));
-                        let hash =
-                            store_in_cas(project.cas_dir(), entry_reader.compat(), |bytes| {
-                                let writer = writer.clone();
-                                async move { writer.lock().await.write_all(&bytes).await }
-                            })
-                            .await?;
-
-                        Ok((relative_path, FSEntry::File(hash)))
-                    }
-                }),
-        )
-        .await?
-        .into_iter()
-        .collect::<BTreeMap<_, _>>();
+            entries.insert(relative_path, FSEntry::File(hash));
+        }
 
         let fs = PackageFS::CAS(entries);
 
