@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     num::NonZeroUsize,
     sync::Arc,
     time::Instant,
@@ -13,9 +13,9 @@ use pesde::{
     download_and_link::{filter_graph, DownloadAndLinkHooks, DownloadAndLinkOptions},
     lockfile::{DependencyGraph, DownloadedGraph, Lockfile},
     manifest::{target::TargetKind, DependencyType},
-    Project, MANIFEST_FILE_NAME,
+    Project, RefreshedSources, MANIFEST_FILE_NAME,
 };
-use tokio::{sync::Mutex, task::JoinSet};
+use tokio::task::JoinSet;
 
 use crate::cli::{
     bin_dir,
@@ -178,7 +178,7 @@ pub async fn install(
 ) -> anyhow::Result<()> {
     let start = Instant::now();
 
-    let mut refreshed_sources = HashSet::new();
+    let refreshed_sources = RefreshedSources::new();
 
     let manifest = project
         .deser_manifest()
@@ -276,7 +276,7 @@ pub async fn install(
             let graph = project
                 .dependency_graph(
                     old_graph.as_ref().filter(|_| options.use_lockfile),
-                    &mut refreshed_sources,
+                    refreshed_sources.clone(),
                     false,
                 )
                 .await
@@ -298,7 +298,7 @@ pub async fn install(
                     DownloadAndLinkOptions::<CliReporter, InstallHooks>::new(reqwest.clone())
                         .reporter(reporter.clone())
                         .hooks(hooks)
-                        .refreshed_sources(Mutex::new(refreshed_sources))
+                        .refreshed_sources(refreshed_sources)
                         .prod(options.prod)
                         .write(options.write)
                         .network_concurrency(options.network_concurrency),

@@ -9,8 +9,7 @@ use pesde::{
 };
 use relative_path::RelativePathBuf;
 use std::{
-    collections::HashSet, env::current_dir, ffi::OsString, io::Write, path::PathBuf,
-    process::Command,
+    collections::HashSet, env::current_dir, ffi::OsString, io::Write, path::Path, process::Command,
 };
 
 #[derive(Debug, Args)]
@@ -26,7 +25,7 @@ pub struct RunCommand {
 
 impl RunCommand {
     pub async fn run(self, project: Project) -> anyhow::Result<()> {
-        let run = |root: PathBuf, file_path: PathBuf| {
+        let run = |root: &Path, file_path: &Path| {
             let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
             caller
                 .write_all(
@@ -55,8 +54,8 @@ impl RunCommand {
         let Some(package_or_script) = self.package_or_script else {
             if let Some(script_path) = project.deser_manifest().await?.target.bin_path() {
                 run(
-                    project.package_dir().to_owned(),
-                    script_path.to_path(project.package_dir()),
+                    project.package_dir(),
+                    &script_path.to_path(project.package_dir()),
                 );
                 return Ok(());
             }
@@ -99,7 +98,7 @@ impl RunCommand {
 
                 let path = bin_path.to_path(&container_folder);
 
-                run(path.clone(), path);
+                run(&path, &path);
                 return Ok(());
             }
         }
@@ -107,8 +106,8 @@ impl RunCommand {
         if let Ok(manifest) = project.deser_manifest().await {
             if let Some(script_path) = manifest.scripts.get(&package_or_script) {
                 run(
-                    project.package_dir().to_path_buf(),
-                    script_path.to_path(project.package_dir()),
+                    project.package_dir(),
+                    &script_path.to_path(project.package_dir()),
                 );
                 return Ok(());
             }
@@ -170,7 +169,7 @@ impl RunCommand {
             project.package_dir().to_path_buf()
         };
 
-        run(root, path);
+        run(&root, &path);
 
         Ok(())
     }

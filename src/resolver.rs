@@ -5,19 +5,19 @@ use crate::{
     source::{
         pesde::PesdePackageSource,
         specifiers::DependencySpecifiers,
-        traits::{PackageRef, PackageSource},
+        traits::{PackageRef, PackageSource, RefreshOptions, ResolveOptions},
         version_id::VersionId,
         PackageSources,
     },
-    Project, DEFAULT_INDEX_NAME,
+    Project, RefreshedSources, DEFAULT_INDEX_NAME,
 };
-use std::collections::{btree_map::Entry, HashMap, HashSet, VecDeque};
+use std::collections::{btree_map::Entry, HashMap, VecDeque};
 use tracing::{instrument, Instrument};
 
 fn insert_node(
     graph: &mut DependencyGraph,
-    name: PackageNames,
-    version: VersionId,
+    name: &PackageNames,
+    version: &VersionId,
     mut node: DependencyGraphNode,
     is_top_level: bool,
 ) {
@@ -63,7 +63,7 @@ impl Project {
     pub async fn dependency_graph(
         &self,
         previous_graph: Option<&DependencyGraph>,
-        refreshed_sources: &mut HashSet<PackageSources>,
+        refreshed_sources: RefreshedSources,
         // used by `x` command - if true, specifier indices are expected to be URLs. will not do peer dependency checks
         is_published_package: bool,
     ) -> Result<DependencyGraph, Box<errors::DependencyGraphError>> {
@@ -108,8 +108,8 @@ impl Project {
                     tracing::debug!("resolved {}@{} from old dependency graph", name, version);
                     insert_node(
                         &mut graph,
-                        name.clone(),
-                        version.clone(),
+                        name,
+                        version,
                         DependencyGraphNode {
                             direct: Some((alias.clone(), specifier.clone(), *source_ty)),
                             ..node.clone()
@@ -138,13 +138,7 @@ impl Project {
                             .and_then(|v| v.get(dep_version))
                         {
                             tracing::debug!("resolved sub-dependency {dep_name}@{dep_version}");
-                            insert_node(
-                                &mut graph,
-                                dep_name.clone(),
-                                dep_version.clone(),
-                                dep_node.clone(),
-                                false,
-                            );
+                            insert_node(&mut graph, dep_name, dep_version, dep_node.clone(), false);
 
                             dep_node
                                 .dependencies
@@ -184,9 +178,13 @@ impl Project {
             })
             .collect::<VecDeque<_>>();
 
+        let refresh_options = RefreshOptions {
+            project: self.clone(),
+        };
+
         while let Some((specifier, ty, dependant, path, overridden, target)) = queue.pop_front() {
             async {
-                let alias = path.last().unwrap().clone();
+                let alias = path.last().unwrap();
                 let depth = path.len() - 1;
 
                 tracing::debug!("resolving {specifier} ({ty:?})");
@@ -203,10 +201,7 @@ impl Project {
                                 ))?
                                 .clone()
                         } else {
-                            let index_url = specifier.index.clone().unwrap();
-
-                            index_url
-                                .clone()
+                            specifier.index.as_deref().unwrap()
                                 .try_into()
                                 // specifiers in indices store the index url in this field
                                 .unwrap()
@@ -227,10 +222,7 @@ impl Project {
                                 ))?
                                 .clone()
                         } else {
-                            let index_url = specifier.index.clone().unwrap();
-
-                            index_url
-                                .clone()
+                            specifier.index.as_deref().unwrap()
                                 .try_into()
                                 // specifiers in indices store the index url in this field
                                 .unwrap()
@@ -246,12 +238,19 @@ impl Project {
                     }
                 };
 
-                if refreshed_sources.insert(source.clone()) {
-                    source.refresh(self).await.map_err(|e| Box::new(e.into()))?;
-                }
+                refreshed_sources.refresh(
+                    &source,
+                    &refresh_options,
+                )
+                .await
+                .map_err(|e| Box::new(e.into()))?;
 
                 let (name, resolved) = source
-                    .resolve(&specifier, self, target, refreshed_sources)
+                    .resolve(&specifier, &ResolveOptions {
+                        project: self.clone(),
+                        target,
+                        refreshed_sources: refreshed_sources.clone(),
+                    })
                     .await
                     .map_err(|e| Box::new(e.into()))?;
 
@@ -341,9 +340,9 @@ impl Project {
                 };
                 insert_node(
                     &mut graph,
-                    name.clone(),
-                    target_version_id.clone(),
-                    node.clone(),
+                    &name,
+                    &target_version_id,
+                    node,
                     depth == 0,
                 );
 

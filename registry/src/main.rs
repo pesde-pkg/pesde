@@ -14,7 +14,10 @@ use actix_web::{
 };
 use fs_err::tokio as fs;
 use pesde::{
-    source::{pesde::PesdePackageSource, traits::PackageSource},
+    source::{
+        pesde::PesdePackageSource,
+        traits::{PackageSource, RefreshOptions},
+    },
     AuthConfig, Project,
 };
 use std::{env::current_dir, path::PathBuf};
@@ -106,7 +109,9 @@ async fn run() -> std::io::Result<()> {
     );
     let source = PesdePackageSource::new(benv!(required "INDEX_REPO_URL").try_into().unwrap());
     source
-        .refresh(&project)
+        .refresh(&RefreshOptions {
+            project: project.clone(),
+        })
         .await
         .expect("failed to refresh source");
     let config = source

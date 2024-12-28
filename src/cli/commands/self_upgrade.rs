@@ -46,7 +46,7 @@ impl SelfUpgradeCommand {
             return Ok(());
         }
 
-        let path = get_or_download_version(&reqwest, &TagInfo::Complete(latest_version), true)
+        let path = get_or_download_version(&reqwest, TagInfo::Complete(latest_version), true)
             .await?
             .unwrap();
         update_bin_exe(&path).await?;

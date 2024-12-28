@@ -3,18 +3,15 @@ use crate::{
     lockfile::{DependencyGraph, DownloadedGraph},
     manifest::DependencyType,
     reporters::DownloadsReporter,
-    source::PackageSources,
-    Project,
+    Project, RefreshedSources,
 };
 use futures::TryStreamExt;
 use std::{
-    collections::HashSet,
     convert::Infallible,
     future::{self, Future},
     num::NonZeroUsize,
     sync::Arc,
 };
-use tokio::sync::Mutex;
 use tracing::{instrument, Instrument};
 
 /// Filters a graph to only include production dependencies, if `prod` is `true`
@@ -90,7 +87,7 @@ pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
     /// The download and link hooks.
     pub hooks: Option<Arc<Hooks>>,
     /// The refreshed sources.
-    pub refreshed_sources: Arc<Mutex<HashSet<PackageSources>>>,
+    pub refreshed_sources: RefreshedSources,
     /// Whether to skip dev dependencies.
     pub prod: bool,
     /// Whether to write the downloaded packages to disk.
@@ -130,11 +127,8 @@ where
     }
 
     /// Sets the refreshed sources.
-    pub fn refreshed_sources(
-        mut self,
-        refreshed_sources: impl Into<Arc<Mutex<HashSet<PackageSources>>>>,
-    ) -> Self {
-        self.refreshed_sources = refreshed_sources.into();
+    pub fn refreshed_sources(mut self, refreshed_sources: RefreshedSources) -> Self {
+        self.refreshed_sources = refreshed_sources;
         self
     }
 
@@ -196,10 +190,10 @@ impl Project {
         let graph = graph.clone();
         let reqwest = reqwest.clone();
 
-        let mut refreshed_sources = refreshed_sources.lock().await;
         let mut downloaded_graph = DownloadedGraph::new();
 
         let mut download_graph_options = DownloadGraphOptions::<Reporter>::new(reqwest.clone())
+            .refreshed_sources(refreshed_sources.clone())
             .prod(prod)
             .write(write)
             .network_concurrency(network_concurrency);
@@ -209,22 +203,18 @@ impl Project {
         }
 
         // step 1. download pesde dependencies
-        self.download_graph(
-            &graph,
-            &mut refreshed_sources,
-            download_graph_options.clone(),
-        )
-        .instrument(tracing::debug_span!("download (pesde)"))
-        .await?
-        .try_for_each(|(downloaded_node, name, version_id)| {
-            downloaded_graph
-                .entry(name)
-                .or_default()
-                .insert(version_id, downloaded_node);
+        self.download_graph(&graph, download_graph_options.clone())
+            .instrument(tracing::debug_span!("download (pesde)"))
+            .await?
+            .try_for_each(|(downloaded_node, name, version_id)| {
+                downloaded_graph
+                    .entry(name)
+                    .or_default()
+                    .insert(version_id, downloaded_node);
 
-            future::ready(Ok(()))
-        })
-        .await?;
+                future::ready(Ok(()))
+            })
+            .await?;
 
         // step 2. link pesde dependencies. do so without types
         if write {
@@ -246,22 +236,18 @@ impl Project {
         }
 
         // step 3. download wally dependencies
-        self.download_graph(
-            &graph,
-            &mut refreshed_sources,
-            download_graph_options.clone().wally(true),
-        )
-        .instrument(tracing::debug_span!("download (wally)"))
-        .await?
-        .try_for_each(|(downloaded_node, name, version_id)| {
-            downloaded_graph
-                .entry(name)
-                .or_default()
-                .insert(version_id, downloaded_node);
+        self.download_graph(&graph, download_graph_options.clone().wally(true))
+            .instrument(tracing::debug_span!("download (wally)"))
+            .await?
+            .try_for_each(|(downloaded_node, name, version_id)| {
+                downloaded_graph
+                    .entry(name)
+                    .or_default()
+                    .insert(version_id, downloaded_node);
 
-            future::ready(Ok(()))
-        })
-        .await?;
+                future::ready(Ok(()))
+            })
+            .await?;
 
         // step 4. link ALL dependencies. do so with types
         if write {

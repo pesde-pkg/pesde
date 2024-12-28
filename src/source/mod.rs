@@ -1,18 +1,13 @@
 use crate::{
-    manifest::target::{Target, TargetKind},
+    manifest::target::Target,
     names::PackageNames,
     reporters::DownloadProgressReporter,
     source::{
         fs::PackageFS, refs::PackageRefs, specifiers::DependencySpecifiers, traits::*,
         version_id::VersionId,
     },
-    Project,
 };
-use std::{
-    collections::{BTreeMap, HashSet},
-    fmt::Debug,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, fmt::Debug};
 
 /// Packages' filesystems
 pub mod fs;
@@ -66,26 +61,33 @@ impl PackageSource for PackageSources {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
-    async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+    async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
         match self {
-            PackageSources::Pesde(source) => source.refresh(project).await.map_err(Into::into),
+            PackageSources::Pesde(source) => source
+                .refresh(options)
+                .await
+                .map_err(Self::RefreshError::Pesde),
             #[cfg(feature = "wally-compat")]
-            PackageSources::Wally(source) => source.refresh(project).await.map_err(Into::into),
-            PackageSources::Git(source) => source.refresh(project).await.map_err(Into::into),
-            PackageSources::Workspace(source) => source.refresh(project).await.map_err(Into::into),
+            PackageSources::Wally(source) => source
+                .refresh(options)
+                .await
+                .map_err(Self::RefreshError::Wally),
+            PackageSources::Git(source) => source
+                .refresh(options)
+                .await
+                .map_err(Self::RefreshError::Git),
+            PackageSources::Workspace(source) => source.refresh(options).await.map_err(Into::into),
         }
     }
 
     async fn resolve(
         &self,
         specifier: &Self::Specifier,
-        project: &Project,
-        project_target: TargetKind,
-        refreshed_sources: &mut HashSet<PackageSources>,
+        options: &ResolveOptions,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
         match (self, specifier) {
             (PackageSources::Pesde(source), DependencySpecifiers::Pesde(specifier)) => source
-                .resolve(specifier, project, project_target, refreshed_sources)
+                .resolve(specifier, options)
                 .await
                 .map(|(name, results)| {
                     (
@@ -100,7 +102,7 @@ impl PackageSource for PackageSources {
 
             #[cfg(feature = "wally-compat")]
             (PackageSources::Wally(source), DependencySpecifiers::Wally(specifier)) => source
-                .resolve(specifier, project, project_target, refreshed_sources)
+                .resolve(specifier, options)
                 .await
                 .map(|(name, results)| {
                     (
@@ -114,7 +116,7 @@ impl PackageSource for PackageSources {
                 .map_err(Into::into),
 
             (PackageSources::Git(source), DependencySpecifiers::Git(specifier)) => source
-                .resolve(specifier, project, project_target, refreshed_sources)
+                .resolve(specifier, options)
                 .await
                 .map(|(name, results)| {
                     (
@@ -129,7 +131,7 @@ impl PackageSource for PackageSources {
 
             (PackageSources::Workspace(source), DependencySpecifiers::Workspace(specifier)) => {
                 source
-                    .resolve(specifier, project, project_target, refreshed_sources)
+                    .resolve(specifier, options)
                     .await
                     .map(|(name, results)| {
                         (
@@ -149,34 +151,28 @@ impl PackageSource for PackageSources {
         }
     }
 
-    async fn download(
+    async fn download<R: DownloadProgressReporter>(
         &self,
         pkg_ref: &Self::Ref,
-        project: &Project,
-        reqwest: &reqwest::Client,
-        reporter: Arc<impl DownloadProgressReporter>,
+        options: &DownloadOptions<R>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         match (self, pkg_ref) {
-            (PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => source
-                .download(pkg_ref, project, reqwest, reporter)
-                .await
-                .map_err(Into::into),
+            (PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => {
+                source.download(pkg_ref, options).await.map_err(Into::into)
+            }
 
             #[cfg(feature = "wally-compat")]
-            (PackageSources::Wally(source), PackageRefs::Wally(pkg_ref)) => source
-                .download(pkg_ref, project, reqwest, reporter)
-                .await
-                .map_err(Into::into),
+            (PackageSources::Wally(source), PackageRefs::Wally(pkg_ref)) => {
+                source.download(pkg_ref, options).await.map_err(Into::into)
+            }
 
-            (PackageSources::Git(source), PackageRefs::Git(pkg_ref)) => source
-                .download(pkg_ref, project, reqwest, reporter)
-                .await
-                .map_err(Into::into),
+            (PackageSources::Git(source), PackageRefs::Git(pkg_ref)) => {
+                source.download(pkg_ref, options).await.map_err(Into::into)
+            }
 
-            (PackageSources::Workspace(source), PackageRefs::Workspace(pkg_ref)) => source
-                .download(pkg_ref, project, reqwest, reporter)
-                .await
-                .map_err(Into::into),
+            (PackageSources::Workspace(source), PackageRefs::Workspace(pkg_ref)) => {
+                source.download(pkg_ref, options).await.map_err(Into::into)
+            }
 
             _ => Err(errors::DownloadError::Mismatch),
         }
@@ -191,9 +187,18 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum RefreshError {
-        /// A git-based package source failed to refresh
+        /// A pesde package source failed to refresh
         #[error("error refreshing pesde package source")]
-        GitBased(#[from] crate::source::git_index::errors::RefreshError),
+        Pesde(#[source] crate::source::git_index::errors::RefreshError),
+
+        /// A Wally package source failed to refresh
+        #[cfg(feature = "wally-compat")]
+        #[error("error refreshing wally package source")]
+        Wally(#[source] crate::source::git_index::errors::RefreshError),
+
+        /// A Git package source failed to refresh
+        #[error("error refreshing git package source")]
+        Git(#[source] crate::source::git_index::errors::RefreshError),
 
         /// A workspace package source failed to refresh
         #[error("error refreshing workspace package source")]

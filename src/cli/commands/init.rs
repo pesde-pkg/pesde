@@ -11,12 +11,13 @@ use pesde::{
         git_index::GitBasedSource,
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
-        traits::PackageSource,
+        traits::{PackageSource, RefreshOptions, ResolveOptions},
+        PackageSources,
     },
-    Project, DEFAULT_INDEX_NAME, SCRIPTS_LINK_FOLDER,
+    Project, RefreshedSources, DEFAULT_INDEX_NAME, SCRIPTS_LINK_FOLDER,
 };
 use semver::VersionReq;
-use std::{collections::HashSet, fmt::Display, str::FromStr};
+use std::{fmt::Display, str::FromStr};
 
 #[derive(Debug, Args)]
 pub struct InitCommand {}
@@ -128,13 +129,21 @@ impl InitCommand {
         manifest["indices"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
             [DEFAULT_INDEX_NAME] = toml_edit::value(source.repo_url().to_bstring().to_string());
 
+        let refreshed_sources = RefreshedSources::new();
+
         if target_env.is_roblox()
             || inquire::prompt_confirmation(
                 "would you like to setup default Roblox compatibility scripts?",
             )
             .unwrap()
         {
-            PackageSource::refresh(&source, &project)
+            refreshed_sources
+                .refresh(
+                    &PackageSources::Pesde(source.clone()),
+                    &RefreshOptions {
+                        project: project.clone(),
+                    },
+                )
                 .await
                 .context("failed to refresh package source")?;
             let config = source
@@ -193,9 +202,11 @@ impl InitCommand {
                             index: None,
                             target: None,
                         },
-                        &project,
-                        TargetKind::Lune,
-                        &mut HashSet::new(),
+                        &ResolveOptions {
+                            project: project.clone(),
+                            target: TargetKind::Lune,
+                            refreshed_sources,
+                        },
                     )
                     .await
                     .context("failed to resolve scripts package")?

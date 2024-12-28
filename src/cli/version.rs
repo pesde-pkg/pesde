@@ -251,7 +251,7 @@ pub enum TagInfo {
 #[instrument(skip(reqwest), level = "trace")]
 pub async fn get_or_download_version(
     reqwest: &reqwest::Client,
-    tag: &TagInfo,
+    tag: TagInfo,
     always_give_path: bool,
 ) -> anyhow::Result<Option<PathBuf>> {
     let path = home_dir()?.join("versions");
@@ -259,7 +259,7 @@ pub async fn get_or_download_version(
         .await
         .context("failed to create versions directory")?;
 
-    let version = match tag {
+    let version = match &tag {
         TagInfo::Complete(version) => version,
         // don't fetch the version since it could be cached
         TagInfo::Incomplete(version) => version,
@@ -290,9 +290,9 @@ pub async fn get_or_download_version(
             .context("failed to copy current executable to version directory")?;
     } else {
         let version = match tag {
-            TagInfo::Complete(version) => version.clone(),
+            TagInfo::Complete(version) => version,
             TagInfo::Incomplete(version) => {
-                get_remote_version(reqwest, VersionType::Specific(version.clone()))
+                get_remote_version(reqwest, VersionType::Specific(version))
                     .await
                     .context("failed to get remote version")?
             }

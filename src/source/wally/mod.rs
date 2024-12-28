@@ -5,7 +5,7 @@ use crate::{
     source::{
         fs::{store_in_cas, FSEntry, PackageFS},
         git_index::{read_file, root_tree, GitBasedSource},
-        traits::PackageSource,
+        traits::{DownloadOptions, PackageSource, RefreshOptions, ResolveOptions},
         version_id::VersionId,
         wally::{
             compat_util::get_target,
@@ -23,11 +23,7 @@ use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
-use std::{
-    collections::{BTreeMap, HashSet},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use tempfile::tempdir;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -53,7 +49,7 @@ pub struct WallyPackageSource {
 impl GitBasedSource for WallyPackageSource {
     fn path(&self, project: &Project) -> PathBuf {
         project
-            .data_dir
+            .data_dir()
             .join("wally_indices")
             .join(hash(self.as_bytes()))
     }
@@ -102,18 +98,22 @@ impl PackageSource for WallyPackageSource {
     type DownloadError = errors::DownloadError;
 
     #[instrument(skip_all, level = "debug")]
-    async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-        GitBasedSource::refresh(self, project).await
+    async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
+        GitBasedSource::refresh(self, options).await
     }
 
     #[instrument(skip_all, level = "debug")]
     async fn resolve(
         &self,
         specifier: &Self::Specifier,
-        project: &Project,
-        project_target: TargetKind,
-        refreshed_sources: &mut HashSet<PackageSources>,
+        options: &ResolveOptions,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+        let ResolveOptions {
+            project,
+            refreshed_sources,
+            ..
+        } = options;
+
         let repo = gix::open(self.path(project)).map_err(Box::new)?;
         let tree = root_tree(&repo).map_err(Box::new)?;
         let (scope, name) = specifier.name.as_str();
@@ -127,23 +127,26 @@ impl PackageSource for WallyPackageSource {
 
                 let config = self.config(project).await.map_err(Box::new)?;
                 for registry in config.fallback_registries {
-                    let source = WallyPackageSource::new(registry.clone());
-                    if refreshed_sources.insert(PackageSources::Wally(source.clone())) {
-                        GitBasedSource::refresh(&source, project)
-                            .await
-                            .map_err(Box::new)?;
+                    let source = WallyPackageSource::new(registry);
+                    match refreshed_sources
+                        .refresh(
+                            &PackageSources::Wally(source.clone()),
+                            &RefreshOptions {
+                                project: project.clone(),
+                            },
+                        )
+                        .await
+                    {
+                        Ok(()) => {}
+                        Err(super::errors::RefreshError::Wally(e)) => {
+                            return Err(Self::ResolveError::Refresh(Box::new(e)));
+                        }
+                        Err(e) => unreachable!("unexpected error: {e:?}"),
                     }
 
-                    match Box::pin(source.resolve(
-                        specifier,
-                        project,
-                        project_target,
-                        refreshed_sources,
-                    ))
-                    .await
-                    {
+                    match Box::pin(source.resolve(specifier, options)).await {
                         Ok((name, results)) => {
-                            tracing::debug!("found {} in backup registry {registry}", name);
+                            tracing::debug!("found {name} in backup registry {}", source.repo_url);
                             return Ok((name, results));
                         }
                         Err(errors::ResolveError::NotFound(_)) => {
@@ -202,16 +205,20 @@ impl PackageSource for WallyPackageSource {
     }
 
     #[instrument(skip_all, level = "debug")]
-    async fn download(
+    async fn download<R: DownloadProgressReporter>(
         &self,
         pkg_ref: &Self::Ref,
-        project: &Project,
-        reqwest: &reqwest::Client,
-        reporter: Arc<impl DownloadProgressReporter>,
+        options: &DownloadOptions<R>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
+        let DownloadOptions {
+            project,
+            reqwest,
+            reporter,
+        } = options;
+
         let config = self.config(project).await.map_err(Box::new)?;
         let index_file = project
-            .cas_dir
+            .cas_dir()
             .join("wally_index")
             .join(pkg_ref.name.escaped())
             .join(pkg_ref.version.to_string());
@@ -250,7 +257,7 @@ impl PackageSource for WallyPackageSource {
                     .unwrap_or("0.3.2"),
             );
 
-        if let Some(token) = project.auth_config.tokens().get(&self.repo_url) {
+        if let Some(token) = project.auth_config().tokens().get(&self.repo_url) {
             tracing::debug!("using token for {}", self.repo_url);
             request = request.header(AUTHORIZATION, token);
         }
@@ -291,6 +298,7 @@ impl PackageSource for WallyPackageSource {
 
         let archive = Arc::new(Mutex::new(archive));
 
+        // todo: remove this asyncification, since the Mutex makes it sequential anyway
         let entries = try_join_all(
             entries
                 .into_iter()
@@ -363,7 +371,7 @@ impl PackageSource for WallyPackageSource {
 pub struct WallyIndexConfig {
     api: url::Url,
     #[serde(default, deserialize_with = "crate::util::deserialize_gix_url_vec")]
-    fallback_registries: Vec<gix::Url>,
+    fallback_registries: Vec<Url>,
 }
 
 /// Errors that can occur when interacting with a Wally package source

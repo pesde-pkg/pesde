@@ -10,8 +10,8 @@ use crate::{
         git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
         git_index::{read_file, GitBasedSource},
         specifiers::DependencySpecifiers,
-        traits::PackageRef,
-        PackageSource, PackageSources, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
+        traits::{DownloadOptions, PackageRef, RefreshOptions, ResolveOptions},
+        PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project, DEFAULT_INDEX_NAME, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
@@ -20,13 +20,7 @@ use fs_err::tokio as fs;
 use futures::future::try_join_all;
 use gix::{bstr::BStr, traverse::tree::Recorder, ObjectId, Url};
 use relative_path::RelativePathBuf;
-use std::{
-    collections::{BTreeMap, HashSet},
-    fmt::Debug,
-    hash::Hash,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::PathBuf, sync::Arc};
 use tokio::{sync::Mutex, task::spawn_blocking};
 use tracing::instrument;
 
@@ -44,7 +38,7 @@ pub struct GitPackageSource {
 impl GitBasedSource for GitPackageSource {
     fn path(&self, project: &Project) -> PathBuf {
         project
-            .data_dir
+            .data_dir()
             .join("git_repos")
             .join(hash(self.as_bytes()))
     }
@@ -73,18 +67,18 @@ impl PackageSource for GitPackageSource {
     type DownloadError = errors::DownloadError;
 
     #[instrument(skip_all, level = "debug")]
-    async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-        GitBasedSource::refresh(self, project).await
+    async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
+        GitBasedSource::refresh(self, options).await
     }
 
     #[instrument(skip_all, level = "debug")]
     async fn resolve(
         &self,
         specifier: &Self::Specifier,
-        project: &Project,
-        _project_target: TargetKind,
-        _refreshed_sources: &mut HashSet<PackageSources>,
+        options: &ResolveOptions,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+        let ResolveOptions { project, .. } = options;
+
         let repo = gix::open(self.path(project))
             .map_err(|e| errors::ResolveError::OpenRepo(Box::new(self.repo_url.clone()), e))?;
         let rev = repo
@@ -334,15 +328,15 @@ impl PackageSource for GitPackageSource {
     }
 
     #[instrument(skip_all, level = "debug")]
-    async fn download(
+    async fn download<R: DownloadProgressReporter>(
         &self,
         pkg_ref: &Self::Ref,
-        project: &Project,
-        _reqwest: &reqwest::Client,
-        _reporter: Arc<impl DownloadProgressReporter>,
+        options: &DownloadOptions<R>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
+        let DownloadOptions { project, .. } = options;
+
         let index_file = project
-            .cas_dir
+            .cas_dir()
             .join("git_index")
             .join(hash(self.as_bytes()))
             .join(&pkg_ref.tree_id);

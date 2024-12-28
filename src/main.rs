@@ -332,7 +332,7 @@ async fn run() -> anyhow::Result<()> {
             .and_then(|manifest| manifest.pesde_version);
 
         let exe_path = if let Some(version) = target_version {
-            get_or_download_version(&reqwest, &TagInfo::Incomplete(version), false).await?
+            get_or_download_version(&reqwest, TagInfo::Incomplete(version), false).await?
         } else {
             None
         };

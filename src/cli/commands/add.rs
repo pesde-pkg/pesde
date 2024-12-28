@@ -1,4 +1,4 @@
-use std::{collections::HashSet, str::FromStr};
+use std::str::FromStr;
 
 use anyhow::Context;
 use clap::Args;
@@ -13,11 +13,11 @@ use pesde::{
         git::{specifier::GitDependencySpecifier, GitPackageSource},
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
-        traits::PackageSource,
+        traits::{PackageSource, RefreshOptions, ResolveOptions},
         workspace::WorkspacePackageSource,
         PackageSources,
     },
-    Project, DEFAULT_INDEX_NAME,
+    Project, RefreshedSources, DEFAULT_INDEX_NAME,
 };
 
 #[derive(Debug, Args)]
@@ -128,17 +128,27 @@ impl AddCommand {
                 ),
             ),
         };
-        source
-            .refresh(&project)
+
+        let refreshed_sources = RefreshedSources::new();
+
+        refreshed_sources
+            .refresh(
+                &source,
+                &RefreshOptions {
+                    project: project.clone(),
+                },
+            )
             .await
             .context("failed to refresh package source")?;
 
         let Some(version_id) = source
             .resolve(
                 &specifier,
-                &project,
-                manifest.target.kind(),
-                &mut HashSet::new(),
+                &ResolveOptions {
+                    project: project.clone(),
+                    target: manifest.target.kind(),
+                    refreshed_sources,
+                },
             )
             .await
             .context("failed to resolve package")?
@@ -167,7 +177,7 @@ impl AddCommand {
             "dependencies"
         };
 
-        let alias = self.alias.unwrap_or_else(|| match self.name.clone() {
+        let alias = self.alias.unwrap_or_else(|| match &self.name {
             AnyPackageIdentifier::PackageName(versioned) => versioned.0.as_str().1.to_string(),
             AnyPackageIdentifier::Url((url, _)) => url
                 .path
@@ -205,7 +215,8 @@ impl AddCommand {
             }
             #[cfg(feature = "wally-compat")]
             DependencySpecifiers::Wally(spec) => {
-                field["wally"] = toml_edit::value(spec.name.clone().to_string());
+                field["wally"] =
+                    toml_edit::value(spec.name.clone().to_string().trim_start_matches("wally#"));
                 field["version"] = toml_edit::value(format!("^{}", version_id.version()));
 
                 if let Some(index) = spec.index.filter(|i| i != DEFAULT_INDEX_NAME) {

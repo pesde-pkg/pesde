@@ -1,21 +1,20 @@
 use crate::{
-    manifest::target::{Target, TargetKind},
+    manifest::target::Target,
     names::PackageNames,
     reporters::DownloadProgressReporter,
     source::{
-        fs::PackageFS, specifiers::DependencySpecifiers, traits::PackageSource,
-        version_id::VersionId, workspace::pkg_ref::WorkspacePackageRef, PackageSources,
+        fs::PackageFS,
+        specifiers::DependencySpecifiers,
+        traits::{DownloadOptions, PackageSource, ResolveOptions},
+        version_id::VersionId,
+        workspace::pkg_ref::WorkspacePackageRef,
         ResolveResult,
     },
-    Project, DEFAULT_INDEX_NAME,
+    DEFAULT_INDEX_NAME,
 };
 use futures::StreamExt;
 use relative_path::RelativePathBuf;
-use reqwest::Client;
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::Arc,
-};
+use std::collections::BTreeMap;
 use tokio::pin;
 use tracing::instrument;
 
@@ -35,25 +34,21 @@ impl PackageSource for WorkspacePackageSource {
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
 
-    async fn refresh(&self, _project: &Project) -> Result<(), Self::RefreshError> {
-        // no-op
-        Ok(())
-    }
-
     #[instrument(skip_all, level = "debug")]
     async fn resolve(
         &self,
         specifier: &Self::Specifier,
-        project: &Project,
-        project_target: TargetKind,
-        _refreshed_sources: &mut HashSet<PackageSources>,
+        options: &ResolveOptions,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+        let ResolveOptions {
+            project,
+            target: project_target,
+            ..
+        } = options;
+
         let (path, manifest) = 'finder: {
-            let workspace_dir = project
-                .workspace_dir
-                .as_ref()
-                .unwrap_or(&project.package_dir);
-            let target = specifier.target.unwrap_or(project_target);
+            let workspace_dir = project.workspace_dir().unwrap_or(project.package_dir());
+            let target = specifier.target.unwrap_or(*project_target);
 
             let members = project.workspace_members(workspace_dir, true).await?;
             pin!(members);
@@ -70,77 +65,77 @@ impl PackageSource for WorkspacePackageSource {
             ));
         };
 
+        let manifest_target_kind = manifest.target.kind();
+        let pkg_ref = WorkspacePackageRef {
+            // workspace_dir is guaranteed to be Some by the workspace_members method
+            // strip_prefix is guaranteed to be Some by same method
+            // from_path is guaranteed to be Ok because we just stripped the absolute path
+            path: RelativePathBuf::from_path(
+                path.strip_prefix(project.workspace_dir().unwrap()).unwrap(),
+            )
+            .unwrap(),
+            dependencies: manifest
+                .all_dependencies()?
+                .into_iter()
+                .map(|(alias, (mut spec, ty))| {
+                    match &mut spec {
+                        DependencySpecifiers::Pesde(spec) => {
+                            let index_name = spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
+
+                            spec.index = Some(
+                                manifest
+                                    .indices
+                                    .get(index_name)
+                                    .ok_or(errors::ResolveError::IndexNotFound(
+                                        index_name.to_string(),
+                                        manifest.name.to_string(),
+                                    ))?
+                                    .to_string(),
+                            )
+                        }
+                        #[cfg(feature = "wally-compat")]
+                        DependencySpecifiers::Wally(spec) => {
+                            let index_name = spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
+
+                            spec.index = Some(
+                                manifest
+                                    .wally_indices
+                                    .get(index_name)
+                                    .ok_or(errors::ResolveError::IndexNotFound(
+                                        index_name.to_string(),
+                                        manifest.name.to_string(),
+                                    ))?
+                                    .to_string(),
+                            )
+                        }
+                        DependencySpecifiers::Git(_) => {}
+                        DependencySpecifiers::Workspace(_) => {}
+                    }
+
+                    Ok((alias, (spec, ty)))
+                })
+                .collect::<Result<_, errors::ResolveError>>()?,
+            target: manifest.target,
+        };
+
         Ok((
-            PackageNames::Pesde(manifest.name.clone()),
+            PackageNames::Pesde(manifest.name),
             BTreeMap::from([(
-                VersionId::new(manifest.version.clone(), manifest.target.kind()),
-                WorkspacePackageRef {
-                    // workspace_dir is guaranteed to be Some by the workspace_members method
-                    // strip_prefix is guaranteed to be Some by same method
-                    // from_path is guaranteed to be Ok because we just stripped the absolute path
-                    path: RelativePathBuf::from_path(
-                        path.strip_prefix(project.workspace_dir.clone().unwrap())
-                            .unwrap(),
-                    )
-                    .unwrap(),
-                    dependencies: manifest
-                        .all_dependencies()?
-                        .into_iter()
-                        .map(|(alias, (mut spec, ty))| {
-                            match &mut spec {
-                                DependencySpecifiers::Pesde(spec) => {
-                                    let index_name =
-                                        spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
-
-                                    spec.index = Some(
-                                        manifest
-                                            .indices
-                                            .get(index_name)
-                                            .ok_or(errors::ResolveError::IndexNotFound(
-                                                index_name.to_string(),
-                                                manifest.name.to_string(),
-                                            ))?
-                                            .to_string(),
-                                    )
-                                }
-                                #[cfg(feature = "wally-compat")]
-                                DependencySpecifiers::Wally(spec) => {
-                                    let index_name =
-                                        spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
-
-                                    spec.index = Some(
-                                        manifest
-                                            .wally_indices
-                                            .get(index_name)
-                                            .ok_or(errors::ResolveError::IndexNotFound(
-                                                index_name.to_string(),
-                                                manifest.name.to_string(),
-                                            ))?
-                                            .to_string(),
-                                    )
-                                }
-                                DependencySpecifiers::Git(_) => {}
-                                DependencySpecifiers::Workspace(_) => {}
-                            }
-
-                            Ok((alias, (spec, ty)))
-                        })
-                        .collect::<Result<_, errors::ResolveError>>()?,
-                    target: manifest.target,
-                },
+                VersionId::new(manifest.version, manifest_target_kind),
+                pkg_ref,
             )]),
         ))
     }
 
     #[instrument(skip_all, level = "debug")]
-    async fn download(
+    async fn download<R: DownloadProgressReporter>(
         &self,
         pkg_ref: &Self::Ref,
-        project: &Project,
-        _reqwest: &Client,
-        _reporter: Arc<impl DownloadProgressReporter>,
+        options: &DownloadOptions<R>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
-        let path = pkg_ref.path.to_path(project.workspace_dir.clone().unwrap());
+        let DownloadOptions { project, .. } = options;
+
+        let path = pkg_ref.path.to_path(project.workspace_dir().unwrap());
 
         Ok((
             PackageFS::Copy(path, pkg_ref.target.kind()),

@@ -9,7 +9,7 @@ use pesde::{
     patches::setup_patches_repo,
     source::{
         refs::PackageRefs,
-        traits::{PackageRef, PackageSource},
+        traits::{DownloadOptions, PackageRef, PackageSource},
     },
     Project, MANIFEST_FILE_NAME,
 };
@@ -51,7 +51,14 @@ impl PatchCommand {
         fs::create_dir_all(&directory).await?;
 
         source
-            .download(&node.node.pkg_ref, &project, &reqwest, Arc::new(()))
+            .download(
+                &node.node.pkg_ref,
+                &DownloadOptions {
+                    project: project.clone(),
+                    reqwest,
+                    reporter: Arc::new(()),
+                },
+            )
             .await?
             .0
             .write_to(&directory, project.cas_dir(), false)

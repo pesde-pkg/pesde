@@ -1,6 +1,6 @@
 #![allow(async_fn_in_trait)]
 
-use crate::{util::authenticate_conn, Project};
+use crate::{source::traits::RefreshOptions, util::authenticate_conn, Project};
 use fs_err::tokio as fs;
 use gix::remote::Direction;
 use std::fmt::Debug;
@@ -16,10 +16,13 @@ pub trait GitBasedSource {
     fn repo_url(&self) -> &gix::Url;
 
     /// Refreshes the repository
-    async fn refresh(&self, project: &Project) -> Result<(), errors::RefreshError> {
+    async fn refresh(&self, options: &RefreshOptions) -> Result<(), errors::RefreshError> {
+        let RefreshOptions { project } = options;
+
         let path = self.path(project);
         let repo_url = self.repo_url().clone();
-        let auth_config = project.auth_config.clone();
+
+        let project = project.clone();
 
         if path.exists() {
             spawn_blocking(move || {
@@ -47,7 +50,7 @@ pub trait GitBasedSource {
                     }
                 };
 
-                authenticate_conn(&mut connection, &auth_config);
+                authenticate_conn(&mut connection, project.auth_config());
 
                 let fetch =
                     match connection.prepare_fetch(gix::progress::Discard, Default::default()) {
@@ -80,7 +83,7 @@ pub trait GitBasedSource {
             gix::prepare_clone_bare(repo_url.clone(), &path)
                 .map_err(|e| errors::RefreshError::Clone(repo_url.to_string(), Box::new(e)))?
                 .configure_connection(move |c| {
-                    authenticate_conn(c, &auth_config);
+                    authenticate_conn(c, project.auth_config());
                     Ok(())
                 })
                 .fetch_only(gix::progress::Discard, &false.into())
@@ -94,21 +97,16 @@ pub trait GitBasedSource {
 
 /// Reads a file from a tree
 #[instrument(skip(tree), ret, level = "trace")]
-pub fn read_file<
-    I: IntoIterator<Item = P> + Clone + Debug,
-    P: ToString + PartialEq<gix::bstr::BStr>,
->(
+pub fn read_file<I: IntoIterator<Item = P> + Debug, P: ToString + PartialEq<gix::bstr::BStr>>(
     tree: &gix::Tree,
     file_path: I,
 ) -> Result<Option<String>, errors::ReadFile> {
-    let file_path_str = file_path
-        .clone()
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
-        .join(std::path::MAIN_SEPARATOR_STR);
+    let mut file_path_str = String::new();
 
-    let entry = match tree.lookup_entry(file_path) {
+    let entry = match tree.lookup_entry(file_path.into_iter().inspect(|path| {
+        file_path_str.push_str(path.to_string().as_str());
+        file_path_str.push('/');
+    })) {
         Ok(Some(entry)) => entry,
         Ok(None) => return Ok(None),
         Err(e) => return Err(errors::ReadFile::Lookup(file_path_str, e)),

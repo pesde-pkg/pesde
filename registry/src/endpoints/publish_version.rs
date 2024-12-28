@@ -18,6 +18,7 @@ use pesde::{
         git_index::{read_file, root_tree, GitBasedSource},
         pesde::{DocEntry, DocEntryKind, IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
         specifiers::DependencySpecifiers,
+        traits::RefreshOptions,
         version_id::VersionId,
         IGNORED_DIRS, IGNORED_FILES,
     },
@@ -72,7 +73,12 @@ pub async fn publish_package(
     user_id: web::ReqData<UserId>,
 ) -> Result<impl Responder, Error> {
     let source = app_state.source.lock().await;
-    source.refresh(&app_state.project).await.map_err(Box::new)?;
+    source
+        .refresh(&RefreshOptions {
+            project: app_state.project.clone(),
+        })
+        .await
+        .map_err(Box::new)?;
     let config = source.config(&app_state.project).await?;
 
     let package_dir = tempfile::tempdir()?;

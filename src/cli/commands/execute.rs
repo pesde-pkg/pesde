@@ -15,20 +15,19 @@ use pesde::{
     names::PackageName,
     source::{
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
-        traits::PackageSource,
+        traits::{DownloadOptions, PackageSource, RefreshOptions, ResolveOptions},
+        PackageSources,
     },
-    Project,
+    Project, RefreshedSources,
 };
 use semver::VersionReq;
 use std::{
-    collections::HashSet,
     env::current_dir,
     ffi::OsString,
     io::{Stderr, Write},
     process::Command,
     sync::Arc,
 };
-use tokio::sync::Mutex;
 
 #[derive(Debug, Args)]
 pub struct ExecuteCommand {
@@ -53,6 +52,8 @@ impl ExecuteCommand {
             .unwrap()
             .replace(multi_progress.clone());
 
+        let refreshed_sources = RefreshedSources::new();
+
         let (tempdir, bin_path) = reporters::run_with_reporter_and_writer(
             std::io::stderr(),
             |multi_progress, root_progress, reporter| async {
@@ -67,8 +68,13 @@ impl ExecuteCommand {
                 }
                 .context("no index specified")?;
                 let source = PesdePackageSource::new(index);
-                source
-                    .refresh(&project)
+                refreshed_sources
+                    .refresh(
+                        &PackageSources::Pesde(source.clone()),
+                        &RefreshOptions {
+                            project: project.clone(),
+                        },
+                    )
                     .await
                     .context("failed to refresh source")?;
 
@@ -82,7 +88,14 @@ impl ExecuteCommand {
                     };
 
                     if let Some(res) = source
-                        .resolve(&specifier, &project, TargetKind::Lune, &mut HashSet::new())
+                        .resolve(
+                            &specifier,
+                            &ResolveOptions {
+                                project: project.clone(),
+                                target: TargetKind::Lune,
+                                refreshed_sources: refreshed_sources.clone(),
+                            },
+                        )
                         .await
                         .context("failed to resolve package")?
                         .1
@@ -92,7 +105,14 @@ impl ExecuteCommand {
                     }
 
                     source
-                        .resolve(&specifier, &project, TargetKind::Luau, &mut HashSet::new())
+                        .resolve(
+                            &specifier,
+                            &ResolveOptions {
+                                project: project.clone(),
+                                target: TargetKind::Luau,
+                                refreshed_sources: refreshed_sources.clone(),
+                            },
+                        )
                         .await
                         .context("failed to resolve package")?
                         .1
@@ -120,7 +140,14 @@ impl ExecuteCommand {
                 );
 
                 let (fs, target) = source
-                    .download(&pkg_ref, &project, &reqwest, Arc::new(()))
+                    .download(
+                        &pkg_ref,
+                        &DownloadOptions {
+                            project: project.clone(),
+                            reqwest: reqwest.clone(),
+                            reporter: Arc::new(()),
+                        },
+                    )
                     .await
                     .context("failed to download package")?;
                 let bin_path = target.bin_path().context("package has no binary export")?;
@@ -129,10 +156,8 @@ impl ExecuteCommand {
                     .await
                     .context("failed to write package contents")?;
 
-                let mut refreshed_sources = HashSet::new();
-
                 let graph = project
-                    .dependency_graph(None, &mut refreshed_sources, true)
+                    .dependency_graph(None, refreshed_sources.clone(), true)
                     .await
                     .context("failed to build dependency graph")?;
 
@@ -152,7 +177,7 @@ impl ExecuteCommand {
                         &Arc::new(graph),
                         DownloadAndLinkOptions::<CliReporter<Stderr>, ()>::new(reqwest)
                             .reporter(reporter)
-                            .refreshed_sources(Mutex::new(refreshed_sources))
+                            .refreshed_sources(refreshed_sources)
                             .prod(true)
                             .write(true),
                     )

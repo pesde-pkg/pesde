@@ -7,7 +7,6 @@ use std::{
     fmt::Debug,
     hash::Hash,
     path::PathBuf,
-    sync::Arc,
 };
 use tokio_util::io::StreamReader;
 
@@ -15,17 +14,14 @@ use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
 use crate::{
-    manifest::{
-        target::{Target, TargetKind},
-        DependencyType,
-    },
+    manifest::{target::Target, DependencyType},
     names::{PackageName, PackageNames},
     reporters::DownloadProgressReporter,
     source::{
         fs::{store_in_cas, FSEntry, PackageFS},
         git_index::{read_file, root_tree, GitBasedSource},
-        DependencySpecifiers, PackageSource, PackageSources, ResolveResult, VersionId,
-        IGNORED_DIRS, IGNORED_FILES,
+        traits::{DownloadOptions, RefreshOptions, ResolveOptions},
+        DependencySpecifiers, PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project,
@@ -58,7 +54,10 @@ pub struct ScopeInfo {
 
 impl GitBasedSource for PesdePackageSource {
     fn path(&self, project: &Project) -> PathBuf {
-        project.data_dir.join("indices").join(hash(self.as_bytes()))
+        project
+            .data_dir()
+            .join("indices")
+            .join(hash(self.as_bytes()))
     }
 
     fn repo_url(&self) -> &Url {
@@ -105,18 +104,22 @@ impl PackageSource for PesdePackageSource {
     type DownloadError = errors::DownloadError;
 
     #[instrument(skip_all, level = "debug")]
-    async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-        GitBasedSource::refresh(self, project).await
+    async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
+        GitBasedSource::refresh(self, options).await
     }
 
     #[instrument(skip_all, level = "debug")]
     async fn resolve(
         &self,
         specifier: &Self::Specifier,
-        project: &Project,
-        project_target: TargetKind,
-        _refreshed_sources: &mut HashSet<PackageSources>,
+        options: &ResolveOptions,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+        let ResolveOptions {
+            project,
+            target: project_target,
+            ..
+        } = options;
+
         let (scope, name) = specifier.name.as_str();
         let repo = gix::open(self.path(project)).map_err(Box::new)?;
         let tree = root_tree(&repo).map_err(Box::new)?;
@@ -142,7 +145,7 @@ impl PackageSource for PesdePackageSource {
                 .into_iter()
                 .filter(|(VersionId(version, target), _)| {
                     specifier.version.matches(version)
-                        && specifier.target.unwrap_or(project_target) == *target
+                        && specifier.target.unwrap_or(*project_target) == *target
                 })
                 .map(|(id, entry)| {
                     let version = id.version().clone();
@@ -163,16 +166,20 @@ impl PackageSource for PesdePackageSource {
     }
 
     #[instrument(skip_all, level = "debug")]
-    async fn download(
+    async fn download<R: DownloadProgressReporter>(
         &self,
         pkg_ref: &Self::Ref,
-        project: &Project,
-        reqwest: &reqwest::Client,
-        reporter: Arc<impl DownloadProgressReporter>,
+        options: &DownloadOptions<R>,
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
+        let DownloadOptions {
+            project,
+            reporter,
+            reqwest,
+        } = options;
+
         let config = self.config(project).await.map_err(Box::new)?;
         let index_file = project
-            .cas_dir
+            .cas_dir()
             .join("index")
             .join(pkg_ref.name.escaped())
             .join(pkg_ref.version.to_string())
@@ -200,7 +207,7 @@ impl PackageSource for PesdePackageSource {
 
         let mut request = reqwest.get(&url).header(ACCEPT, "application/octet-stream");
 
-        if let Some(token) = project.auth_config.tokens().get(&self.repo_url) {
+        if let Some(token) = project.auth_config().tokens().get(&self.repo_url) {
             tracing::debug!("using token for {}", self.repo_url);
             request = request.header(AUTHORIZATION, token);
         }

@@ -1,4 +1,3 @@
-#![allow(async_fn_in_trait)]
 use crate::{
     manifest::{
         target::{Target, TargetKind},
@@ -6,11 +5,12 @@ use crate::{
     },
     reporters::DownloadProgressReporter,
     source::{DependencySpecifiers, PackageFS, PackageSources, ResolveResult},
-    Project,
+    Project, RefreshedSources,
 };
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     fmt::{Debug, Display},
+    future::Future,
     sync::Arc,
 };
 
@@ -27,6 +27,35 @@ pub trait PackageRef: Debug {
     fn source(&self) -> PackageSources;
 }
 
+/// Options for refreshing a source
+#[derive(Debug, Clone)]
+pub struct RefreshOptions {
+    /// The project to refresh for
+    pub project: Project,
+}
+
+/// Options for resolving a package
+#[derive(Debug, Clone)]
+pub struct ResolveOptions {
+    /// The project to resolve for
+    pub project: Project,
+    /// The target to resolve for
+    pub target: TargetKind,
+    /// The sources that have been refreshed
+    pub refreshed_sources: RefreshedSources,
+}
+
+/// Options for downloading a package
+#[derive(Debug, Clone)]
+pub struct DownloadOptions<R: DownloadProgressReporter> {
+    /// The project to download for
+    pub project: Project,
+    /// The reqwest client to use
+    pub reqwest: reqwest::Client,
+    /// The reporter to use
+    pub reporter: Arc<R>,
+}
+
 /// A source of packages
 pub trait PackageSource: Debug {
     /// The specifier type for this source
@@ -34,32 +63,31 @@ pub trait PackageSource: Debug {
     /// The reference type for this source
     type Ref: PackageRef;
     /// The error type for refreshing this source
-    type RefreshError: std::error::Error;
+    type RefreshError: std::error::Error + Send + Sync + 'static;
     /// The error type for resolving a package from this source
-    type ResolveError: std::error::Error;
+    type ResolveError: std::error::Error + Send + Sync + 'static;
     /// The error type for downloading a package from this source
-    type DownloadError: std::error::Error;
+    type DownloadError: std::error::Error + Send + Sync + 'static;
 
     /// Refreshes the source
-    async fn refresh(&self, _project: &Project) -> Result<(), Self::RefreshError> {
-        Ok(())
+    fn refresh(
+        &self,
+        _options: &RefreshOptions,
+    ) -> impl Future<Output = Result<(), Self::RefreshError>> + Send + Sync {
+        async { Ok(()) }
     }
 
     /// Resolves a specifier to a reference
-    async fn resolve(
+    fn resolve(
         &self,
         specifier: &Self::Specifier,
-        project: &Project,
-        project_target: TargetKind,
-        refreshed_sources: &mut HashSet<PackageSources>,
-    ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError>;
+        options: &ResolveOptions,
+    ) -> impl Future<Output = Result<ResolveResult<Self::Ref>, Self::ResolveError>>;
 
     /// Downloads a package
-    async fn download(
+    fn download<R: DownloadProgressReporter>(
         &self,
         pkg_ref: &Self::Ref,
-        project: &Project,
-        reqwest: &reqwest::Client,
-        reporter: Arc<impl DownloadProgressReporter>,
-    ) -> Result<(PackageFS, Target), Self::DownloadError>;
+        options: &DownloadOptions<R>,
+    ) -> impl Future<Output = Result<(PackageFS, Target), Self::DownloadError>>;
 }

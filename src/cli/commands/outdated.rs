@@ -3,17 +3,14 @@ use anyhow::Context;
 use clap::Args;
 use futures::future::try_join_all;
 use pesde::{
-    refresh_sources,
     source::{
         refs::PackageRefs,
         specifiers::DependencySpecifiers,
-        traits::{PackageRef, PackageSource},
+        traits::{PackageRef, PackageSource, RefreshOptions, ResolveOptions},
     },
-    Project,
+    Project, RefreshedSources,
 };
 use semver::VersionReq;
-use std::{collections::HashSet, sync::Arc};
-use tokio::sync::Mutex;
 
 #[derive(Debug, Args)]
 pub struct OutdatedCommand {
@@ -40,19 +37,7 @@ impl OutdatedCommand {
             .context("failed to read manifest")?;
         let manifest_target_kind = manifest.target.kind();
 
-        let mut refreshed_sources = HashSet::new();
-
-        refresh_sources(
-            &project,
-            graph
-                .iter()
-                .flat_map(|(_, versions)| versions.iter())
-                .map(|(_, node)| node.node.pkg_ref.source()),
-            &mut refreshed_sources,
-        )
-        .await?;
-
-        let refreshed_sources = Arc::new(Mutex::new(refreshed_sources));
+        let refreshed_sources = RefreshedSources::new();
 
         if try_join_all(
             graph
@@ -74,14 +59,22 @@ impl OutdatedCommand {
                         }
 
                         let source = node.node.pkg_ref.source();
+                        refreshed_sources
+                            .refresh(
+                                &source,
+                                &RefreshOptions {
+                                    project: project.clone(),
+                                },
+                            )
+                            .await?;
 
                         if !self.strict {
-                            match specifier {
-                                DependencySpecifiers::Pesde(ref mut spec) => {
+                            match &mut specifier {
+                                DependencySpecifiers::Pesde(spec) => {
                                     spec.version = VersionReq::STAR;
                                 }
                                 #[cfg(feature = "wally-compat")]
-                                DependencySpecifiers::Wally(ref mut spec) => {
+                                DependencySpecifiers::Wally(spec) => {
                                     spec.version = VersionReq::STAR;
                                 }
                                 DependencySpecifiers::Git(_) => {}
@@ -92,9 +85,11 @@ impl OutdatedCommand {
                         let version_id = source
                             .resolve(
                                 &specifier,
-                                &project,
-                                manifest_target_kind,
-                                &mut *refreshed_sources.lock().await,
+                                &ResolveOptions {
+                                    project: project.clone(),
+                                    target: manifest_target_kind,
+                                    refreshed_sources: refreshed_sources.clone(),
+                                },
                             )
                             .await
                             .context("failed to resolve package versions")?

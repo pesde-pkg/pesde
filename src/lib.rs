@@ -6,16 +6,21 @@
 use crate::{
     lockfile::Lockfile,
     manifest::Manifest,
-    source::{traits::PackageSource, PackageSources},
+    source::{
+        traits::{PackageSource, RefreshOptions},
+        PackageSources,
+    },
 };
 use async_stream::stream;
 use fs_err::tokio as fs;
-use futures::{future::try_join_all, Stream};
+use futures::Stream;
 use gix::sec::identity::Account;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
+    hash::{Hash, Hasher},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tracing::instrument;
 use wax::Pattern;
@@ -56,11 +61,16 @@ pub(crate) const LINK_LIB_NO_FILE_FOUND: &str = "____pesde_no_export_file_found"
 /// The folder in which scripts are linked
 pub const SCRIPTS_LINK_FOLDER: &str = ".pesde";
 
-/// Struct containing the authentication configuration
-#[derive(Debug, Default, Clone)]
-pub struct AuthConfig {
+#[derive(Debug, Default)]
+struct AuthConfigShared {
     tokens: HashMap<gix::Url, String>,
     git_credentials: Option<Account>,
+}
+
+/// Struct containing the authentication configuration
+#[derive(Debug, Clone, Default)]
+pub struct AuthConfig {
+    shared: Arc<AuthConfigShared>,
 }
 
 impl AuthConfig {
@@ -70,11 +80,12 @@ impl AuthConfig {
     }
 
     /// Set the tokens
+    /// Panics if the `AuthConfig` is shared
     pub fn with_tokens<I: IntoIterator<Item = (gix::Url, S)>, S: AsRef<str>>(
         mut self,
         tokens: I,
     ) -> Self {
-        self.tokens = tokens
+        Arc::get_mut(&mut self.shared).unwrap().tokens = tokens
             .into_iter()
             .map(|(url, s)| (url, s.as_ref().to_string()))
             .collect();
@@ -82,30 +93,37 @@ impl AuthConfig {
     }
 
     /// Set the git credentials
+    /// Panics if the `AuthConfig` is shared
     pub fn with_git_credentials(mut self, git_credentials: Option<Account>) -> Self {
-        self.git_credentials = git_credentials;
+        Arc::get_mut(&mut self.shared).unwrap().git_credentials = git_credentials;
         self
     }
 
     /// Get the tokens
     pub fn tokens(&self) -> &HashMap<gix::Url, String> {
-        &self.tokens
+        &self.shared.tokens
     }
 
     /// Get the git credentials
     pub fn git_credentials(&self) -> Option<&Account> {
-        self.git_credentials.as_ref()
+        self.shared.git_credentials.as_ref()
     }
 }
 
-/// The main struct of the pesde library, representing a project
-#[derive(Debug, Clone)]
-pub struct Project {
+#[derive(Debug)]
+struct ProjectShared {
     package_dir: PathBuf,
     workspace_dir: Option<PathBuf>,
     data_dir: PathBuf,
     auth_config: AuthConfig,
     cas_dir: PathBuf,
+}
+
+/// The main struct of the pesde library, representing a project
+/// Unlike `ProjectShared`, this struct is `Send` and `Sync` and is cheap to clone because it is `Arc`-backed
+#[derive(Debug, Clone)]
+pub struct Project {
+    shared: Arc<ProjectShared>,
 }
 
 impl Project {
@@ -118,43 +136,45 @@ impl Project {
         auth_config: AuthConfig,
     ) -> Self {
         Project {
-            package_dir: package_dir.as_ref().to_path_buf(),
-            workspace_dir: workspace_dir.map(|d| d.as_ref().to_path_buf()),
-            data_dir: data_dir.as_ref().to_path_buf(),
-            auth_config,
-            cas_dir: cas_dir.as_ref().to_path_buf(),
+            shared: Arc::new(ProjectShared {
+                package_dir: package_dir.as_ref().to_path_buf(),
+                workspace_dir: workspace_dir.map(|d| d.as_ref().to_path_buf()),
+                data_dir: data_dir.as_ref().to_path_buf(),
+                auth_config,
+                cas_dir: cas_dir.as_ref().to_path_buf(),
+            }),
         }
     }
 
     /// The directory of the package
     pub fn package_dir(&self) -> &Path {
-        &self.package_dir
+        &self.shared.package_dir
     }
 
     /// The directory of the workspace this package belongs to, if any
     pub fn workspace_dir(&self) -> Option<&Path> {
-        self.workspace_dir.as_deref()
+        self.shared.workspace_dir.as_deref()
     }
 
     /// The directory to store general-purpose data
     pub fn data_dir(&self) -> &Path {
-        &self.data_dir
+        &self.shared.data_dir
     }
 
     /// The authentication configuration
     pub fn auth_config(&self) -> &AuthConfig {
-        &self.auth_config
+        &self.shared.auth_config
     }
 
     /// The CAS (content-addressable storage) directory
     pub fn cas_dir(&self) -> &Path {
-        &self.cas_dir
+        &self.shared.cas_dir
     }
 
     /// Read the manifest file
     #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub async fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
-        let string = fs::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME)).await?;
+        let string = fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?;
         Ok(string)
     }
 
@@ -162,20 +182,24 @@ impl Project {
     /// Deserialize the manifest file
     #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub async fn deser_manifest(&self) -> Result<Manifest, errors::ManifestReadError> {
-        let string = fs::read_to_string(self.package_dir.join(MANIFEST_FILE_NAME)).await?;
+        let string = fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?;
         Ok(toml::from_str(&string)?)
     }
 
     /// Write the manifest file
     #[instrument(skip(self, manifest), level = "debug")]
     pub async fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
-        fs::write(self.package_dir.join(MANIFEST_FILE_NAME), manifest.as_ref()).await
+        fs::write(
+            self.package_dir().join(MANIFEST_FILE_NAME),
+            manifest.as_ref(),
+        )
+        .await
     }
 
     /// Deserialize the lockfile
     #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub async fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
-        let string = fs::read_to_string(self.package_dir.join(LOCKFILE_FILE_NAME)).await?;
+        let string = fs::read_to_string(self.package_dir().join(LOCKFILE_FILE_NAME)).await?;
         Ok(toml::from_str(&string)?)
     }
 
@@ -186,7 +210,7 @@ impl Project {
         lockfile: &Lockfile,
     ) -> Result<(), errors::LockfileWriteError> {
         let string = toml::to_string(lockfile)?;
-        fs::write(self.package_dir.join(LOCKFILE_FILE_NAME), string).await?;
+        fs::write(self.package_dir().join(LOCKFILE_FILE_NAME), string).await?;
         Ok(())
     }
 
@@ -370,24 +394,35 @@ pub async fn matching_globs<'a, P: AsRef<Path> + Debug, I: IntoIterator<Item = &
     Ok(paths)
 }
 
-/// Refreshes the sources asynchronously
-pub async fn refresh_sources<I: Iterator<Item = PackageSources>>(
-    project: &Project,
-    sources: I,
-    refreshed_sources: &mut HashSet<PackageSources>,
-) -> Result<(), Box<source::errors::RefreshError>> {
-    try_join_all(sources.map(|source| {
-        let needs_refresh = refreshed_sources.insert(source.clone());
-        async move {
-            if needs_refresh {
-                source.refresh(project).await.map_err(Box::new)
-            } else {
-                Ok(())
-            }
+/// A struct containing sources already having been refreshed
+#[derive(Debug, Clone, Default)]
+pub struct RefreshedSources(Arc<tokio::sync::Mutex<HashSet<u64>>>);
+
+impl RefreshedSources {
+    /// Create a new empty `RefreshedSources`
+    pub fn new() -> Self {
+        RefreshedSources::default()
+    }
+
+    /// Refreshes the source asynchronously if it has not already been refreshed.
+    /// Will prevent more refreshes of the same source.
+    pub async fn refresh(
+        &self,
+        source: &PackageSources,
+        options: &RefreshOptions,
+    ) -> Result<(), source::errors::RefreshError> {
+        let mut hasher = std::hash::DefaultHasher::new();
+        source.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        let mut refreshed_sources = self.0.lock().await;
+
+        if refreshed_sources.insert(hash) {
+            source.refresh(options).await
+        } else {
+            Ok(())
         }
-    }))
-    .await
-    .map(|_| ())
+    }
 }
 
 /// Errors that can occur when using the pesde library

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+- Improve installation experience by @lukadev-0
+
+### Performance
+- Use `Arc` for more efficient cloning of multiple structs by @daimond113
+- Avoid cloning where possible by @daimond113
+
 ## [0.5.2] - 2024-12-19
 ### Fixed
 - Change dependency types for removed peer dependencies by @daimond113

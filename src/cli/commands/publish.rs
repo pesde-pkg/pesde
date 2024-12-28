@@ -22,9 +22,16 @@ use pesde::{
     },
     Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
+use pesde::{
+    source::{
+        traits::{RefreshOptions, ResolveOptions},
+        PackageSources,
+    },
+    RefreshedSources,
+};
 use reqwest::{header::AUTHORIZATION, StatusCode};
 use semver::VersionReq;
-use std::{collections::HashSet, path::PathBuf};
+use std::path::PathBuf;
 use tempfile::Builder;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
@@ -365,6 +372,8 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
             }
         }
 
+        let refreshed_sources = RefreshedSources::new();
+
         for specifier in manifest
             .dependencies
             .values_mut()
@@ -406,7 +415,14 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                 DependencySpecifiers::Git(_) => {}
                 DependencySpecifiers::Workspace(spec) => {
                     let pkg_ref = WorkspacePackageSource
-                        .resolve(spec, project, target_kind, &mut HashSet::new())
+                        .resolve(
+                            spec,
+                            &ResolveOptions {
+                                project: project.clone(),
+                                target: target_kind,
+                                refreshed_sources: refreshed_sources.clone(),
+                            },
+                        )
                         .await
                         .context("failed to resolve workspace package")?
                         .1
@@ -575,7 +591,13 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
             .get(&self.index)
             .context(format!("missing index {}", self.index))?;
         let source = PesdePackageSource::new(index_url.clone());
-        PackageSource::refresh(&source, project)
+        refreshed_sources
+            .refresh(
+                &PackageSources::Pesde(source.clone()),
+                &RefreshOptions {
+                    project: project.clone(),
+                },
+            )
             .await
             .context("failed to refresh source")?;
         let config = source

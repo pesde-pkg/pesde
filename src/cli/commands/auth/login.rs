@@ -6,12 +6,14 @@ use std::thread::spawn;
 use tokio::time::sleep;
 use url::Url;
 
+use crate::cli::auth::{get_token_login, set_token};
 use pesde::{
-    source::{pesde::PesdePackageSource, traits::PackageSource},
+    source::{
+        pesde::PesdePackageSource,
+        traits::{PackageSource, RefreshOptions},
+    },
     Project,
 };
-
-use crate::cli::auth::{get_token_login, set_token};
 
 #[derive(Debug, Args)]
 pub struct LoginCommand {
@@ -57,7 +59,9 @@ impl LoginCommand {
 
         let source = PesdePackageSource::new(index_url.clone());
         source
-            .refresh(project)
+            .refresh(&RefreshOptions {
+                project: project.clone(),
+            })
             .await
             .context("failed to refresh index")?;
 
