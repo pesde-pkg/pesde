@@ -276,9 +276,26 @@ version `1.0.0`, and the `bar` and `baz` dependencies of the `foo` package with
 version `2.0.0`.
 
 Each key in the overrides table is a comma-separated list of package paths. The
-path is a list of package names separated by `>`. For example, `foo>bar>baz`
+path is a list of aliases separated by `>`. For example, `foo>bar>baz`
 refers to the `baz` dependency of the `bar` package, which is a dependency of
 the `foo` package.
+
+The value of an override entry can be either a specifier or an alias. If it is an
+alias (a string), it will be equivalent to putting the specifier of the dependency
+under that alias. For example, the following two overrides are equivalent:
+
+```toml
+[dependencies]
+bar = { name = "acme/bar", version = "2.0.0" }
+
+[overrides]
+"foo>bar" = "bar"
+```
+
+```toml
+[overrides]
+"foo>bar" = { name = "acme/bar", version = "2.0.0" }
+```
 
 <LinkCard
 	title="Overrides"

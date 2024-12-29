@@ -32,6 +32,29 @@ foo = { name = "acme/foo", version = "^1.0.0" }
 
 Now, when you run `pesde install`, `bar` 2.0.0 will be used instead of 1.0.0.
 
+Overrides are also able to use aliases to share the specifier you use for your
+own dependencies:
+
+```toml title="pesde.toml"
+[dependencies]
+foo = { name = "acme/foo", version = "^1.0.0" }
+bar = { name = "acme/bar", version = "^2.0.0" }
+
+[overrides]
+"foo>bar" = "bar"
+```
+
+This is the same as if you had written:
+
+```toml title="pesde.toml"
+[dependencies]
+foo = { name = "acme/foo", version = "^1.0.0" }
+bar = { name = "acme/bar", version = "^2.0.0" }
+
+[overrides]
+"foo>bar" = { name = "acme/bar", version = "^2.0.0" }
+```
+
 You can learn more about the syntax for dependency overrides in the
 [reference](/reference/manifest#overrides).
 
