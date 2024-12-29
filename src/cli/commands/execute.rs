@@ -184,7 +184,7 @@ impl ExecuteCommand {
                     .await
                     .context("failed to download and link dependencies")?;
 
-                anyhow::Ok((tempdir, bin_path.clone()))
+                anyhow::Ok((tempdir, bin_path.to_relative_path_buf()))
             },
         )
         .await?;

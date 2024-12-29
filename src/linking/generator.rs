@@ -2,7 +2,7 @@ use std::path::{Component, Path};
 
 use crate::manifest::{target::TargetKind, Manifest};
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
-use relative_path::RelativePathBuf;
+use relative_path::RelativePath;
 
 struct TypeVisitor {
     types: Vec<String>,
@@ -108,7 +108,7 @@ fn luau_style_path(path: &Path) -> String {
 pub fn get_lib_require_path(
     target: &TargetKind,
     base_dir: &Path,
-    lib_file: &RelativePathBuf,
+    lib_file: &RelativePath,
     destination_dir: &Path,
     use_new_structure: bool,
     root_container_dir: &Path,
@@ -190,7 +190,7 @@ return require({require_path})"#,
 /// Get the require path for a binary
 pub fn get_bin_require_path(
     base_dir: &Path,
-    bin_file: &RelativePathBuf,
+    bin_file: &RelativePath,
     destination_dir: &Path,
 ) -> String {
     let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
@@ -207,7 +207,7 @@ pub fn generate_script_linking_module(require_path: &str) -> String {
 /// Get the require path for a script
 pub fn get_script_require_path(
     base_dir: &Path,
-    script_file: &RelativePathBuf,
+    script_file: &RelativePath,
     destination_dir: &Path,
 ) -> String {
     let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();

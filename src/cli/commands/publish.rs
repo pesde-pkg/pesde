@@ -125,8 +125,8 @@ impl PublishCommand {
         let mut display_build_files: Vec<String> = vec![];
 
         let (lib_path, bin_path, scripts, target_kind) = (
-            manifest.target.lib_path().cloned(),
-            manifest.target.bin_path().cloned(),
+            manifest.target.lib_path().map(|p| p.to_relative_path_buf()),
+            manifest.target.bin_path().map(|p| p.to_relative_path_buf()),
             manifest.target.scripts().cloned(),
             manifest.target.kind(),
         );
