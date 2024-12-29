@@ -4,9 +4,16 @@ use fs_err::tokio as fs;
 use futures::StreamExt;
 use pesde::{
     lockfile::Lockfile,
-    manifest::target::TargetKind,
+    manifest::{
+        overrides::{OverrideKey, OverrideSpecifier},
+        target::TargetKind,
+        Manifest,
+    },
     names::{PackageName, PackageNames},
-    source::{version_id::VersionId, workspace::specifier::VersionTypeOrReq},
+    source::{
+        specifiers::DependencySpecifiers, version_id::VersionId,
+        workspace::specifier::VersionTypeOrReq,
+    },
     Project,
 };
 use relative_path::RelativePathBuf;
@@ -44,6 +51,40 @@ pub async fn bin_dir() -> anyhow::Result<PathBuf> {
     Ok(bin_dir)
 }
 
+pub fn resolve_overrides(
+    manifest: &Manifest,
+) -> anyhow::Result<BTreeMap<OverrideKey, DependencySpecifiers>> {
+    let mut dependencies = None;
+    let mut overrides = BTreeMap::new();
+
+    for (key, spec) in &manifest.overrides {
+        overrides.insert(
+            key.clone(),
+            match spec {
+                OverrideSpecifier::Specifier(spec) => spec,
+                OverrideSpecifier::Alias(alias) => {
+                    if dependencies.is_none() {
+                        dependencies = Some(
+                            manifest
+                                .all_dependencies()
+                                .context("failed to get all dependencies")?,
+                        );
+                    }
+
+                    &dependencies
+                        .as_ref()
+                        .and_then(|deps| deps.get(alias))
+                        .with_context(|| format!("alias `{alias}` not found in manifest"))?
+                        .0
+                }
+            }
+            .clone(),
+        );
+    }
+
+    Ok(overrides)
+}
+
 #[instrument(skip(project), ret(level = "trace"), level = "debug")]
 pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Lockfile>> {
     let manifest = project.deser_manifest().await?;
@@ -57,7 +98,7 @@ pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Loc
         Err(e) => return Err(e.into()),
     };
 
-    if manifest.overrides != lockfile.overrides {
+    if resolve_overrides(&manifest)? != lockfile.overrides {
         tracing::debug!("overrides are different");
         return Ok(None);
     }

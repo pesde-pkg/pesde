@@ -1,5 +1,8 @@
 use crate::{
-    manifest::{overrides::OverrideKey, target::Target},
+    manifest::{
+        overrides::{OverrideKey, OverrideSpecifier},
+        target::Target,
+    },
     names::PackageName,
     source::specifiers::DependencySpecifiers,
 };
@@ -58,7 +61,7 @@ pub struct Manifest {
     pub wally_indices: BTreeMap<String, gix::Url>,
     /// The overrides this package has
     #[serde(default, skip_serializing)]
-    pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
+    pub overrides: BTreeMap<OverrideKey, OverrideSpecifier>,
     /// The files to include in the package
     #[serde(default)]
     pub includes: Vec<String>,

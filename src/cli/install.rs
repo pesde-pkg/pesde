@@ -20,7 +20,7 @@ use tokio::task::JoinSet;
 use crate::cli::{
     bin_dir,
     reporters::{self, CliReporter},
-    run_on_workspace_members, up_to_date_lockfile,
+    resolve_overrides, run_on_workspace_members, up_to_date_lockfile,
 };
 
 use super::files::make_executable;
@@ -198,7 +198,7 @@ pub async fn install(
     } else {
         match project.deser_lockfile().await {
             Ok(lockfile) => {
-                if lockfile.overrides != manifest.overrides {
+                if lockfile.overrides != resolve_overrides(&manifest)? {
                     tracing::debug!("overrides are different");
                     None
                 } else if lockfile.target != manifest.target.kind() {
@@ -216,6 +216,8 @@ pub async fn install(
             Err(e) => return Err(e.into()),
         }
     };
+
+    let overrides = resolve_overrides(&manifest)?;
 
     let (new_lockfile, old_graph) =
         reporters::run_with_reporter(|_, root_progress, reporter| async {
@@ -323,7 +325,7 @@ pub async fn install(
                 name: manifest.name.clone(),
                 version: manifest.version,
                 target: manifest.target.kind(),
-                overrides: manifest.overrides,
+                overrides,
 
                 graph: downloaded_graph,
 

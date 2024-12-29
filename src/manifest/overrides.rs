@@ -1,3 +1,5 @@
+use crate::source::specifiers::DependencySpecifiers;
+use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
     fmt::{Display, Formatter},
@@ -45,6 +47,16 @@ impl Display for OverrideKey {
                 .join(",")
         )
     }
+}
+
+/// A specifier for an override
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[serde(untagged)]
+pub enum OverrideSpecifier {
+    /// A specifier for a dependency
+    Specifier(DependencySpecifiers),
+    /// An alias for a dependency the current project depends on
+    Alias(String),
 }
 
 /// Errors that can occur when interacting with override keys

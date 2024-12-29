@@ -1,6 +1,6 @@
 use crate::{
     lockfile::{DependencyGraph, DependencyGraphNode},
-    manifest::DependencyType,
+    manifest::{overrides::OverrideSpecifier, DependencyType},
     names::PackageNames,
     source::{
         pesde::PesdePackageSource,
@@ -72,9 +72,12 @@ impl Project {
             .await
             .map_err(|e| Box::new(e.into()))?;
 
-        let mut all_specifiers = manifest
+        let all_current_dependencies = manifest
             .all_dependencies()
-            .map_err(|e| Box::new(e.into()))?
+            .map_err(|e| Box::new(e.into()))?;
+
+        let mut all_specifiers = all_current_dependencies
+            .clone()
             .into_iter()
             .map(|(alias, (spec, ty))| ((spec, ty), alias))
             .collect::<HashMap<_, _>>();
@@ -171,7 +174,7 @@ impl Project {
                     spec,
                     ty,
                     None::<(PackageNames, VersionId)>,
-                    vec![alias.to_string()],
+                    vec![alias],
                     false,
                     manifest.target.kind(),
                 )
@@ -384,7 +387,14 @@ impl Project {
                     }
 
                     queue.push_back((
-                        overridden.cloned().unwrap_or(dependency_spec),
+                        match overridden {
+                            Some(OverrideSpecifier::Specifier(spec)) => spec.clone(),
+                            Some(OverrideSpecifier::Alias(alias)) => all_current_dependencies.get(alias)
+                                .map(|(spec, _)| spec)
+                                .ok_or_else(|| errors::DependencyGraphError::AliasNotFound(alias.clone()))?
+                                .clone(),
+                            None => dependency_spec,
+                        },
                         dependency_ty,
                         Some((name.clone(), target_version_id.clone())),
                         path.iter()
@@ -454,5 +464,9 @@ pub mod errors {
         /// No matching version was found for a specifier
         #[error("no matching version found for {0}")]
         NoMatchingVersion(String),
+
+        /// An alias for an override was not found in the manifest
+        #[error("alias `{0}` not found in manifest")]
+        AliasNotFound(String),
     }
 }
