@@ -128,7 +128,7 @@ impl PackageSource for PesdePackageSource {
             }
         };
 
-        let entries: IndexFile = toml::from_str(&string)
+        let IndexFile { entries, .. } = toml::from_str(&string)
             .map_err(|e| Self::ResolveError::Parse(specifier.name.to_string(), e))?;
 
         tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
@@ -432,8 +432,20 @@ pub struct IndexFileEntry {
     pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
 }
 
+/// The package metadata in the index file
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+pub struct IndexMetadata {}
+
 /// The index file for a package
-pub type IndexFile = BTreeMap<VersionId, IndexFileEntry>;
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct IndexFile {
+    /// Any package-wide metadata
+    #[serde(default, skip_serializing_if = "crate::util::is_default")]
+    pub meta: IndexMetadata,
+    /// The entries in the index file
+    #[serde(flatten)]
+    pub entries: BTreeMap<VersionId, IndexFileEntry>,
+}
 
 /// Errors that can occur when interacting with the pesde package source
 pub mod errors {

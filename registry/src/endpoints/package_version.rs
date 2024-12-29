@@ -71,7 +71,7 @@ pub async fn get_package_version(
 
     let (scope, name_part) = name.as_str();
 
-    let entries: IndexFile = {
+    let file: IndexFile = {
         let source = app_state.source.lock().await;
         let repo = gix::open(source.path(&app_state.project))?;
         let tree = root_tree(&repo)?;
@@ -84,14 +84,15 @@ pub async fn get_package_version(
 
     let Some((v_id, entry, targets)) = ({
         let version = match version {
-            VersionRequest::Latest => match entries.keys().map(|k| k.version()).max() {
+            VersionRequest::Latest => match file.entries.keys().map(|k| k.version()).max() {
                 Some(latest) => latest.clone(),
                 None => return Ok(HttpResponse::NotFound().finish()),
             },
             VersionRequest::Specific(version) => version,
         };
 
-        let versions = entries
+        let versions = file
+            .entries
             .iter()
             .filter(|(v_id, _)| *v_id.version() == version);
 

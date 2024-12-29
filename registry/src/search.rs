@@ -104,7 +104,7 @@ pub async fn make_search(
     pin!(stream);
 
     while let Some((pkg_name, mut file)) = stream.next().await {
-        let Some((_, latest_entry)) = file.pop_last() else {
+        let Some((_, latest_entry)) = file.entries.pop_last() else {
             tracing::error!("no versions found for {pkg_name}");
             continue;
         };

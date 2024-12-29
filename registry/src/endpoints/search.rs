@@ -68,10 +68,11 @@ pub async fn search_packages(
                 .unwrap();
             let (scope, name) = id.as_str();
 
-            let versions: IndexFile =
+            let file: IndexFile =
                 toml::de::from_str(&read_file(&tree, [scope, name]).unwrap().unwrap()).unwrap();
 
-            let (latest_version, entry) = versions
+            let (latest_version, entry) = file
+                .entries
                 .iter()
                 .max_by_key(|(v_id, _)| v_id.version())
                 .unwrap();
@@ -79,17 +80,19 @@ pub async fn search_packages(
             PackageResponse {
                 name: id.to_string(),
                 version: latest_version.version().to_string(),
-                targets: versions
+                targets: file
+                    .entries
                     .iter()
                     .filter(|(v_id, _)| v_id.version() == latest_version.version())
                     .map(|(_, entry)| (&entry.target).into())
                     .collect(),
                 description: entry.description.clone().unwrap_or_default(),
-                published_at: versions
+                published_at: file
+                    .entries
                     .values()
-                    .max_by_key(|entry| entry.published_at)
-                    .unwrap()
-                    .published_at,
+                    .map(|entry| entry.published_at)
+                    .max()
+                    .unwrap(),
                 license: entry.license.clone().unwrap_or_default(),
                 authors: entry.authors.clone(),
                 repository: entry.repository.clone().map(|url| url.to_string()),
