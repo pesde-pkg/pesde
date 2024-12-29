@@ -99,18 +99,9 @@ impl Project {
                             Err(e) => return Err(e.into()),
                         };
 
-                        let types = match spawn_blocking(move || get_file_types(&contents))
+                        let types = spawn_blocking(move || get_file_types(&contents))
                             .await
-                            .unwrap()
-                        {
-                            Ok(types) => types,
-                            Err(e) => {
-                                return Err(errors::LinkingError::FullMoon(
-                                    lib_file.display().to_string(),
-                                    e,
-                                ))
-                            }
-                        };
+                            .unwrap();
 
                         tracing::debug!("contains {} exported types", types.len());
 
@@ -145,7 +136,7 @@ impl Project {
                     }
 
                     Ok((version_id, types))
-                }.instrument(tracing::debug_span!("extract types", name = name.to_string(), version_id = version_id.to_string()))))
+                }.instrument(tracing::info_span!("extract types", name = name.to_string(), version_id = version_id.to_string()))))
                     .await?
                     .into_iter()
                     .collect::<HashMap<_, _>>(),
@@ -383,10 +374,6 @@ pub mod errors {
         /// The library file was not found
         #[error("library file at {0} not found")]
         LibFileNotFound(String),
-
-        /// An error occurred while parsing a Luau script
-        #[error("error parsing Luau script at {0}")]
-        FullMoon(String, Vec<full_moon::Error>),
 
         /// An error occurred while generating a Roblox sync config
         #[error("error generating roblox sync config for {0}")]

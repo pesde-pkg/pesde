@@ -41,13 +41,25 @@ impl Visitor for TypeVisitor {
     }
 }
 
-/// Get the types exported by a file
-pub fn get_file_types(file: &str) -> Result<Vec<String>, Vec<full_moon::Error>> {
-    let ast = full_moon::parse(file)?;
+pub(crate) fn get_file_types(file: &str) -> Vec<String> {
+    let ast = match full_moon::parse(file) {
+        Ok(ast) => ast,
+        Err(err) => {
+            tracing::error!(
+                "failed to parse file to extract types:\n{}",
+                err.into_iter()
+                    .map(|err| format!("\t- {err}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+
+            return vec![];
+        }
+    };
     let mut visitor = TypeVisitor { types: vec![] };
     visitor.visit_ast(&ast);
 
-    Ok(visitor.types)
+    visitor.types
 }
 
 /// Generate a linking module for a library

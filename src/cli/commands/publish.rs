@@ -48,9 +48,34 @@ pub struct PublishCommand {
     /// The index to publish to
     #[arg(short, long, default_value_t = DEFAULT_INDEX_NAME.to_string())]
     index: String,
+
+    /// Whether to skip syntax validation
+    #[arg(long)]
+    no_verify: bool,
 }
 
 impl PublishCommand {
+    fn validate_luau_file(&self, name: &str, contents: &str) -> anyhow::Result<()> {
+        if self.no_verify {
+            return Ok(());
+        }
+
+        if let Err(err) = full_moon::parse(contents) {
+            eprintln!(
+                "{}: {name} is not a valid Luau file:\n{}",
+                "error".red().bold(),
+                err.into_iter()
+                    .map(|err| format!("\t- {err}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+
+            anyhow::bail!("failed to validate Luau file");
+        }
+
+        Ok(())
+    }
+
     async fn run_impl(
         self,
         project: &Project,
@@ -226,14 +251,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                 .canonicalize()
                 .with_context(|| format!("failed to canonicalize {name}"))?;
 
-            if let Err(err) = full_moon::parse(&contents).map_err(|errs| {
-                errs.into_iter()
-                    .map(|err| err.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            }) {
-                anyhow::bail!("{name} is not a valid Luau file: {err}");
-            }
+            self.validate_luau_file(&format!("file at {name}"), &contents)?;
 
             let first_part = relative_export_path
                 .components()
@@ -318,14 +336,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                     .canonicalize()
                     .with_context(|| format!("failed to canonicalize script {name}"))?;
 
-                if let Err(err) = full_moon::parse(&contents).map_err(|errs| {
-                    errs.into_iter()
-                        .map(|err| err.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                }) {
-                    anyhow::bail!("script {name} is not a valid Luau file: {err}");
-                }
+                self.validate_luau_file(&format!("the `{name}` script"), &contents)?;
 
                 if paths.insert(
                     script_path
