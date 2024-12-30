@@ -137,6 +137,24 @@ pesde add workspace:acme/bar
 	href="/guides/workspaces/"
 />
 
+## Path Dependencies
+
+Path dependencies are dependencies found anywhere available to the operating system.
+They are useful for local development, but are forbidden in published packages.
+
+The path must be absolute and point to a directory containing a `pesde.toml` file.
+
+```toml title="pesde.toml"
+[dependencies]
+foo = { path = "/home/user/foo" }
+```
+
+You can also add a path dependency by running the following command:
+
+```sh
+pesde add path:/home/user/foo
+```
+
 ## Peer Dependencies
 
 Peer dependencies are dependencies that are not installed automatically when

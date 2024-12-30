@@ -80,7 +80,7 @@ pub async fn set_tokens(tokens: Tokens) -> anyhow::Result<()> {
 
     let mut config = read_config().await?;
     config.tokens = tokens;
-    write_config(&config).await.map_err(Into::into)
+    write_config(&config).await
 }
 
 pub async fn set_token(repo: &gix::Url, token: Option<&str>) -> anyhow::Result<()> {

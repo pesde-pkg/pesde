@@ -471,6 +471,9 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                         target: Some(spec.target.unwrap_or(manifest.target.kind())),
                     });
                 }
+                DependencySpecifiers::Path(_) => {
+                    anyhow::bail!("path dependencies are not allowed in published packages")
+                }
             }
         }
 

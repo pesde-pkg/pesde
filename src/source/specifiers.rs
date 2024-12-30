@@ -15,6 +15,8 @@ pub enum DependencySpecifiers {
     Git(crate::source::git::specifier::GitDependencySpecifier),
     /// A workspace dependency specifier
     Workspace(crate::source::workspace::specifier::WorkspaceDependencySpecifier),
+    /// A path dependency specifier
+    Path(crate::source::path::specifier::PathDependencySpecifier),
 }
 impl DependencySpecifier for DependencySpecifiers {}
 
@@ -26,6 +28,7 @@ impl Display for DependencySpecifiers {
             DependencySpecifiers::Wally(specifier) => write!(f, "{specifier}"),
             DependencySpecifiers::Git(specifier) => write!(f, "{specifier}"),
             DependencySpecifiers::Workspace(specifier) => write!(f, "{specifier}"),
+            DependencySpecifiers::Path(specifier) => write!(f, "{specifier}"),
         }
     }
 }

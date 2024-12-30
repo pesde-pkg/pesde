@@ -200,6 +200,7 @@ enum AnyPackageIdentifier<V: FromStr = VersionId, N: FromStr = PackageNames> {
     PackageName(VersionedPackageName<V, N>),
     Url((gix::Url, String)),
     Workspace(VersionedPackageName<VersionTypeOrReq, PackageName>),
+    Path(PathBuf),
 }
 
 impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<anyhow::Error>>
@@ -218,6 +219,8 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
             )))
         } else if let Some(rest) = s.strip_prefix("workspace:") {
             Ok(AnyPackageIdentifier::Workspace(rest.parse()?))
+        } else if let Some(rest) = s.strip_prefix("path:") {
+            Ok(AnyPackageIdentifier::Path(rest.into()))
         } else if s.contains(':') {
             let (url, rev) = s.split_once('#').context("missing revision")?;
 

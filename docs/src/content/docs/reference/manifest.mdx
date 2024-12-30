@@ -419,6 +419,19 @@ foo = { workspace = "acme/foo", version = "^" }
 	href="/guides/workspaces/#workspace-dependencies"
 />
 
+### path
+
+```toml
+[dependencies]
+foo = { path = "/home/user/foo" }
+```
+
+**Path dependencies** contain the following fields:
+
+- `path`: The path to the package on the local filesystem.
+
+Path dependencies are forbidden in published packages.
+
 ## `[peer_dependencies]`
 
 The `[peer_dependencies]` section contains a list of peer dependencies for the

@@ -11,10 +11,11 @@ use pesde::{
     names::PackageNames,
     source::{
         git::{specifier::GitDependencySpecifier, GitPackageSource},
+        path::{specifier::PathDependencySpecifier, PathPackageSource},
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
         traits::{PackageSource, RefreshOptions, ResolveOptions},
-        workspace::WorkspacePackageSource,
+        workspace::{specifier::WorkspaceDependencySpecifier, WorkspacePackageSource},
         PackageSources,
     },
     Project, RefreshedSources, DEFAULT_INDEX_NAME,
@@ -119,13 +120,15 @@ impl AddCommand {
             ),
             AnyPackageIdentifier::Workspace(VersionedPackageName(name, version)) => (
                 PackageSources::Workspace(WorkspacePackageSource),
-                DependencySpecifiers::Workspace(
-                    pesde::source::workspace::specifier::WorkspaceDependencySpecifier {
-                        name: name.clone(),
-                        version: version.clone().unwrap_or_default(),
-                        target: self.target,
-                    },
-                ),
+                DependencySpecifiers::Workspace(WorkspaceDependencySpecifier {
+                    name: name.clone(),
+                    version: version.clone().unwrap_or_default(),
+                    target: self.target,
+                }),
+            ),
+            AnyPackageIdentifier::Path(path) => (
+                PackageSources::Path(PathPackageSource),
+                DependencySpecifiers::Path(PathDependencySpecifier { path: path.clone() }),
             ),
         };
 
@@ -187,6 +190,10 @@ impl AddCommand {
                 .map(|s| s.to_string())
                 .unwrap_or(url.path.to_string()),
             AnyPackageIdentifier::Workspace(versioned) => versioned.0.as_str().1.to_string(),
+            AnyPackageIdentifier::Path(path) => path
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .expect("path has no file name"),
         });
 
         let field = &mut manifest[dependency_key]
@@ -206,17 +213,17 @@ impl AddCommand {
                 }
 
                 println!(
-                    "added {}@{} {} to {}",
+                    "added {}@{} {} to {dependency_key}",
                     spec.name,
                     version_id.version(),
-                    version_id.target(),
-                    dependency_key
+                    version_id.target()
                 );
             }
             #[cfg(feature = "wally-compat")]
             DependencySpecifiers::Wally(spec) => {
-                field["wally"] =
-                    toml_edit::value(spec.name.clone().to_string().trim_start_matches("wally#"));
+                let name_str = spec.name.to_string();
+                let name_str = name_str.trim_start_matches("wally#");
+                field["wally"] = toml_edit::value(name_str);
                 field["version"] = toml_edit::value(format!("^{}", version_id.version()));
 
                 if let Some(index) = spec.index.filter(|i| i != DEFAULT_INDEX_NAME) {
@@ -224,17 +231,15 @@ impl AddCommand {
                 }
 
                 println!(
-                    "added wally {}@{} to {}",
-                    spec.name,
-                    version_id.version(),
-                    dependency_key
+                    "added wally {name_str}@{} to {dependency_key}",
+                    version_id.version()
                 );
             }
             DependencySpecifiers::Git(spec) => {
                 field["repo"] = toml_edit::value(spec.repo.to_bstring().to_string());
                 field["rev"] = toml_edit::value(spec.rev.clone());
 
-                println!("added git {}#{} to {}", spec.repo, spec.rev, dependency_key);
+                println!("added git {}#{} to {dependency_key}", spec.repo, spec.rev);
             }
             DependencySpecifiers::Workspace(spec) => {
                 field["workspace"] = toml_edit::value(spec.name.clone().to_string());
@@ -245,9 +250,14 @@ impl AddCommand {
                 }
 
                 println!(
-                    "added workspace {}@{} to {}",
-                    spec.name, spec.version, dependency_key
+                    "added workspace {}@{} to {dependency_key}",
+                    spec.name, spec.version
                 );
+            }
+            DependencySpecifiers::Path(spec) => {
+                field["path"] = toml_edit::value(spec.path.to_string_lossy().to_string());
+
+                println!("added path {} to {dependency_key}", spec.path.display());
             }
         }
 

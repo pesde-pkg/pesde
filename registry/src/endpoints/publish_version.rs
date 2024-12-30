@@ -348,6 +348,11 @@ pub async fn publish_package(
                         "non-transformed workspace dependency".into(),
                     ));
                 }
+                DependencySpecifiers::Path(_) => {
+                    return Err(Error::InvalidArchive(
+                        "path dependencies are not allowed".into(),
+                    ));
+                }
             }
         }
 

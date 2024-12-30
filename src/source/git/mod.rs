@@ -246,6 +246,11 @@ impl PackageSource for GitPackageSource {
                                     path: Some(path),
                                 })
                             }
+                            DependencySpecifiers::Path(_) => {
+                                return Err(errors::ResolveError::Path(Box::new(
+                                    self.repo_url.clone(),
+                                )))
+                            }
                         }
 
                         Ok((alias, (spec, ty)))
@@ -667,6 +672,10 @@ pub mod errors {
         /// No path for a workspace member was found in the lockfile
         #[error("no path found for workspace member {0} {1} in lockfile for repository {2}")]
         NoPathForWorkspaceMember(String, TargetKind, Box<gix::Url>),
+
+        /// The package depends on a path package
+        #[error("the package {0} depends on a path package")]
+        Path(Box<gix::Url>),
     }
 
     /// Errors that can occur when downloading a package from a Git package source

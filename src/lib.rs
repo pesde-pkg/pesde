@@ -182,8 +182,7 @@ impl Project {
     /// Deserialize the manifest file
     #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub async fn deser_manifest(&self) -> Result<Manifest, errors::ManifestReadError> {
-        let string = fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?;
-        Ok(toml::from_str(&string)?)
+        deser_manifest(self.package_dir()).await
     }
 
     /// Write the manifest file
@@ -343,6 +342,11 @@ impl RefreshedSources {
             Ok(())
         }
     }
+}
+
+async fn deser_manifest(path: &Path) -> Result<Manifest, errors::ManifestReadError> {
+    let string = fs::read_to_string(path.join(MANIFEST_FILE_NAME)).await?;
+    Ok(toml::from_str(&string)?)
 }
 
 /// Errors that can occur when using the pesde library

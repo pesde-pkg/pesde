@@ -18,6 +18,8 @@ pub enum PackageRefs {
     Git(crate::source::git::pkg_ref::GitPackageRef),
     /// A workspace package reference
     Workspace(crate::source::workspace::pkg_ref::WorkspacePackageRef),
+    /// A path package reference
+    Path(crate::source::path::pkg_ref::PathPackageRef),
 }
 
 impl PackageRefs {
@@ -40,6 +42,7 @@ impl PackageRef for PackageRefs {
             PackageRefs::Wally(pkg_ref) => pkg_ref.dependencies(),
             PackageRefs::Git(pkg_ref) => pkg_ref.dependencies(),
             PackageRefs::Workspace(pkg_ref) => pkg_ref.dependencies(),
+            PackageRefs::Path(pkg_ref) => pkg_ref.dependencies(),
         }
     }
 
@@ -50,6 +53,7 @@ impl PackageRef for PackageRefs {
             PackageRefs::Wally(pkg_ref) => pkg_ref.use_new_structure(),
             PackageRefs::Git(pkg_ref) => pkg_ref.use_new_structure(),
             PackageRefs::Workspace(pkg_ref) => pkg_ref.use_new_structure(),
+            PackageRefs::Path(pkg_ref) => pkg_ref.use_new_structure(),
         }
     }
 
@@ -60,6 +64,7 @@ impl PackageRef for PackageRefs {
             PackageRefs::Wally(pkg_ref) => pkg_ref.source(),
             PackageRefs::Git(pkg_ref) => pkg_ref.source(),
             PackageRefs::Workspace(pkg_ref) => pkg_ref.source(),
+            PackageRefs::Path(pkg_ref) => pkg_ref.source(),
         }
     }
 }

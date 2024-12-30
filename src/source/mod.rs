@@ -15,6 +15,8 @@ pub mod fs;
 pub mod git;
 /// Git index-based package source utilities
 pub mod git_index;
+/// The path package source
+pub mod path;
 /// The pesde package source
 pub mod pesde;
 /// Package references
@@ -52,6 +54,8 @@ pub enum PackageSources {
     Git(git::GitPackageSource),
     /// A workspace package source
     Workspace(workspace::WorkspacePackageSource),
+    /// A path package source
+    Path(path::PathPackageSource),
 }
 
 impl PackageSource for PackageSources {
@@ -77,6 +81,7 @@ impl PackageSource for PackageSources {
                 .await
                 .map_err(Self::RefreshError::Git),
             PackageSources::Workspace(source) => source.refresh(options).await.map_err(Into::into),
+            PackageSources::Path(source) => source.refresh(options).await.map_err(Into::into),
         }
     }
 
@@ -147,6 +152,20 @@ impl PackageSource for PackageSources {
                     .map_err(Into::into)
             }
 
+            (PackageSources::Path(source), DependencySpecifiers::Path(specifier)) => source
+                .resolve(specifier, options)
+                .await
+                .map(|(name, results)| {
+                    (
+                        name,
+                        results
+                            .into_iter()
+                            .map(|(version, pkg_ref)| (version, PackageRefs::Path(pkg_ref)))
+                            .collect(),
+                    )
+                })
+                .map_err(Into::into),
+
             _ => Err(errors::ResolveError::Mismatch),
         }
     }
@@ -171,6 +190,10 @@ impl PackageSource for PackageSources {
             }
 
             (PackageSources::Workspace(source), PackageRefs::Workspace(pkg_ref)) => {
+                source.download(pkg_ref, options).await.map_err(Into::into)
+            }
+
+            (PackageSources::Path(source), PackageRefs::Path(pkg_ref)) => {
                 source.download(pkg_ref, options).await.map_err(Into::into)
             }
 
@@ -203,6 +226,10 @@ pub mod errors {
         /// A workspace package source failed to refresh
         #[error("error refreshing workspace package source")]
         Workspace(#[from] crate::source::workspace::errors::RefreshError),
+
+        /// A path package source failed to refresh
+        #[error("error refreshing path package source")]
+        Path(#[from] crate::source::path::errors::RefreshError),
     }
 
     /// Errors that can occur when resolving a package
@@ -229,6 +256,10 @@ pub mod errors {
         /// A workspace package source failed to resolve
         #[error("error resolving workspace package")]
         Workspace(#[from] crate::source::workspace::errors::ResolveError),
+
+        /// A path package source failed to resolve
+        #[error("error resolving path package")]
+        Path(#[from] crate::source::path::errors::ResolveError),
     }
 
     /// Errors that can occur when downloading a package
@@ -255,5 +286,9 @@ pub mod errors {
         /// A workspace package source failed to download
         #[error("error downloading workspace package")]
         Workspace(#[from] crate::source::workspace::errors::DownloadError),
+
+        /// A path package source failed to download
+        #[error("error downloading path package")]
+        Path(#[from] crate::source::path::errors::DownloadError),
     }
 }

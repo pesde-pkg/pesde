@@ -110,6 +110,7 @@ impl PackageSource for WorkspacePackageSource {
                         }
                         DependencySpecifiers::Git(_) => {}
                         DependencySpecifiers::Workspace(_) => {}
+                        DependencySpecifiers::Path(_) => {}
                     }
 
                     Ok((alias, (spec, ty)))

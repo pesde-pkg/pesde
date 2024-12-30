@@ -53,7 +53,9 @@ impl OutdatedCommand {
 
                         if matches!(
                             specifier,
-                            DependencySpecifiers::Git(_) | DependencySpecifiers::Workspace(_)
+                            DependencySpecifiers::Git(_)
+                                | DependencySpecifiers::Workspace(_)
+                                | DependencySpecifiers::Path(_)
                         ) {
                             return Ok(true);
                         }
@@ -79,6 +81,7 @@ impl OutdatedCommand {
                                 }
                                 DependencySpecifiers::Git(_) => {}
                                 DependencySpecifiers::Workspace(_) => {}
+                                DependencySpecifiers::Path(_) => {}
                             };
                         }
 

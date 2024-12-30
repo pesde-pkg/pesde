@@ -239,6 +239,9 @@ impl Project {
                     DependencySpecifiers::Workspace(_) => {
                         PackageSources::Workspace(crate::source::workspace::WorkspacePackageSource)
                     }
+                    DependencySpecifiers::Path(_) => {
+                        PackageSources::Path(crate::source::path::PathPackageSource)
+                    }
                 };
 
                 refreshed_sources.refresh(
