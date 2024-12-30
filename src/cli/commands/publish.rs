@@ -4,30 +4,22 @@ use async_compression::Level;
 use clap::Args;
 use colored::Colorize;
 use fs_err::tokio as fs;
-#[allow(deprecated)]
 use pesde::{
     manifest::{target::Target, DependencyType},
-    matching_globs_old_behaviour,
+    matching_globs,
     scripts::ScriptName,
     source::{
         git_index::GitBasedSource,
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
-        traits::PackageSource,
+        traits::{PackageSource, RefreshOptions, ResolveOptions},
         workspace::{
             specifier::{VersionType, VersionTypeOrReq},
             WorkspacePackageSource,
         },
-        IGNORED_DIRS, IGNORED_FILES,
+        PackageSources, IGNORED_DIRS, IGNORED_FILES,
     },
-    Project, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
-};
-use pesde::{
-    source::{
-        traits::{RefreshOptions, ResolveOptions},
-        PackageSources,
-    },
-    RefreshedSources,
+    Project, RefreshedSources, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
 use reqwest::{header::AUTHORIZATION, StatusCode};
 use semver::VersionReq;
@@ -162,11 +154,11 @@ impl PublishCommand {
             _ => None,
         };
 
-        #[allow(deprecated)]
-        let mut paths = matching_globs_old_behaviour(
+        let mut paths = matching_globs(
             project.package_dir(),
             manifest.includes.iter().map(|s| s.as_str()),
             true,
+            false,
         )
         .await
         .context("failed to get included files")?;

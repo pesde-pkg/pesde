@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support using aliases of own dependencies for overrides by @daimond113
 - Support ignoring parse errors in Luau files by @daimond113
 
+### Removed
+- Remove old includes format compatibility by @daimond113
+
 ### Performance
 - Use `Arc` for more efficient cloning of multiple structs by @daimond113
 - Avoid cloning where possible by @daimond113
