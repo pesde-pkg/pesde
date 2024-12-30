@@ -382,7 +382,7 @@ impl Project {
                         tracing::debug!(
                             "overridden specifier found for {} ({dependency_spec})",
                             path.iter()
-                                .map(|s| s.as_str())
+                                .map(String::as_str)
                                 .chain(std::iter::once(dependency_alias.as_str()))
                                 .collect::<Vec<_>>()
                                 .join(">"),

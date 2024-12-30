@@ -464,9 +464,9 @@ pub mod errors {
         #[error("error serializing index file")]
         SerializeIndex(#[from] toml::ser::Error),
 
-        /// Error getting lib path
-        #[error("error getting lib path")]
-        LibPath(#[from] crate::source::wally::compat_util::errors::FindLibPathError),
+        /// Creating the target failed
+        #[error("error creating a target")]
+        GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
 
         /// Error writing index file
         #[error("error writing index file")]

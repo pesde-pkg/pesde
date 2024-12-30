@@ -1,4 +1,4 @@
-#![deny(missing_docs)]
+#![warn(missing_docs, clippy::redundant_closure_for_method_calls)]
 //! A package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune.
 //! pesde has its own registry, however it can also use Wally, and Git repositories as package sources.
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
@@ -185,6 +185,18 @@ impl Project {
         deser_manifest(self.package_dir()).await
     }
 
+    /// Deserialize the manifest file of the workspace root
+    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
+    pub async fn deser_workspace_manifest(
+        &self,
+    ) -> Result<Option<Manifest>, errors::ManifestReadError> {
+        let Some(workspace_dir) = self.workspace_dir() else {
+            return Ok(None);
+        };
+
+        deser_manifest(workspace_dir).await.map(Some)
+    }
+
     /// Write the manifest file
     #[instrument(skip(self, manifest), level = "debug")]
     pub async fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
@@ -227,7 +239,7 @@ impl Project {
 
         let members = matching_globs(
             dir,
-            manifest.workspace_members.iter().map(|s| s.as_str()),
+            manifest.workspace_members.iter().map(String::as_str),
             false,
             can_ref_self,
         )
@@ -356,7 +368,7 @@ pub async fn find_roots(
 
         matching_globs(
             path,
-            manifest.workspace_members.iter().map(|s| s.as_str()),
+            manifest.workspace_members.iter().map(String::as_str),
             false,
             false,
         )
@@ -365,7 +377,7 @@ pub async fn find_roots(
     }
 
     while let Some(path) = current_path {
-        current_path = path.parent().map(|p| p.to_path_buf());
+        current_path = path.parent().map(Path::to_path_buf);
 
         if !path.join(MANIFEST_FILE_NAME).exists() {
             continue;

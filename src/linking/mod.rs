@@ -3,7 +3,7 @@ use crate::{
     lockfile::{DownloadedDependencyGraphNode, DownloadedGraph},
     manifest::Manifest,
     names::PackageNames,
-    scripts::{execute_script, ScriptName},
+    scripts::{execute_script, ExecuteScriptHooks, ScriptName},
     source::{
         fs::{cas_path, store_in_cas},
         traits::PackageRef,
@@ -43,6 +43,17 @@ async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std:
     fs::hard_link(cas_path(&hash, cas_dir), destination).await
 }
 
+#[derive(Debug, Clone, Copy)]
+struct LinkingExecuteScriptHooks;
+
+impl ExecuteScriptHooks for LinkingExecuteScriptHooks {
+    fn not_found(&self, script: ScriptName) {
+        tracing::warn!(
+            "not having a `{script}` script in the manifest might cause issues with linking"
+        );
+    }
+}
+
 impl Project {
     /// Links the dependencies of the project
     #[instrument(skip(self, graph), level = "debug")]
@@ -65,86 +76,80 @@ impl Project {
         }
 
         // step 2. extract the types from libraries, prepare Roblox packages for syncing
-        let roblox_sync_config_gen_script = manifest
-            .scripts
-            .get(&ScriptName::RobloxSyncConfigGenerator.to_string());
-
         let package_types = try_join_all(graph.iter().map(|(name, versions)| async move {
             Ok::<_, errors::LinkingError>((
                 name,
-                try_join_all(versions.iter().map(|(version_id, node)| async move {
-                    let Some(lib_file) = node.target.lib_path() else {
-                        return Ok((version_id, vec![]));
-                    };
-
-                    let container_folder = node.node.container_folder(
-                        &self
-                            .package_dir()
-                            .join(manifest_target_kind.packages_folder(version_id.target()))
-                            .join(PACKAGES_CONTAINER_NAME),
-                        name,
-                        version_id.version(),
-                    );
-
-                    let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
-                        let lib_file = lib_file.to_path(&container_folder);
-
-                        let contents = match fs::read_to_string(&lib_file).await {
-                            Ok(contents) => contents,
-                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                                return Err(errors::LinkingError::LibFileNotFound(
-                                    lib_file.display().to_string(),
-                                ));
-                            }
-                            Err(e) => return Err(e.into()),
+                try_join_all(versions.iter().map(|(version_id, node)| {
+                    async move {
+                        let Some(lib_file) = node.target.lib_path() else {
+                            return Ok((version_id, vec![]));
                         };
 
-                        let types = spawn_blocking(move || get_file_types(&contents))
+                        let container_folder = node.node.container_folder(
+                            &self
+                                .package_dir()
+                                .join(manifest_target_kind.packages_folder(version_id.target()))
+                                .join(PACKAGES_CONTAINER_NAME),
+                            name,
+                            version_id.version(),
+                        );
+
+                        let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
+                            let lib_file = lib_file.to_path(&container_folder);
+
+                            let contents = match fs::read_to_string(&lib_file).await {
+                                Ok(contents) => contents,
+                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                    return Err(errors::LinkingError::LibFileNotFound(
+                                        lib_file.display().to_string(),
+                                    ));
+                                }
+                                Err(e) => return Err(e.into()),
+                            };
+
+                            let types = spawn_blocking(move || get_file_types(&contents))
+                                .await
+                                .unwrap();
+
+                            tracing::debug!("contains {} exported types", types.len());
+
+                            types
+                        } else {
+                            vec![]
+                        };
+
+                        if let Some(build_files) = Some(&node.target)
+                            .filter(|_| !node.node.pkg_ref.like_wally())
+                            .and_then(|t| t.build_files())
+                        {
+                            execute_script(
+                                ScriptName::RobloxSyncConfigGenerator,
+                                self,
+                                LinkingExecuteScriptHooks,
+                                std::iter::once(container_folder.as_os_str())
+                                    .chain(build_files.iter().map(OsStr::new)),
+                                false,
+                            )
                             .await
-                            .unwrap();
+                            .map_err(errors::LinkingError::ExecuteScript)?;
+                        }
 
-                        tracing::debug!("contains {} exported types", types.len());
-
-                        types
-                    } else {
-                        vec![]
-                    };
-
-                    if let Some(build_files) = Some(&node.target)
-                        .filter(|_| !node.node.pkg_ref.like_wally())
-                        .and_then(|t| t.build_files())
-                    {
-                        let Some(script_path) = roblox_sync_config_gen_script else {
-                            tracing::warn!("not having a `{}` script in the manifest might cause issues with Roblox linking", ScriptName::RobloxSyncConfigGenerator);
-                            return Ok((version_id, types));
-                        };
-
-                        execute_script(
-                            ScriptName::RobloxSyncConfigGenerator,
-                            &script_path.to_path(self.package_dir()),
-                            std::iter::once(container_folder.as_os_str())
-                                .chain(build_files.iter().map(OsStr::new)),
-                            self,
-                            false,
-                        ).await
-                            .map_err(|e| {
-                                errors::LinkingError::GenerateRobloxSyncConfig(
-                                    container_folder.display().to_string(),
-                                    e,
-                                )
-                            })?;
+                        Ok((version_id, types))
                     }
-
-                    Ok((version_id, types))
-                }.instrument(tracing::info_span!("extract types", name = name.to_string(), version_id = version_id.to_string()))))
-                    .await?
-                    .into_iter()
-                    .collect::<HashMap<_, _>>(),
+                    .instrument(tracing::info_span!(
+                        "extract types",
+                        name = name.to_string(),
+                        version_id = version_id.to_string()
+                    ))
+                }))
+                .await?
+                .into_iter()
+                .collect::<HashMap<_, _>>(),
             ))
         }))
-            .await?
-            .into_iter()
-            .collect::<HashMap<_, _>>();
+        .await?
+        .into_iter()
+        .collect::<HashMap<_, _>>();
 
         // step 3. link all packages (and their dependencies), this time with types
         self.link(graph, &manifest, &Arc::new(package_types), true)
@@ -375,9 +380,9 @@ pub mod errors {
         #[error("library file at {0} not found")]
         LibFileNotFound(String),
 
-        /// An error occurred while generating a Roblox sync config
-        #[error("error generating roblox sync config for {0}")]
-        GenerateRobloxSyncConfig(String, #[source] std::io::Error),
+        /// Executing a script failed
+        #[error("error executing script")]
+        ExecuteScript(#[from] crate::scripts::errors::ExecuteScriptError),
 
         /// An error occurred while getting the require path for a library
         #[error("error getting require path for library")]

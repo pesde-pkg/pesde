@@ -13,7 +13,7 @@ use pesde::{
     download_and_link::{filter_graph, DownloadAndLinkHooks, DownloadAndLinkOptions},
     lockfile::{DependencyGraph, DownloadedGraph, Lockfile},
     manifest::{target::TargetKind, DependencyType},
-    Project, RefreshedSources, MANIFEST_FILE_NAME,
+    Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use tokio::task::JoinSet;
 
@@ -43,32 +43,11 @@ fn bin_link_file(alias: &str) -> String {
         .join(", ");
 
     format!(
-        r#"local process = require("@lune/process")
-local fs = require("@lune/fs")
-local stdio = require("@lune/stdio")
-
-local project_root = process.cwd
-local path_components = string.split(string.gsub(project_root, "\\", "/"), "/")
-
-for i = #path_components, 1, -1 do
-    local path = table.concat(path_components, "/", 1, i)
-    if fs.isFile(path .. "/{MANIFEST_FILE_NAME}") then
-        project_root = path
-        break
-    end
-end
-
-for _, packages_folder in {{ {all_folders} }} do
-    local path = `{{project_root}}/{{packages_folder}}/{alias}.bin.luau`
-    
-    if fs.isFile(path) then
-        require(path)
-        return
-    end
-end
-
-stdio.ewrite(stdio.color("red") .. "binary `{alias}` not found. are you in the right directory?" .. stdio.color("reset") .. "\n")
-    "#,
+        include_str!("bin_link.luau"),
+        alias = alias,
+        all_folders = all_folders,
+        MANIFEST_FILE_NAME = MANIFEST_FILE_NAME,
+        LOCKFILE_FILE_NAME = LOCKFILE_FILE_NAME
     )
 }
 

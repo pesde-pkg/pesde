@@ -1,8 +1,9 @@
 use crate::Project;
+use futures::FutureExt;
 use std::{
     ffi::OsStr,
     fmt::{Debug, Display, Formatter},
-    path::Path,
+    path::PathBuf,
     process::Stdio,
 };
 use tokio::{
@@ -31,14 +32,57 @@ impl Display for ScriptName {
     }
 }
 
-#[instrument(skip(project), level = "debug")]
-pub(crate) async fn execute_script<A: IntoIterator<Item = S> + Debug, S: AsRef<OsStr> + Debug>(
-    script_name: ScriptName,
-    script_path: &Path,
-    args: A,
+/// Finds a script in the project, whether it be in the current package or it's workspace
+pub async fn find_script(
     project: &Project,
+    script_name: ScriptName,
+) -> Result<Option<PathBuf>, errors::FindScriptError> {
+    let script_name_str = script_name.to_string();
+
+    let script_path = match project
+        .deser_manifest()
+        .await?
+        .scripts
+        .remove(&script_name_str)
+    {
+        Some(script) => script.to_path(project.package_dir()),
+        None => match project
+            .deser_workspace_manifest()
+            .await?
+            .and_then(|mut manifest| manifest.scripts.remove(&script_name_str))
+        {
+            Some(script) => script.to_path(project.workspace_dir().unwrap()),
+            None => {
+                return Ok(None);
+            }
+        },
+    };
+
+    Ok(Some(script_path))
+}
+
+#[allow(unused_variables)]
+pub(crate) trait ExecuteScriptHooks {
+    fn not_found(&self, script: ScriptName) {}
+}
+
+#[instrument(skip(project, hooks), level = "debug")]
+pub(crate) async fn execute_script<
+    A: IntoIterator<Item = S> + Debug,
+    S: AsRef<OsStr> + Debug,
+    H: ExecuteScriptHooks,
+>(
+    script_name: ScriptName,
+    project: &Project,
+    hooks: H,
+    args: A,
     return_stdout: bool,
-) -> Result<Option<String>, std::io::Error> {
+) -> Result<Option<String>, errors::ExecuteScriptError> {
+    let Some(script_path) = find_script(project, script_name).await? else {
+        hooks.not_found(script_name);
+        return Ok(None);
+    };
+
     match Command::new("lune")
         .arg("run")
         .arg(script_path.as_os_str())
@@ -54,39 +98,32 @@ pub(crate) async fn execute_script<A: IntoIterator<Item = S> + Debug, S: AsRef<O
             let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
             let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
 
-            let script = script_name.to_string();
-            let script_2 = script.to_string();
-
-            tokio::spawn(async move {
-                while let Some(line) = stderr.next_line().await.transpose() {
-                    match line {
-                        Ok(line) => {
-                            tracing::error!("[{script}]: {line}");
-                        }
-                        Err(e) => {
-                            tracing::error!("ERROR IN READING STDERR OF {script}: {e}");
-                            break;
-                        }
-                    }
-                }
-            });
-
             let mut stdout_str = String::new();
 
-            while let Some(line) = stdout.next_line().await.transpose() {
-                match line {
-                    Ok(line) => {
-                        if return_stdout {
-                            stdout_str.push_str(&line);
-                            stdout_str.push('\n');
-                        } else {
-                            tracing::info!("[{script_2}]: {line}");
+            loop {
+                tokio::select! {
+                    Some(line) = stdout.next_line().map(Result::transpose) => match line {
+                        Ok(line) => {
+                            if return_stdout {
+                                stdout_str.push_str(&line);
+                                stdout_str.push('\n');
+                            } else {
+                                tracing::info!("[{script_name}]: {line}");
+                            }
                         }
-                    }
-                    Err(e) => {
-                        tracing::error!("ERROR IN READING STDOUT OF {script_2}: {e}");
-                        break;
-                    }
+                        Err(e) => {
+                            tracing::error!("ERROR IN READING STDOUT OF {script_name}: {e}");
+                        }
+                    },
+                    Some(line) = stderr.next_line().map(Result::transpose) => match line {
+                        Ok(line) => {
+                            tracing::error!("[{script_name}]: {line}");
+                        }
+                        Err(e) => {
+                            tracing::error!("ERROR IN READING STDERR OF {script_name}: {e}");
+                        }
+                    },
+                    else => break,
                 }
             }
 
@@ -101,6 +138,35 @@ pub(crate) async fn execute_script<A: IntoIterator<Item = S> + Debug, S: AsRef<O
 
             Ok(None)
         }
-        Err(e) => Err(e),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Errors that can occur when using scripts
+pub mod errors {
+    use thiserror::Error;
+
+    /// Errors that can occur when finding a script
+    #[derive(Debug, Error)]
+    pub enum FindScriptError {
+        /// Reading the manifest failed
+        #[error("error reading manifest")]
+        ManifestRead(#[from] crate::errors::ManifestReadError),
+
+        /// An IO error occurred
+        #[error("IO error")]
+        Io(#[from] std::io::Error),
+    }
+
+    /// Errors which can occur while executing a script
+    #[derive(Debug, Error)]
+    pub enum ExecuteScriptError {
+        /// Finding the script failed
+        #[error("finding the script failed")]
+        FindScript(#[from] FindScriptError),
+
+        /// An IO error occurred
+        #[error("IO error")]
+        Io(#[from] std::io::Error),
     }
 }

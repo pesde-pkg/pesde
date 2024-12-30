@@ -690,10 +690,10 @@ pub mod errors {
         #[error("error interacting with the file system")]
         Io(#[from] std::io::Error),
 
-        /// An error occurred while searching for a Wally lib export
+        /// An error occurred while creating a Wally target
         #[cfg(feature = "wally-compat")]
-        #[error("error searching for Wally lib export")]
-        FindLibPath(#[from] crate::source::wally::compat_util::errors::FindLibPathError),
+        #[error("error creating Wally target")]
+        GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
 
         /// No manifest was found
         #[error("no manifest found in repository {0}")]

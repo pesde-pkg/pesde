@@ -18,7 +18,7 @@ impl FromStr for OverrideKey {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let overrides = s
             .split(',')
-            .map(|overrides| overrides.split('>').map(|s| s.to_string()).collect())
+            .map(|overrides| overrides.split('>').map(ToString::to_string).collect())
             .collect::<Vec<Vec<String>>>();
 
         if overrides.is_empty() {
@@ -39,7 +39,7 @@ impl Display for OverrideKey {
                 .map(|overrides| {
                     overrides
                         .iter()
-                        .map(|o| o.as_str())
+                        .map(String::as_str)
                         .collect::<Vec<_>>()
                         .join(">")
                 })

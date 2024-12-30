@@ -6,7 +6,7 @@ use tempfile::TempDir;
 
 use crate::{
     manifest::target::Target,
-    scripts::{execute_script, ScriptName},
+    scripts::{execute_script, ExecuteScriptHooks, ScriptName},
     source::wally::manifest::{Realm, WallyManifest},
     Project, LINK_LIB_NO_FILE_FOUND,
 };
@@ -20,39 +20,36 @@ struct SourcemapNode {
     file_paths: Vec<RelativePathBuf>,
 }
 
-#[instrument(skip(project, package_dir), level = "debug")]
+#[derive(Debug, Clone, Copy)]
+struct CompatExecuteScriptHooks;
+
+impl ExecuteScriptHooks for CompatExecuteScriptHooks {
+    fn not_found(&self, script: ScriptName) {
+        tracing::warn!("no {script} found in project. wally types will not be generated");
+    }
+}
+
 async fn find_lib_path(
     project: &Project,
     package_dir: &Path,
-) -> Result<Option<RelativePathBuf>, errors::FindLibPathError> {
-    let manifest = project.deser_manifest().await?;
-
-    let Some(script_path) = manifest
-        .scripts
-        .get(&ScriptName::SourcemapGenerator.to_string())
-    else {
-        tracing::warn!("no sourcemap generator script found in manifest");
+) -> Result<Option<RelativePathBuf>, errors::GetTargetError> {
+    let Some(result) = execute_script(
+        ScriptName::SourcemapGenerator,
+        project,
+        CompatExecuteScriptHooks,
+        [package_dir],
+        true,
+    )
+    .await?
+    .filter(|result| !result.is_empty()) else {
         return Ok(None);
     };
 
-    let result = execute_script(
-        ScriptName::SourcemapGenerator,
-        &script_path.to_path(project.package_dir()),
-        [package_dir],
-        project,
-        true,
-    )
-    .await?;
-
-    if let Some(result) = result.filter(|result| !result.is_empty()) {
-        let node: SourcemapNode = serde_json::from_str(&result)?;
-        Ok(node.file_paths.into_iter().find(|path| {
-            path.extension()
-                .is_some_and(|ext| ext == "lua" || ext == "luau")
-        }))
-    } else {
-        Ok(None)
-    }
+    let node: SourcemapNode = serde_json::from_str(&result)?;
+    Ok(node.file_paths.into_iter().find(|path| {
+        path.extension()
+            .is_some_and(|ext| ext == "lua" || ext == "luau")
+    }))
 }
 
 pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
@@ -61,7 +58,7 @@ pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
 pub(crate) async fn get_target(
     project: &Project,
     tempdir: &TempDir,
-) -> Result<Target, errors::FindLibPathError> {
+) -> Result<Target, errors::GetTargetError> {
     let lib = find_lib_path(project, tempdir.path())
         .await?
         .or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND)));
@@ -84,14 +81,14 @@ pub mod errors {
     /// Errors that can occur when finding the lib path
     #[derive(Debug, Error)]
     #[non_exhaustive]
-    pub enum FindLibPathError {
-        /// An error occurred deserializing the project manifest
-        #[error("error deserializing manifest")]
-        Manifest(#[from] crate::errors::ManifestReadError),
+    pub enum GetTargetError {
+        /// Reading the manifest failed
+        #[error("error reading manifest")]
+        ManifestRead(#[from] crate::errors::ManifestReadError),
 
-        /// An error occurred while executing the sourcemap generator script
-        #[error("error executing sourcemap generator script")]
-        Script(#[from] std::io::Error),
+        /// An error occurred while executing a script
+        #[error("error executing script")]
+        ExecuteScript(#[from] crate::scripts::errors::ExecuteScriptError),
 
         /// An error occurred while deserializing the sourcemap result
         #[error("error deserializing sourcemap result")]
@@ -100,5 +97,9 @@ pub mod errors {
         /// An error occurred while deserializing the wally manifest
         #[error("error deserializing wally manifest")]
         WallyManifest(#[from] toml::de::Error),
+
+        /// IO error
+        #[error("io error")]
+        Io(#[from] std::io::Error),
     }
 }
