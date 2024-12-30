@@ -83,3 +83,7 @@ pub fn deserialize_git_like_url<'de, D: Deserializer<'de>>(
 pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
     format!("{:x}", Sha256::digest(struc.as_ref()))
 }
+
+pub fn is_default<T: Default + Eq>(t: &T) -> bool {
+    t == &T::default()
+}

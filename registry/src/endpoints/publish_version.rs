@@ -377,7 +377,7 @@ pub async fn publish_package(
             }
         };
 
-        let mut entries: IndexFile =
+        let mut file: IndexFile =
             toml::de::from_str(&read_file(&gix_tree, [scope, name])?.unwrap_or_default())?;
 
         let new_entry = IndexFileEntry {
@@ -392,11 +392,12 @@ pub async fn publish_package(
             dependencies,
         };
 
-        let this_version = entries
+        let this_version = file
+            .entries
             .keys()
             .find(|v_id| *v_id.version() == manifest.version);
         if let Some(this_version) = this_version {
-            let other_entry = entries.get(this_version).unwrap();
+            let other_entry = file.entries.get(this_version).unwrap();
 
             // description cannot be different - which one to render in the "Recently published" list?
             // the others cannot be different because what to return from the versions endpoint?
@@ -412,7 +413,8 @@ pub async fn publish_package(
             }
         }
 
-        if entries
+        if file
+            .entries
             .insert(
                 VersionId::new(manifest.version.clone(), manifest.target.kind()),
                 new_entry.clone(),
@@ -428,7 +430,7 @@ pub async fn publish_package(
         let reference = repo.find_reference(&refspec)?;
 
         {
-            let index_content = toml::to_string(&entries)?;
+            let index_content = toml::to_string(&file)?;
             let mut blob_writer = repo.blob_writer(None)?;
             blob_writer.write_all(index_content.as_bytes())?;
             oids.push((name, blob_writer.commit()?));

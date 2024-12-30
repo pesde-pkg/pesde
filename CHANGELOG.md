@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove unnecessary mutex in Wally package download by @daimond113
 - Lazily format error messages by @daimond113
 
+## [0.5.3] - 2024-12-30
+### Added
+- Add meta field in index files to preserve compatibility with potential future changes by @daimond113
+
+### Changed
+- Remove verbosity from release mode logging by @daimond113
+
 ## [0.5.2] - 2024-12-19
 ### Fixed
 - Change dependency types for removed peer dependencies by @daimond113
@@ -117,6 +124,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Asyncify dependency linking by @daimond113
 - Use `exec` in Unix bin linking to reduce the number of processes by @daimond113
 
+[0.5.3]: https://github.com/daimond113/pesde/compare/v0.5.2%2Bregistry.0.1.1..v0.5.3%2Bregistry.0.1.2
 [0.5.2]: https://github.com/daimond113/pesde/compare/v0.5.1%2Bregistry.0.1.0..v0.5.2%2Bregistry.0.1.1
 [0.5.1]: https://github.com/daimond113/pesde/compare/v0.5.0%2Bregistry.0.1.0..v0.5.1%2Bregistry.0.1.0
 [0.5.0]: https://github.com/daimond113/pesde/compare/v0.4.7..v0.5.0%2Bregistry.0.1.0

@@ -19,7 +19,7 @@ pub async fn get_package_versions(
 
     let (scope, name_part) = name.as_str();
 
-    let versions: IndexFile = {
+    let file: IndexFile = {
         let source = app_state.source.lock().await;
         let repo = gix::open(source.path(&app_state.project))?;
         let tree = root_tree(&repo)?;
@@ -32,7 +32,7 @@ pub async fn get_package_versions(
 
     let mut responses = BTreeMap::new();
 
-    for (v_id, entry) in versions {
+    for (v_id, entry) in file.entries {
         let info = responses
             .entry(v_id.version().clone())
             .or_insert_with(|| PackageResponse {
