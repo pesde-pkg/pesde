@@ -1,4 +1,5 @@
 use crate::{
+    deser_manifest,
     manifest::target::Target,
     names::PackageNames,
     reporters::DownloadProgressReporter,
@@ -47,10 +48,9 @@ impl PackageSource for WorkspacePackageSource {
         } = options;
 
         let (path, manifest) = 'finder: {
-            let workspace_dir = project.workspace_dir().unwrap_or(project.package_dir());
             let target = specifier.target.unwrap_or(*project_target);
 
-            let members = project.workspace_members(workspace_dir, true).await?;
+            let members = project.workspace_members(true).await?;
             pin!(members);
 
             while let Some((path, manifest)) = members.next().await.transpose()? {
@@ -71,7 +71,8 @@ impl PackageSource for WorkspacePackageSource {
             // strip_prefix is guaranteed to be Some by same method
             // from_path is guaranteed to be Ok because we just stripped the absolute path
             path: RelativePathBuf::from_path(
-                path.strip_prefix(project.workspace_dir().unwrap()).unwrap(),
+                path.strip_prefix(project.workspace_dir().unwrap_or(project.package_dir()))
+                    .unwrap(),
             )
             .unwrap(),
             dependencies: manifest
@@ -116,7 +117,6 @@ impl PackageSource for WorkspacePackageSource {
                     Ok((alias, (spec, ty)))
                 })
                 .collect::<Result<_, errors::ResolveError>>()?,
-            target: manifest.target,
         };
 
         Ok((
@@ -136,11 +136,14 @@ impl PackageSource for WorkspacePackageSource {
     ) -> Result<(PackageFS, Target), Self::DownloadError> {
         let DownloadOptions { project, .. } = options;
 
-        let path = pkg_ref.path.to_path(project.workspace_dir().unwrap());
+        let path = pkg_ref
+            .path
+            .to_path(project.workspace_dir().unwrap_or(project.package_dir()));
+        let manifest = deser_manifest(&path).await?;
 
         Ok((
-            PackageFS::Copy(path, pkg_ref.target.kind()),
-            pkg_ref.target.clone(),
+            PackageFS::Copy(path, manifest.target.kind()),
+            manifest.target,
         ))
     }
 }
@@ -180,8 +183,8 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DownloadError {
-        /// An error occurred reading the workspace members
-        #[error("failed to read workspace members")]
-        ReadWorkspaceMembers(#[from] std::io::Error),
+        /// Reading the manifest failed
+        #[error("error reading manifest")]
+        ManifestRead(#[from] crate::errors::ManifestReadError),
     }
 }

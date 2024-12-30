@@ -215,21 +215,15 @@ impl Project {
 
     /// Get the workspace members
     #[instrument(skip(self), level = "debug")]
-    pub async fn workspace_members<P: AsRef<Path> + Debug>(
+    pub async fn workspace_members(
         &self,
-        dir: P,
         can_ref_self: bool,
     ) -> Result<
         impl Stream<Item = Result<(PathBuf, Manifest), errors::WorkspaceMembersError>>,
         errors::WorkspaceMembersError,
     > {
-        let dir = dir.as_ref().to_path_buf();
-        let manifest = fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
-            .await
-            .map_err(errors::WorkspaceMembersError::ManifestMissing)?;
-        let manifest = toml::from_str::<Manifest>(&manifest).map_err(|e| {
-            errors::WorkspaceMembersError::ManifestDeser(dir.to_path_buf(), Box::new(e))
-        })?;
+        let dir = self.workspace_dir().unwrap_or(self.package_dir());
+        let manifest = deser_manifest(dir).await?;
 
         let members = matching_globs(
             dir,
@@ -241,13 +235,7 @@ impl Project {
 
         Ok(try_stream! {
             for path in members {
-                let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
-                    .await
-                    .map_err(errors::WorkspaceMembersError::ManifestMissing)?;
-                let manifest = toml::from_str::<Manifest>(&manifest).map_err(|e| {
-                    errors::WorkspaceMembersError::ManifestDeser(path.clone(), Box::new(e))
-                })?;
-
+                let manifest = deser_manifest(&path).await?;
                 yield (path, manifest);
             }
         })
@@ -346,7 +334,70 @@ impl RefreshedSources {
 
 async fn deser_manifest(path: &Path) -> Result<Manifest, errors::ManifestReadError> {
     let string = fs::read_to_string(path.join(MANIFEST_FILE_NAME)).await?;
-    Ok(toml::from_str(&string)?)
+    toml::from_str(&string).map_err(|e| errors::ManifestReadError::Serde(path.to_path_buf(), e))
+}
+
+/// Find the project & workspace directory roots
+pub async fn find_roots(
+    cwd: PathBuf,
+) -> Result<(PathBuf, Option<PathBuf>), errors::FindRootsError> {
+    let mut current_path = Some(cwd.clone());
+    let mut project_root = None::<PathBuf>;
+    let mut workspace_dir = None::<PathBuf>;
+
+    async fn get_workspace_members(
+        path: &Path,
+    ) -> Result<HashSet<PathBuf>, errors::FindRootsError> {
+        let manifest = deser_manifest(path).await?;
+
+        if manifest.workspace_members.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        matching_globs(
+            path,
+            manifest.workspace_members.iter().map(|s| s.as_str()),
+            false,
+            false,
+        )
+        .await
+        .map_err(errors::FindRootsError::Globbing)
+    }
+
+    while let Some(path) = current_path {
+        current_path = path.parent().map(|p| p.to_path_buf());
+
+        if !path.join(MANIFEST_FILE_NAME).exists() {
+            continue;
+        }
+
+        match (project_root.as_ref(), workspace_dir.as_ref()) {
+            (Some(project_root), Some(workspace_dir)) => {
+                return Ok((project_root.clone(), Some(workspace_dir.clone())));
+            }
+
+            (Some(project_root), None) => {
+                if get_workspace_members(&path).await?.contains(project_root) {
+                    workspace_dir = Some(path);
+                }
+            }
+
+            (None, None) => {
+                if get_workspace_members(&path).await?.contains(&cwd) {
+                    // initializing a new member of a workspace
+                    return Ok((cwd, Some(path)));
+                } else {
+                    project_root = Some(path);
+                }
+            }
+
+            (None, Some(_)) => unreachable!(),
+        }
+    }
+
+    // we mustn't expect the project root to be found, as that would
+    // disable the ability to run pesde in a non-project directory (for example to init it)
+    Ok((project_root.unwrap_or(cwd), workspace_dir))
 }
 
 /// Errors that can occur when using the pesde library
@@ -363,8 +414,8 @@ pub mod errors {
         Io(#[from] std::io::Error),
 
         /// An error occurred while deserializing the manifest file
-        #[error("error deserializing manifest file")]
-        Serde(#[from] toml::de::Error),
+        #[error("error deserializing manifest file at {0}")]
+        Serde(PathBuf, #[source] toml::de::Error),
     }
 
     /// Errors that can occur when reading the lockfile
@@ -397,13 +448,9 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum WorkspaceMembersError {
-        /// The manifest file could not be found
-        #[error("missing manifest file")]
-        ManifestMissing(#[source] std::io::Error),
-
-        /// An error occurred deserializing the manifest file
-        #[error("error deserializing manifest file at {0}")]
-        ManifestDeser(PathBuf, #[source] Box<toml::de::Error>),
+        /// An error occurred parsing the manifest file
+        #[error("error parsing manifest file")]
+        ManifestParse(#[from] ManifestReadError),
 
         /// An error occurred interacting with the filesystem
         #[error("error interacting with the filesystem")]
@@ -425,5 +472,18 @@ pub mod errors {
         /// An error occurred while building a glob
         #[error("error building glob")]
         BuildGlob(#[from] wax::BuildError),
+    }
+
+    /// Errors that can occur when finding project roots
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum FindRootsError {
+        /// Reading the manifest failed
+        #[error("error reading manifest")]
+        ManifestRead(#[from] ManifestReadError),
+
+        /// Globbing failed
+        #[error("error globbing")]
+        Globbing(#[from] MatchingGlobsError),
     }
 }

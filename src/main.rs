@@ -5,9 +5,8 @@ use anyhow::Context;
 use clap::{builder::styling::AnsiColor, Parser};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
-use pesde::{matching_globs, AuthConfig, Project, MANIFEST_FILE_NAME};
+use pesde::{find_roots, AuthConfig, Project};
 use std::{
-    collections::HashSet,
     io,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -208,67 +207,9 @@ async fn run() -> anyhow::Result<()> {
         .with(fmt_layer)
         .init();
 
-    let (project_root_dir, project_workspace_dir) = 'finder: {
-        let mut current_path = Some(cwd.clone());
-        let mut project_root = None::<PathBuf>;
-        let mut workspace_dir = None::<PathBuf>;
-
-        async fn get_workspace_members(path: &Path) -> anyhow::Result<HashSet<PathBuf>> {
-            let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
-                .await
-                .context("failed to read manifest")?;
-            let manifest: pesde::manifest::Manifest =
-                toml::from_str(&manifest).context("failed to parse manifest")?;
-
-            if manifest.workspace_members.is_empty() {
-                return Ok(HashSet::new());
-            }
-
-            matching_globs(
-                path,
-                manifest.workspace_members.iter().map(|s| s.as_str()),
-                false,
-                false,
-            )
-            .await
-            .context("failed to get workspace members")
-        }
-
-        while let Some(path) = current_path {
-            current_path = path.parent().map(|p| p.to_path_buf());
-
-            if !path.join(MANIFEST_FILE_NAME).exists() {
-                continue;
-            }
-
-            match (project_root.as_ref(), workspace_dir.as_ref()) {
-                (Some(project_root), Some(workspace_dir)) => {
-                    break 'finder (project_root.clone(), Some(workspace_dir.clone()));
-                }
-
-                (Some(project_root), None) => {
-                    if get_workspace_members(&path).await?.contains(project_root) {
-                        workspace_dir = Some(path);
-                    }
-                }
-
-                (None, None) => {
-                    if get_workspace_members(&path).await?.contains(&cwd) {
-                        // initializing a new member of a workspace
-                        break 'finder (cwd, Some(path));
-                    } else {
-                        project_root = Some(path);
-                    }
-                }
-
-                (None, Some(_)) => unreachable!(),
-            }
-        }
-
-        // we mustn't expect the project root to be found, as that would
-        // disable the ability to run pesde in a non-project directory (for example to init it)
-        (project_root.unwrap_or_else(|| cwd.clone()), workspace_dir)
-    };
+    let (project_root_dir, project_workspace_dir) = find_roots(cwd.clone())
+        .await
+        .context("failed to find project root")?;
 
     tracing::trace!(
         "project root: {}\nworkspace root: {}",

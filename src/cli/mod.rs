@@ -258,9 +258,7 @@ pub async fn run_on_workspace_members<F: Future<Output = anyhow::Result<()>>>(
         return Ok(Default::default());
     }
 
-    let members_future = project
-        .workspace_members(project.package_dir(), true)
-        .await?;
+    let members_future = project.workspace_members(true).await?;
     pin!(members_future);
 
     let mut results = BTreeMap::<PackageName, BTreeMap<TargetKind, RelativePathBuf>>::new();

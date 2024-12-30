@@ -3,6 +3,7 @@ use anyhow::Context;
 use clap::Args;
 use futures::{StreamExt, TryStreamExt};
 use pesde::{
+    errors::{ManifestReadError, WorkspaceMembersError},
     linking::generator::generate_bin_linking_module,
     names::{PackageName, PackageNames},
     Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
@@ -124,9 +125,9 @@ impl RunCommand {
             .workspace_dir()
             .unwrap_or_else(|| project.package_dir());
 
-        let members = match project.workspace_members(workspace_dir, false).await {
+        let members = match project.workspace_members(false).await {
             Ok(members) => members.boxed(),
-            Err(pesde::errors::WorkspaceMembersError::ManifestMissing(e))
+            Err(WorkspaceMembersError::ManifestParse(ManifestReadError::Io(e)))
                 if e.kind() == std::io::ErrorKind::NotFound =>
             {
                 futures::stream::empty().boxed()

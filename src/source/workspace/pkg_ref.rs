@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::{
-    manifest::{target::Target, DependencyType},
+    manifest::DependencyType,
     source::{workspace::WorkspacePackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
 
@@ -15,8 +15,6 @@ pub struct WorkspacePackageRef {
     /// The dependencies of the package
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
-    /// The target of the package
-    pub target: Target,
 }
 impl PackageRef for WorkspacePackageRef {
     fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
