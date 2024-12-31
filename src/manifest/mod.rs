@@ -19,6 +19,7 @@ pub mod target;
 
 /// A package manifest
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Manifest {
     /// The name of the package
     pub name: PackageName,
@@ -43,6 +44,10 @@ pub struct Manifest {
     pub private: bool,
     /// The scripts of the package
     #[serde(default, skip_serializing)]
+    #[cfg_attr(
+        feature = "schema",
+        schemars(with = "BTreeMap<String, std::path::PathBuf>")
+    )]
     pub scripts: BTreeMap<String, RelativePathBuf>,
     /// The indices to use for the package
     #[serde(
@@ -50,6 +55,7 @@ pub struct Manifest {
         skip_serializing,
         deserialize_with = "crate::util::deserialize_gix_url_map"
     )]
+    #[cfg_attr(feature = "schema", schemars(with = "BTreeMap<String, url::Url>"))]
     pub indices: BTreeMap<String, gix::Url>,
     /// The indices to use for the package's wally dependencies
     #[cfg(feature = "wally-compat")]
@@ -58,6 +64,7 @@ pub struct Manifest {
         skip_serializing,
         deserialize_with = "crate::util::deserialize_gix_url_map"
     )]
+    #[cfg_attr(feature = "schema", schemars(with = "BTreeMap<String, url::Url>"))]
     pub wally_indices: BTreeMap<String, gix::Url>,
     /// The overrides this package has
     #[serde(default, skip_serializing)]
@@ -68,6 +75,12 @@ pub struct Manifest {
     /// The patches to apply to packages
     #[cfg(feature = "patches")]
     #[serde(default, skip_serializing)]
+    #[cfg_attr(
+        feature = "schema",
+        schemars(
+            with = "BTreeMap<crate::names::PackageNames, BTreeMap<crate::source::version_id::VersionId, std::path::PathBuf>>"
+        )
+    )]
     pub patches: BTreeMap<
         crate::names::PackageNames,
         BTreeMap<crate::source::version_id::VersionId, RelativePathBuf>,
@@ -92,6 +105,7 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub dev_dependencies: BTreeMap<String, DependencySpecifiers>,
     /// The user-defined fields of the package
+    #[cfg_attr(feature = "schema", schemars(skip))]
     #[serde(flatten)]
     pub user_defined_fields: HashMap<String, toml::Value>,
 }

@@ -4,6 +4,7 @@ use std::{fmt::Display, path::PathBuf};
 
 /// The specifier for a path dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PathDependencySpecifier {
     /// The path to the package
     pub path: PathBuf,

@@ -5,6 +5,7 @@ use std::{fmt::Display, str::FromStr};
 
 /// The specifier for a workspace dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct WorkspaceDependencySpecifier {
     /// The name of the workspace package
     #[serde(rename = "workspace")]
@@ -27,15 +28,20 @@ impl Display for WorkspaceDependencySpecifier {
 #[derive(
     Debug, SerializeDisplay, DeserializeFromStr, Clone, Copy, PartialEq, Eq, Hash, Default,
 )]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum VersionType {
     /// The "^" version type
     #[default]
+    #[cfg_attr(feature = "schema", serde(rename = "^"))]
     Caret,
     /// The "~" version type
+    #[cfg_attr(feature = "schema", serde(rename = "~"))]
     Tilde,
     /// The "=" version type
+    #[cfg_attr(feature = "schema", serde(rename = "="))]
     Exact,
     /// The "*" version type
+    #[cfg_attr(feature = "schema", serde(rename = "*"))]
     Wildcard,
 }
 
@@ -68,10 +74,13 @@ impl FromStr for VersionType {
 
 /// Either a version type or a version requirement
 #[derive(Debug, SerializeDisplay, DeserializeFromStr, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", schemars(untagged))]
 pub enum VersionTypeOrReq {
     /// A version type
     VersionType(VersionType),
     /// A version requirement
+    #[cfg_attr(feature = "schema", schemars(with = "String"))]
     Req(semver::VersionReq),
 }
 

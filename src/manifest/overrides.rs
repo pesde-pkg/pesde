@@ -29,6 +29,20 @@ impl FromStr for OverrideKey {
     }
 }
 
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for OverrideKey {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "OverrideKey".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "pattern": r#"^([a-zA-Z]+(>[a-zA-Z]+)+)(,([a-zA-Z]+(>[a-zA-Z]+)+))*$"#,
+        })
+    }
+}
+
 impl Display for OverrideKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -51,6 +65,7 @@ impl Display for OverrideKey {
 
 /// A specifier for an override
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum OverrideSpecifier {
     /// A specifier for a dependency

@@ -33,6 +33,7 @@ bin = [
 wally-compat = ["dep:async_zip", "dep:serde_json"]
 patches = ["dep:git2"]
 version-management = ["bin"]
+schema = ["dep:schemars"]
 
 [[bin]]
 name = "pesde"
@@ -72,6 +73,8 @@ git2 = { version = "0.19.0", optional = true }
 
 async_zip = { version = "0.0.17", features = ["tokio", "deflate", "deflate64", "tokio-fs"], optional = true }
 serde_json = { version = "1.0.133", optional = true }
+
+schemars = { git = "https://github.com/daimond113/schemars", rev = "bc7c7d6", features = ["semver1", "url2"], optional = true }
 
 anyhow = { version = "1.0.94", optional = true }
 open = { version = "5.3.1", optional = true }

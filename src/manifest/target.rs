@@ -11,6 +11,8 @@ use std::{
 #[derive(
     SerializeDisplay, DeserializeFromStr, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schema", schemars(rename_all = "snake_case"))]
 pub enum TargetKind {
     /// A Roblox target
     Roblox,
@@ -77,12 +79,14 @@ impl TargetKind {
 
 /// A target of a package
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case", tag = "environment")]
 pub enum Target {
     /// A Roblox target
     Roblox {
         /// The path to the lib export file
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "schema", schemars(with = "Option<std::path::PathBuf>"))]
         lib: Option<RelativePathBuf>,
         /// The files to include in the sync tool's config
         #[serde(default)]
@@ -92,6 +96,7 @@ pub enum Target {
     RobloxServer {
         /// The path to the lib export file
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "schema", schemars(with = "Option<std::path::PathBuf>"))]
         lib: Option<RelativePathBuf>,
         /// The files to include in the sync tool's config
         #[serde(default)]
@@ -101,24 +106,36 @@ pub enum Target {
     Lune {
         /// The path to the lib export file
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "schema", schemars(with = "Option<std::path::PathBuf>"))]
         lib: Option<RelativePathBuf>,
         /// The path to the bin export file
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "schema", schemars(with = "Option<std::path::PathBuf>"))]
         bin: Option<RelativePathBuf>,
         /// The exported scripts
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        #[cfg_attr(
+            feature = "schema",
+            schemars(with = "BTreeMap<String, std::path::PathBuf>")
+        )]
         scripts: BTreeMap<String, RelativePathBuf>,
     },
     /// A Luau target
     Luau {
         /// The path to the lib export file
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "schema", schemars(with = "Option<std::path::PathBuf>"))]
         lib: Option<RelativePathBuf>,
         /// The path to the bin export file
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "schema", schemars(with = "Option<std::path::PathBuf>"))]
         bin: Option<RelativePathBuf>,
         /// The exported scripts
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        #[cfg_attr(
+            feature = "schema",
+            schemars(with = "BTreeMap<String, std::path::PathBuf>")
+        )]
         scripts: BTreeMap<String, RelativePathBuf>,
     },
 }
@@ -183,6 +200,7 @@ impl Display for Target {
 #[derive(
     SerializeDisplay, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd,
 )]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum RobloxPlaceKind {
     /// The shared dependencies location

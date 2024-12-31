@@ -5,10 +5,12 @@ use std::fmt::Display;
 
 /// The specifier for a pesde dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PesdeDependencySpecifier {
     /// The name of the package
     pub name: PackageName,
     /// The version requirement for the package
+    #[cfg_attr(feature = "schema", schemars(with = "String"))]
     pub version: VersionReq,
     /// The index to use for the package
     #[serde(default, skip_serializing_if = "Option::is_none")]
