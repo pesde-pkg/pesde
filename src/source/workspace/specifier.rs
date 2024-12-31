@@ -32,16 +32,16 @@ impl Display for WorkspaceDependencySpecifier {
 pub enum VersionType {
     /// The "^" version type
     #[default]
-    #[cfg_attr(feature = "schema", serde(rename = "^"))]
+    #[cfg_attr(feature = "schema", schemars(rename = "^"))]
     Caret,
     /// The "~" version type
-    #[cfg_attr(feature = "schema", serde(rename = "~"))]
+    #[cfg_attr(feature = "schema", schemars(rename = "~"))]
     Tilde,
     /// The "=" version type
-    #[cfg_attr(feature = "schema", serde(rename = "="))]
+    #[cfg_attr(feature = "schema", schemars(rename = "="))]
     Exact,
     /// The "*" version type
-    #[cfg_attr(feature = "schema", serde(rename = "*"))]
+    #[cfg_attr(feature = "schema", schemars(rename = "*"))]
     Wildcard,
 }
 
