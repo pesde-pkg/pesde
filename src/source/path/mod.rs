@@ -5,10 +5,10 @@ use crate::{
     reporters::DownloadProgressReporter,
     source::{
         fs::PackageFS,
+        ids::VersionId,
         path::pkg_ref::PathPackageRef,
         specifiers::DependencySpecifiers,
         traits::{DownloadOptions, PackageSource, ResolveOptions},
-        version_id::VersionId,
         ResolveResult,
     },
     DEFAULT_INDEX_NAME,

@@ -4,7 +4,7 @@ use actix_web::{
     HttpResponse,
 };
 use fs_err::tokio as fs;
-use pesde::{names::PackageName, source::version_id::VersionId};
+use pesde::{names::PackageName, source::ids::VersionId};
 use std::{
     fmt::Display,
     path::{Path, PathBuf},

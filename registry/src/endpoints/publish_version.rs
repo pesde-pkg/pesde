@@ -16,10 +16,10 @@ use pesde::{
     manifest::Manifest,
     source::{
         git_index::{read_file, root_tree, GitBasedSource},
+        ids::VersionId,
         pesde::{DocEntry, DocEntryKind, IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
         specifiers::DependencySpecifiers,
         traits::RefreshOptions,
-        version_id::VersionId,
         IGNORED_DIRS, IGNORED_FILES,
     },
     MANIFEST_FILE_NAME,

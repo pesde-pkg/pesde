@@ -11,7 +11,8 @@ use pesde::{
     },
     names::{PackageName, PackageNames},
     source::{
-        specifiers::DependencySpecifiers, version_id::VersionId,
+        ids::{PackageId, VersionId},
+        specifiers::DependencySpecifiers,
         workspace::specifier::VersionTypeOrReq,
     },
     Project,
@@ -116,7 +117,6 @@ pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Loc
     let specs = lockfile
         .graph
         .iter()
-        .flat_map(|(_, versions)| versions)
         .filter_map(|(_, node)| {
             node.node
                 .direct
@@ -166,32 +166,31 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 
 impl VersionedPackageName {
     #[cfg(feature = "patches")]
-    fn get(
-        self,
-        graph: &pesde::lockfile::DownloadedGraph,
-    ) -> anyhow::Result<(PackageNames, VersionId)> {
+    fn get(self, graph: &pesde::lockfile::DownloadedGraph) -> anyhow::Result<PackageId> {
         let version_id = match self.1 {
             Some(version) => version,
             None => {
-                let versions = graph.get(&self.0).context("package not found in graph")?;
-                if versions.len() == 1 {
-                    let version = versions.keys().next().unwrap().clone();
-                    tracing::debug!("only one version found, using {version}");
-                    version
-                } else {
-                    anyhow::bail!(
+                let versions = graph
+                    .keys()
+                    .filter(|id| *id.name() == self.0)
+                    .collect::<Vec<_>>();
+
+                match versions.len() {
+                    0 => anyhow::bail!("package not found"),
+                    1 => versions[0].version_id().clone(),
+                    _ => anyhow::bail!(
                         "multiple versions found, please specify one of: {}",
                         versions
-                            .keys()
+                            .iter()
                             .map(|v| v.to_string())
                             .collect::<Vec<_>>()
                             .join(", ")
-                    );
+                    ),
                 }
             }
         };
 
-        Ok((self.0, version_id))
+        Ok(PackageId::new(self.0, version_id))
     }
 }
 

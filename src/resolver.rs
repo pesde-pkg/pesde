@@ -1,12 +1,11 @@
 use crate::{
     lockfile::{DependencyGraph, DependencyGraphNode},
     manifest::{overrides::OverrideSpecifier, DependencyType},
-    names::PackageNames,
     source::{
+        ids::PackageId,
         pesde::PesdePackageSource,
         specifiers::DependencySpecifiers,
         traits::{PackageRef, PackageSource, RefreshOptions, ResolveOptions},
-        version_id::VersionId,
         PackageSources,
     },
     Project, RefreshedSources, DEFAULT_INDEX_NAME,
@@ -16,22 +15,17 @@ use tracing::{instrument, Instrument};
 
 fn insert_node(
     graph: &mut DependencyGraph,
-    name: &PackageNames,
-    version: &VersionId,
+    package_id: &PackageId,
     mut node: DependencyGraphNode,
     is_top_level: bool,
 ) {
     if !is_top_level && node.direct.take().is_some() {
         tracing::debug!(
-            "tried to insert {name}@{version} as direct dependency from a non top-level context",
+            "tried to insert {package_id} as direct dependency from a non top-level context",
         );
     }
 
-    match graph
-        .entry(name.clone())
-        .or_default()
-        .entry(version.clone())
-    {
+    match graph.entry(package_id.clone()) {
         Entry::Vacant(entry) => {
             entry.insert(node);
         }
@@ -40,7 +34,7 @@ fn insert_node(
 
             match (&current_node.direct, &node.direct) {
                 (Some(_), Some(_)) => {
-                    tracing::warn!("duplicate direct dependency for {name}@{version}");
+                    tracing::warn!("duplicate direct dependency for {package_id}");
                 }
 
                 (None, Some(_)) => {
@@ -85,83 +79,67 @@ impl Project {
         let mut graph = DependencyGraph::default();
 
         if let Some(previous_graph) = previous_graph {
-            for (name, versions) in previous_graph {
-                for (version, node) in versions {
-                    let Some((old_alias, specifier, source_ty)) = &node.direct else {
-                        // this is not a direct dependency, will be added if it's still being used later
-                        continue;
-                    };
+            for (package_id, node) in previous_graph {
+                let Some((old_alias, specifier, source_ty)) = &node.direct else {
+                    // this is not a direct dependency, will be added if it's still being used later
+                    continue;
+                };
 
-                    if matches!(specifier, DependencySpecifiers::Workspace(_)) {
-                        // workspace dependencies must always be resolved brand new
-                        continue;
-                    }
+                if matches!(specifier, DependencySpecifiers::Workspace(_)) {
+                    // workspace dependencies must always be resolved brand new
+                    continue;
+                }
 
-                    let Some(alias) = all_specifiers.remove(&(specifier.clone(), *source_ty))
-                    else {
-                        tracing::debug!(
-                            "dependency {name}@{version} (old alias {old_alias}) from old dependency graph is no longer in the manifest",
+                let Some(alias) = all_specifiers.remove(&(specifier.clone(), *source_ty)) else {
+                    tracing::debug!(
+                            "dependency {package_id} (old alias {old_alias}) from old dependency graph is no longer in the manifest",
                         );
-                        continue;
-                    };
+                    continue;
+                };
 
-                    let span = tracing::info_span!("resolve from old graph", alias);
-                    let _guard = span.enter();
+                let span = tracing::info_span!("resolve from old graph", alias);
+                let _guard = span.enter();
 
-                    tracing::debug!("resolved {}@{} from old dependency graph", name, version);
-                    insert_node(
-                        &mut graph,
-                        name,
-                        version,
-                        DependencyGraphNode {
-                            direct: Some((alias.clone(), specifier.clone(), *source_ty)),
-                            ..node.clone()
-                        },
-                        true,
-                    );
+                tracing::debug!("resolved {package_id} from old dependency graph");
+                insert_node(
+                    &mut graph,
+                    package_id,
+                    DependencyGraphNode {
+                        direct: Some((alias.clone(), specifier.clone(), *source_ty)),
+                        ..node.clone()
+                    },
+                    true,
+                );
 
-                    let mut queue = node
-                        .dependencies
-                        .iter()
-                        .map(|(name, (version, dep_alias))| {
-                            (
-                                name,
-                                version,
-                                vec![alias.to_string(), dep_alias.to_string()],
-                            )
-                        })
-                        .collect::<VecDeque<_>>();
+                let mut queue = node
+                    .dependencies
+                    .iter()
+                    .map(|(id, dep_alias)| (id, vec![alias.to_string(), dep_alias.to_string()]))
+                    .collect::<VecDeque<_>>();
 
-                    while let Some((dep_name, dep_version, path)) = queue.pop_front() {
-                        let inner_span =
-                            tracing::info_span!("resolve dependency", path = path.join(">"));
-                        let _inner_guard = inner_span.enter();
-                        if let Some(dep_node) = previous_graph
-                            .get(dep_name)
-                            .and_then(|v| v.get(dep_version))
-                        {
-                            tracing::debug!("resolved sub-dependency {dep_name}@{dep_version}");
-                            insert_node(&mut graph, dep_name, dep_version, dep_node.clone(), false);
+                while let Some((dep_id, path)) = queue.pop_front() {
+                    let inner_span =
+                        tracing::info_span!("resolve dependency", path = path.join(">"));
+                    let _inner_guard = inner_span.enter();
+                    if let Some(dep_node) = previous_graph.get(dep_id) {
+                        tracing::debug!("resolved sub-dependency {dep_id}");
+                        insert_node(&mut graph, dep_id, dep_node.clone(), false);
 
-                            dep_node
-                                .dependencies
-                                .iter()
-                                .map(|(name, (version, alias))| {
-                                    (
-                                        name,
-                                        version,
-                                        path.iter()
-                                            .cloned()
-                                            .chain(std::iter::once(alias.to_string()))
-                                            .collect(),
-                                    )
-                                })
-                                .for_each(|dep| queue.push_back(dep));
-                        } else {
-                            tracing::warn!(
-                                "dependency {dep_name}@{dep_version} not found in previous graph"
-                            );
-                        }
+                        dep_node
+                            .dependencies
+                            .iter()
+                            .map(|(id, alias)| {
+                                (
+                                    id,
+                                    path.iter()
+                                        .cloned()
+                                        .chain(std::iter::once(alias.to_string()))
+                                        .collect(),
+                                )
+                            })
+                            .for_each(|dep| queue.push_back(dep));
+                    } else {
+                        tracing::warn!("dependency {dep_id} not found in previous graph");
                     }
                 }
             }
@@ -173,7 +151,7 @@ impl Project {
                 (
                     spec,
                     ty,
-                    None::<(PackageNames, VersionId)>,
+                    None::<PackageId>,
                     vec![alias],
                     false,
                     manifest.target.kind(),
@@ -260,17 +238,12 @@ impl Project {
                     .await
                     .map_err(|e| Box::new(e.into()))?;
 
-                let Some(target_version_id) = graph
-                    .get(&name)
-                    .and_then(|versions| {
-                        versions
-                            .keys()
-                            // only consider versions that are compatible with the specifier
-                            .filter(|ver| resolved.contains_key(ver))
-                            .max()
-                    })
-                    .or_else(|| resolved.last_key_value().map(|(ver, _)| ver))
+                let Some(package_id) = graph
+                    .keys()
+                    .filter(|id| *id.name() == name && resolved.contains_key(id.version_id()))
+                    .max()
                     .cloned()
+                    .or_else(|| resolved.last_key_value().map(|(ver, _)| PackageId::new(name, ver.clone())))
                 else {
                     return Err(Box::new(errors::DependencyGraphError::NoMatchingVersion(
                         format!("{specifier} ({target})"),
@@ -284,33 +257,22 @@ impl Project {
                     ty
                 };
 
-                if let Some((dependant_name, dependant_version_id)) = dependant {
+                if let Some(dependant_id) = dependant {
                     graph
-                        .get_mut(&dependant_name)
-                        .and_then(|versions| versions.get_mut(&dependant_version_id))
-                        .and_then(|node| {
-                            node.dependencies
-                                .insert(name.clone(), (target_version_id.clone(), alias.clone()))
-                        });
+                        .get_mut(&dependant_id)
+                        .expect("dependant package not found in graph")
+                        .dependencies
+                                .insert(package_id.clone(), alias.clone());
                 }
 
-                let pkg_ref = &resolved[&target_version_id];
+                let pkg_ref = &resolved[package_id.version_id()];
 
-                if let Some(already_resolved) = graph
-                    .get_mut(&name)
-                    .and_then(|versions| versions.get_mut(&target_version_id))
-                {
-                    tracing::debug!(
-                        "{}@{} already resolved",
-                        name,
-                        target_version_id
-                    );
+                if let Some(already_resolved) = graph.get_mut(&package_id) {
+                    tracing::debug!("{package_id} already resolved");
 
-                    if std::mem::discriminant(&already_resolved.pkg_ref)
-                        != std::mem::discriminant(pkg_ref)
-                    {
+                    if std::mem::discriminant(&already_resolved.pkg_ref) != std::mem::discriminant(pkg_ref) {
                         tracing::warn!(
-                            "resolved package {name}@{target_version_id} has a different source than previously resolved one, this may cause issues",
+                            "resolved package {package_id} has a different source than previously resolved one, this may cause issues",
                         );
                     }
 
@@ -346,17 +308,12 @@ impl Project {
                 };
                 insert_node(
                     &mut graph,
-                    &name,
-                    &target_version_id,
+                    &package_id,
                     node,
                     depth == 0,
                 );
 
-                tracing::debug!(
-                    "resolved {}@{} from new dependency graph",
-                    name,
-                    target_version_id
-                );
+                tracing::debug!("resolved {package_id} from new dependency graph");
 
                 for (dependency_alias, (dependency_spec, dependency_ty)) in
                     pkg_ref.dependencies().clone()
@@ -399,13 +356,13 @@ impl Project {
                             None => dependency_spec,
                         },
                         dependency_ty,
-                        Some((name.clone(), target_version_id.clone())),
+                        Some(package_id.clone()),
                         path.iter()
                             .cloned()
                             .chain(std::iter::once(dependency_alias))
                             .collect(),
                         overridden.is_some(),
-                        *target_version_id.target(),
+                        *package_id.version_id().target(),
                     ));
                 }
 
@@ -415,15 +372,13 @@ impl Project {
                 .await?;
         }
 
-        for (name, versions) in &mut graph {
-            for (version_id, node) in versions {
-                if node.is_peer && node.direct.is_none() {
-                    node.resolved_ty = DependencyType::Peer;
-                }
+        for (id, node) in &mut graph {
+            if node.is_peer && node.direct.is_none() {
+                node.resolved_ty = DependencyType::Peer;
+            }
 
-                if node.resolved_ty == DependencyType::Peer {
-                    tracing::warn!("peer dependency {name}@{version_id} was not resolved");
-                }
+            if node.resolved_ty == DependencyType::Peer {
+                tracing::warn!("peer dependency {id} was not resolved");
             }
         }
 

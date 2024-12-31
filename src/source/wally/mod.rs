@@ -5,8 +5,8 @@ use crate::{
     source::{
         fs::{store_in_cas, FSEntry, PackageFS},
         git_index::{read_file, root_tree, GitBasedSource},
+        ids::VersionId,
         traits::{DownloadOptions, PackageSource, RefreshOptions, ResolveOptions},
-        version_id::VersionId,
         wally::{
             compat_util::get_target,
             manifest::{Realm, WallyManifest},

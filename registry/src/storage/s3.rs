@@ -3,7 +3,7 @@ use crate::{
     storage::StorageImpl,
 };
 use actix_web::{http::header::LOCATION, HttpResponse};
-use pesde::{names::PackageName, source::version_id::VersionId};
+use pesde::{names::PackageName, source::ids::VersionId};
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use rusty_s3::{
     actions::{GetObject, PutObject},

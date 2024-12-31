@@ -1,11 +1,10 @@
 use crate::{
     lockfile::{DependencyGraph, DownloadedDependencyGraphNode},
     manifest::DependencyType,
-    names::PackageNames,
     reporters::{DownloadProgressReporter, DownloadsReporter},
     source::{
+        ids::PackageId,
         traits::{DownloadOptions, PackageRef, PackageSource, RefreshOptions},
-        version_id::VersionId,
     },
     Project, RefreshedSources, PACKAGES_CONTAINER_NAME,
 };
@@ -112,10 +111,7 @@ impl Project {
         options: DownloadGraphOptions<Reporter>,
     ) -> Result<
         impl Stream<
-            Item = Result<
-                (DownloadedDependencyGraphNode, PackageNames, VersionId),
-                errors::DownloadGraphError,
-            >,
+            Item = Result<(DownloadedDependencyGraphNode, PackageId), errors::DownloadGraphError>,
         >,
         errors::DownloadGraphError,
     >
@@ -139,19 +135,10 @@ impl Project {
 
         let mut tasks = graph
             .iter()
-            .flat_map(|(name, versions)| {
-                versions
-                    .iter()
-                    .map(|(version_id, node)| (name.clone(), version_id.clone(), node.clone()))
-            })
             // we need to download pesde packages first, since scripts (for target finding for example) can depend on them
-            .filter(|(_, _, node)| node.pkg_ref.like_wally() == wally)
-            .map(|(name, version_id, node)| {
-                let span = tracing::info_span!(
-                    "download",
-                    name = name.to_string(),
-                    version_id = version_id.to_string()
-                );
+            .filter(|(_, node)| node.pkg_ref.like_wally() == wally)
+            .map(|(package_id, node)| {
+                let span = tracing::info_span!("download", package_id = package_id.to_string(),);
 
                 let project = self.clone();
                 let reqwest = reqwest.clone();
@@ -159,12 +146,13 @@ impl Project {
                 let refreshed_sources = refreshed_sources.clone();
                 let package_dir = project.package_dir().to_path_buf();
                 let semaphore = semaphore.clone();
+                let package_id = package_id.clone();
+                let node = node.clone();
 
                 async move {
-                    let display_name = format!("{name}@{version_id}");
                     let progress_reporter = reporter
                         .as_deref()
-                        .map(|reporter| reporter.report_download(&display_name));
+                        .map(|reporter| reporter.report_download(&package_id.to_string()));
 
                     let _permit = semaphore.acquire().await;
 
@@ -184,10 +172,12 @@ impl Project {
 
                     let container_folder = node.container_folder(
                         &package_dir
-                            .join(manifest_target_kind.packages_folder(version_id.target()))
+                            .join(
+                                manifest_target_kind
+                                    .packages_folder(package_id.version_id().target()),
+                            )
                             .join(PACKAGES_CONTAINER_NAME),
-                        &name,
-                        version_id.version(),
+                        &package_id,
                     );
 
                     fs::create_dir_all(&container_folder).await?;
@@ -234,7 +224,7 @@ impl Project {
                     }
 
                     let downloaded_node = DownloadedDependencyGraphNode { node, target };
-                    Ok((downloaded_node, name, version_id))
+                    Ok((downloaded_node, package_id))
                 }
                 .instrument(span)
             })

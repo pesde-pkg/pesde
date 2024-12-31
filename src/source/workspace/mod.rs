@@ -5,9 +5,9 @@ use crate::{
     reporters::DownloadProgressReporter,
     source::{
         fs::PackageFS,
+        ids::VersionId,
         specifiers::DependencySpecifiers,
         traits::{DownloadOptions, PackageSource, ResolveOptions},
-        version_id::VersionId,
         workspace::pkg_ref::WorkspacePackageRef,
         ResolveResult,
     },

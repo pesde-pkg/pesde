@@ -211,7 +211,18 @@ impl Project {
     #[instrument(skip(self), ret(level = "trace"), level = "debug")]
     pub async fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
         let string = fs::read_to_string(self.package_dir().join(LOCKFILE_FILE_NAME)).await?;
-        Ok(toml::from_str(&string)?)
+        Ok(match toml::from_str(&string) {
+            Ok(lockfile) => lockfile,
+            Err(e) => {
+                #[allow(deprecated)]
+                let Ok(old_lockfile) = toml::from_str::<lockfile::old::LockfileOld>(&string) else {
+                    return Err(errors::LockfileReadError::Serde(e));
+                };
+
+                #[allow(deprecated)]
+                old_lockfile.to_new()
+            }
+        })
     }
 
     /// Write the lockfile

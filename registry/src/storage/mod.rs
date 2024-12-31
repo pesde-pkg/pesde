@@ -1,6 +1,6 @@
 use crate::{benv, error::Error, make_reqwest};
 use actix_web::HttpResponse;
-use pesde::{names::PackageName, source::version_id::VersionId};
+use pesde::{names::PackageName, source::ids::VersionId};
 use rusty_s3::{Bucket, Credentials, UrlStyle};
 use std::fmt::Display;
 

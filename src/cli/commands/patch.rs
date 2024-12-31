@@ -29,12 +29,9 @@ impl PatchCommand {
             anyhow::bail!("outdated lockfile, please run the install command first")
         };
 
-        let (name, version_id) = self.package.get(&graph)?;
+        let id = self.package.get(&graph)?;
 
-        let node = graph
-            .get(&name)
-            .and_then(|versions| versions.get(&version_id))
-            .context("package not found in graph")?;
+        let node = graph.get(&id).context("package not found in graph")?;
 
         if matches!(node.node.pkg_ref, PackageRefs::Workspace(_)) {
             anyhow::bail!("cannot patch a workspace package")
@@ -45,8 +42,8 @@ impl PatchCommand {
         let directory = project
             .data_dir()
             .join("patches")
-            .join(name.escaped())
-            .join(version_id.escaped())
+            .join(id.name().escaped())
+            .join(id.version_id().escaped())
             .join(chrono::Utc::now().timestamp().to_string());
         fs::create_dir_all(&directory).await?;
 

@@ -1,6 +1,7 @@
 use crate::{
     lockfile::DownloadedGraph,
     reporters::{PatchProgressReporter, PatchesReporter},
+    source::ids::PackageId,
     Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
 };
 use fs_err::tokio as fs;
@@ -93,12 +94,10 @@ impl Project {
             for (version_id, patch_path) in versions {
                 let patch_path = patch_path.to_path(self.package_dir());
 
-                let Some(node) = graph
-                    .get(&name)
-                    .and_then(|versions| versions.get(&version_id))
-                else {
+                let package_id = PackageId::new(name.clone(), version_id);
+                let Some(node) = graph.get(&package_id) else {
                     tracing::warn!(
-                        "patch for {name}@{version_id} not applied because it is not in the graph"
+                        "patch for {package_id} not applied because it is not in the graph"
                     );
                     continue;
                 };
@@ -106,25 +105,24 @@ impl Project {
                 let container_folder = node.node.container_folder(
                     &self
                         .package_dir()
-                        .join(manifest.target.kind().packages_folder(version_id.target()))
+                        .join(
+                            manifest
+                                .target
+                                .kind()
+                                .packages_folder(package_id.version_id().target()),
+                        )
                         .join(PACKAGES_CONTAINER_NAME),
-                    &name,
-                    version_id.version(),
+                    &package_id,
                 );
 
                 let reporter = reporter.clone();
-                let span = tracing::info_span!(
-                    "apply patch",
-                    name = name.to_string(),
-                    version_id = version_id.to_string()
-                );
-                let display_name = format!("{name}@{version_id}");
+                let span = tracing::info_span!("apply patch", package_id = package_id.to_string(),);
 
                 tasks.spawn(
                     async move {
                         tracing::debug!("applying patch");
 
-                        let progress_reporter = reporter.report_patch(&display_name);
+                        let progress_reporter = reporter.report_patch(&package_id.to_string());
 
                         let patch = fs::read(&patch_path)
                             .await

@@ -15,24 +15,18 @@ use std::{
 use tracing::{instrument, Instrument};
 
 /// Filters a graph to only include production dependencies, if `prod` is `true`
-pub fn filter_graph(graph: &DownloadedGraph, prod: bool) -> DownloadedGraph {
+pub fn filter_graph(graph: &DownloadedGraph, prod: bool) -> Arc<DownloadedGraph> {
     if !prod {
-        return graph.clone();
+        return Arc::new(graph.clone());
     }
 
-    graph
-        .iter()
-        .map(|(name, versions)| {
-            (
-                name.clone(),
-                versions
-                    .iter()
-                    .filter(|(_, node)| node.node.resolved_ty != DependencyType::Dev)
-                    .map(|(v_id, node)| (v_id.clone(), node.clone()))
-                    .collect(),
-            )
-        })
-        .collect()
+    Arc::new(
+        graph
+            .iter()
+            .filter(|(_, node)| node.node.resolved_ty != DependencyType::Dev)
+            .map(|(id, node)| (id.clone(), node.clone()))
+            .collect(),
+    )
 }
 
 /// Receiver for dependencies downloaded and linked
@@ -206,11 +200,8 @@ impl Project {
         self.download_graph(&graph, download_graph_options.clone())
             .instrument(tracing::debug_span!("download (pesde)"))
             .await?
-            .try_for_each(|(downloaded_node, name, version_id)| {
-                downloaded_graph
-                    .entry(name)
-                    .or_default()
-                    .insert(version_id, downloaded_node);
+            .try_for_each(|(downloaded_node, id)| {
+                downloaded_graph.insert(id, downloaded_node);
 
                 future::ready(Ok(()))
             })
@@ -218,7 +209,7 @@ impl Project {
 
         // step 2. link pesde dependencies. do so without types
         if write {
-            self.link_dependencies(&filter_graph(&downloaded_graph, prod), false)
+            self.link_dependencies(filter_graph(&downloaded_graph, prod), false)
                 .instrument(tracing::debug_span!("link (pesde)"))
                 .await?;
         }
@@ -239,11 +230,8 @@ impl Project {
         self.download_graph(&graph, download_graph_options.clone().wally(true))
             .instrument(tracing::debug_span!("download (wally)"))
             .await?
-            .try_for_each(|(downloaded_node, name, version_id)| {
-                downloaded_graph
-                    .entry(name)
-                    .or_default()
-                    .insert(version_id, downloaded_node);
+            .try_for_each(|(downloaded_node, id)| {
+                downloaded_graph.insert(id, downloaded_node);
 
                 future::ready(Ok(()))
             })
@@ -251,7 +239,7 @@ impl Project {
 
         // step 4. link ALL dependencies. do so with types
         if write {
-            self.link_dependencies(&filter_graph(&downloaded_graph, prod), true)
+            self.link_dependencies(filter_graph(&downloaded_graph, prod), true)
                 .instrument(tracing::debug_span!("link (all)"))
                 .await?;
         }

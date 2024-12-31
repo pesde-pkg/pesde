@@ -64,11 +64,10 @@ impl DownloadAndLinkHooks for InstallHooks {
 
     async fn on_bins_downloaded(
         &self,
-        downloaded_graph: &pesde::lockfile::DownloadedGraph,
+        downloaded_graph: &DownloadedGraph,
     ) -> Result<(), Self::Error> {
         let mut tasks = downloaded_graph
             .values()
-            .flat_map(|versions| versions.values())
             .filter(|node| node.target.bin_path().is_some())
             .filter_map(|node| node.node.direct.as_ref())
             .map(|(alias, _, _)| alias)
@@ -242,15 +241,7 @@ pub async fn install(
                 lockfile
                     .graph
                     .into_iter()
-                    .map(|(name, versions)| {
-                        (
-                            name,
-                            versions
-                                .into_iter()
-                                .map(|(version, node)| (version, node.node))
-                                .collect(),
-                        )
-                    })
+                    .map(|(id, node)| (id, node.node))
                     .collect()
             });
 
@@ -345,42 +336,38 @@ pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: D
     let mut new_pkg_map = BTreeMap::new();
     let mut new_direct_pkg_map = BTreeMap::new();
 
-    for (name, versions) in &old_graph {
-        for (version, node) in versions {
-            old_pkg_map.insert((name.clone(), version), node);
-            if node.direct.is_some() {
-                old_direct_pkg_map.insert((name.clone(), version), node);
-            }
+    for (id, node) in &old_graph {
+        old_pkg_map.insert(id, node);
+        if node.direct.is_some() {
+            old_direct_pkg_map.insert(id, node);
         }
     }
 
-    for (name, versions) in &new_graph {
-        for (version, node) in versions {
-            new_pkg_map.insert((name.clone(), version), &node.node);
-            if node.node.direct.is_some() {
-                new_direct_pkg_map.insert((name.clone(), version), &node.node);
-            }
+    for (id, node) in &new_graph {
+        new_pkg_map.insert(id, &node.node);
+        if node.node.direct.is_some() {
+            new_direct_pkg_map.insert(id, &node.node);
         }
     }
 
     let added_pkgs = new_pkg_map
         .iter()
-        .filter(|(key, _)| !old_pkg_map.contains_key(key))
+        .filter(|(key, _)| !old_pkg_map.contains_key(*key))
         .map(|(key, &node)| (key, node))
         .collect::<Vec<_>>();
     let removed_pkgs = old_pkg_map
         .iter()
-        .filter(|(key, _)| !new_pkg_map.contains_key(key))
+        .filter(|(key, _)| !new_pkg_map.contains_key(*key))
         .map(|(key, &node)| (key, node))
         .collect::<Vec<_>>();
     let added_direct_pkgs = new_direct_pkg_map
         .iter()
-        .filter(|(key, _)| !old_direct_pkg_map.contains_key(key))
+        .filter(|(key, _)| !old_direct_pkg_map.contains_key(*key))
         .map(|(key, &node)| (key, node))
         .collect::<Vec<_>>();
     let removed_direct_pkgs = old_direct_pkg_map
         .iter()
-        .filter(|(key, _)| !new_direct_pkg_map.contains_key(key))
+        .filter(|(key, _)| !new_direct_pkg_map.contains_key(*key))
         .map(|(key, &node)| (key, node))
         .collect::<Vec<_>>();
 
@@ -448,12 +435,12 @@ pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: D
             };
             println!("{}", format!("{ty_name}:").yellow().bold());
 
-            for ((name, version), added) in set {
+            for (id, added) in set {
                 println!(
                     "{} {} {}",
                     if added { "+".green() } else { "-".red() },
-                    name,
-                    version.to_string().dimmed()
+                    id.name(),
+                    id.version_id().to_string().dimmed()
                 );
             }
         }

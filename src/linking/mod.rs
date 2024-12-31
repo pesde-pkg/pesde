@@ -2,24 +2,22 @@ use crate::{
     linking::generator::get_file_types,
     lockfile::{DownloadedDependencyGraphNode, DownloadedGraph},
     manifest::Manifest,
-    names::PackageNames,
     scripts::{execute_script, ExecuteScriptHooks, ScriptName},
     source::{
         fs::{cas_path, store_in_cas},
+        ids::PackageId,
         traits::PackageRef,
-        version_id::VersionId,
     },
     Project, LINK_LIB_NO_FILE_FOUND, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
-use futures::future::try_join_all;
 use std::{
     collections::HashMap,
     ffi::OsStr,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::task::spawn_blocking;
+use tokio::task::{spawn_blocking, JoinSet};
 use tracing::{instrument, Instrument};
 
 /// Generates linking modules for a project
@@ -59,7 +57,7 @@ impl Project {
     #[instrument(skip(self, graph), level = "debug")]
     pub async fn link_dependencies(
         &self,
-        graph: &DownloadedGraph,
+        graph: Arc<DownloadedGraph>,
         with_types: bool,
     ) -> Result<(), errors::LinkingError> {
         let manifest = self.deser_manifest().await?;
@@ -68,7 +66,7 @@ impl Project {
 
         // step 1. link all non-wally packages (and their dependencies) temporarily without types
         // we do this separately to allow the required tools for the scripts to be installed
-        self.link(graph, &manifest, &Arc::new(Default::default()), false)
+        self.link(&graph, &manifest, &Arc::new(Default::default()), false)
             .await?;
 
         if !with_types {
@@ -76,83 +74,86 @@ impl Project {
         }
 
         // step 2. extract the types from libraries, prepare Roblox packages for syncing
-        let package_types = try_join_all(graph.iter().map(|(name, versions)| async move {
-            Ok::<_, errors::LinkingError>((
-                name,
-                try_join_all(versions.iter().map(|(version_id, node)| {
-                    async move {
-                        let Some(lib_file) = node.target.lib_path() else {
-                            return Ok((version_id, vec![]));
-                        };
+        let mut tasks = graph
+            .iter()
+            .map(|(package_id, node)| {
+                let span =
+                    tracing::info_span!("extract types", package_id = package_id.to_string(),);
 
-                        let container_folder = node.node.container_folder(
-                            &self
-                                .package_dir()
-                                .join(manifest_target_kind.packages_folder(version_id.target()))
-                                .join(PACKAGES_CONTAINER_NAME),
-                            name,
-                            version_id.version(),
-                        );
+                let package_id = package_id.clone();
+                let node = node.clone();
+                let project = self.clone();
 
-                        let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
-                            let lib_file = lib_file.to_path(&container_folder);
+                async move {
+                    let Some(lib_file) = node.target.lib_path() else {
+                        return Ok((package_id, vec![]));
+                    };
 
-                            let contents = match fs::read_to_string(&lib_file).await {
-                                Ok(contents) => contents,
-                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                                    return Err(errors::LinkingError::LibFileNotFound(
-                                        lib_file.display().to_string(),
-                                    ));
-                                }
-                                Err(e) => return Err(e.into()),
-                            };
-
-                            let types = spawn_blocking(move || get_file_types(&contents))
-                                .await
-                                .unwrap();
-
-                            tracing::debug!("contains {} exported types", types.len());
-
-                            types
-                        } else {
-                            vec![]
-                        };
-
-                        if let Some(build_files) = Some(&node.target)
-                            .filter(|_| !node.node.pkg_ref.like_wally())
-                            .and_then(|t| t.build_files())
-                        {
-                            execute_script(
-                                ScriptName::RobloxSyncConfigGenerator,
-                                self,
-                                LinkingExecuteScriptHooks,
-                                std::iter::once(container_folder.as_os_str())
-                                    .chain(build_files.iter().map(OsStr::new)),
-                                false,
+                    let container_folder = node.node.container_folder(
+                        &project
+                            .package_dir()
+                            .join(
+                                manifest_target_kind
+                                    .packages_folder(package_id.version_id().target()),
                             )
-                            .await
-                            .map_err(errors::LinkingError::ExecuteScript)?;
-                        }
+                            .join(PACKAGES_CONTAINER_NAME),
+                        &package_id,
+                    );
 
-                        Ok((version_id, types))
+                    let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
+                        let lib_file = lib_file.to_path(&container_folder);
+
+                        let contents = match fs::read_to_string(&lib_file).await {
+                            Ok(contents) => contents,
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                return Err(errors::LinkingError::LibFileNotFound(
+                                    lib_file.display().to_string(),
+                                ));
+                            }
+                            Err(e) => return Err(e.into()),
+                        };
+
+                        let types = spawn_blocking(move || get_file_types(&contents))
+                            .await
+                            .unwrap();
+
+                        tracing::debug!("contains {} exported types", types.len());
+
+                        types
+                    } else {
+                        vec![]
+                    };
+
+                    if let Some(build_files) = Some(&node.target)
+                        .filter(|_| !node.node.pkg_ref.like_wally())
+                        .and_then(|t| t.build_files())
+                    {
+                        execute_script(
+                            ScriptName::RobloxSyncConfigGenerator,
+                            &project,
+                            LinkingExecuteScriptHooks,
+                            std::iter::once(container_folder.as_os_str())
+                                .chain(build_files.iter().map(OsStr::new)),
+                            false,
+                        )
+                        .await
+                        .map_err(errors::LinkingError::ExecuteScript)?;
                     }
-                    .instrument(tracing::info_span!(
-                        "extract types",
-                        name = name.to_string(),
-                        version_id = version_id.to_string()
-                    ))
-                }))
-                .await?
-                .into_iter()
-                .collect::<HashMap<_, _>>(),
-            ))
-        }))
-        .await?
-        .into_iter()
-        .collect::<HashMap<_, _>>();
+
+                    Ok((package_id, types))
+                }
+                .instrument(span)
+            })
+            .collect::<JoinSet<_>>();
+
+        let mut package_types = HashMap::new();
+        while let Some(task) = tasks.join_next().await {
+            let (version_id, types) = task.unwrap()?;
+            package_types.insert(version_id, types);
+        }
 
         // step 3. link all packages (and their dependencies), this time with types
-        self.link(graph, &manifest, &Arc::new(package_types), true)
+        self.link(&graph, &manifest, &Arc::new(package_types), true)
             .await
     }
 
@@ -164,10 +165,9 @@ impl Project {
         root_container_folder: &Path,
         relative_container_folder: &Path,
         node: &DownloadedDependencyGraphNode,
-        name: &PackageNames,
-        version_id: &VersionId,
+        package_id: &PackageId,
         alias: &str,
-        package_types: &HashMap<&PackageNames, HashMap<&VersionId, Vec<String>>>,
+        package_types: &HashMap<PackageId, Vec<String>>,
         manifest: &Manifest,
     ) -> Result<(), errors::LinkingError> {
         static NO_TYPES: Vec<String> = Vec::new();
@@ -184,10 +184,7 @@ impl Project {
                     relative_container_folder,
                     manifest,
                 )?,
-                package_types
-                    .get(name)
-                    .and_then(|v| v.get(version_id))
-                    .unwrap_or(&NO_TYPES),
+                package_types.get(package_id).unwrap_or(&NO_TYPES),
             );
 
             write_cas(
@@ -239,68 +236,65 @@ impl Project {
 
     async fn link(
         &self,
-        graph: &DownloadedGraph,
+        graph: &Arc<DownloadedGraph>,
         manifest: &Arc<Manifest>,
-        package_types: &Arc<HashMap<&PackageNames, HashMap<&VersionId, Vec<String>>>>,
+        package_types: &Arc<HashMap<PackageId, Vec<String>>>,
         is_complete: bool,
     ) -> Result<(), errors::LinkingError> {
-        try_join_all(graph.iter().flat_map(|(name, versions)| {
-            versions.iter().map(|(version_id, node)| {
-                let name = name.clone();
+        let mut tasks = graph
+            .iter()
+            .map(|(package_id, node)| {
+                let graph = graph.clone();
                 let manifest = manifest.clone();
                 let package_types = package_types.clone();
 
-                let span = tracing::info_span!(
-                    "link",
-                    name = name.to_string(),
-                    version_id = version_id.to_string()
-                );
+                let span = tracing::info_span!("link", package_id = package_id.to_string());
+                let package_id = package_id.clone();
+                let node = node.clone();
+                let project = self.clone();
 
                 async move {
                     let (node_container_folder, node_packages_folder) = {
                         let base_folder = create_and_canonicalize(
-                            self.package_dir()
-                                .join(manifest.target.kind().packages_folder(version_id.target())),
+                            project.package_dir().join(
+                                manifest
+                                    .target
+                                    .kind()
+                                    .packages_folder(package_id.version_id().target()),
+                            ),
                         )
                         .await?;
                         let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
-                        let container_folder = node.node.container_folder(
-                            &packages_container_folder,
-                            &name,
-                            version_id.version(),
-                        );
+                        let container_folder = node
+                            .node
+                            .container_folder(&packages_container_folder, &package_id);
 
                         if let Some((alias, _, _)) = &node.node.direct {
-                            self.link_files(
-                                &base_folder,
-                                &container_folder,
-                                &base_folder,
-                                container_folder.strip_prefix(&base_folder).unwrap(),
-                                node,
-                                &name,
-                                version_id,
-                                alias,
-                                &package_types,
-                                &manifest,
-                            )
-                            .await?;
+                            project
+                                .link_files(
+                                    &base_folder,
+                                    &container_folder,
+                                    &base_folder,
+                                    container_folder.strip_prefix(&base_folder).unwrap(),
+                                    &node,
+                                    &package_id,
+                                    alias,
+                                    &package_types,
+                                    &manifest,
+                                )
+                                .await?;
                         }
 
                         (container_folder, base_folder)
                     };
 
-                    for (dependency_name, (dependency_version_id, dependency_alias)) in
-                        &node.node.dependencies
-                    {
-                        let Some(dependency_node) = graph
-                            .get(dependency_name)
-                            .and_then(|v| v.get(dependency_version_id))
-                        else {
+                    for (dependency_id, dependency_alias) in &node.node.dependencies {
+                        let Some(dependency_node) = graph.get(dependency_id) else {
                             if is_complete {
                                 return Err(errors::LinkingError::DependencyNotFound(
-                                    format!("{dependency_name}@{dependency_version_id}"),
-                                    format!("{name}@{version_id}"),
+                                    dependency_id.to_string(),
+                                    package_id.to_string(),
                                 ));
                             }
 
@@ -308,51 +302,54 @@ impl Project {
                         };
 
                         let base_folder = create_and_canonicalize(
-                            self.package_dir().join(
-                                version_id
+                            project.package_dir().join(
+                                package_id
+                                    .version_id()
                                     .target()
-                                    .packages_folder(dependency_version_id.target()),
+                                    .packages_folder(dependency_id.version_id().target()),
                             ),
                         )
                         .await?;
                         let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
-                        let container_folder = dependency_node.node.container_folder(
-                            &packages_container_folder,
-                            dependency_name,
-                            dependency_version_id.version(),
-                        );
+                        let container_folder = dependency_node
+                            .node
+                            .container_folder(&packages_container_folder, dependency_id);
 
-                        let linker_folder = create_and_canonicalize(
-                            node_container_folder.join(
-                                node.node
-                                    .base_folder(version_id, dependency_node.target.kind()),
+                        let linker_folder = create_and_canonicalize(node_container_folder.join(
+                            node.node.base_folder(
+                                package_id.version_id(),
+                                dependency_node.target.kind(),
                             ),
-                        )
+                        ))
                         .await?;
 
-                        self.link_files(
-                            &linker_folder,
-                            &container_folder,
-                            &node_packages_folder,
-                            container_folder.strip_prefix(&base_folder).unwrap(),
-                            dependency_node,
-                            dependency_name,
-                            dependency_version_id,
-                            dependency_alias,
-                            &package_types,
-                            &manifest,
-                        )
-                        .await?;
+                        project
+                            .link_files(
+                                &linker_folder,
+                                &container_folder,
+                                &node_packages_folder,
+                                container_folder.strip_prefix(&base_folder).unwrap(),
+                                dependency_node,
+                                dependency_id,
+                                dependency_alias,
+                                &package_types,
+                                &manifest,
+                            )
+                            .await?;
                     }
 
                     Ok(())
                 }
                 .instrument(span)
             })
-        }))
-        .await
-        .map(|_| ())
+            .collect::<JoinSet<_>>();
+
+        while let Some(task) = tasks.join_next().await {
+            task.unwrap()?;
+        }
+
+        Ok(())
     }
 }
 

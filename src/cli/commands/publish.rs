@@ -114,8 +114,7 @@ impl PublishCommand {
                     if lockfile
                         .graph
                         .values()
-                        .flatten()
-                        .filter_map(|(_, node)| node.node.direct.as_ref().map(|_| node))
+                        .filter_map(|node| node.node.direct.as_ref().map(|_| node))
                         .any(|node| {
                             node.target.build_files().is_none()
                                 && !matches!(node.node.resolved_ty, DependencyType::Dev)

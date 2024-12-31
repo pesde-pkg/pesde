@@ -4,7 +4,6 @@ use clap::Args;
 use futures::future::try_join_all;
 use pesde::{
     source::{
-        refs::PackageRefs,
         specifiers::DependencySpecifiers,
         traits::{PackageRef, PackageSource, RefreshOptions, ResolveOptions},
     },
@@ -39,89 +38,77 @@ impl OutdatedCommand {
 
         let refreshed_sources = RefreshedSources::new();
 
-        if try_join_all(
-            graph
-                .into_iter()
-                .flat_map(|(_, versions)| versions.into_iter())
-                .map(|(current_version_id, node)| {
-                    let project = project.clone();
-                    let refreshed_sources = refreshed_sources.clone();
-                    async move {
-                        let Some((alias, mut specifier, _)) = node.node.direct else {
-                            return Ok::<bool, anyhow::Error>(true);
-                        };
+        if try_join_all(graph.into_iter().map(|(current_id, node)| {
+            let project = project.clone();
+            let refreshed_sources = refreshed_sources.clone();
+            async move {
+                let Some((alias, mut specifier, _)) = node.node.direct else {
+                    return Ok::<bool, anyhow::Error>(true);
+                };
 
-                        if matches!(
-                            specifier,
-                            DependencySpecifiers::Git(_)
-                                | DependencySpecifiers::Workspace(_)
-                                | DependencySpecifiers::Path(_)
-                        ) {
-                            return Ok(true);
+                if matches!(
+                    specifier,
+                    DependencySpecifiers::Git(_)
+                        | DependencySpecifiers::Workspace(_)
+                        | DependencySpecifiers::Path(_)
+                ) {
+                    return Ok(true);
+                }
+
+                let source = node.node.pkg_ref.source();
+                refreshed_sources
+                    .refresh(
+                        &source,
+                        &RefreshOptions {
+                            project: project.clone(),
+                        },
+                    )
+                    .await?;
+
+                if !self.strict {
+                    match &mut specifier {
+                        DependencySpecifiers::Pesde(spec) => {
+                            spec.version = VersionReq::STAR;
                         }
-
-                        let source = node.node.pkg_ref.source();
-                        refreshed_sources
-                            .refresh(
-                                &source,
-                                &RefreshOptions {
-                                    project: project.clone(),
-                                },
-                            )
-                            .await?;
-
-                        if !self.strict {
-                            match &mut specifier {
-                                DependencySpecifiers::Pesde(spec) => {
-                                    spec.version = VersionReq::STAR;
-                                }
-                                #[cfg(feature = "wally-compat")]
-                                DependencySpecifiers::Wally(spec) => {
-                                    spec.version = VersionReq::STAR;
-                                }
-                                DependencySpecifiers::Git(_) => {}
-                                DependencySpecifiers::Workspace(_) => {}
-                                DependencySpecifiers::Path(_) => {}
-                            };
+                        #[cfg(feature = "wally-compat")]
+                        DependencySpecifiers::Wally(spec) => {
+                            spec.version = VersionReq::STAR;
                         }
+                        DependencySpecifiers::Git(_) => {}
+                        DependencySpecifiers::Workspace(_) => {}
+                        DependencySpecifiers::Path(_) => {}
+                    };
+                }
 
-                        let version_id = source
-                            .resolve(
-                                &specifier,
-                                &ResolveOptions {
-                                    project: project.clone(),
-                                    target: manifest_target_kind,
-                                    refreshed_sources: refreshed_sources.clone(),
-                                },
-                            )
-                            .await
-                            .context("failed to resolve package versions")?
-                            .1
-                            .pop_last()
-                            .map(|(v_id, _)| v_id)
-                            .with_context(|| format!("no versions of {specifier} found"))?;
+                let version_id = source
+                    .resolve(
+                        &specifier,
+                        &ResolveOptions {
+                            project: project.clone(),
+                            target: manifest_target_kind,
+                            refreshed_sources: refreshed_sources.clone(),
+                        },
+                    )
+                    .await
+                    .context("failed to resolve package versions")?
+                    .1
+                    .pop_last()
+                    .map(|(v_id, _)| v_id)
+                    .with_context(|| format!("no versions of {specifier} found"))?;
 
-                        if version_id != current_version_id {
-                            println!(
-                                "{} {} ({alias}) {} -> {}",
-                                match node.node.pkg_ref {
-                                    PackageRefs::Pesde(pkg_ref) => pkg_ref.name.to_string(),
-                                    #[cfg(feature = "wally-compat")]
-                                    PackageRefs::Wally(pkg_ref) => pkg_ref.name.to_string(),
-                                    _ => unreachable!(),
-                                },
-                                current_version_id.target(),
-                                current_version_id.version(),
-                                version_id.version()
-                            );
+                if version_id != *current_id.version_id() {
+                    println!(
+                        "{} ({alias}) {} -> {version_id}",
+                        current_id.name(),
+                        current_id.version_id(),
+                    );
 
-                            return Ok(false);
-                        }
+                    return Ok(false);
+                }
 
-                        Ok(true)
-                    }
-                }),
-        )
+                Ok(true)
+            }
+        }))
         .await?
         .into_iter()
         .all(|b| b)

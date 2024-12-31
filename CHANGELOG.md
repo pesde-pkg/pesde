@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inherit pesde-managed scripts from workspace root by @daimond113
 - Allow using binaries from workspace root in member packages by @daimond113 
 
+### Changed
+- Change handling of graphs to a flat structure by @daimond113
+
 ### Removed
 - Remove old includes format compatibility by @daimond113
 - Remove data redundacy for workspace package references by @daimond113

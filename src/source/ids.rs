@@ -1,4 +1,4 @@
-use crate::manifest::target::TargetKind;
+use crate::{manifest::target::TargetKind, names::PackageNames};
 use semver::Version;
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{fmt::Display, str::FromStr};
@@ -33,6 +33,11 @@ impl VersionId {
     /// The reverse of `escaped`
     pub fn from_escaped(s: &str) -> Result<Self, errors::VersionIdParseError> {
         VersionId::from_str(s.replacen('+', " ", 1).as_str())
+    }
+
+    /// Access the parts of the version ID
+    pub fn parts(&self) -> (&Version, &TargetKind) {
+        (&self.0, &self.1)
     }
 }
 
@@ -86,6 +91,55 @@ impl schemars::JsonSchema for VersionId {
     }
 }
 
+/// A package ID, which is a combination of a name and a version ID
+#[derive(
+    Debug, SerializeDisplay, DeserializeFromStr, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
+pub struct PackageId(pub(crate) PackageNames, pub(crate) VersionId);
+
+impl PackageId {
+    /// Creates a new package ID
+    pub fn new(names: PackageNames, version_id: VersionId) -> Self {
+        PackageId(names, version_id)
+    }
+
+    /// Access the name
+    pub fn name(&self) -> &PackageNames {
+        &self.0
+    }
+
+    /// Access the version ID
+    pub fn version_id(&self) -> &VersionId {
+        &self.1
+    }
+
+    /// Access the parts of the package ID
+    pub fn parts(&self) -> (&PackageNames, &VersionId) {
+        (&self.0, &self.1)
+    }
+}
+
+impl Display for PackageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}@{}", self.0, self.1)
+    }
+}
+
+impl FromStr for PackageId {
+    type Err = errors::PackageIdParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let Some((names, version_id)) = s.split_once('@') else {
+            return Err(errors::PackageIdParseError::Malformed(s.to_string()));
+        };
+
+        let names = names.parse()?;
+        let version_id = version_id.parse()?;
+
+        Ok(PackageId(names, version_id))
+    }
+}
+
 /// Errors that can occur when using a version ID
 pub mod errors {
     use thiserror::Error;
@@ -105,5 +159,22 @@ pub mod errors {
         /// The target is malformed
         #[error("malformed target")]
         Target(#[from] crate::manifest::target::errors::TargetKindFromStr),
+    }
+
+    /// Errors that can occur when parsing a package ID
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum PackageIdParseError {
+        /// The package ID is malformed (not in the form `name@version`)
+        #[error("malformed package id {0}")]
+        Malformed(String),
+
+        /// The name is malformed
+        #[error("malformed name")]
+        Names(#[from] crate::names::errors::PackageNamesError),
+
+        /// The version ID is malformed
+        #[error("malformed version id")]
+        VersionId(#[from] VersionIdParseError),
     }
 }

@@ -2,7 +2,12 @@ use crate::cli::up_to_date_lockfile;
 use anyhow::Context;
 use clap::Args;
 use fs_err::tokio as fs;
-use pesde::{names::PackageNames, patches::create_patch, source::version_id::VersionId, Project};
+use pesde::{
+    names::PackageNames,
+    patches::create_patch,
+    source::ids::{PackageId, VersionId},
+    Project,
+};
 use std::{path::PathBuf, str::FromStr};
 
 #[derive(Debug, Args)]
@@ -20,7 +25,7 @@ impl PatchCommitCommand {
             anyhow::bail!("outdated lockfile, please run the install command first")
         };
 
-        let (name, version_id) = (
+        let id = PackageId::new(
             PackageNames::from_escaped(
                 self.directory
                     .parent()
@@ -43,10 +48,7 @@ impl PatchCommitCommand {
             )?,
         );
 
-        graph
-            .get(&name)
-            .and_then(|versions| versions.get(&version_id))
-            .context("package not found in graph")?;
+        graph.get(&id).context("package not found in graph")?;
 
         let mut manifest = toml_edit::DocumentMut::from_str(
             &project
@@ -66,7 +68,11 @@ impl PatchCommitCommand {
             .await
             .context("failed to create patches directory")?;
 
-        let patch_file_name = format!("{}-{}.patch", name.escaped(), version_id.escaped());
+        let patch_file_name = format!(
+            "{}-{}.patch",
+            id.name().escaped(),
+            id.version_id().escaped()
+        );
 
         let patch_file = patches_dir.join(&patch_file_name);
         if patch_file.exists() {
@@ -78,7 +84,7 @@ impl PatchCommitCommand {
             .context("failed to write patch file")?;
 
         manifest["patches"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-            [&name.to_string()][&version_id.to_string()] =
+            [&id.name().to_string()][&id.version_id().to_string()] =
             toml_edit::value(format!("patches/{patch_file_name}"));
 
         project

@@ -3,8 +3,8 @@ use crate::{
     names::PackageNames,
     reporters::DownloadProgressReporter,
     source::{
-        fs::PackageFS, refs::PackageRefs, specifiers::DependencySpecifiers, traits::*,
-        version_id::VersionId,
+        fs::PackageFS, ids::VersionId, refs::PackageRefs, specifiers::DependencySpecifiers,
+        traits::*,
     },
 };
 use std::{collections::BTreeMap, fmt::Debug};
@@ -15,6 +15,8 @@ pub mod fs;
 pub mod git;
 /// Git index-based package source utilities
 pub mod git_index;
+/// Package identifiers for different contexts
+pub mod ids;
 /// The path package source
 pub mod path;
 /// The pesde package source
@@ -25,8 +27,6 @@ pub mod refs;
 pub mod specifiers;
 /// Traits for sources and packages
 pub mod traits;
-/// Version IDs
-pub mod version_id;
 /// The Wally package source
 #[cfg(feature = "wally-compat")]
 pub mod wally;

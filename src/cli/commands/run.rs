@@ -73,35 +73,39 @@ impl RunCommand {
 
             let pkg_name = PackageNames::Pesde(pkg_name);
 
-            for (version_id, node) in graph.get(&pkg_name).context("package not found in graph")? {
-                if node.node.direct.is_none() {
-                    continue;
-                }
+            let mut versions = graph
+                .into_iter()
+                .filter(|(id, node)| *id.name() == pkg_name && node.node.direct.is_some())
+                .collect::<Vec<_>>();
 
-                let Some(bin_path) = node.target.bin_path() else {
-                    anyhow::bail!("package has no bin path");
-                };
+            let (id, node) = match versions.len() {
+                0 => anyhow::bail!("package not found"),
+                1 => versions.pop().unwrap(),
+                _ => anyhow::bail!("multiple versions found. use the package's alias instead."),
+            };
 
-                let base_folder = project
-                    .deser_manifest()
-                    .await?
-                    .target
-                    .kind()
-                    .packages_folder(version_id.target());
-                let container_folder = node.node.container_folder(
-                    &project
-                        .package_dir()
-                        .join(base_folder)
-                        .join(PACKAGES_CONTAINER_NAME),
-                    &pkg_name,
-                    version_id.version(),
-                );
+            let Some(bin_path) = node.target.bin_path() else {
+                anyhow::bail!("package has no bin path");
+            };
 
-                let path = bin_path.to_path(&container_folder);
+            let base_folder = project
+                .deser_manifest()
+                .await?
+                .target
+                .kind()
+                .packages_folder(id.version_id().target());
+            let container_folder = node.node.container_folder(
+                &project
+                    .package_dir()
+                    .join(base_folder)
+                    .join(PACKAGES_CONTAINER_NAME),
+                &id,
+            );
 
-                run(&path, &path);
-                return Ok(());
-            }
+            let path = bin_path.to_path(&container_folder);
+
+            run(&path, &path);
+            return Ok(());
         }
 
         if let Ok(manifest) = project.deser_manifest().await {

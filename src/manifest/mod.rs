@@ -78,12 +78,12 @@ pub struct Manifest {
     #[cfg_attr(
         feature = "schema",
         schemars(
-            with = "BTreeMap<crate::names::PackageNames, BTreeMap<crate::source::version_id::VersionId, std::path::PathBuf>>"
+            with = "BTreeMap<crate::names::PackageNames, BTreeMap<crate::source::ids::VersionId, std::path::PathBuf>>"
         )
     )]
     pub patches: BTreeMap<
         crate::names::PackageNames,
-        BTreeMap<crate::source::version_id::VersionId, RelativePathBuf>,
+        BTreeMap<crate::source::ids::VersionId, RelativePathBuf>,
     >,
     #[serde(default, skip_serializing)]
     /// Which version of the pesde CLI this package uses
