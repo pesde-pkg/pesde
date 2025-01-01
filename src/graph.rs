@@ -11,10 +11,7 @@ use crate::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, path::PathBuf};
 
 /// A graph of dependencies
 pub type Graph<Node> = BTreeMap<PackageId, Node>;
@@ -47,23 +44,20 @@ impl DependencyGraphNode {
     }
 
     /// Returns the folder to store the contents of the package in
-    pub fn container_folder<P: AsRef<Path>>(&self, path: &P, package_id: &PackageId) -> PathBuf {
+    pub fn container_folder(&self, package_id: &PackageId) -> PathBuf {
         let (name, version) = package_id.parts();
 
         if self.pkg_ref.like_wally() {
-            return path
-                .as_ref()
-                .join(format!(
-                    "{}_{}@{}",
-                    package_id.name().as_str().0,
-                    name.as_str().1,
-                    version
-                ))
-                .join(name.as_str().1);
+            return PathBuf::from(format!(
+                "{}_{}@{}",
+                package_id.name().as_str().0,
+                name.as_str().1,
+                version
+            ))
+            .join(name.as_str().1);
         }
 
-        path.as_ref()
-            .join(name.escaped())
+        PathBuf::from(name.escaped())
             .join(version.to_string())
             .join(name.as_str().1)
     }

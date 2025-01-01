@@ -91,16 +91,13 @@ impl Project {
                         return Ok((package_id, vec![]));
                     };
 
-                    let container_folder = node.node.container_folder(
-                        &project
-                            .package_dir()
-                            .join(
-                                manifest_target_kind
-                                    .packages_folder(package_id.version_id().target()),
-                            )
-                            .join(PACKAGES_CONTAINER_NAME),
-                        &package_id,
-                    );
+                    let container_folder = project
+                        .package_dir()
+                        .join(
+                            manifest_target_kind.packages_folder(package_id.version_id().target()),
+                        )
+                        .join(PACKAGES_CONTAINER_NAME)
+                        .join(node.node.container_folder(&package_id));
 
                     let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
                         let lib_file = lib_file.to_path(&container_folder);
@@ -274,9 +271,8 @@ impl Project {
                         .await?;
                         let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
-                        let container_folder = node
-                            .node
-                            .container_folder(&packages_container_folder, &package_id);
+                        let container_folder =
+                            packages_container_folder.join(node.node.container_folder(&package_id));
 
                         if let Some((alias, _, _)) = &node.node.direct {
                             project
@@ -320,9 +316,8 @@ impl Project {
                         .await?;
                         let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
-                        let container_folder = dependency_node
-                            .node
-                            .container_folder(&packages_container_folder, dependency_id);
+                        let container_folder = packages_container_folder
+                            .join(dependency_node.node.container_folder(dependency_id));
 
                         let linker_folder = create_and_canonicalize(node_container_folder.join(
                             node.node.base_folder(

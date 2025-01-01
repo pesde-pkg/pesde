@@ -102,18 +102,16 @@ impl Project {
                     continue;
                 };
 
-                let container_folder = node.container_folder(
-                    &self
-                        .package_dir()
-                        .join(
-                            manifest
-                                .target
-                                .kind()
-                                .packages_folder(package_id.version_id().target()),
-                        )
-                        .join(PACKAGES_CONTAINER_NAME),
-                    &package_id,
-                );
+                let container_folder = self
+                    .package_dir()
+                    .join(
+                        manifest
+                            .target
+                            .kind()
+                            .packages_folder(package_id.version_id().target()),
+                    )
+                    .join(PACKAGES_CONTAINER_NAME)
+                    .join(node.container_folder(&package_id));
 
                 let reporter = reporter.clone();
                 let span = tracing::info_span!("apply patch", package_id = package_id.to_string());

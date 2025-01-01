@@ -92,13 +92,11 @@ impl RunCommand {
                 .target
                 .kind()
                 .packages_folder(id.version_id().target());
-            let container_folder = node.container_folder(
-                &project
-                    .package_dir()
-                    .join(base_folder)
-                    .join(PACKAGES_CONTAINER_NAME),
-                &id,
-            );
+            let container_folder = project
+                .package_dir()
+                .join(base_folder)
+                .join(PACKAGES_CONTAINER_NAME)
+                .join(node.container_folder(&id));
 
             let source = node.pkg_ref.source();
             source

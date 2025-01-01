@@ -125,13 +125,11 @@ impl PublishCommand {
                                 .target
                                 .kind()
                                 .packages_folder(id.version_id().target());
-                            let container_folder = node.container_folder(
-                                &project
-                                    .package_dir()
-                                    .join(base_folder)
-                                    .join(PACKAGES_CONTAINER_NAME),
-                                id,
-                            );
+                            let container_folder = project
+                                .package_dir()
+                                .join(base_folder)
+                                .join(PACKAGES_CONTAINER_NAME)
+                                .join(node.container_folder(id));
 
                             let node = node.clone();
                             let refreshed_sources = refreshed_sources.clone();

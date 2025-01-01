@@ -170,15 +170,12 @@ impl Project {
                         )
                         .await?;
 
-                    let container_folder = node.container_folder(
-                        &package_dir
-                            .join(
-                                manifest_target_kind
-                                    .packages_folder(package_id.version_id().target()),
-                            )
-                            .join(PACKAGES_CONTAINER_NAME),
-                        &package_id,
-                    );
+                    let container_folder = package_dir
+                        .join(
+                            manifest_target_kind.packages_folder(package_id.version_id().target()),
+                        )
+                        .join(PACKAGES_CONTAINER_NAME)
+                        .join(node.container_folder(&package_id));
 
                     fs::create_dir_all(&container_folder).await?;
 
