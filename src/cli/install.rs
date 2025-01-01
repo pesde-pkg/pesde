@@ -5,23 +5,23 @@ use std::{
     time::Instant,
 };
 
+use crate::cli::{
+    bin_dir,
+    reporters::{self, CliReporter},
+    resolve_overrides, run_on_workspace_members, up_to_date_lockfile,
+};
 use anyhow::Context;
 use colored::Colorize;
 use fs_err::tokio as fs;
 use futures::future::try_join_all;
 use pesde::{
     download_and_link::{filter_graph, DownloadAndLinkHooks, DownloadAndLinkOptions},
-    lockfile::{DependencyGraph, DownloadedGraph, Lockfile},
+    graph::{ConvertableGraph, DependencyGraph, DownloadedGraph},
+    lockfile::Lockfile,
     manifest::{target::TargetKind, DependencyType},
     Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use tokio::task::JoinSet;
-
-use crate::cli::{
-    bin_dir,
-    reporters::{self, CliReporter},
-    resolve_overrides, run_on_workspace_members, up_to_date_lockfile,
-};
 
 use super::files::make_executable;
 
@@ -68,7 +68,7 @@ impl DownloadAndLinkHooks for InstallHooks {
     ) -> Result<(), Self::Error> {
         let mut tasks = downloaded_graph
             .values()
-            .filter(|node| node.target.bin_path().is_some())
+            .filter(|node| node.target.as_ref().is_some_and(|t| t.bin_path().is_some()))
             .filter_map(|node| node.node.direct.as_ref())
             .map(|(alias, _, _)| alias)
             .filter(|alias| {
@@ -237,13 +237,7 @@ pub async fn install(
             root_progress.reset();
             root_progress.set_message("resolve");
 
-            let old_graph = lockfile.map(|lockfile| {
-                lockfile
-                    .graph
-                    .into_iter()
-                    .map(|(id, node)| (id, node.node))
-                    .collect()
-            });
+            let old_graph = lockfile.map(|lockfile| lockfile.graph);
 
             let graph = project
                 .dependency_graph(
@@ -285,7 +279,12 @@ pub async fn install(
                 root_progress.set_message("patch");
 
                 project
-                    .apply_patches(&filter_graph(&downloaded_graph, options.prod), reporter)
+                    .apply_patches(
+                        &Arc::into_inner(filter_graph(&downloaded_graph, options.prod))
+                            .unwrap()
+                            .convert(),
+                        reporter,
+                    )
                     .await?;
             }
 
@@ -297,7 +296,7 @@ pub async fn install(
                 target: manifest.target.kind(),
                 overrides,
 
-                graph: downloaded_graph,
+                graph: Arc::into_inner(graph).unwrap(),
 
                 workspace: run_on_workspace_members(project, |_| async { Ok(()) }).await?,
             };
@@ -330,7 +329,7 @@ pub async fn install(
 }
 
 /// Prints the difference between two graphs.
-pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: DownloadedGraph) {
+pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: DependencyGraph) {
     let mut old_pkg_map = BTreeMap::new();
     let mut old_direct_pkg_map = BTreeMap::new();
     let mut new_pkg_map = BTreeMap::new();
@@ -344,9 +343,9 @@ pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: D
     }
 
     for (id, node) in &new_graph {
-        new_pkg_map.insert(id, &node.node);
-        if node.node.direct.is_some() {
-            new_direct_pkg_map.insert(id, &node.node);
+        new_pkg_map.insert(id, node);
+        if node.direct.is_some() {
+            new_direct_pkg_map.insert(id, node);
         }
     }
 

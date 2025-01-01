@@ -15,7 +15,9 @@ use pesde::{
     names::PackageName,
     source::{
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
-        traits::{DownloadOptions, PackageSource, RefreshOptions, ResolveOptions},
+        traits::{
+            DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
+        },
         PackageSources,
     },
     Project, RefreshedSources,
@@ -139,7 +141,7 @@ impl ExecuteCommand {
                     project.auth_config().clone(),
                 );
 
-                let (fs, target) = source
+                let fs = source
                     .download(
                         &pkg_ref,
                         &DownloadOptions {
@@ -150,11 +152,23 @@ impl ExecuteCommand {
                     )
                     .await
                     .context("failed to download package")?;
-                let bin_path = target.bin_path().context("package has no binary export")?;
 
                 fs.write_to(tempdir.path(), project.cas_dir(), true)
                     .await
                     .context("failed to write package contents")?;
+
+                let target = source
+                    .get_target(
+                        &pkg_ref,
+                        &GetTargetOptions {
+                            project: project.clone(),
+                            path: Arc::from(tempdir.path()),
+                        },
+                    )
+                    .await
+                    .context("failed to get target")?;
+
+                let bin_path = target.bin_path().context("package has no binary export")?;
 
                 let graph = project
                     .dependency_graph(None, refreshed_sources.clone(), true)

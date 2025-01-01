@@ -1,4 +1,5 @@
 use crate::{
+    deser_manifest,
     manifest::{
         target::{Target, TargetKind},
         Manifest,
@@ -6,22 +7,22 @@ use crate::{
     names::PackageNames,
     reporters::DownloadProgressReporter,
     source::{
-        fs::{store_in_cas, FSEntry, PackageFS},
+        fs::{store_in_cas, FsEntry, PackageFs},
         git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
         git_index::{read_file, GitBasedSource},
         specifiers::DependencySpecifiers,
-        traits::{DownloadOptions, PackageRef, RefreshOptions, ResolveOptions},
+        traits::{DownloadOptions, GetTargetOptions, PackageRef, RefreshOptions, ResolveOptions},
+        wally::compat_util::get_target,
         PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
     Project, DEFAULT_INDEX_NAME, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use fs_err::tokio as fs;
-use futures::future::try_join_all;
 use gix::{bstr::BStr, traverse::tree::Recorder, ObjectId, Url};
 use relative_path::RelativePathBuf;
-use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::PathBuf, sync::Arc};
-use tokio::{sync::Mutex, task::spawn_blocking};
+use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::PathBuf};
+use tokio::task::{spawn_blocking, JoinSet};
 use tracing::instrument;
 
 /// The Git package reference
@@ -65,6 +66,7 @@ impl PackageSource for GitPackageSource {
     type RefreshError = crate::source::git_index::errors::RefreshError;
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
+    type GetTargetError = errors::GetTargetError;
 
     #[instrument(skip_all, level = "debug")]
     async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
@@ -337,8 +339,10 @@ impl PackageSource for GitPackageSource {
         &self,
         pkg_ref: &Self::Ref,
         options: &DownloadOptions<R>,
-    ) -> Result<(PackageFS, Target), Self::DownloadError> {
-        let DownloadOptions { project, .. } = options;
+    ) -> Result<PackageFs, Self::DownloadError> {
+        let DownloadOptions {
+            project, reporter, ..
+        } = options;
 
         let index_file = project
             .cas_dir()
@@ -353,52 +357,10 @@ impl PackageSource for GitPackageSource {
                     pkg_ref.repo,
                     pkg_ref.tree_id
                 );
-
-                let fs = toml::from_str::<PackageFS>(&s).map_err(|e| {
+                reporter.report_done();
+                return toml::from_str::<PackageFs>(&s).map_err(|e| {
                     errors::DownloadError::DeserializeFile(Box::new(self.repo_url.clone()), e)
-                })?;
-
-                let manifest = match &fs {
-                    PackageFS::CAS(entries) => {
-                        match entries.get(&RelativePathBuf::from(MANIFEST_FILE_NAME)) {
-                            Some(FSEntry::File(hash)) => match fs
-                                .read_file(hash, project.cas_dir())
-                                .await
-                                .map(|m| toml::de::from_str::<Manifest>(&m))
-                            {
-                                Some(Ok(m)) => Some(m),
-                                Some(Err(e)) => {
-                                    return Err(errors::DownloadError::DeserializeFile(
-                                        Box::new(self.repo_url.clone()),
-                                        e,
-                                    ))
-                                }
-                                None => None,
-                            },
-                            _ => None,
-                        }
-                    }
-                    _ => unreachable!("the package fs should be CAS"),
-                };
-
-                let target = match manifest {
-                    Some(manifest) => manifest.target,
-                    #[cfg(feature = "wally-compat")]
-                    None if !pkg_ref.new_structure => {
-                        let tempdir = tempfile::tempdir()?;
-                        fs.write_to(tempdir.path(), project.cas_dir(), false)
-                            .await?;
-
-                        crate::source::wally::compat_util::get_target(project, &tempdir).await?
-                    }
-                    None => {
-                        return Err(errors::DownloadError::NoManifest(Box::new(
-                            self.repo_url.clone(),
-                        )))
-                    }
-                };
-
-                return Ok((fs, target));
+                });
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(errors::DownloadError::Io(e)),
@@ -453,112 +415,78 @@ impl PackageSource for GitPackageSource {
         .await
         .unwrap()?;
 
-        let repo = repo.to_thread_local();
+        let records = {
+            let repo = repo.to_thread_local();
 
-        let records = records
-            .into_iter()
-            .map(|entry| {
-                let object = repo.find_object(entry.oid).map_err(|e| {
-                    errors::DownloadError::ParseOidToObject(
-                        entry.oid,
-                        Box::new(self.repo_url.clone()),
-                        e,
-                    )
-                })?;
-
-                Ok::<_, errors::DownloadError>((
-                    RelativePathBuf::from(entry.filepath.to_string()),
-                    if matches!(object.kind, gix::object::Kind::Tree) {
-                        None
-                    } else {
-                        Some(object.data.clone())
-                    },
-                ))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let manifest = Arc::new(Mutex::new(None::<Vec<u8>>));
-        let entries = try_join_all(
             records
                 .into_iter()
-                .filter(|(path, contents)| {
-                    let name = path.file_name().unwrap_or("");
-                    if contents.is_none() {
-                        return !IGNORED_DIRS.contains(&name);
-                    }
-
-                    if IGNORED_FILES.contains(&name) {
-                        return false;
-                    }
-
-                    if pkg_ref.use_new_structure() && name == "default.project.json" {
-                        tracing::debug!(
-                            "removing default.project.json from {}#{} at {path} - using new structure",
-                            pkg_ref.repo,
-                            pkg_ref.tree_id
-                        );
-                        return false;
-                    }
-
-                    true
-                })
-                .map(|(path, contents)| {
-                    let manifest = manifest.clone();
-                    async move {
-                        let Some(contents) = contents else {
-                            return Ok::<_, errors::DownloadError>((path, FSEntry::Directory));
-                        };
-
-                        let hash =
-                            store_in_cas(project.cas_dir(), contents.as_slice(), |_| async { Ok(()) })
-                                .await?;
-
-                        if path == MANIFEST_FILE_NAME {
-                            manifest.lock().await.replace(contents);
-                        }
-
-                        Ok((path, FSEntry::File(hash)))
-                    }
-                }),
-        )
-            .await?
-            .into_iter()
-            .collect::<BTreeMap<_, _>>();
-
-        let manifest = match Arc::into_inner(manifest).unwrap().into_inner() {
-            Some(data) => match String::from_utf8(data.to_vec()) {
-                Ok(s) => match toml::from_str::<Manifest>(&s) {
-                    Ok(m) => Some(m),
-                    Err(e) => {
-                        return Err(errors::DownloadError::DeserializeFile(
+                .map(|entry| {
+                    let object = repo.find_object(entry.oid).map_err(|e| {
+                        errors::DownloadError::ParseOidToObject(
+                            entry.oid,
                             Box::new(self.repo_url.clone()),
                             e,
-                        ))
-                    }
-                },
-                Err(e) => return Err(errors::DownloadError::ParseManifest(e)),
-            },
-            None => None,
+                        )
+                    })?;
+
+                    Ok::<_, errors::DownloadError>((
+                        RelativePathBuf::from(entry.filepath.to_string()),
+                        if matches!(object.kind, gix::object::Kind::Tree) {
+                            None
+                        } else {
+                            Some(object.data.clone())
+                        },
+                    ))
+                })
+                .collect::<Result<Vec<_>, _>>()?
         };
 
-        let fs = PackageFS::CAS(entries);
+        let mut tasks = records
+            .into_iter()
+            .filter(|(path, contents)| {
+                let name = path.file_name().unwrap_or("");
+                if contents.is_none() {
+                    return !IGNORED_DIRS.contains(&name);
+                }
 
-        let target = match manifest {
-            Some(manifest) => manifest.target,
-            #[cfg(feature = "wally-compat")]
-            None if !pkg_ref.new_structure => {
-                let tempdir = tempfile::tempdir()?;
-                fs.write_to(tempdir.path(), project.cas_dir(), false)
-                    .await?;
+                if IGNORED_FILES.contains(&name) {
+                    return false;
+                }
 
-                crate::source::wally::compat_util::get_target(project, &tempdir).await?
-            }
-            None => {
-                return Err(errors::DownloadError::NoManifest(Box::new(
-                    self.repo_url.clone(),
-                )))
-            }
-        };
+                if pkg_ref.use_new_structure() && name == "default.project.json" {
+                    tracing::debug!(
+                        "removing default.project.json from {}#{} at {path} - using new structure",
+                        pkg_ref.repo,
+                        pkg_ref.tree_id
+                    );
+                    return false;
+                }
+
+                true
+            })
+            .map(|(path, contents)| {
+                let project = project.clone();
+
+                async move {
+                    let Some(contents) = contents else {
+                        return Ok::<_, errors::DownloadError>((path, FsEntry::Directory));
+                    };
+
+                    let hash = store_in_cas(project.cas_dir(), contents.as_slice()).await?;
+
+                    Ok((path, FsEntry::File(hash)))
+                }
+            })
+            .collect::<JoinSet<_>>();
+
+        let mut entries = BTreeMap::new();
+
+        while let Some(res) = tasks.join_next().await {
+            let (path, entry) = res.unwrap()?;
+            entries.insert(path, entry);
+        }
+
+        let fs = PackageFs::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
             fs::create_dir_all(parent).await?;
@@ -573,7 +501,27 @@ impl PackageSource for GitPackageSource {
         .await
         .map_err(errors::DownloadError::Io)?;
 
-        Ok((fs, target))
+        reporter.report_done();
+
+        Ok(fs)
+    }
+
+    #[instrument(skip_all, level = "debug")]
+    async fn get_target(
+        &self,
+        _pkg_ref: &Self::Ref,
+        options: &GetTargetOptions,
+    ) -> Result<Target, Self::GetTargetError> {
+        match deser_manifest(&options.path).await {
+            Ok(manifest) => Ok(manifest.target),
+            #[cfg(feature = "wally-compat")]
+            Err(crate::errors::ManifestReadError::Io(e))
+                if e.kind() == std::io::ErrorKind::NotFound =>
+            {
+                get_target(options).await.map_err(Into::into)
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 }
 
@@ -733,5 +681,19 @@ pub mod errors {
         /// An error occurred while parsing tree_id to ObjectId
         #[error("error parsing tree_id to ObjectId for repository {0}")]
         ParseTreeId(Box<gix::Url>, #[source] gix::hash::decode::Error),
+    }
+
+    /// Errors that can occur when getting a target from a Git package source
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum GetTargetError {
+        /// Reading the manifest failed
+        #[error("error reading manifest")]
+        ManifestRead(#[from] crate::errors::ManifestReadError),
+
+        /// An error occurred while creating a Wally target
+        #[cfg(feature = "wally-compat")]
+        #[error("error creating Wally target")]
+        GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
     }
 }

@@ -118,8 +118,7 @@ pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Loc
         .graph
         .iter()
         .filter_map(|(_, node)| {
-            node.node
-                .direct
+            node.direct
                 .as_ref()
                 .map(|(_, spec, source_ty)| (spec, source_ty))
         })
@@ -166,7 +165,7 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 
 impl VersionedPackageName {
     #[cfg(feature = "patches")]
-    fn get(self, graph: &pesde::lockfile::DownloadedGraph) -> anyhow::Result<PackageId> {
+    fn get(self, graph: &pesde::graph::DependencyGraph) -> anyhow::Result<PackageId> {
         let version_id = match self.1 {
             Some(version) => version,
             None => {

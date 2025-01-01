@@ -1,5 +1,5 @@
 use crate::{
-    lockfile::{DependencyGraph, DependencyGraphNode},
+    graph::{DependencyGraph, DependencyGraphNode},
     manifest::{overrides::OverrideSpecifier, DependencyType},
     source::{
         ids::PackageId,

@@ -4,13 +4,14 @@ use crate::{
         DependencyType,
     },
     reporters::DownloadProgressReporter,
-    source::{DependencySpecifiers, PackageFS, PackageSources, ResolveResult},
+    source::{DependencySpecifiers, PackageFs, PackageSources, ResolveResult},
     Project, RefreshedSources,
 };
 use std::{
     collections::BTreeMap,
     fmt::{Debug, Display},
     future::Future,
+    path::Path,
     sync::Arc,
 };
 
@@ -56,6 +57,15 @@ pub struct DownloadOptions<R: DownloadProgressReporter> {
     pub reporter: Arc<R>,
 }
 
+/// Options for getting a package's Target
+#[derive(Debug, Clone)]
+pub struct GetTargetOptions {
+    /// The project to get the target for
+    pub project: Project,
+    /// The path the package has been written to
+    pub path: Arc<Path>,
+}
+
 /// A source of packages
 pub trait PackageSource: Debug {
     /// The specifier type for this source
@@ -68,6 +78,8 @@ pub trait PackageSource: Debug {
     type ResolveError: std::error::Error + Send + Sync + 'static;
     /// The error type for downloading a package from this source
     type DownloadError: std::error::Error + Send + Sync + 'static;
+    /// The error type for getting a package's target from this source
+    type GetTargetError: std::error::Error + Send + Sync + 'static;
 
     /// Refreshes the source
     fn refresh(
@@ -82,12 +94,19 @@ pub trait PackageSource: Debug {
         &self,
         specifier: &Self::Specifier,
         options: &ResolveOptions,
-    ) -> impl Future<Output = Result<ResolveResult<Self::Ref>, Self::ResolveError>>;
+    ) -> impl Future<Output = Result<ResolveResult<Self::Ref>, Self::ResolveError>> + Send + Sync;
 
     /// Downloads a package
     fn download<R: DownloadProgressReporter>(
         &self,
         pkg_ref: &Self::Ref,
         options: &DownloadOptions<R>,
-    ) -> impl Future<Output = Result<(PackageFS, Target), Self::DownloadError>>;
+    ) -> impl Future<Output = Result<PackageFs, Self::DownloadError>> + Send + Sync;
+
+    /// Gets the target of a package
+    fn get_target(
+        &self,
+        pkg_ref: &Self::Ref,
+        options: &GetTargetOptions,
+    ) -> impl Future<Output = Result<Target, Self::GetTargetError>> + Send + Sync;
 }

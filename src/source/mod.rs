@@ -3,7 +3,7 @@ use crate::{
     names::PackageNames,
     reporters::DownloadProgressReporter,
     source::{
-        fs::PackageFS, ids::VersionId, refs::PackageRefs, specifiers::DependencySpecifiers,
+        fs::PackageFs, ids::VersionId, refs::PackageRefs, specifiers::DependencySpecifiers,
         traits::*,
     },
 };
@@ -64,6 +64,7 @@ impl PackageSource for PackageSources {
     type RefreshError = errors::RefreshError;
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
+    type GetTargetError = errors::GetTargetError;
 
     async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
         match self {
@@ -174,7 +175,7 @@ impl PackageSource for PackageSources {
         &self,
         pkg_ref: &Self::Ref,
         options: &DownloadOptions<R>,
-    ) -> Result<(PackageFS, Target), Self::DownloadError> {
+    ) -> Result<PackageFs, Self::DownloadError> {
         match (self, pkg_ref) {
             (PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => {
                 source.download(pkg_ref, options).await.map_err(Into::into)
@@ -198,6 +199,42 @@ impl PackageSource for PackageSources {
             }
 
             _ => Err(errors::DownloadError::Mismatch),
+        }
+    }
+
+    async fn get_target(
+        &self,
+        pkg_ref: &Self::Ref,
+        options: &GetTargetOptions,
+    ) -> Result<Target, Self::GetTargetError> {
+        match (self, pkg_ref) {
+            (PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => source
+                .get_target(pkg_ref, options)
+                .await
+                .map_err(Into::into),
+
+            #[cfg(feature = "wally-compat")]
+            (PackageSources::Wally(source), PackageRefs::Wally(pkg_ref)) => source
+                .get_target(pkg_ref, options)
+                .await
+                .map_err(Into::into),
+
+            (PackageSources::Git(source), PackageRefs::Git(pkg_ref)) => source
+                .get_target(pkg_ref, options)
+                .await
+                .map_err(Into::into),
+
+            (PackageSources::Workspace(source), PackageRefs::Workspace(pkg_ref)) => source
+                .get_target(pkg_ref, options)
+                .await
+                .map_err(Into::into),
+
+            (PackageSources::Path(source), PackageRefs::Path(pkg_ref)) => source
+                .get_target(pkg_ref, options)
+                .await
+                .map_err(Into::into),
+
+            _ => Err(errors::GetTargetError::Mismatch),
         }
     }
 }
@@ -290,5 +327,35 @@ pub mod errors {
         /// A path package source failed to download
         #[error("error downloading path package")]
         Path(#[from] crate::source::path::errors::DownloadError),
+    }
+
+    /// Errors that can occur when getting a package's target
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum GetTargetError {
+        /// The package ref does not match the source (if using the CLI, this is a bug - file an issue)
+        #[error("mismatched package ref for source")]
+        Mismatch,
+
+        /// A pesde package source failed to get the target
+        #[error("error getting target for pesde package")]
+        Pesde(#[from] crate::source::pesde::errors::GetTargetError),
+
+        /// A Wally package source failed to get the target
+        #[cfg(feature = "wally-compat")]
+        #[error("error getting target for wally package")]
+        Wally(#[from] crate::source::wally::errors::GetTargetError),
+
+        /// A Git package source failed to get the target
+        #[error("error getting target for git package")]
+        Git(#[from] crate::source::git::errors::GetTargetError),
+
+        /// A workspace package source failed to get the target
+        #[error("error getting target for workspace package")]
+        Workspace(#[from] crate::source::workspace::errors::GetTargetError),
+
+        /// A path package source failed to get the target
+        #[error("error getting target for path package")]
+        Path(#[from] crate::source::path::errors::GetTargetError),
     }
 }

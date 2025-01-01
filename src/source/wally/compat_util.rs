@@ -2,12 +2,14 @@ use std::path::Path;
 
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
-use tempfile::TempDir;
 
 use crate::{
     manifest::target::Target,
     scripts::{execute_script, ExecuteScriptHooks, ScriptName},
-    source::wally::manifest::{Realm, WallyManifest},
+    source::{
+        traits::GetTargetOptions,
+        wally::manifest::{Realm, WallyManifest},
+    },
     Project, LINK_LIB_NO_FILE_FOUND,
 };
 use fs_err::tokio as fs;
@@ -54,17 +56,18 @@ async fn find_lib_path(
 
 pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
 
-#[instrument(skip(project, tempdir), level = "debug")]
+#[instrument(skip_all, level = "debug")]
 pub(crate) async fn get_target(
-    project: &Project,
-    tempdir: &TempDir,
+    options: &GetTargetOptions,
 ) -> Result<Target, errors::GetTargetError> {
-    let lib = find_lib_path(project, tempdir.path())
+    let GetTargetOptions { project, path } = options;
+
+    let lib = find_lib_path(project, path)
         .await?
         .or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND)));
     let build_files = Default::default();
 
-    let manifest = tempdir.path().join(WALLY_MANIFEST_FILE_NAME);
+    let manifest = path.join(WALLY_MANIFEST_FILE_NAME);
     let manifest = fs::read_to_string(&manifest).await?;
     let manifest: WallyManifest = toml::from_str(&manifest)?;
 

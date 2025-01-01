@@ -4,10 +4,10 @@ use crate::{
     names::PackageNames,
     reporters::DownloadProgressReporter,
     source::{
-        fs::PackageFS,
+        fs::PackageFs,
         ids::VersionId,
         specifiers::DependencySpecifiers,
-        traits::{DownloadOptions, PackageSource, ResolveOptions},
+        traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
         workspace::pkg_ref::WorkspacePackageRef,
         ResolveResult,
     },
@@ -34,6 +34,7 @@ impl PackageSource for WorkspacePackageSource {
     type RefreshError = errors::RefreshError;
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
+    type GetTargetError = errors::GetTargetError;
 
     #[instrument(skip_all, level = "debug")]
     async fn resolve(
@@ -133,18 +134,35 @@ impl PackageSource for WorkspacePackageSource {
         &self,
         pkg_ref: &Self::Ref,
         options: &DownloadOptions<R>,
-    ) -> Result<(PackageFS, Target), Self::DownloadError> {
-        let DownloadOptions { project, .. } = options;
+    ) -> Result<PackageFs, Self::DownloadError> {
+        let DownloadOptions {
+            project, reporter, ..
+        } = options;
 
         let path = pkg_ref
             .path
             .to_path(project.workspace_dir().unwrap_or(project.package_dir()));
         let manifest = deser_manifest(&path).await?;
 
-        Ok((
-            PackageFS::Copy(path, manifest.target.kind()),
-            manifest.target,
-        ))
+        reporter.report_done();
+
+        Ok(PackageFs::Copy(path, manifest.target.kind()))
+    }
+
+    #[instrument(skip_all, level = "debug")]
+    async fn get_target(
+        &self,
+        pkg_ref: &Self::Ref,
+        options: &GetTargetOptions,
+    ) -> Result<Target, Self::GetTargetError> {
+        let GetTargetOptions { project, .. } = options;
+
+        let path = pkg_ref
+            .path
+            .to_path(project.workspace_dir().unwrap_or(project.package_dir()));
+        let manifest = deser_manifest(&path).await?;
+
+        Ok(manifest.target)
     }
 }
 
@@ -183,6 +201,15 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DownloadError {
+        /// Reading the manifest failed
+        #[error("error reading manifest")]
+        ManifestRead(#[from] crate::errors::ManifestReadError),
+    }
+
+    /// Errors that can occur when getting the target of a workspace package
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum GetTargetError {
         /// Reading the manifest failed
         #[error("error reading manifest")]
         ManifestRead(#[from] crate::errors::ManifestReadError),

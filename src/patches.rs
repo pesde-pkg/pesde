@@ -1,5 +1,5 @@
 use crate::{
-    lockfile::DownloadedGraph,
+    graph::DependencyGraph,
     reporters::{PatchProgressReporter, PatchesReporter},
     source::ids::PackageId,
     Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
@@ -80,7 +80,7 @@ impl Project {
     #[instrument(skip(self, graph, reporter), level = "debug")]
     pub async fn apply_patches<Reporter>(
         &self,
-        graph: &DownloadedGraph,
+        graph: &DependencyGraph,
         reporter: Arc<Reporter>,
     ) -> Result<(), errors::ApplyPatchesError>
     where
@@ -102,7 +102,7 @@ impl Project {
                     continue;
                 };
 
-                let container_folder = node.node.container_folder(
+                let container_folder = node.container_folder(
                     &self
                         .package_dir()
                         .join(
@@ -116,7 +116,7 @@ impl Project {
                 );
 
                 let reporter = reporter.clone();
-                let span = tracing::info_span!("apply patch", package_id = package_id.to_string(),);
+                let span = tracing::info_span!("apply patch", package_id = package_id.to_string());
 
                 tasks.spawn(
                     async move {

@@ -1,6 +1,6 @@
 use crate::{
     download::DownloadGraphOptions,
-    lockfile::{DependencyGraph, DownloadedGraph},
+    graph::{DependencyGraph, DownloadedGraph},
     manifest::DependencyType,
     reporters::DownloadsReporter,
     Project, RefreshedSources,
@@ -28,10 +28,6 @@ pub fn filter_graph(graph: &DownloadedGraph, prod: bool) -> Arc<DownloadedGraph>
             .collect(),
     )
 }
-
-/// Receiver for dependencies downloaded and linked
-pub type DownloadAndLinkReceiver =
-    tokio::sync::mpsc::Receiver<Result<String, crate::download::errors::DownloadGraphError>>;
 
 /// Hooks to perform actions after certain events during download and linking.
 #[allow(unused_variables)]

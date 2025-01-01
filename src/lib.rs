@@ -29,6 +29,8 @@ use wax::Pattern;
 pub mod download;
 /// Utility for downloading and linking in the correct order
 pub mod download_and_link;
+/// Graphs
+pub mod graph;
 /// Linking packages
 pub mod linking;
 /// Lockfile

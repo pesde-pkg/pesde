@@ -12,10 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support ignoring parse errors in Luau files by @daimond113
 - Add path dependencies by @daimond113
 - Inherit pesde-managed scripts from workspace root by @daimond113
-- Allow using binaries from workspace root in member packages by @daimond113 
+- Allow using binaries from workspace root in member packages by @daimond113
 
 ### Changed
 - Change handling of graphs to a flat structure by @daimond113
+- Store dependency over downloaded graphs in the lockfile by @daimond113
 
 ### Removed
 - Remove old includes format compatibility by @daimond113

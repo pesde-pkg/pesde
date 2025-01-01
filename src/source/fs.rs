@@ -10,7 +10,6 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fmt::Debug,
-    future::Future,
     path::{Path, PathBuf},
 };
 use tempfile::Builder;
@@ -22,7 +21,7 @@ use tracing::instrument;
 
 /// A file system entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FSEntry {
+pub enum FsEntry {
     /// A file with the given hash
     #[serde(rename = "f")]
     File(String),
@@ -35,9 +34,9 @@ pub enum FSEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // don't need to differentiate between CAS and non-CAS, since non-CAS won't be serialized
 #[serde(untagged)]
-pub enum PackageFS {
+pub enum PackageFs {
     /// A package stored in the CAS
-    CAS(BTreeMap<RelativePathBuf, FSEntry>),
+    CAS(BTreeMap<RelativePathBuf, FsEntry>),
     /// A package that's to be copied
     Copy(PathBuf, TargetKind),
 }
@@ -74,15 +73,9 @@ pub(crate) fn cas_path(hash: &str, cas_dir: &Path) -> PathBuf {
     cas_dir.join(prefix).join(rest)
 }
 
-pub(crate) async fn store_in_cas<
-    R: tokio::io::AsyncRead + Unpin,
-    P: AsRef<Path>,
-    C: FnMut(Vec<u8>) -> F,
-    F: Future<Output = std::io::Result<()>>,
->(
+pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin, P: AsRef<Path>>(
     cas_dir: P,
     mut contents: R,
-    mut bytes_cb: C,
 ) -> std::io::Result<String> {
     let tmp_dir = cas_dir.as_ref().join(".tmp");
     fs::create_dir_all(&tmp_dir).await?;
@@ -105,7 +98,6 @@ pub(crate) async fn store_in_cas<
 
         let bytes = &buf[..bytes_read];
         hasher.update(bytes);
-        bytes_cb(bytes.to_vec()).await?;
         file_writer.write_all(bytes).await?;
     }
 
@@ -125,7 +117,7 @@ pub(crate) async fn store_in_cas<
     Ok(hash)
 }
 
-impl PackageFS {
+impl PackageFs {
     /// Write the package to the given destination
     #[instrument(skip(self), level = "debug")]
     pub async fn write_to<P: AsRef<Path> + Debug, Q: AsRef<Path> + Debug>(
@@ -135,7 +127,7 @@ impl PackageFS {
         link: bool,
     ) -> std::io::Result<()> {
         match self {
-            PackageFS::CAS(entries) => {
+            PackageFs::CAS(entries) => {
                 try_join_all(entries.iter().map(|(path, entry)| {
                     let destination = destination.as_ref().to_path_buf();
                     let cas_path = cas_path.as_ref().to_path_buf();
@@ -144,7 +136,7 @@ impl PackageFS {
                         let path = path.to_path(destination);
 
                         match entry {
-                            FSEntry::File(hash) => {
+                            FsEntry::File(hash) => {
                                 if let Some(parent) = path.parent() {
                                     fs::create_dir_all(parent).await?;
                                 }
@@ -159,7 +151,7 @@ impl PackageFS {
                                     set_readonly(&path, false).await?;
                                 }
                             }
-                            FSEntry::Directory => {
+                            FsEntry::Directory => {
                                 fs::create_dir_all(path).await?;
                             }
                         }
@@ -169,7 +161,7 @@ impl PackageFS {
                 }))
                 .await?;
             }
-            PackageFS::Copy(src, target) => {
+            PackageFs::Copy(src, target) => {
                 fs::create_dir_all(destination.as_ref()).await?;
 
                 let mut read_dir = fs::read_dir(src).await?;
@@ -220,7 +212,7 @@ impl PackageFS {
         file_hash: H,
         cas_path: P,
     ) -> Option<String> {
-        if !matches!(self, PackageFS::CAS(_)) {
+        if !matches!(self, PackageFs::CAS(_)) {
             return None;
         }
 

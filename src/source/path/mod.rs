@@ -4,11 +4,11 @@ use crate::{
     names::PackageNames,
     reporters::DownloadProgressReporter,
     source::{
-        fs::PackageFS,
+        fs::PackageFs,
         ids::VersionId,
         path::pkg_ref::PathPackageRef,
         specifiers::DependencySpecifiers,
-        traits::{DownloadOptions, PackageSource, ResolveOptions},
+        traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
         ResolveResult,
     },
     DEFAULT_INDEX_NAME,
@@ -31,6 +31,7 @@ impl PackageSource for PathPackageSource {
     type RefreshError = errors::RefreshError;
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
+    type GetTargetError = errors::GetTargetError;
 
     #[instrument(skip_all, level = "debug")]
     async fn resolve(
@@ -103,14 +104,28 @@ impl PackageSource for PathPackageSource {
     async fn download<R: DownloadProgressReporter>(
         &self,
         pkg_ref: &Self::Ref,
-        _options: &DownloadOptions<R>,
-    ) -> Result<(PackageFS, Target), Self::DownloadError> {
+        options: &DownloadOptions<R>,
+    ) -> Result<PackageFs, Self::DownloadError> {
+        let DownloadOptions { reporter, .. } = options;
         let manifest = deser_manifest(&pkg_ref.path).await?;
 
-        Ok((
-            PackageFS::Copy(pkg_ref.path.clone(), manifest.target.kind()),
-            manifest.target,
+        reporter.report_done();
+
+        Ok(PackageFs::Copy(
+            pkg_ref.path.clone(),
+            manifest.target.kind(),
         ))
+    }
+
+    #[instrument(skip_all, level = "debug")]
+    async fn get_target(
+        &self,
+        pkg_ref: &Self::Ref,
+        _options: &GetTargetOptions,
+    ) -> Result<Target, Self::GetTargetError> {
+        let manifest = deser_manifest(&pkg_ref.path).await?;
+
+        Ok(manifest.target)
     }
 }
 
@@ -145,6 +160,15 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DownloadError {
+        /// Reading the manifest failed
+        #[error("error reading manifest")]
+        ManifestRead(#[from] crate::errors::ManifestReadError),
+    }
+
+    /// Errors that can occur when getting the target of a path package
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum GetTargetError {
         /// Reading the manifest failed
         #[error("error reading manifest")]
         ManifestRead(#[from] crate::errors::ManifestReadError),

@@ -33,11 +33,14 @@ impl PatchCommand {
 
         let node = graph.get(&id).context("package not found in graph")?;
 
-        if matches!(node.node.pkg_ref, PackageRefs::Workspace(_)) {
-            anyhow::bail!("cannot patch a workspace package")
+        if matches!(
+            node.pkg_ref,
+            PackageRefs::Workspace(_) | PackageRefs::Path(_)
+        ) {
+            anyhow::bail!("cannot patch a workspace or a path package")
         }
 
-        let source = node.node.pkg_ref.source();
+        let source = node.pkg_ref.source();
 
         let directory = project
             .data_dir()
@@ -49,7 +52,7 @@ impl PatchCommand {
 
         source
             .download(
-                &node.node.pkg_ref,
+                &node.pkg_ref,
                 &DownloadOptions {
                     project: project.clone(),
                     reqwest,
@@ -57,7 +60,6 @@ impl PatchCommand {
                 },
             )
             .await?
-            .0
             .write_to(&directory, project.cas_dir(), false)
             .await
             .context("failed to write package contents")?;

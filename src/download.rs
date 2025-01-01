@@ -1,10 +1,10 @@
 use crate::{
-    lockfile::{DependencyGraph, DownloadedDependencyGraphNode},
+    graph::{DependencyGraph, DownloadedDependencyGraphNode},
     manifest::DependencyType,
     reporters::{DownloadProgressReporter, DownloadsReporter},
     source::{
         ids::PackageId,
-        traits::{DownloadOptions, PackageRef, PackageSource, RefreshOptions},
+        traits::{DownloadOptions, GetTargetOptions, PackageRef, PackageSource, RefreshOptions},
     },
     Project, RefreshedSources, PACKAGES_CONTAINER_NAME,
 };
@@ -17,7 +17,7 @@ use tracing::{instrument, Instrument};
 
 /// Options for downloading.
 #[derive(Debug)]
-pub struct DownloadGraphOptions<Reporter> {
+pub(crate) struct DownloadGraphOptions<Reporter> {
     /// The reqwest client.
     pub reqwest: reqwest::Client,
     /// The downloads reporter.
@@ -39,7 +39,7 @@ where
     Reporter: for<'a> DownloadsReporter<'a> + Send + Sync + 'static,
 {
     /// Creates a new download options with the given reqwest client and reporter.
-    pub fn new(reqwest: reqwest::Client) -> Self {
+    pub(crate) fn new(reqwest: reqwest::Client) -> Self {
         Self {
             reqwest,
             reporter: None,
@@ -52,37 +52,37 @@ where
     }
 
     /// Sets the downloads reporter.
-    pub fn reporter(mut self, reporter: impl Into<Arc<Reporter>>) -> Self {
+    pub(crate) fn reporter(mut self, reporter: impl Into<Arc<Reporter>>) -> Self {
         self.reporter.replace(reporter.into());
         self
     }
 
     /// Sets the refreshed sources.
-    pub fn refreshed_sources(mut self, refreshed_sources: RefreshedSources) -> Self {
+    pub(crate) fn refreshed_sources(mut self, refreshed_sources: RefreshedSources) -> Self {
         self.refreshed_sources = refreshed_sources;
         self
     }
 
     /// Sets whether to skip dev dependencies.
-    pub fn prod(mut self, prod: bool) -> Self {
+    pub(crate) fn prod(mut self, prod: bool) -> Self {
         self.prod = prod;
         self
     }
 
     /// Sets whether to write the downloaded packages to disk.
-    pub fn write(mut self, write: bool) -> Self {
+    pub(crate) fn write(mut self, write: bool) -> Self {
         self.write = write;
         self
     }
 
     /// Sets whether to download Wally packages.
-    pub fn wally(mut self, wally: bool) -> Self {
+    pub(crate) fn wally(mut self, wally: bool) -> Self {
         self.wally = wally;
         self
     }
 
     /// Sets the max number of concurrent network requests.
-    pub fn network_concurrency(mut self, network_concurrency: NonZeroUsize) -> Self {
+    pub(crate) fn network_concurrency(mut self, network_concurrency: NonZeroUsize) -> Self {
         self.network_concurrency = network_concurrency;
         self
     }
@@ -105,7 +105,7 @@ impl<Reporter> Clone for DownloadGraphOptions<Reporter> {
 impl Project {
     /// Downloads a graph of dependencies.
     #[instrument(skip_all, fields(prod = options.prod, wally = options.wally, write = options.write), level = "debug")]
-    pub async fn download_graph<Reporter>(
+    pub(crate) async fn download_graph<Reporter>(
         &self,
         graph: &DependencyGraph,
         options: DownloadGraphOptions<Reporter>,
@@ -138,7 +138,7 @@ impl Project {
             // we need to download pesde packages first, since scripts (for target finding for example) can depend on them
             .filter(|(_, node)| node.pkg_ref.like_wally() == wally)
             .map(|(package_id, node)| {
-                let span = tracing::info_span!("download", package_id = package_id.to_string(),);
+                let span = tracing::info_span!("download", package_id = package_id.to_string());
 
                 let project = self.clone();
                 let reqwest = reqwest.clone();
@@ -184,7 +184,7 @@ impl Project {
 
                     tracing::debug!("downloading");
 
-                    let (fs, target) = match progress_reporter {
+                    let fs = match progress_reporter {
                         Some(progress_reporter) => {
                             source
                                 .download(
@@ -214,10 +214,25 @@ impl Project {
 
                     tracing::debug!("downloaded");
 
+                    let mut target = None;
+
                     if write {
                         if !prod || node.resolved_ty != DependencyType::Dev {
-                            fs.write_to(container_folder, project.cas_dir(), true)
+                            fs.write_to(&container_folder, project.cas_dir(), true)
                                 .await?;
+
+                            target = Some(
+                                source
+                                    .get_target(
+                                        &node.pkg_ref,
+                                        &GetTargetOptions {
+                                            project,
+                                            path: Arc::from(container_folder),
+                                        },
+                                    )
+                                    .await
+                                    .map_err(Box::new)?,
+                            );
                         } else {
                             tracing::debug!("skipping write to disk, dev dependency in prod mode");
                         }
@@ -263,6 +278,10 @@ pub mod errors {
         /// Error downloading a package
         #[error("failed to download package")]
         DownloadFailed(#[from] Box<crate::source::errors::DownloadError>),
+
+        /// Error getting target
+        #[error("failed to get target")]
+        GetTargetFailed(#[from] Box<crate::source::errors::GetTargetError>),
 
         /// Error writing package contents
         #[error("failed to write package contents")]

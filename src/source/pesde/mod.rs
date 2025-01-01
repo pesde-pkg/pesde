@@ -18,9 +18,9 @@ use crate::{
     names::{PackageName, PackageNames},
     reporters::DownloadProgressReporter,
     source::{
-        fs::{store_in_cas, FSEntry, PackageFS},
+        fs::{store_in_cas, FsEntry, PackageFs},
         git_index::{read_file, root_tree, GitBasedSource},
-        traits::{DownloadOptions, RefreshOptions, ResolveOptions},
+        traits::{DownloadOptions, GetTargetOptions, RefreshOptions, ResolveOptions},
         DependencySpecifiers, PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
@@ -102,6 +102,7 @@ impl PackageSource for PesdePackageSource {
     type RefreshError = crate::source::git_index::errors::RefreshError;
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
+    type GetTargetError = errors::GetTargetError;
 
     #[instrument(skip_all, level = "debug")]
     async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
@@ -170,7 +171,7 @@ impl PackageSource for PesdePackageSource {
         &self,
         pkg_ref: &Self::Ref,
         options: &DownloadOptions<R>,
-    ) -> Result<(PackageFS, Target), Self::DownloadError> {
+    ) -> Result<PackageFs, Self::DownloadError> {
         let DownloadOptions {
             project,
             reporter,
@@ -193,7 +194,10 @@ impl PackageSource for PesdePackageSource {
                     pkg_ref.version,
                     pkg_ref.target
                 );
-                return Ok((toml::from_str::<PackageFS>(&s)?, pkg_ref.target.clone()));
+
+                reporter.report_done();
+
+                return toml::from_str::<PackageFs>(&s).map_err(Into::into);
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(errors::DownloadError::ReadIndex(e)),
@@ -255,7 +259,7 @@ impl PackageSource for PesdePackageSource {
                     continue;
                 }
 
-                entries.insert(path, FSEntry::Directory);
+                entries.insert(path, FsEntry::Directory);
 
                 continue;
             }
@@ -264,13 +268,13 @@ impl PackageSource for PesdePackageSource {
                 continue;
             }
 
-            let hash = store_in_cas(project.cas_dir(), entry, |_| async { Ok(()) })
+            let hash = store_in_cas(project.cas_dir(), entry)
                 .await
                 .map_err(errors::DownloadError::Store)?;
-            entries.insert(path, FSEntry::File(hash));
+            entries.insert(path, FsEntry::File(hash));
         }
 
-        let fs = PackageFS::CAS(entries);
+        let fs = PackageFs::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
             fs::create_dir_all(parent)
@@ -284,7 +288,16 @@ impl PackageSource for PesdePackageSource {
 
         reporter.report_done();
 
-        Ok((fs, pkg_ref.target.clone()))
+        Ok(fs)
+    }
+
+    #[instrument(skip_all, level = "debug")]
+    async fn get_target(
+        &self,
+        pkg_ref: &Self::Ref,
+        _options: &GetTargetOptions,
+    ) -> Result<Target, Self::GetTargetError> {
+        Ok(pkg_ref.target.clone())
     }
 }
 
@@ -569,4 +582,9 @@ pub mod errors {
         #[error("error reading index file")]
         ReadIndex(#[source] std::io::Error),
     }
+
+    /// Errors that can occur when getting the target for a package from a pesde package source
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum GetTargetError {}
 }

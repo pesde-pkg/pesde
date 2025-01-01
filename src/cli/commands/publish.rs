@@ -12,20 +12,23 @@ use pesde::{
         git_index::GitBasedSource,
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
-        traits::{PackageSource, RefreshOptions, ResolveOptions},
+        traits::{GetTargetOptions, PackageRef, PackageSource, RefreshOptions, ResolveOptions},
         workspace::{
             specifier::{VersionType, VersionTypeOrReq},
             WorkspacePackageSource,
         },
         PackageSources, IGNORED_DIRS, IGNORED_FILES,
     },
-    Project, RefreshedSources, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
+    Project, RefreshedSources, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
 };
 use reqwest::{header::AUTHORIZATION, StatusCode};
 use semver::VersionReq;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 use tempfile::Builder;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::{
+    io::{AsyncSeekExt, AsyncWriteExt},
+    task::JoinSet,
+};
 
 #[derive(Debug, Args, Clone)]
 pub struct PublishCommand {
@@ -73,6 +76,7 @@ impl PublishCommand {
         project: &Project,
         reqwest: reqwest::Client,
         is_root: bool,
+        refreshed_sources: &RefreshedSources,
     ) -> anyhow::Result<()> {
         let mut manifest = project
             .deser_manifest()
@@ -111,16 +115,63 @@ impl PublishCommand {
 
             match up_to_date_lockfile(project).await? {
                 Some(lockfile) => {
-                    if lockfile
+                    let mut tasks = lockfile
                         .graph
-                        .values()
-                        .filter_map(|node| node.node.direct.as_ref().map(|_| node))
-                        .any(|node| {
-                            node.target.build_files().is_none()
-                                && !matches!(node.node.resolved_ty, DependencyType::Dev)
+                        .iter()
+                        .filter(|(_, node)| node.direct.is_some())
+                        .map(|(id, node)| {
+                            let project = project.clone();
+                            let base_folder = manifest
+                                .target
+                                .kind()
+                                .packages_folder(id.version_id().target());
+                            let container_folder = node.container_folder(
+                                &project
+                                    .package_dir()
+                                    .join(base_folder)
+                                    .join(PACKAGES_CONTAINER_NAME),
+                                id,
+                            );
+
+                            let node = node.clone();
+                            let refreshed_sources = refreshed_sources.clone();
+
+                            async move {
+                                let source = node.pkg_ref.source();
+                                refreshed_sources
+                                    .refresh(
+                                        &source,
+                                        &RefreshOptions {
+                                            project: project.clone(),
+                                        },
+                                    )
+                                    .await
+                                    .context("failed to refresh source")?;
+                                let target = source
+                                    .get_target(
+                                        &node.pkg_ref,
+                                        &GetTargetOptions {
+                                            project,
+                                            path: Arc::from(container_folder),
+                                        },
+                                    )
+                                    .await?;
+
+                                Ok::<_, anyhow::Error>(
+                                    target.build_files().is_none()
+                                        && !matches!(node.resolved_ty, DependencyType::Dev),
+                                )
+                            }
                         })
-                    {
-                        anyhow::bail!("roblox packages may not depend on non-roblox packages");
+                        .collect::<JoinSet<_>>();
+
+                    while let Some(result) = tasks.join_next().await {
+                        let result = result
+                            .unwrap()
+                            .context("failed to get target of dependency node")?;
+                        if result {
+                            anyhow::bail!("roblox packages may not depend on non-roblox packages");
+                        }
                     }
                 }
                 None => {
@@ -375,8 +426,6 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
                     .await?;
             }
         }
-
-        let refreshed_sources = RefreshedSources::new();
 
         for specifier in manifest
             .dependencies
@@ -693,7 +742,12 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
     }
 
     pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
-        let result = self.clone().run_impl(&project, reqwest.clone(), true).await;
+        let refreshed_sources = RefreshedSources::new();
+
+        let result = self
+            .clone()
+            .run_impl(&project, reqwest.clone(), true, &refreshed_sources)
+            .await;
         if project.workspace_dir().is_some() {
             return result;
         } else {
@@ -703,7 +757,11 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
         run_on_workspace_members(&project, |project| {
             let reqwest = reqwest.clone();
             let this = self.clone();
-            async move { this.run_impl(&project, reqwest, false).await }
+            let refreshed_sources = refreshed_sources.clone();
+            async move {
+                this.run_impl(&project, reqwest, false, &refreshed_sources)
+                    .await
+            }
         })
         .await
         .map(|_| ())

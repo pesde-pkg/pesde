@@ -3,10 +3,12 @@ use crate::{
     names::PackageNames,
     reporters::DownloadProgressReporter,
     source::{
-        fs::{store_in_cas, FSEntry, PackageFS},
+        fs::{store_in_cas, FsEntry, PackageFs},
         git_index::{read_file, root_tree, GitBasedSource},
         ids::VersionId,
-        traits::{DownloadOptions, PackageSource, RefreshOptions, ResolveOptions},
+        traits::{
+            DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
+        },
         wally::{
             compat_util::get_target,
             manifest::{Realm, WallyManifest},
@@ -23,13 +25,8 @@ use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
-use tempfile::tempdir;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::Mutex,
-    task::spawn_blocking,
-};
+use std::{collections::BTreeMap, path::PathBuf};
+use tokio::{io::AsyncReadExt, task::spawn_blocking};
 use tokio_util::{compat::FuturesAsyncReadCompatExt, io::StreamReader};
 use tracing::instrument;
 
@@ -96,6 +93,7 @@ impl PackageSource for WallyPackageSource {
     type RefreshError = crate::source::git_index::errors::RefreshError;
     type ResolveError = errors::ResolveError;
     type DownloadError = errors::DownloadError;
+    type GetTargetError = errors::GetTargetError;
 
     #[instrument(skip_all, level = "debug")]
     async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
@@ -108,24 +106,36 @@ impl PackageSource for WallyPackageSource {
         specifier: &Self::Specifier,
         options: &ResolveOptions,
     ) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
-        let ResolveOptions {
-            project,
-            refreshed_sources,
-            ..
-        } = options;
+        async fn inner(
+            source: &WallyPackageSource,
+            specifier: &specifier::WallyDependencySpecifier,
+            options: &ResolveOptions,
+        ) -> Result<ResolveResult<WallyPackageRef>, errors::ResolveError> {
+            let ResolveOptions {
+                project,
+                refreshed_sources,
+                ..
+            } = options;
 
-        let repo = gix::open(self.path(project)).map_err(Box::new)?;
-        let tree = root_tree(&repo).map_err(Box::new)?;
-        let (scope, name) = specifier.name.as_str();
-        let string = match read_file(&tree, [scope, name]) {
-            Ok(Some(s)) => s,
-            Ok(None) => {
+            let Some(string) = ({
+                let repo = gix::open(source.path(project)).map_err(Box::new)?;
+                let tree = root_tree(&repo).map_err(Box::new)?;
+                let (scope, name) = specifier.name.as_str();
+                match read_file(&tree, [scope, name]) {
+                    Ok(string) => string,
+                    Err(e) => {
+                        return Err(errors::ResolveError::Read(
+                            specifier.name.to_string(),
+                            Box::new(e),
+                        ))
+                    }
+                }
+            }) else {
                 tracing::debug!(
                     "{} not found in wally registry. searching in backup registries",
                     specifier.name
                 );
-
-                let config = self.config(project).await.map_err(Box::new)?;
+                let config = source.config(project).await.map_err(Box::new)?;
                 for registry in config.fallback_registries {
                     let source = WallyPackageSource::new(registry);
                     match refreshed_sources
@@ -139,12 +149,12 @@ impl PackageSource for WallyPackageSource {
                     {
                         Ok(()) => {}
                         Err(super::errors::RefreshError::Wally(e)) => {
-                            return Err(Self::ResolveError::Refresh(Box::new(e)));
+                            return Err(errors::ResolveError::Refresh(Box::new(e)));
                         }
-                        Err(e) => unreachable!("unexpected error: {e:?}"),
+                        Err(e) => panic!("unexpected error: {e:?}"),
                     }
 
-                    match Box::pin(source.resolve(specifier, options)).await {
+                    match Box::pin(inner(&source, specifier, options)).await {
                         Ok((name, results)) => {
                             tracing::debug!("found {name} in backup registry {}", source.repo_url);
                             return Ok((name, results));
@@ -158,50 +168,46 @@ impl PackageSource for WallyPackageSource {
                     }
                 }
 
-                return Err(Self::ResolveError::NotFound(specifier.name.to_string()));
-            }
-            Err(e) => {
-                return Err(Self::ResolveError::Read(
-                    specifier.name.to_string(),
-                    Box::new(e),
-                ))
-            }
-        };
+                return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
+            };
 
-        let entries: Vec<WallyManifest> = string
-            .lines()
-            .map(serde_json::from_str)
-            .collect::<Result<_, _>>()
-            .map_err(|e| Self::ResolveError::Parse(specifier.name.to_string(), e))?;
+            let entries: Vec<WallyManifest> = string
+                .lines()
+                .map(serde_json::from_str)
+                .collect::<Result<_, _>>()
+                .map_err(|e| errors::ResolveError::Parse(specifier.name.to_string(), e))?;
 
-        tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
+            tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
-        Ok((
-            PackageNames::Wally(specifier.name.clone()),
-            entries
-                .into_iter()
-                .filter(|manifest| specifier.version.matches(&manifest.package.version))
-                .map(|manifest| {
-                    Ok((
-                        VersionId(
-                            manifest.package.version.clone(),
-                            match manifest.package.realm {
-                                Realm::Server => TargetKind::RobloxServer,
-                                _ => TargetKind::Roblox,
+            Ok((
+                PackageNames::Wally(specifier.name.clone()),
+                entries
+                    .into_iter()
+                    .filter(|manifest| specifier.version.matches(&manifest.package.version))
+                    .map(|manifest| {
+                        Ok((
+                            VersionId(
+                                manifest.package.version.clone(),
+                                match manifest.package.realm {
+                                    Realm::Server => TargetKind::RobloxServer,
+                                    _ => TargetKind::Roblox,
+                                },
+                            ),
+                            WallyPackageRef {
+                                name: specifier.name.clone(),
+                                index_url: source.repo_url.clone(),
+                                dependencies: manifest.all_dependencies().map_err(|e| {
+                                    errors::ResolveError::AllDependencies(specifier.to_string(), e)
+                                })?,
+                                version: manifest.package.version,
                             },
-                        ),
-                        WallyPackageRef {
-                            name: specifier.name.clone(),
-                            index_url: self.repo_url.clone(),
-                            dependencies: manifest.all_dependencies().map_err(|e| {
-                                Self::ResolveError::AllDependencies(specifier.to_string(), e)
-                            })?,
-                            version: manifest.package.version,
-                        },
-                    ))
-                })
-                .collect::<Result<_, Self::ResolveError>>()?,
-        ))
+                        ))
+                    })
+                    .collect::<Result<_, errors::ResolveError>>()?,
+            ))
+        }
+
+        inner(self, specifier, options).await
     }
 
     #[instrument(skip_all, level = "debug")]
@@ -209,7 +215,7 @@ impl PackageSource for WallyPackageSource {
         &self,
         pkg_ref: &Self::Ref,
         options: &DownloadOptions<R>,
-    ) -> Result<(PackageFS, Target), Self::DownloadError> {
+    ) -> Result<PackageFs, Self::DownloadError> {
         let DownloadOptions {
             project,
             reqwest,
@@ -223,7 +229,7 @@ impl PackageSource for WallyPackageSource {
             .join(pkg_ref.name.escaped())
             .join(pkg_ref.version.to_string());
 
-        let tempdir = match fs::read_to_string(&index_file).await {
+        match fs::read_to_string(&index_file).await {
             Ok(s) => {
                 tracing::debug!(
                     "using cached index file for package {}@{}",
@@ -231,14 +237,11 @@ impl PackageSource for WallyPackageSource {
                     pkg_ref.version
                 );
 
-                let tempdir = tempdir()?;
-                let fs = toml::from_str::<PackageFS>(&s)?;
+                reporter.report_done();
 
-                fs.write_to(&tempdir, project.cas_dir(), false).await?;
-
-                return Ok((fs, get_target(project, &tempdir).await?));
+                return toml::from_str::<PackageFs>(&s).map_err(Into::into);
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => tempdir()?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(errors::DownloadError::ReadIndex(e)),
         };
 
@@ -308,30 +311,19 @@ impl PackageSource for WallyPackageSource {
                 continue;
             }
 
-            let path = relative_path.to_path(tempdir.path());
-
             if is_dir {
-                fs::create_dir_all(&path).await?;
-                entries.insert(relative_path, FSEntry::Directory);
+                entries.insert(relative_path, FsEntry::Directory);
                 continue;
             }
 
             let entry_reader = archive.reader_without_entry(index).await?;
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).await?;
-            }
 
-            let writer = Arc::new(Mutex::new(fs::File::create(&path).await?));
-            let hash = store_in_cas(project.cas_dir(), entry_reader.compat(), |bytes| {
-                let writer = writer.clone();
-                async move { writer.lock().await.write_all(&bytes).await }
-            })
-            .await?;
+            let hash = store_in_cas(project.cas_dir(), entry_reader.compat()).await?;
 
-            entries.insert(relative_path, FSEntry::File(hash));
+            entries.insert(relative_path, FsEntry::File(hash));
         }
 
-        let fs = PackageFS::CAS(entries);
+        let fs = PackageFs::CAS(entries);
 
         if let Some(parent) = index_file.parent() {
             fs::create_dir_all(parent)
@@ -345,7 +337,16 @@ impl PackageSource for WallyPackageSource {
 
         reporter.report_done();
 
-        Ok((fs, get_target(project, &tempdir).await?))
+        Ok(fs)
+    }
+
+    #[instrument(skip_all, level = "debug")]
+    async fn get_target(
+        &self,
+        _pkg_ref: &Self::Ref,
+        options: &GetTargetOptions,
+    ) -> Result<Target, Self::GetTargetError> {
+        get_target(options).await.map_err(Into::into)
     }
 }
 
@@ -471,5 +472,14 @@ pub mod errors {
         /// Error writing index file
         #[error("error writing index file")]
         WriteIndex(#[source] std::io::Error),
+    }
+
+    /// Errors that can occur when getting a target from a Wally package source
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum GetTargetError {
+        /// Error getting target
+        #[error("error getting target")]
+        GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
     }
 }

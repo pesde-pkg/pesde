@@ -1,6 +1,6 @@
 use crate::{
+    graph::{DownloadedDependencyGraphNode, DownloadedGraph},
     linking::generator::get_file_types,
-    lockfile::{DownloadedDependencyGraphNode, DownloadedGraph},
     manifest::Manifest,
     scripts::{execute_script, ExecuteScriptHooks, ScriptName},
     source::{
@@ -30,7 +30,7 @@ async fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<Pat
 }
 
 async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
-    let hash = store_in_cas(cas_dir, contents.as_bytes(), |_| async { Ok(()) }).await?;
+    let hash = store_in_cas(cas_dir, contents.as_bytes()).await?;
 
     match fs::remove_file(&destination).await {
         Ok(_) => {}
@@ -52,10 +52,12 @@ impl ExecuteScriptHooks for LinkingExecuteScriptHooks {
     }
 }
 
+type PackageTypes = HashMap<PackageId, Vec<String>>;
+
 impl Project {
     /// Links the dependencies of the project
     #[instrument(skip(self, graph), level = "debug")]
-    pub async fn link_dependencies(
+    pub(crate) async fn link_dependencies(
         &self,
         graph: Arc<DownloadedGraph>,
         with_types: bool,
@@ -66,7 +68,7 @@ impl Project {
 
         // step 1. link all non-wally packages (and their dependencies) temporarily without types
         // we do this separately to allow the required tools for the scripts to be installed
-        self.link(&graph, &manifest, &Arc::new(Default::default()), false)
+        self.link(&graph, &manifest, &Arc::new(PackageTypes::default()), false)
             .await?;
 
         if !with_types {
@@ -78,14 +80,14 @@ impl Project {
             .iter()
             .map(|(package_id, node)| {
                 let span =
-                    tracing::info_span!("extract types", package_id = package_id.to_string(),);
+                    tracing::info_span!("extract types", package_id = package_id.to_string());
 
                 let package_id = package_id.clone();
                 let node = node.clone();
                 let project = self.clone();
 
                 async move {
-                    let Some(lib_file) = node.target.lib_path() else {
+                    let Some(lib_file) = node.target.as_ref().and_then(|t| t.lib_path()) else {
                         return Ok((package_id, vec![]));
                     };
 
@@ -124,7 +126,9 @@ impl Project {
                         vec![]
                     };
 
-                    if let Some(build_files) = Some(&node.target)
+                    if let Some(build_files) = node
+                        .target
+                        .as_ref()
                         .filter(|_| !node.node.pkg_ref.like_wally())
                         .and_then(|t| t.build_files())
                     {
@@ -146,7 +150,7 @@ impl Project {
             })
             .collect::<JoinSet<_>>();
 
-        let mut package_types = HashMap::new();
+        let mut package_types = PackageTypes::new();
         while let Some(task) = tasks.join_next().await {
             let (version_id, types) = task.unwrap()?;
             package_types.insert(version_id, types);
@@ -167,15 +171,19 @@ impl Project {
         node: &DownloadedDependencyGraphNode,
         package_id: &PackageId,
         alias: &str,
-        package_types: &HashMap<PackageId, Vec<String>>,
+        package_types: &PackageTypes,
         manifest: &Manifest,
     ) -> Result<(), errors::LinkingError> {
         static NO_TYPES: Vec<String> = Vec::new();
 
-        if let Some(lib_file) = node.target.lib_path() {
+        let Some(target) = &node.target else {
+            return Ok(());
+        };
+
+        if let Some(lib_file) = target.lib_path() {
             let lib_module = generator::generate_lib_linking_module(
                 &generator::get_lib_require_path(
-                    &node.target.kind(),
+                    &target.kind(),
                     base_folder,
                     lib_file,
                     container_folder,
@@ -195,7 +203,7 @@ impl Project {
             .await?;
         }
 
-        if let Some(bin_file) = node.target.bin_path() {
+        if let Some(bin_file) = target.bin_path() {
             let bin_module = generator::generate_bin_linking_module(
                 container_folder,
                 &generator::get_bin_require_path(base_folder, bin_file, container_folder),
@@ -209,7 +217,7 @@ impl Project {
             .await?;
         }
 
-        if let Some(scripts) = node.target.scripts().filter(|s| !s.is_empty()) {
+        if let Some(scripts) = target.scripts().filter(|s| !s.is_empty()) {
             let scripts_base =
                 create_and_canonicalize(self.package_dir().join(SCRIPTS_LINK_FOLDER).join(alias))
                     .await?;
@@ -238,7 +246,7 @@ impl Project {
         &self,
         graph: &Arc<DownloadedGraph>,
         manifest: &Arc<Manifest>,
-        package_types: &Arc<HashMap<PackageId, Vec<String>>>,
+        package_types: &Arc<PackageTypes>,
         is_complete: bool,
     ) -> Result<(), errors::LinkingError> {
         let mut tasks = graph
@@ -319,7 +327,10 @@ impl Project {
                         let linker_folder = create_and_canonicalize(node_container_folder.join(
                             node.node.base_folder(
                                 package_id.version_id(),
-                                dependency_node.target.kind(),
+                                match &dependency_node.target {
+                                    Some(t) => t.kind(),
+                                    None => continue,
+                                },
                             ),
                         ))
                         .await?;

@@ -6,11 +6,13 @@ use pesde::{
     errors::{ManifestReadError, WorkspaceMembersError},
     linking::generator::generate_bin_linking_module,
     names::{PackageName, PackageNames},
+    source::traits::{GetTargetOptions, PackageRef, PackageSource, RefreshOptions},
     Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
 };
 use relative_path::RelativePathBuf;
 use std::{
     collections::HashSet, env::current_dir, ffi::OsString, io::Write, path::Path, process::Command,
+    sync::Arc,
 };
 
 #[derive(Debug, Args)]
@@ -75,7 +77,7 @@ impl RunCommand {
 
             let mut versions = graph
                 .into_iter()
-                .filter(|(id, node)| *id.name() == pkg_name && node.node.direct.is_some())
+                .filter(|(id, node)| *id.name() == pkg_name && node.direct.is_some())
                 .collect::<Vec<_>>();
 
             let (id, node) = match versions.len() {
@@ -84,23 +86,40 @@ impl RunCommand {
                 _ => anyhow::bail!("multiple versions found. use the package's alias instead."),
             };
 
-            let Some(bin_path) = node.target.bin_path() else {
-                anyhow::bail!("package has no bin path");
-            };
-
             let base_folder = project
                 .deser_manifest()
                 .await?
                 .target
                 .kind()
                 .packages_folder(id.version_id().target());
-            let container_folder = node.node.container_folder(
+            let container_folder = node.container_folder(
                 &project
                     .package_dir()
                     .join(base_folder)
                     .join(PACKAGES_CONTAINER_NAME),
                 &id,
             );
+
+            let source = node.pkg_ref.source();
+            source
+                .refresh(&RefreshOptions {
+                    project: project.clone(),
+                })
+                .await
+                .context("failed to refresh source")?;
+            let target = source
+                .get_target(
+                    &node.pkg_ref,
+                    &GetTargetOptions {
+                        project,
+                        path: Arc::from(container_folder.as_path()),
+                    },
+                )
+                .await?;
+
+            let Some(bin_path) = target.bin_path() else {
+                anyhow::bail!("package has no bin path");
+            };
 
             let path = bin_path.to_path(&container_folder);
 
