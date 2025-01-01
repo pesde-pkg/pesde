@@ -185,21 +185,21 @@ impl PackageSource for WallyPackageSource {
                     .into_iter()
                     .filter(|manifest| specifier.version.matches(&manifest.package.version))
                     .map(|manifest| {
+                        let dependencies = manifest.all_dependencies().map_err(|e| {
+                            errors::ResolveError::AllDependencies(specifier.to_string(), e)
+                        })?;
+
                         Ok((
                             VersionId(
-                                manifest.package.version.clone(),
+                                manifest.package.version,
                                 match manifest.package.realm {
                                     Realm::Server => TargetKind::RobloxServer,
                                     _ => TargetKind::Roblox,
                                 },
                             ),
                             WallyPackageRef {
-                                name: specifier.name.clone(),
                                 index_url: source.repo_url.clone(),
-                                dependencies: manifest.all_dependencies().map_err(|e| {
-                                    errors::ResolveError::AllDependencies(specifier.to_string(), e)
-                                })?,
-                                version: manifest.package.version,
+                                dependencies,
                             },
                         ))
                     })
@@ -213,29 +213,27 @@ impl PackageSource for WallyPackageSource {
     #[instrument(skip_all, level = "debug")]
     async fn download<R: DownloadProgressReporter>(
         &self,
-        pkg_ref: &Self::Ref,
+        _pkg_ref: &Self::Ref,
         options: &DownloadOptions<R>,
     ) -> Result<PackageFs, Self::DownloadError> {
         let DownloadOptions {
             project,
             reqwest,
             reporter,
+            id,
+            ..
         } = options;
 
         let config = self.config(project).await.map_err(Box::new)?;
         let index_file = project
             .cas_dir()
             .join("wally_index")
-            .join(pkg_ref.name.escaped())
-            .join(pkg_ref.version.to_string());
+            .join(id.name().escaped())
+            .join(id.version_id().version().to_string());
 
         match fs::read_to_string(&index_file).await {
             Ok(s) => {
-                tracing::debug!(
-                    "using cached index file for package {}@{}",
-                    pkg_ref.name,
-                    pkg_ref.version
-                );
+                tracing::debug!("using cached index file for package {id}");
 
                 reporter.report_done();
 
@@ -245,13 +243,13 @@ impl PackageSource for WallyPackageSource {
             Err(e) => return Err(errors::DownloadError::ReadIndex(e)),
         };
 
-        let (scope, name) = pkg_ref.name.as_str();
+        let (scope, name) = id.name().as_str();
 
         let mut request = reqwest
             .get(format!(
                 "{}/v1/package-contents/{scope}/{name}/{}",
                 config.api.as_str().trim_end_matches('/'),
-                pkg_ref.version
+                id.version_id().version()
             ))
             .header(
                 "Wally-Version",

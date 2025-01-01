@@ -12,8 +12,9 @@ use pesde::{
     download_and_link::DownloadAndLinkOptions,
     linking::generator::generate_bin_linking_module,
     manifest::target::TargetKind,
-    names::PackageName,
+    names::{PackageName, PackageNames},
     source::{
+        ids::PackageId,
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         traits::{
             DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
@@ -81,7 +82,7 @@ impl ExecuteCommand {
                     .context("failed to refresh source")?;
 
                 let version_req = self.package.1.unwrap_or(VersionReq::STAR);
-                let Some((version, pkg_ref)) = ('finder: {
+                let Some((id, pkg_ref)) = ('finder: {
                     let specifier = PesdeDependencySpecifier {
                         name: self.package.0.clone(),
                         version: version_req.clone(),
@@ -89,7 +90,7 @@ impl ExecuteCommand {
                         target: None,
                     };
 
-                    if let Some(res) = source
+                    if let Some((v_id, pkg_ref)) = source
                         .resolve(
                             &specifier,
                             &ResolveOptions {
@@ -103,7 +104,10 @@ impl ExecuteCommand {
                         .1
                         .pop_last()
                     {
-                        break 'finder Some(res);
+                        break 'finder Some((
+                            PackageId::new(PackageNames::Pesde(self.package.0.clone()), v_id),
+                            pkg_ref,
+                        ));
                     }
 
                     source
@@ -119,6 +123,12 @@ impl ExecuteCommand {
                         .context("failed to resolve package")?
                         .1
                         .pop_last()
+                        .map(|(v_id, pkg_ref)| {
+                            (
+                                PackageId::new(PackageNames::Pesde(self.package.0.clone()), v_id),
+                                pkg_ref,
+                            )
+                        })
                 }) else {
                     anyhow::bail!(
                         "no Lune or Luau package could be found for {}@{version_req}",
@@ -141,6 +151,8 @@ impl ExecuteCommand {
                     project.auth_config().clone(),
                 );
 
+                let id = Arc::new(id);
+
                 let fs = source
                     .download(
                         &pkg_ref,
@@ -148,6 +160,7 @@ impl ExecuteCommand {
                             project: project.clone(),
                             reqwest: reqwest.clone(),
                             reporter: Arc::new(()),
+                            id: id.clone(),
                         },
                     )
                     .await
@@ -163,6 +176,7 @@ impl ExecuteCommand {
                         &GetTargetOptions {
                             project: project.clone(),
                             path: Arc::from(tempdir.path()),
+                            id: id.clone(),
                         },
                     )
                     .await
@@ -176,10 +190,7 @@ impl ExecuteCommand {
                     .context("failed to build dependency graph")?;
 
                 multi_progress.suspend(|| {
-                    eprintln!(
-                        "{}",
-                        format!("using {}", format!("{}@{version}", pkg_ref.name).bold()).dimmed()
-                    )
+                    eprintln!("{}", format!("using {}", format!("{id}").bold()).dimmed())
                 });
 
                 root_progress.reset();

@@ -146,7 +146,7 @@ impl Project {
                 let refreshed_sources = refreshed_sources.clone();
                 let package_dir = project.package_dir().to_path_buf();
                 let semaphore = semaphore.clone();
-                let package_id = package_id.clone();
+                let package_id = Arc::new(package_id.clone());
                 let node = node.clone();
 
                 async move {
@@ -189,6 +189,7 @@ impl Project {
                                     &DownloadOptions {
                                         project: project.clone(),
                                         reqwest,
+                                        id: package_id.clone(),
                                         reporter: Arc::new(progress_reporter),
                                     },
                                 )
@@ -201,6 +202,7 @@ impl Project {
                                     &DownloadOptions {
                                         project: project.clone(),
                                         reqwest,
+                                        id: package_id.clone(),
                                         reporter: Arc::new(()),
                                     },
                                 )
@@ -225,6 +227,7 @@ impl Project {
                                         &GetTargetOptions {
                                             project,
                                             path: Arc::from(container_folder),
+                                            id: package_id.clone(),
                                         },
                                     )
                                     .await
@@ -236,7 +239,7 @@ impl Project {
                     }
 
                     let downloaded_node = DownloadedDependencyGraphNode { node, target };
-                    Ok((downloaded_node, package_id))
+                    Ok((downloaded_node, Arc::into_inner(package_id).unwrap()))
                 }
                 .instrument(span)
             })

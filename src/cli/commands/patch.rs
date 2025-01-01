@@ -57,6 +57,7 @@ impl PatchCommand {
                     project: project.clone(),
                     reqwest,
                     reporter: Arc::new(()),
+                    id: Arc::new(id),
                 },
             )
             .await?

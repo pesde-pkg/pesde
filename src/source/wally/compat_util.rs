@@ -60,7 +60,7 @@ pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
 pub(crate) async fn get_target(
     options: &GetTargetOptions,
 ) -> Result<Target, errors::GetTargetError> {
-    let GetTargetOptions { project, path } = options;
+    let GetTargetOptions { project, path, .. } = options;
 
     let lib = find_lib_path(project, path)
         .await?

@@ -4,7 +4,7 @@ use crate::{
         DependencyType,
     },
     reporters::DownloadProgressReporter,
-    source::{DependencySpecifiers, PackageFs, PackageSources, ResolveResult},
+    source::{ids::PackageId, DependencySpecifiers, PackageFs, PackageSources, ResolveResult},
     Project, RefreshedSources,
 };
 use std::{
@@ -55,6 +55,8 @@ pub struct DownloadOptions<R: DownloadProgressReporter> {
     pub reqwest: reqwest::Client,
     /// The reporter to use
     pub reporter: Arc<R>,
+    /// The package ID of the package to be downloaded
+    pub id: Arc<PackageId>,
 }
 
 /// Options for getting a package's Target
@@ -64,6 +66,8 @@ pub struct GetTargetOptions {
     pub project: Project,
     /// The path the package has been written to
     pub path: Arc<Path>,
+    /// The package ID of the package to be downloaded
+    pub id: Arc<PackageId>,
 }
 
 /// A source of packages

@@ -94,6 +94,25 @@ impl PesdePackageSource {
         .await
         .unwrap()
     }
+
+    fn read_index_file(
+        &self,
+        name: &PackageName,
+        project: &Project,
+    ) -> Result<Option<IndexFile>, errors::ReadIndexFileError> {
+        let (scope, name) = name.as_str();
+        let repo = gix::open(self.path(project)).map_err(Box::new)?;
+        let tree = root_tree(&repo).map_err(Box::new)?;
+        let string = match read_file(&tree, [scope, name]) {
+            Ok(Some(s)) => s,
+            Ok(None) => return Ok(None),
+            Err(e) => {
+                return Err(errors::ReadIndexFileError::ReadFile(e));
+            }
+        };
+
+        toml::from_str(&string).map_err(Into::into)
+    }
 }
 
 impl PackageSource for PesdePackageSource {
@@ -121,22 +140,10 @@ impl PackageSource for PesdePackageSource {
             ..
         } = options;
 
-        let (scope, name) = specifier.name.as_str();
-        let repo = gix::open(self.path(project)).map_err(Box::new)?;
-        let tree = root_tree(&repo).map_err(Box::new)?;
-        let string = match read_file(&tree, [scope, name]) {
-            Ok(Some(s)) => s,
-            Ok(None) => return Err(Self::ResolveError::NotFound(specifier.name.to_string())),
-            Err(e) => {
-                return Err(Self::ResolveError::Read(
-                    specifier.name.to_string(),
-                    Box::new(e),
-                ))
-            }
+        let Some(IndexFile { entries, .. }) = self.read_index_file(&specifier.name, project)?
+        else {
+            return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
         };
-
-        let IndexFile { entries, .. } = toml::from_str(&string)
-            .map_err(|e| Self::ResolveError::Parse(specifier.name.to_string(), e))?;
 
         tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
@@ -149,16 +156,11 @@ impl PackageSource for PesdePackageSource {
                         && specifier.target.unwrap_or(*project_target) == *target
                 })
                 .map(|(id, entry)| {
-                    let version = id.version().clone();
-
                     (
                         id,
                         PesdePackageRef {
-                            name: specifier.name.clone(),
-                            version,
                             index_url: self.repo_url.clone(),
                             dependencies: entry.dependencies,
-                            target: entry.target,
                         },
                     )
                 })
@@ -169,31 +171,28 @@ impl PackageSource for PesdePackageSource {
     #[instrument(skip_all, level = "debug")]
     async fn download<R: DownloadProgressReporter>(
         &self,
-        pkg_ref: &Self::Ref,
+        _pkg_ref: &Self::Ref,
         options: &DownloadOptions<R>,
     ) -> Result<PackageFs, Self::DownloadError> {
         let DownloadOptions {
             project,
             reporter,
             reqwest,
+            id,
+            ..
         } = options;
 
         let config = self.config(project).await.map_err(Box::new)?;
         let index_file = project
             .cas_dir()
             .join("index")
-            .join(pkg_ref.name.escaped())
-            .join(pkg_ref.version.to_string())
-            .join(pkg_ref.target.to_string());
+            .join(id.name().escaped())
+            .join(id.version_id().version().to_string())
+            .join(id.version_id().target().to_string());
 
         match fs::read_to_string(&index_file).await {
             Ok(s) => {
-                tracing::debug!(
-                    "using cached index file for package {}@{} {}",
-                    pkg_ref.name,
-                    pkg_ref.version,
-                    pkg_ref.target
-                );
+                tracing::debug!("using cached index file for package {id}");
 
                 reporter.report_done();
 
@@ -205,9 +204,9 @@ impl PackageSource for PesdePackageSource {
 
         let url = config
             .download()
-            .replace("{PACKAGE}", &pkg_ref.name.to_string().replace("/", "%2F"))
-            .replace("{PACKAGE_VERSION}", &pkg_ref.version.to_string())
-            .replace("{PACKAGE_TARGET}", &pkg_ref.target.to_string());
+            .replace("{PACKAGE}", &id.name().to_string().replace("/", "%2F"))
+            .replace("{PACKAGE_VERSION}", &id.version_id().version().to_string())
+            .replace("{PACKAGE_TARGET}", &id.version_id().target().to_string());
 
         let mut request = reqwest.get(&url).header(ACCEPT, "application/octet-stream");
 
@@ -294,10 +293,24 @@ impl PackageSource for PesdePackageSource {
     #[instrument(skip_all, level = "debug")]
     async fn get_target(
         &self,
-        pkg_ref: &Self::Ref,
-        _options: &GetTargetOptions,
+        _pkg_ref: &Self::Ref,
+        options: &GetTargetOptions,
     ) -> Result<Target, Self::GetTargetError> {
-        Ok(pkg_ref.target.clone())
+        let GetTargetOptions { id, .. } = options;
+        let PackageNames::Pesde(name) = id.name() else {
+            panic!("unexpected package name");
+        };
+
+        let Some(IndexFile { mut entries, .. }) = self.read_index_file(name, &options.project)?
+        else {
+            return Err(errors::GetTargetError::NotFound(name.to_string()));
+        };
+
+        let entry = entries
+            .remove(id.version_id())
+            .ok_or_else(|| errors::GetTargetError::NotFound(name.to_string()))?;
+
+        Ok(entry.target)
     }
 }
 
@@ -496,10 +509,14 @@ pub mod errors {
 
     use crate::source::git_index::errors::{ReadFile, TreeError};
 
-    /// Errors that can occur when resolving a package from a pesde package source
+    /// Errors that can occur when reading an index file of a pesde package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
-    pub enum ResolveError {
+    pub enum ReadIndexFileError {
+        /// Error reading file
+        #[error("error reading file")]
+        ReadFile(#[from] ReadFile),
+
         /// Error opening repository
         #[error("error opening repository")]
         Open(#[from] Box<gix::open::Error>),
@@ -508,17 +525,22 @@ pub mod errors {
         #[error("error getting tree")]
         Tree(#[from] Box<TreeError>),
 
+        /// Error parsing file
+        #[error("error parsing file")]
+        Parse(#[from] toml::de::Error),
+    }
+
+    /// Errors that can occur when resolving a package from a pesde package source
+    #[derive(Debug, Error)]
+    #[non_exhaustive]
+    pub enum ResolveError {
         /// Package not found in index
         #[error("package {0} not found")]
         NotFound(String),
 
-        /// Error reading file for package
-        #[error("error reading file for {0}")]
-        Read(String, #[source] Box<ReadFile>),
-
-        /// Error parsing file for package
-        #[error("error parsing file for {0}")]
-        Parse(String, #[source] toml::de::Error),
+        /// Error reading index file
+        #[error("error reading index file")]
+        ReadIndex(#[from] ReadIndexFileError),
     }
 
     /// Errors that can occur when reading the config file for a pesde package source
@@ -586,5 +608,13 @@ pub mod errors {
     /// Errors that can occur when getting the target for a package from a pesde package source
     #[derive(Debug, Error)]
     #[non_exhaustive]
-    pub enum GetTargetError {}
+    pub enum GetTargetError {
+        /// Error reading index file
+        #[error("error reading index file")]
+        ReadIndex(#[from] ReadIndexFileError),
+
+        /// Package not found in index
+        #[error("package `{0}` not found in index")]
+        NotFound(String),
+    }
 }

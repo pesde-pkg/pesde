@@ -6,18 +6,19 @@ use inquire::validator::Validation;
 use pesde::{
     errors::ManifestReadError,
     manifest::{target::TargetKind, DependencyType},
-    names::PackageName,
+    names::{PackageName, PackageNames},
     source::{
         git_index::GitBasedSource,
+        ids::PackageId,
         pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
         specifiers::DependencySpecifiers,
-        traits::{PackageSource, RefreshOptions, ResolveOptions},
+        traits::{GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions},
         PackageSources,
     },
     Project, RefreshedSources, DEFAULT_INDEX_NAME, SCRIPTS_LINK_FOLDER,
 };
 use semver::VersionReq;
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, path::Path, str::FromStr, sync::Arc};
 
 #[derive(Debug, Args)]
 pub struct InitCommand {}
@@ -197,7 +198,7 @@ impl InitCommand {
                 let (v_id, pkg_ref) = source
                     .resolve(
                         &PesdeDependencySpecifier {
-                            name: scripts_pkg_name,
+                            name: scripts_pkg_name.clone(),
                             version: VersionReq::STAR,
                             index: None,
                             target: None,
@@ -214,8 +215,22 @@ impl InitCommand {
                     .pop_last()
                     .context("scripts package not found")?;
 
-                let Some(scripts) = pkg_ref.target.scripts().filter(|s| !s.is_empty()) else {
-                    anyhow::bail!("scripts package has no scripts. this is an issue with the index")
+                let id = Arc::new(PackageId::new(PackageNames::Pesde(scripts_pkg_name), v_id));
+
+                let target = source
+                    .get_target(
+                        &pkg_ref,
+                        &GetTargetOptions {
+                            project: project.clone(),
+                            // HACK: the pesde package source doesn't use the path, so we can just use an empty one
+                            path: Arc::from(Path::new("")),
+                            id: id.clone(),
+                        },
+                    )
+                    .await?;
+
+                let Some(scripts) = target.scripts().filter(|s| !s.is_empty()) else {
+                    anyhow::bail!("scripts package has no scripts.")
                 };
 
                 let scripts_field = &mut manifest["scripts"]
@@ -231,9 +246,9 @@ impl InitCommand {
                     .or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
 
                 let field = &mut dev_deps["scripts"];
-                field["name"] = toml_edit::value(pkg_ref.name.to_string());
-                field["version"] = toml_edit::value(format!("^{}", v_id.version()));
-                field["target"] = toml_edit::value(v_id.target().to_string());
+                field["name"] = toml_edit::value(id.name().to_string());
+                field["version"] = toml_edit::value(format!("^{}", id.version_id().version()));
+                field["target"] = toml_edit::value(id.version_id().target().to_string());
 
                 for (alias, (spec, ty)) in pkg_ref.dependencies {
                     if ty != DependencyType::Peer {
@@ -247,8 +262,11 @@ impl InitCommand {
                     let field = &mut dev_deps[alias];
                     field["name"] = toml_edit::value(spec.name.to_string());
                     field["version"] = toml_edit::value(spec.version.to_string());
-                    field["target"] =
-                        toml_edit::value(spec.target.unwrap_or_else(|| *v_id.target()).to_string());
+                    field["target"] = toml_edit::value(
+                        spec.target
+                            .unwrap_or_else(|| *id.version_id().target())
+                            .to_string(),
+                    );
                 }
             } else {
                 println!(

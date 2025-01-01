@@ -131,6 +131,7 @@ impl PublishCommand {
                                 .join(PACKAGES_CONTAINER_NAME)
                                 .join(node.container_folder(id));
 
+                            let id = Arc::new(id.clone());
                             let node = node.clone();
                             let refreshed_sources = refreshed_sources.clone();
 
@@ -151,6 +152,7 @@ impl PublishCommand {
                                         &GetTargetOptions {
                                             project,
                                             path: Arc::from(container_folder),
+                                            id,
                                         },
                                     )
                                     .await?;

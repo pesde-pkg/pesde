@@ -1,22 +1,15 @@
 use std::collections::BTreeMap;
 
-use semver::Version;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     manifest::DependencyType,
-    names::wally::WallyPackageName,
     source::{wally::WallyPackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
 
 /// A Wally package reference
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct WallyPackageRef {
-    /// The name of the package
-    #[serde(rename = "wally")]
-    pub name: WallyPackageName,
-    /// The version of the package
-    pub version: Version,
     /// The index of the package
     #[serde(
         serialize_with = "crate::util::serialize_gix_url",

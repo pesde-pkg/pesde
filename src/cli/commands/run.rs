@@ -111,6 +111,7 @@ impl RunCommand {
                     &GetTargetOptions {
                         project,
                         path: Arc::from(container_folder.as_path()),
+                        id: Arc::new(id),
                     },
                 )
                 .await?;

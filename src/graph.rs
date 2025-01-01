@@ -50,7 +50,7 @@ impl DependencyGraphNode {
         if self.pkg_ref.like_wally() {
             return PathBuf::from(format!(
                 "{}_{}@{}",
-                package_id.name().as_str().0,
+                name.as_str().0,
                 name.as_str().1,
                 version
             ))
