@@ -3,7 +3,6 @@ use crate::{
     source::{IGNORED_DIRS, IGNORED_FILES},
 };
 use fs_err::tokio as fs;
-use futures::future::try_join_all;
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -16,6 +15,7 @@ use tempfile::Builder;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     pin,
+    task::JoinSet,
 };
 use tracing::instrument;
 
@@ -128,38 +128,44 @@ impl PackageFs {
     ) -> std::io::Result<()> {
         match self {
             PackageFs::CAS(entries) => {
-                try_join_all(entries.iter().map(|(path, entry)| {
-                    let destination = destination.as_ref().to_path_buf();
-                    let cas_path = cas_path.as_ref().to_path_buf();
-
-                    async move {
+                let mut tasks = entries
+                    .iter()
+                    .map(|(path, entry)| {
+                        let destination = destination.as_ref().to_path_buf();
+                        let cas_path = cas_path.as_ref().to_path_buf();
                         let path = path.to_path(destination);
+                        let entry = entry.clone();
 
-                        match entry {
-                            FsEntry::File(hash) => {
-                                if let Some(parent) = path.parent() {
-                                    fs::create_dir_all(parent).await?;
+                        async move {
+                            match entry {
+                                FsEntry::File(hash) => {
+                                    if let Some(parent) = path.parent() {
+                                        fs::create_dir_all(parent).await?;
+                                    }
+
+                                    let (prefix, rest) = hash.split_at(2);
+                                    let cas_file_path = cas_path.join(prefix).join(rest);
+
+                                    if link {
+                                        fs::hard_link(cas_file_path, path).await?;
+                                    } else {
+                                        fs::copy(cas_file_path, &path).await?;
+                                        set_readonly(&path, false).await?;
+                                    }
                                 }
-
-                                let (prefix, rest) = hash.split_at(2);
-                                let cas_file_path = cas_path.join(prefix).join(rest);
-
-                                if link {
-                                    fs::hard_link(cas_file_path, path).await?;
-                                } else {
-                                    fs::copy(cas_file_path, &path).await?;
-                                    set_readonly(&path, false).await?;
+                                FsEntry::Directory => {
+                                    fs::create_dir_all(path).await?;
                                 }
                             }
-                            FsEntry::Directory => {
-                                fs::create_dir_all(path).await?;
-                            }
+
+                            Ok::<_, std::io::Error>(())
                         }
+                    })
+                    .collect::<JoinSet<_>>();
 
-                        Ok::<_, std::io::Error>(())
-                    }
-                }))
-                .await?;
+                while let Some(task) = tasks.join_next().await {
+                    task.unwrap()?;
+                }
             }
             PackageFs::Copy(src, target) => {
                 fs::create_dir_all(destination.as_ref()).await?;

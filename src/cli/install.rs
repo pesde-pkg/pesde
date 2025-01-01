@@ -13,7 +13,6 @@ use crate::cli::{
 use anyhow::Context;
 use colored::Colorize;
 use fs_err::tokio as fs;
-use futures::future::try_join_all;
 use pesde::{
     download_and_link::{filter_graph, DownloadAndLinkHooks, DownloadAndLinkOptions},
     graph::{ConvertableGraph, DependencyGraph, DownloadedGraph},
@@ -209,7 +208,7 @@ pub async fn install(
 
                 for target_kind in TargetKind::VARIANTS {
                     let folder = manifest.target.kind().packages_folder(target_kind);
-                    let package_dir = project.package_dir();
+                    let package_dir = project.package_dir().to_path_buf();
 
                     deleted_folders
                         .entry(folder.to_string())
@@ -229,9 +228,10 @@ pub async fn install(
                         });
                 }
 
-                try_join_all(deleted_folders.into_values())
-                    .await
-                    .context("failed to remove package folders")?;
+                let mut tasks = deleted_folders.into_values().collect::<JoinSet<_>>();
+                while let Some(task) = tasks.join_next().await {
+                    task.unwrap()?;
+                }
             }
 
             root_progress.reset();

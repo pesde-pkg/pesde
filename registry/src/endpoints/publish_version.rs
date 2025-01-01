@@ -10,7 +10,6 @@ use actix_web::{web, web::Bytes, HttpResponse, Responder};
 use async_compression::Level;
 use convert_case::{Case, Casing};
 use fs_err::tokio as fs;
-use futures::{future::join_all, join};
 use git2::{Remote, Repository, Signature};
 use pesde::{
     manifest::Manifest,
@@ -31,7 +30,10 @@ use std::{
     collections::{BTreeSet, HashMap},
     io::{Cursor, Write},
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    task::JoinSet,
+};
 
 fn signature<'a>() -> Signature<'a> {
     Signature::now(
@@ -487,29 +489,43 @@ pub async fn publish_package(
 
     let version_id = VersionId::new(manifest.version.clone(), manifest.target.kind());
 
-    let (a, b, c) = join!(
-        app_state
-            .storage
-            .store_package(&manifest.name, &version_id, bytes.to_vec()),
-        join_all(
-            docs_pages
-                .into_iter()
-                .map(|(hash, content)| app_state.storage.store_doc(hash, content)),
-        ),
-        async {
-            if let Some(readme) = readme {
-                app_state
-                    .storage
-                    .store_readme(&manifest.name, &version_id, readme)
-                    .await
-            } else {
-                Ok(())
-            }
-        }
-    );
-    a?;
-    b.into_iter().collect::<Result<(), _>>()?;
-    c?;
+    let mut tasks = docs_pages
+        .into_iter()
+        .map(|(hash, content)| {
+            let app_state = app_state.clone();
+            async move { app_state.storage.store_doc(hash, content).await }
+        })
+        .collect::<JoinSet<_>>();
+
+    {
+        let app_state = app_state.clone();
+        let name = manifest.name.clone();
+        let version_id = version_id.clone();
+
+        tasks.spawn(async move {
+            app_state
+                .storage
+                .store_package(&name, &version_id, bytes.to_vec())
+                .await
+        });
+    }
+
+    if let Some(readme) = readme {
+        let app_state = app_state.clone();
+        let name = manifest.name.clone();
+        let version_id = version_id.clone();
+
+        tasks.spawn(async move {
+            app_state
+                .storage
+                .store_readme(&name, &version_id, readme)
+                .await
+        });
+    }
+
+    while let Some(res) = tasks.join_next().await {
+        res.unwrap()?;
+    }
 
     Ok(HttpResponse::Ok().body(format!(
         "published {}@{} {}",
