@@ -1,15 +1,14 @@
 use crate::{
-    graph::{DependencyGraph, DownloadedDependencyGraphNode},
-    manifest::DependencyType,
+    graph::{DependencyGraph, DependencyGraphNode},
     reporters::{DownloadProgressReporter, DownloadsReporter},
     source::{
+        fs::PackageFs,
         ids::PackageId,
-        traits::{DownloadOptions, GetTargetOptions, PackageRef, PackageSource, RefreshOptions},
+        traits::{DownloadOptions, PackageRef, PackageSource, RefreshOptions},
     },
-    Project, RefreshedSources, PACKAGES_CONTAINER_NAME,
+    Project, RefreshedSources,
 };
 use async_stream::try_stream;
-use fs_err::tokio as fs;
 use futures::Stream;
 use std::{num::NonZeroUsize, sync::Arc};
 use tokio::{sync::Semaphore, task::JoinSet};
@@ -24,12 +23,6 @@ pub(crate) struct DownloadGraphOptions<Reporter> {
     pub reporter: Option<Arc<Reporter>>,
     /// The refreshed sources.
     pub refreshed_sources: RefreshedSources,
-    /// Whether to skip dev dependencies.
-    pub prod: bool,
-    /// Whether to write the downloaded packages to disk.
-    pub write: bool,
-    /// Whether to download Wally packages.
-    pub wally: bool,
     /// The max number of concurrent network requests.
     pub network_concurrency: NonZeroUsize,
 }
@@ -44,9 +37,6 @@ where
             reqwest,
             reporter: None,
             refreshed_sources: Default::default(),
-            prod: false,
-            write: false,
-            wally: false,
             network_concurrency: NonZeroUsize::new(16).unwrap(),
         }
     }
@@ -63,24 +53,6 @@ where
         self
     }
 
-    /// Sets whether to skip dev dependencies.
-    pub(crate) fn prod(mut self, prod: bool) -> Self {
-        self.prod = prod;
-        self
-    }
-
-    /// Sets whether to write the downloaded packages to disk.
-    pub(crate) fn write(mut self, write: bool) -> Self {
-        self.write = write;
-        self
-    }
-
-    /// Sets whether to download Wally packages.
-    pub(crate) fn wally(mut self, wally: bool) -> Self {
-        self.wally = wally;
-        self
-    }
-
     /// Sets the max number of concurrent network requests.
     pub(crate) fn network_concurrency(mut self, network_concurrency: NonZeroUsize) -> Self {
         self.network_concurrency = network_concurrency;
@@ -94,9 +66,6 @@ impl<Reporter> Clone for DownloadGraphOptions<Reporter> {
             reqwest: self.reqwest.clone(),
             reporter: self.reporter.clone(),
             refreshed_sources: self.refreshed_sources.clone(),
-            prod: self.prod,
-            write: self.write,
-            wally: self.wally,
             network_concurrency: self.network_concurrency,
         }
     }
@@ -104,14 +73,14 @@ impl<Reporter> Clone for DownloadGraphOptions<Reporter> {
 
 impl Project {
     /// Downloads a graph of dependencies.
-    #[instrument(skip_all, fields(prod = options.prod, wally = options.wally, write = options.write), level = "debug")]
+    #[instrument(skip_all, level = "debug")]
     pub(crate) async fn download_graph<Reporter>(
         &self,
         graph: &DependencyGraph,
         options: DownloadGraphOptions<Reporter>,
     ) -> Result<
         impl Stream<
-            Item = Result<(DownloadedDependencyGraphNode, PackageId), errors::DownloadGraphError>,
+            Item = Result<(PackageId, DependencyGraphNode, PackageFs), errors::DownloadGraphError>,
         >,
         errors::DownloadGraphError,
     >
@@ -122,21 +91,13 @@ impl Project {
             reqwest,
             reporter,
             refreshed_sources,
-            prod,
-            write,
-            wally,
             network_concurrency,
         } = options;
-
-        let manifest = self.deser_manifest().await?;
-        let manifest_target_kind = manifest.target.kind();
 
         let semaphore = Arc::new(Semaphore::new(network_concurrency.get()));
 
         let mut tasks = graph
             .iter()
-            // we need to download pesde packages first, since scripts (for target finding for example) can depend on them
-            .filter(|(_, node)| node.pkg_ref.like_wally() == wally)
             .map(|(package_id, node)| {
                 let span = tracing::info_span!("download", package_id = package_id.to_string());
 
@@ -144,7 +105,6 @@ impl Project {
                 let reqwest = reqwest.clone();
                 let reporter = reporter.clone();
                 let refreshed_sources = refreshed_sources.clone();
-                let package_dir = project.package_dir().to_path_buf();
                 let semaphore = semaphore.clone();
                 let package_id = Arc::new(package_id.clone());
                 let node = node.clone();
@@ -169,15 +129,6 @@ impl Project {
                             },
                         )
                         .await?;
-
-                    let container_folder = package_dir
-                        .join(
-                            manifest_target_kind.packages_folder(package_id.version_id().target()),
-                        )
-                        .join(PACKAGES_CONTAINER_NAME)
-                        .join(node.container_folder(&package_id));
-
-                    fs::create_dir_all(&container_folder).await?;
 
                     tracing::debug!("downloading");
 
@@ -213,33 +164,7 @@ impl Project {
 
                     tracing::debug!("downloaded");
 
-                    let mut target = None;
-
-                    if write {
-                        if !prod || node.resolved_ty != DependencyType::Dev {
-                            fs.write_to(&container_folder, project.cas_dir(), true)
-                                .await?;
-
-                            target = Some(
-                                source
-                                    .get_target(
-                                        &node.pkg_ref,
-                                        &GetTargetOptions {
-                                            project,
-                                            path: Arc::from(container_folder),
-                                            id: package_id.clone(),
-                                        },
-                                    )
-                                    .await
-                                    .map_err(Box::new)?,
-                            );
-                        } else {
-                            tracing::debug!("skipping write to disk, dev dependency in prod mode");
-                        }
-                    }
-
-                    let downloaded_node = DownloadedDependencyGraphNode { node, target };
-                    Ok((downloaded_node, Arc::into_inner(package_id).unwrap()))
+                    Ok((Arc::into_inner(package_id).unwrap(), node, fs))
                 }
                 .instrument(span)
             })
@@ -263,10 +188,6 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DownloadGraphError {
-        /// An error occurred deserializing the project manifest
-        #[error("error deserializing project manifest")]
-        ManifestDeserializationFailed(#[from] crate::errors::ManifestReadError),
-
         /// An error occurred refreshing a package source
         #[error("failed to refresh package source")]
         RefreshFailed(#[from] crate::source::errors::RefreshError),
@@ -278,9 +199,5 @@ pub mod errors {
         /// Error downloading a package
         #[error("failed to download package")]
         DownloadFailed(#[from] Box<crate::source::errors::DownloadError>),
-
-        /// Error getting target
-        #[error("failed to get target")]
-        GetTargetFailed(#[from] Box<crate::source::errors::GetTargetError>),
     }
 }

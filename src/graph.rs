@@ -47,7 +47,7 @@ impl DependencyGraphNode {
     pub fn container_folder(&self, package_id: &PackageId) -> PathBuf {
         let (name, version) = package_id.parts();
 
-        if self.pkg_ref.like_wally() {
+        if self.pkg_ref.is_wally_package() {
             return PathBuf::from(format!(
                 "{}_{}@{}",
                 name.as_str().0,
@@ -66,18 +66,17 @@ impl DependencyGraphNode {
 /// A graph of `DependencyGraphNode`s
 pub type DependencyGraph = Graph<DependencyGraphNode>;
 
-/// A downloaded dependency graph node, i.e. a `DependencyGraphNode` with a `Target`
+/// A dependency graph node with a `Target`
 #[derive(Debug, Clone)]
-pub struct DownloadedDependencyGraphNode {
+pub struct DependencyGraphNodeWithTarget {
     /// The target of the package
-    /// None only if download was called with write = false or is a dev dependency in a prod install
-    pub target: Option<Target>,
+    pub target: Target,
     /// The node
     pub node: DependencyGraphNode,
 }
 
 /// A graph of `DownloadedDependencyGraphNode`s
-pub type DownloadedGraph = Graph<DownloadedDependencyGraphNode>;
+pub type DependencyGraphWithTarget = Graph<DependencyGraphNodeWithTarget>;
 
 /// A trait for converting a graph to a different type of graph
 pub trait ConvertableGraph<Node> {
@@ -85,7 +84,7 @@ pub trait ConvertableGraph<Node> {
     fn convert(self) -> Graph<Node>;
 }
 
-impl ConvertableGraph<DependencyGraphNode> for DownloadedGraph {
+impl ConvertableGraph<DependencyGraphNode> for DependencyGraphWithTarget {
     fn convert(self) -> Graph<DependencyGraphNode> {
         self.into_iter().map(|(id, node)| (id, node.node)).collect()
     }

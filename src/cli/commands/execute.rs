@@ -203,8 +203,7 @@ impl ExecuteCommand {
                         DownloadAndLinkOptions::<CliReporter<Stderr>, ()>::new(reqwest)
                             .reporter(reporter)
                             .refreshed_sources(refreshed_sources)
-                            .prod(true)
-                            .write(true),
+                            .prod(true),
                     )
                     .await
                     .context("failed to download and link dependencies")?;

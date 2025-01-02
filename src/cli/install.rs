@@ -5,6 +5,7 @@ use std::{
     time::Instant,
 };
 
+use super::files::make_executable;
 use crate::cli::{
     bin_dir,
     reporters::{self, CliReporter},
@@ -15,14 +16,12 @@ use colored::Colorize;
 use fs_err::tokio as fs;
 use pesde::{
     download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions},
-    graph::{DependencyGraph, DownloadedGraph},
+    graph::{DependencyGraph, DependencyGraphWithTarget},
     lockfile::Lockfile,
     manifest::{target::TargetKind, DependencyType},
     Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use tokio::task::JoinSet;
-
-use super::files::make_executable;
 
 fn bin_link_file(alias: &str) -> String {
     let mut all_combinations = BTreeSet::new();
@@ -63,11 +62,11 @@ impl DownloadAndLinkHooks for InstallHooks {
 
     async fn on_bins_downloaded(
         &self,
-        downloaded_graph: &DownloadedGraph,
+        graph: &DependencyGraphWithTarget,
     ) -> Result<(), Self::Error> {
-        let mut tasks = downloaded_graph
+        let mut tasks = graph
             .values()
-            .filter(|node| node.target.as_ref().is_some_and(|t| t.bin_path().is_some()))
+            .filter(|node| node.target.bin_path().is_some())
             .filter_map(|node| node.node.direct.as_ref())
             .map(|(alias, _, _)| alias)
             .filter(|alias| {
@@ -249,51 +248,46 @@ pub async fn install(
                 .context("failed to build dependency graph")?;
             let graph = Arc::new(graph);
 
-            root_progress.reset();
-            root_progress.set_length(0);
-            root_progress.set_message("download");
-            root_progress.set_style(reporters::root_progress_style_with_progress());
-
-            let hooks = InstallHooks {
-                bin_folder: bin_dir().await?,
-            };
-
-            #[allow(unused_variables)]
-            let downloaded_graph = project
-                .download_and_link(
-                    &graph,
-                    DownloadAndLinkOptions::<CliReporter, InstallHooks>::new(reqwest.clone())
-                        .reporter(
-                            #[cfg(feature = "patches")]
-                            reporter.clone(),
-                            #[cfg(not(feature = "patches"))]
-                            reporter,
-                        )
-                        .hooks(hooks)
-                        .refreshed_sources(refreshed_sources)
-                        .prod(options.prod)
-                        .write(options.write)
-                        .network_concurrency(options.network_concurrency),
-                )
-                .await
-                .context("failed to download and link dependencies")?;
-
-            #[cfg(feature = "patches")]
             if options.write {
-                use pesde::{download_and_link::filter_graph, graph::ConvertableGraph};
-
                 root_progress.reset();
                 root_progress.set_length(0);
-                root_progress.set_message("patch");
+                root_progress.set_message("download");
+                root_progress.set_style(reporters::root_progress_style_with_progress());
 
-                project
-                    .apply_patches(
-                        &Arc::into_inner(filter_graph(&downloaded_graph, options.prod))
-                            .unwrap()
-                            .convert(),
-                        reporter,
+                let hooks = InstallHooks {
+                    bin_folder: bin_dir().await?,
+                };
+
+                #[allow(unused_variables)]
+                let downloaded_graph = project
+                    .download_and_link(
+                        &graph,
+                        DownloadAndLinkOptions::<CliReporter, InstallHooks>::new(reqwest.clone())
+                            .reporter(
+                                #[cfg(feature = "patches")]
+                                reporter.clone(),
+                                #[cfg(not(feature = "patches"))]
+                                reporter,
+                            )
+                            .hooks(hooks)
+                            .refreshed_sources(refreshed_sources)
+                            .prod(options.prod)
+                            .network_concurrency(options.network_concurrency),
                     )
-                    .await?;
+                    .await
+                    .context("failed to download and link dependencies")?;
+
+                #[cfg(feature = "patches")]
+                {
+                    use pesde::graph::ConvertableGraph;
+                    root_progress.reset();
+                    root_progress.set_length(0);
+                    root_progress.set_message("patch");
+
+                    project
+                        .apply_patches(&downloaded_graph.convert(), reporter)
+                        .await?;
+                }
             }
 
             root_progress.set_message("finish");

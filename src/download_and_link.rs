@@ -1,33 +1,29 @@
 use crate::{
     download::DownloadGraphOptions,
-    graph::{DependencyGraph, DownloadedGraph},
+    graph::{
+        DependencyGraph, DependencyGraphNode, DependencyGraphNodeWithTarget,
+        DependencyGraphWithTarget,
+    },
     manifest::DependencyType,
     reporters::DownloadsReporter,
-    Project, RefreshedSources,
+    source::{
+        ids::PackageId,
+        traits::{GetTargetOptions, PackageRef, PackageSource},
+    },
+    Project, RefreshedSources, PACKAGES_CONTAINER_NAME,
 };
+use fs_err::tokio as fs;
 use futures::TryStreamExt;
 use std::{
+    collections::{BTreeMap, HashMap},
     convert::Infallible,
     future::{self, Future},
     num::NonZeroUsize,
+    path::PathBuf,
     sync::Arc,
 };
+use tokio::{pin, task::JoinSet};
 use tracing::{instrument, Instrument};
-
-/// Filters a graph to only include production dependencies, if `prod` is `true`
-pub fn filter_graph(graph: &DownloadedGraph, prod: bool) -> Arc<DownloadedGraph> {
-    if !prod {
-        return Arc::new(graph.clone());
-    }
-
-    Arc::new(
-        graph
-            .iter()
-            .filter(|(_, node)| node.node.resolved_ty != DependencyType::Dev)
-            .map(|(id, node)| (id.clone(), node.clone()))
-            .collect(),
-    )
-}
 
 /// Hooks to perform actions after certain events during download and linking.
 #[allow(unused_variables)]
@@ -39,7 +35,7 @@ pub trait DownloadAndLinkHooks {
     /// contains all downloaded packages.
     fn on_scripts_downloaded(
         &self,
-        downloaded_graph: &DownloadedGraph,
+        graph: &DependencyGraphWithTarget,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send {
         future::ready(Ok(()))
     }
@@ -48,7 +44,7 @@ pub trait DownloadAndLinkHooks {
     /// `downloaded_graph` contains all downloaded packages.
     fn on_bins_downloaded(
         &self,
-        downloaded_graph: &DownloadedGraph,
+        graph: &DependencyGraphWithTarget,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send {
         future::ready(Ok(()))
     }
@@ -57,7 +53,7 @@ pub trait DownloadAndLinkHooks {
     /// `downloaded_graph` contains all downloaded packages.
     fn on_all_downloaded(
         &self,
-        downloaded_graph: &DownloadedGraph,
+        graph: &DependencyGraphWithTarget,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send {
         future::ready(Ok(()))
     }
@@ -80,8 +76,6 @@ pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
     pub refreshed_sources: RefreshedSources,
     /// Whether to skip dev dependencies.
     pub prod: bool,
-    /// Whether to write the downloaded packages to disk.
-    pub write: bool,
     /// The max number of concurrent network requests.
     pub network_concurrency: NonZeroUsize,
 }
@@ -99,7 +93,6 @@ where
             hooks: None,
             refreshed_sources: Default::default(),
             prod: false,
-            write: true,
             network_concurrency: NonZeroUsize::new(16).unwrap(),
         }
     }
@@ -128,12 +121,6 @@ where
         self
     }
 
-    /// Sets whether to write the downloaded packages to disk.
-    pub fn write(mut self, write: bool) -> Self {
-        self.write = write;
-        self
-    }
-
     /// Sets the max number of concurrent network requests.
     pub fn network_concurrency(mut self, network_concurrency: NonZeroUsize) -> Self {
         self.network_concurrency = network_concurrency;
@@ -149,7 +136,6 @@ impl Clone for DownloadAndLinkOptions {
             hooks: self.hooks.clone(),
             refreshed_sources: self.refreshed_sources.clone(),
             prod: self.prod,
-            write: self.write,
             network_concurrency: self.network_concurrency,
         }
     }
@@ -157,12 +143,12 @@ impl Clone for DownloadAndLinkOptions {
 
 impl Project {
     /// Downloads a graph of dependencies and links them in the correct order
-    #[instrument(skip_all, fields(prod = options.prod, write = options.write), level = "debug")]
+    #[instrument(skip_all, fields(prod = options.prod), level = "debug")]
     pub async fn download_and_link<Reporter, Hooks>(
         &self,
         graph: &Arc<DependencyGraph>,
         options: DownloadAndLinkOptions<Reporter, Hooks>,
-    ) -> Result<DownloadedGraph, errors::DownloadAndLinkError<Hooks::Error>>
+    ) -> Result<DependencyGraphWithTarget, errors::DownloadAndLinkError<Hooks::Error>>
     where
         Reporter: for<'a> DownloadsReporter<'a> + 'static,
         Hooks: DownloadAndLinkHooks + 'static,
@@ -173,81 +159,151 @@ impl Project {
             hooks,
             refreshed_sources,
             prod,
-            write,
             network_concurrency,
         } = options;
 
         let graph = graph.clone();
         let reqwest = reqwest.clone();
+        let manifest = self.deser_manifest().await?;
 
-        let mut downloaded_graph = DownloadedGraph::new();
+        // step 1. download dependencies
+        let downloaded_graph = {
+            let mut downloaded_graph = BTreeMap::new();
 
-        let mut download_graph_options = DownloadGraphOptions::<Reporter>::new(reqwest.clone())
-            .refreshed_sources(refreshed_sources.clone())
-            .prod(prod)
-            .write(write)
-            .network_concurrency(network_concurrency);
+            let mut download_graph_options = DownloadGraphOptions::<Reporter>::new(reqwest.clone())
+                .refreshed_sources(refreshed_sources.clone())
+                .network_concurrency(network_concurrency);
 
-        if let Some(reporter) = reporter {
-            download_graph_options = download_graph_options.reporter(reporter.clone());
+            if let Some(reporter) = reporter {
+                download_graph_options = download_graph_options.reporter(reporter.clone());
+            }
+
+            let downloaded = self
+                .download_graph(&graph, download_graph_options.clone())
+                .instrument(tracing::debug_span!("download"))
+                .await?;
+            pin!(downloaded);
+
+            let mut tasks = JoinSet::new();
+
+            while let Some((id, node, fs)) = downloaded.try_next().await? {
+                let container_folder = self
+                    .package_dir()
+                    .join(
+                        manifest
+                            .target
+                            .kind()
+                            .packages_folder(id.version_id().target()),
+                    )
+                    .join(PACKAGES_CONTAINER_NAME)
+                    .join(node.container_folder(&id));
+
+                if prod && node.resolved_ty == DependencyType::Dev {
+                    continue;
+                }
+
+                downloaded_graph.insert(id, (node, container_folder.clone()));
+
+                let cas_dir = self.cas_dir().to_path_buf();
+                tasks.spawn(async move {
+                    fs::create_dir_all(&container_folder).await?;
+                    fs.write_to(container_folder, cas_dir, true).await
+                });
+            }
+
+            while let Some(task) = tasks.join_next().await {
+                task.unwrap()?;
+            }
+
+            downloaded_graph
+        };
+
+        let (downloaded_wally_graph, downloaded_other_graph) = downloaded_graph
+            .into_iter()
+            .partition::<HashMap<_, _>, _>(|(_, (node, _))| node.pkg_ref.is_wally_package());
+
+        let mut graph = Arc::new(DependencyGraphWithTarget::new());
+
+        async fn get_graph_targets<Hooks: DownloadAndLinkHooks>(
+            graph: &mut Arc<DependencyGraphWithTarget>,
+            project: &Project,
+            downloaded_graph: HashMap<PackageId, (DependencyGraphNode, PathBuf)>,
+        ) -> Result<(), errors::DownloadAndLinkError<Hooks::Error>> {
+            let mut tasks = downloaded_graph
+                .into_iter()
+                .map(|(id, (node, container_folder))| {
+                    let source = node.pkg_ref.source();
+                    let path = Arc::from(container_folder.as_path());
+                    let id = Arc::new(id.clone());
+                    let project = project.clone();
+
+                    async move {
+                        let target = source
+                            .get_target(
+                                &node.pkg_ref,
+                                &GetTargetOptions {
+                                    project,
+                                    path,
+                                    id: id.clone(),
+                                },
+                            )
+                            .await?;
+
+                        Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
+                            Arc::into_inner(id).unwrap(),
+                            DependencyGraphNodeWithTarget { node, target },
+                        ))
+                    }
+                })
+                .collect::<JoinSet<_>>();
+
+            while let Some(task) = tasks.join_next().await {
+                let (id, node) = task.unwrap()?;
+                Arc::get_mut(graph).unwrap().insert(id, node);
+            }
+
+            Ok(())
         }
 
-        // step 1. download pesde dependencies
-        self.download_graph(&graph, download_graph_options.clone())
-            .instrument(tracing::debug_span!("download (pesde)"))
-            .await?
-            .try_for_each(|(downloaded_node, id)| {
-                downloaded_graph.insert(id, downloaded_node);
-
-                future::ready(Ok(()))
-            })
+        // step 2. get targets for non Wally packages (Wally packages require the scripts packages to be downloaded first)
+        get_graph_targets::<Hooks>(&mut graph, self, downloaded_other_graph)
+            .instrument(tracing::debug_span!("get targets (non-wally)"))
             .await?;
 
-        // step 2. link pesde dependencies. do so without types
-        if write {
-            self.link_dependencies(filter_graph(&downloaded_graph, prod), false)
-                .instrument(tracing::debug_span!("link (pesde)"))
-                .await?;
-        }
+        self.link_dependencies(graph.clone(), false)
+            .instrument(tracing::debug_span!("link (non-wally)"))
+            .await?;
 
-        if let Some(ref hooks) = hooks {
+        if let Some(hooks) = &hooks {
             hooks
-                .on_scripts_downloaded(&downloaded_graph)
+                .on_scripts_downloaded(&graph)
                 .await
                 .map_err(errors::DownloadAndLinkError::Hook)?;
 
             hooks
-                .on_bins_downloaded(&downloaded_graph)
+                .on_bins_downloaded(&graph)
                 .await
                 .map_err(errors::DownloadAndLinkError::Hook)?;
         }
 
-        // step 3. download wally dependencies
-        self.download_graph(&graph, download_graph_options.clone().wally(true))
-            .instrument(tracing::debug_span!("download (wally)"))
-            .await?
-            .try_for_each(|(downloaded_node, id)| {
-                downloaded_graph.insert(id, downloaded_node);
-
-                future::ready(Ok(()))
-            })
+        // step 3. get targets for Wally packages
+        get_graph_targets::<Hooks>(&mut graph, self, downloaded_wally_graph)
+            .instrument(tracing::debug_span!("get targets (wally)"))
             .await?;
 
         // step 4. link ALL dependencies. do so with types
-        if write {
-            self.link_dependencies(filter_graph(&downloaded_graph, prod), true)
-                .instrument(tracing::debug_span!("link (all)"))
-                .await?;
-        }
+        self.link_dependencies(graph.clone(), true)
+            .instrument(tracing::debug_span!("link (all)"))
+            .await?;
 
-        if let Some(ref hooks) = hooks {
+        if let Some(hooks) = &hooks {
             hooks
-                .on_all_downloaded(&downloaded_graph)
+                .on_all_downloaded(&graph)
                 .await
                 .map_err(errors::DownloadAndLinkError::Hook)?;
         }
 
-        Ok(downloaded_graph)
+        Ok(Arc::into_inner(graph).unwrap())
     }
 }
 
@@ -259,6 +315,10 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum DownloadAndLinkError<E> {
+        /// Reading the manifest failed
+        #[error("error reading manifest")]
+        ManifestRead(#[from] crate::errors::ManifestReadError),
+
         /// An error occurred while downloading the graph
         #[error("error downloading graph")]
         DownloadGraph(#[from] crate::download::errors::DownloadGraphError),
@@ -270,5 +330,13 @@ pub mod errors {
         /// An error occurred while executing the pesde callback
         #[error("error executing hook")]
         Hook(#[source] E),
+
+        /// IO error
+        #[error("io error")]
+        Io(#[from] std::io::Error),
+
+        /// Error getting a target
+        #[error("error getting target")]
+        GetTarget(#[from] crate::source::errors::GetTargetError),
     }
 }

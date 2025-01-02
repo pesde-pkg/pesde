@@ -209,7 +209,7 @@ pub enum RobloxPlaceKind {
     Server,
 }
 
-impl TryInto<RobloxPlaceKind> for &TargetKind {
+impl TryInto<RobloxPlaceKind> for TargetKind {
     type Error = ();
 
     fn try_into(self) -> Result<RobloxPlaceKind, Self::Error> {

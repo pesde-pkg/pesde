@@ -1,5 +1,5 @@
 use crate::{
-    graph::{DownloadedDependencyGraphNode, DownloadedGraph},
+    graph::{DependencyGraphNodeWithTarget, DependencyGraphWithTarget},
     linking::generator::get_file_types,
     manifest::Manifest,
     scripts::{execute_script, ExecuteScriptHooks, ScriptName},
@@ -59,7 +59,7 @@ impl Project {
     #[instrument(skip(self, graph), level = "debug")]
     pub(crate) async fn link_dependencies(
         &self,
-        graph: Arc<DownloadedGraph>,
+        graph: Arc<DependencyGraphWithTarget>,
         with_types: bool,
     ) -> Result<(), errors::LinkingError> {
         let manifest = self.deser_manifest().await?;
@@ -87,7 +87,7 @@ impl Project {
                 let project = self.clone();
 
                 async move {
-                    let Some(lib_file) = node.target.as_ref().and_then(|t| t.lib_path()) else {
+                    let Some(lib_file) = node.target.lib_path() else {
                         return Ok((package_id, vec![]));
                     };
 
@@ -123,10 +123,8 @@ impl Project {
                         vec![]
                     };
 
-                    if let Some(build_files) = node
-                        .target
-                        .as_ref()
-                        .filter(|_| !node.node.pkg_ref.like_wally())
+                    if let Some(build_files) = Some(&node.target)
+                        .filter(|_| !node.node.pkg_ref.is_wally_package())
                         .and_then(|t| t.build_files())
                     {
                         execute_script(
@@ -165,7 +163,7 @@ impl Project {
         container_folder: &Path,
         root_container_folder: &Path,
         relative_container_folder: &Path,
-        node: &DownloadedDependencyGraphNode,
+        node: &DependencyGraphNodeWithTarget,
         package_id: &PackageId,
         alias: &str,
         package_types: &PackageTypes,
@@ -173,14 +171,10 @@ impl Project {
     ) -> Result<(), errors::LinkingError> {
         static NO_TYPES: Vec<String> = Vec::new();
 
-        let Some(target) = &node.target else {
-            return Ok(());
-        };
-
-        if let Some(lib_file) = target.lib_path() {
+        if let Some(lib_file) = node.target.lib_path() {
             let lib_module = generator::generate_lib_linking_module(
                 &generator::get_lib_require_path(
-                    &target.kind(),
+                    node.target.kind(),
                     base_folder,
                     lib_file,
                     container_folder,
@@ -200,7 +194,7 @@ impl Project {
             .await?;
         }
 
-        if let Some(bin_file) = target.bin_path() {
+        if let Some(bin_file) = node.target.bin_path() {
             let bin_module = generator::generate_bin_linking_module(
                 container_folder,
                 &generator::get_bin_require_path(base_folder, bin_file, container_folder),
@@ -214,7 +208,7 @@ impl Project {
             .await?;
         }
 
-        if let Some(scripts) = target.scripts().filter(|s| !s.is_empty()) {
+        if let Some(scripts) = node.target.scripts().filter(|s| !s.is_empty()) {
             let scripts_base =
                 create_and_canonicalize(self.package_dir().join(SCRIPTS_LINK_FOLDER).join(alias))
                     .await?;
@@ -241,7 +235,7 @@ impl Project {
 
     async fn link(
         &self,
-        graph: &Arc<DownloadedGraph>,
+        graph: &Arc<DependencyGraphWithTarget>,
         manifest: &Arc<Manifest>,
         package_types: &Arc<PackageTypes>,
         is_complete: bool,
@@ -322,10 +316,7 @@ impl Project {
                         let linker_folder = create_and_canonicalize(node_container_folder.join(
                             node.node.base_folder(
                                 package_id.version_id(),
-                                match &dependency_node.target {
-                                    Some(t) => t.kind(),
-                                    None => continue,
-                                },
+                                dependency_node.target.kind(),
                             ),
                         ))
                         .await?;

@@ -118,7 +118,7 @@ fn luau_style_path(path: &Path) -> String {
 /// Get the require path for a library
 #[allow(clippy::too_many_arguments)]
 pub fn get_lib_require_path(
-    target: &TargetKind,
+    target: TargetKind,
     base_dir: &Path,
     lib_file: &RelativePath,
     destination_dir: &Path,
