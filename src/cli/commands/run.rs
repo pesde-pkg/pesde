@@ -7,7 +7,7 @@ use pesde::{
     linking::generator::generate_bin_linking_module,
     names::{PackageName, PackageNames},
     source::traits::{GetTargetOptions, PackageRef, PackageSource, RefreshOptions},
-    Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
+    Project, MANIFEST_FILE_NAME,
 };
 use relative_path::RelativePathBuf;
 use std::{
@@ -86,17 +86,16 @@ impl RunCommand {
                 _ => anyhow::bail!("multiple versions found. use the package's alias instead."),
             };
 
-            let base_folder = project
-                .deser_manifest()
-                .await?
-                .target
-                .kind()
-                .packages_folder(id.version_id().target());
-            let container_folder = project
-                .package_dir()
-                .join(base_folder)
-                .join(PACKAGES_CONTAINER_NAME)
-                .join(node.container_folder(&id));
+            let container_folder = node.container_folder_from_project(
+                &id,
+                &project,
+                project
+                    .deser_manifest()
+                    .await
+                    .context("failed to deserialize manifest")?
+                    .target
+                    .kind(),
+            );
 
             let source = node.pkg_ref.source();
             source

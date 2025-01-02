@@ -9,6 +9,7 @@ use crate::{
         specifiers::DependencySpecifiers,
         traits::PackageRef,
     },
+    Project, PACKAGES_CONTAINER_NAME,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
@@ -60,6 +61,20 @@ impl DependencyGraphNode {
         PathBuf::from(name.escaped())
             .join(version.to_string())
             .join(name.as_str().1)
+    }
+
+    /// Returns the folder to store the contents of the package in starting from the project's package directory
+    pub fn container_folder_from_project(
+        &self,
+        package_id: &PackageId,
+        project: &Project,
+        manifest_target_kind: TargetKind,
+    ) -> PathBuf {
+        project
+            .package_dir()
+            .join(manifest_target_kind.packages_folder(package_id.version_id().target()))
+            .join(PACKAGES_CONTAINER_NAME)
+            .join(self.container_folder(package_id))
     }
 }
 

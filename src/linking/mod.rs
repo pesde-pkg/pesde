@@ -91,13 +91,11 @@ impl Project {
                         return Ok((package_id, vec![]));
                     };
 
-                    let container_folder = project
-                        .package_dir()
-                        .join(
-                            manifest_target_kind.packages_folder(package_id.version_id().target()),
-                        )
-                        .join(PACKAGES_CONTAINER_NAME)
-                        .join(node.node.container_folder(&package_id));
+                    let container_folder = node.node.container_folder_from_project(
+                        &package_id,
+                        &project,
+                        manifest_target_kind,
+                    );
 
                     let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
                         let lib_file = lib_file.to_path(&container_folder);

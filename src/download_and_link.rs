@@ -4,13 +4,13 @@ use crate::{
         DependencyGraph, DependencyGraphNode, DependencyGraphNodeWithTarget,
         DependencyGraphWithTarget,
     },
-    manifest::DependencyType,
+    manifest::{target::TargetKind, DependencyType},
     reporters::DownloadsReporter,
     source::{
         ids::PackageId,
         traits::{GetTargetOptions, PackageRef, PackageSource},
     },
-    Project, RefreshedSources, PACKAGES_CONTAINER_NAME,
+    Project, RefreshedSources,
 };
 use fs_err::tokio as fs;
 use futures::TryStreamExt;
@@ -19,7 +19,6 @@ use std::{
     convert::Infallible,
     future::{self, Future},
     num::NonZeroUsize,
-    path::PathBuf,
     sync::Arc,
 };
 use tokio::{pin, task::JoinSet};
@@ -187,22 +186,14 @@ impl Project {
             let mut tasks = JoinSet::new();
 
             while let Some((id, node, fs)) = downloaded.try_next().await? {
-                let container_folder = self
-                    .package_dir()
-                    .join(
-                        manifest
-                            .target
-                            .kind()
-                            .packages_folder(id.version_id().target()),
-                    )
-                    .join(PACKAGES_CONTAINER_NAME)
-                    .join(node.container_folder(&id));
+                let container_folder =
+                    node.container_folder_from_project(&id, self, manifest.target.kind());
 
                 if prod && node.resolved_ty == DependencyType::Dev {
                     continue;
                 }
 
-                downloaded_graph.insert(id, (node, container_folder.clone()));
+                downloaded_graph.insert(id, node);
 
                 let cas_dir = self.cas_dir().to_path_buf();
                 tasks.spawn(async move {
@@ -220,20 +211,24 @@ impl Project {
 
         let (downloaded_wally_graph, downloaded_other_graph) = downloaded_graph
             .into_iter()
-            .partition::<HashMap<_, _>, _>(|(_, (node, _))| node.pkg_ref.is_wally_package());
+            .partition::<HashMap<_, _>, _>(|(_, node)| node.pkg_ref.is_wally_package());
 
         let mut graph = Arc::new(DependencyGraphWithTarget::new());
 
         async fn get_graph_targets<Hooks: DownloadAndLinkHooks>(
             graph: &mut Arc<DependencyGraphWithTarget>,
             project: &Project,
-            downloaded_graph: HashMap<PackageId, (DependencyGraphNode, PathBuf)>,
+            manifest_target_kind: TargetKind,
+            downloaded_graph: HashMap<PackageId, DependencyGraphNode>,
         ) -> Result<(), errors::DownloadAndLinkError<Hooks::Error>> {
             let mut tasks = downloaded_graph
                 .into_iter()
-                .map(|(id, (node, container_folder))| {
+                .map(|(id, node)| {
                     let source = node.pkg_ref.source();
-                    let path = Arc::from(container_folder.as_path());
+                    let path = Arc::from(
+                        node.container_folder_from_project(&id, project, manifest_target_kind)
+                            .as_path(),
+                    );
                     let id = Arc::new(id.clone());
                     let project = project.clone();
 
@@ -266,9 +261,14 @@ impl Project {
         }
 
         // step 2. get targets for non Wally packages (Wally packages require the scripts packages to be downloaded first)
-        get_graph_targets::<Hooks>(&mut graph, self, downloaded_other_graph)
-            .instrument(tracing::debug_span!("get targets (non-wally)"))
-            .await?;
+        get_graph_targets::<Hooks>(
+            &mut graph,
+            self,
+            manifest.target.kind(),
+            downloaded_other_graph,
+        )
+        .instrument(tracing::debug_span!("get targets (non-wally)"))
+        .await?;
 
         self.link_dependencies(graph.clone(), false)
             .instrument(tracing::debug_span!("link (non-wally)"))
@@ -287,9 +287,14 @@ impl Project {
         }
 
         // step 3. get targets for Wally packages
-        get_graph_targets::<Hooks>(&mut graph, self, downloaded_wally_graph)
-            .instrument(tracing::debug_span!("get targets (wally)"))
-            .await?;
+        get_graph_targets::<Hooks>(
+            &mut graph,
+            self,
+            manifest.target.kind(),
+            downloaded_wally_graph,
+        )
+        .instrument(tracing::debug_span!("get targets (wally)"))
+        .await?;
 
         // step 4. link ALL dependencies. do so with types
         self.link_dependencies(graph.clone(), true)

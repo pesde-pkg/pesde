@@ -2,7 +2,7 @@ use crate::{
     graph::DependencyGraph,
     reporters::{PatchProgressReporter, PatchesReporter},
     source::ids::PackageId,
-    Project, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
+    Project, MANIFEST_FILE_NAME,
 };
 use fs_err::tokio as fs;
 use futures::TryFutureExt;
@@ -102,16 +102,8 @@ impl Project {
                     continue;
                 };
 
-                let container_folder = self
-                    .package_dir()
-                    .join(
-                        manifest
-                            .target
-                            .kind()
-                            .packages_folder(package_id.version_id().target()),
-                    )
-                    .join(PACKAGES_CONTAINER_NAME)
-                    .join(node.container_folder(&package_id));
+                let container_folder =
+                    node.container_folder_from_project(&package_id, self, manifest.target.kind());
 
                 let reporter = reporter.clone();
                 let span = tracing::info_span!("apply patch", package_id = package_id.to_string());

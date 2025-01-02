@@ -19,7 +19,7 @@ use pesde::{
         },
         PackageSources, IGNORED_DIRS, IGNORED_FILES,
     },
-    Project, RefreshedSources, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME, PACKAGES_CONTAINER_NAME,
+    Project, RefreshedSources, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
 use reqwest::{header::AUTHORIZATION, StatusCode};
 use semver::VersionReq;
@@ -121,15 +121,11 @@ impl PublishCommand {
                         .filter(|(_, node)| node.direct.is_some())
                         .map(|(id, node)| {
                             let project = project.clone();
-                            let base_folder = manifest
-                                .target
-                                .kind()
-                                .packages_folder(id.version_id().target());
-                            let container_folder = project
-                                .package_dir()
-                                .join(base_folder)
-                                .join(PACKAGES_CONTAINER_NAME)
-                                .join(node.container_folder(id));
+                            let container_folder = node.container_folder_from_project(
+                                id,
+                                &project,
+                                manifest.target.kind(),
+                            );
 
                             let id = Arc::new(id.clone());
                             let node = node.clone();
