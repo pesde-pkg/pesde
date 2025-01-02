@@ -6,13 +6,13 @@ use std::{fmt::Display, path::PathBuf};
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct PathDependencySpecifier {
-    /// The path to the package
-    pub path: PathBuf,
+	/// The path to the package
+	pub path: PathBuf,
 }
 impl DependencySpecifier for PathDependencySpecifier {}
 
 impl Display for PathDependencySpecifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "path:{}", self.path.display())
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "path:{}", self.path.display())
+	}
 }

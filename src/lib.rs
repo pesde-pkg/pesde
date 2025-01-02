@@ -4,23 +4,23 @@
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
 
 use crate::{
-    lockfile::Lockfile,
-    manifest::Manifest,
-    source::{
-        traits::{PackageSource, RefreshOptions},
-        PackageSources,
-    },
+	lockfile::Lockfile,
+	manifest::Manifest,
+	source::{
+		traits::{PackageSource, RefreshOptions},
+		PackageSources,
+	},
 };
 use async_stream::try_stream;
 use fs_err::tokio as fs;
 use futures::Stream;
 use gix::sec::identity::Account;
 use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-    hash::{Hash, Hasher},
-    path::{Path, PathBuf},
-    sync::Arc,
+	collections::{HashMap, HashSet},
+	fmt::Debug,
+	hash::{Hash, Hasher},
+	path::{Path, PathBuf},
+	sync::Arc,
 };
 use tracing::instrument;
 use wax::Pattern;
@@ -65,265 +65,265 @@ pub const SCRIPTS_LINK_FOLDER: &str = ".pesde";
 
 #[derive(Debug, Default)]
 struct AuthConfigShared {
-    tokens: HashMap<gix::Url, String>,
-    git_credentials: Option<Account>,
+	tokens: HashMap<gix::Url, String>,
+	git_credentials: Option<Account>,
 }
 
 /// Struct containing the authentication configuration
 #[derive(Debug, Clone, Default)]
 pub struct AuthConfig {
-    shared: Arc<AuthConfigShared>,
+	shared: Arc<AuthConfigShared>,
 }
 
 impl AuthConfig {
-    /// Create a new `AuthConfig`
-    pub fn new() -> Self {
-        AuthConfig::default()
-    }
+	/// Create a new `AuthConfig`
+	pub fn new() -> Self {
+		AuthConfig::default()
+	}
 
-    /// Set the tokens
-    /// Panics if the `AuthConfig` is shared
-    pub fn with_tokens<I: IntoIterator<Item = (gix::Url, S)>, S: AsRef<str>>(
-        mut self,
-        tokens: I,
-    ) -> Self {
-        Arc::get_mut(&mut self.shared).unwrap().tokens = tokens
-            .into_iter()
-            .map(|(url, s)| (url, s.as_ref().to_string()))
-            .collect();
-        self
-    }
+	/// Set the tokens
+	/// Panics if the `AuthConfig` is shared
+	pub fn with_tokens<I: IntoIterator<Item = (gix::Url, S)>, S: AsRef<str>>(
+		mut self,
+		tokens: I,
+	) -> Self {
+		Arc::get_mut(&mut self.shared).unwrap().tokens = tokens
+			.into_iter()
+			.map(|(url, s)| (url, s.as_ref().to_string()))
+			.collect();
+		self
+	}
 
-    /// Set the git credentials
-    /// Panics if the `AuthConfig` is shared
-    pub fn with_git_credentials(mut self, git_credentials: Option<Account>) -> Self {
-        Arc::get_mut(&mut self.shared).unwrap().git_credentials = git_credentials;
-        self
-    }
+	/// Set the git credentials
+	/// Panics if the `AuthConfig` is shared
+	pub fn with_git_credentials(mut self, git_credentials: Option<Account>) -> Self {
+		Arc::get_mut(&mut self.shared).unwrap().git_credentials = git_credentials;
+		self
+	}
 
-    /// Get the tokens
-    pub fn tokens(&self) -> &HashMap<gix::Url, String> {
-        &self.shared.tokens
-    }
+	/// Get the tokens
+	pub fn tokens(&self) -> &HashMap<gix::Url, String> {
+		&self.shared.tokens
+	}
 
-    /// Get the git credentials
-    pub fn git_credentials(&self) -> Option<&Account> {
-        self.shared.git_credentials.as_ref()
-    }
+	/// Get the git credentials
+	pub fn git_credentials(&self) -> Option<&Account> {
+		self.shared.git_credentials.as_ref()
+	}
 }
 
 #[derive(Debug)]
 struct ProjectShared {
-    package_dir: PathBuf,
-    workspace_dir: Option<PathBuf>,
-    data_dir: PathBuf,
-    auth_config: AuthConfig,
-    cas_dir: PathBuf,
+	package_dir: PathBuf,
+	workspace_dir: Option<PathBuf>,
+	data_dir: PathBuf,
+	auth_config: AuthConfig,
+	cas_dir: PathBuf,
 }
 
 /// The main struct of the pesde library, representing a project
 /// Unlike `ProjectShared`, this struct is `Send` and `Sync` and is cheap to clone because it is `Arc`-backed
 #[derive(Debug, Clone)]
 pub struct Project {
-    shared: Arc<ProjectShared>,
+	shared: Arc<ProjectShared>,
 }
 
 impl Project {
-    /// Create a new `Project`
-    pub fn new<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>, S: AsRef<Path>>(
-        package_dir: P,
-        workspace_dir: Option<Q>,
-        data_dir: R,
-        cas_dir: S,
-        auth_config: AuthConfig,
-    ) -> Self {
-        Project {
-            shared: Arc::new(ProjectShared {
-                package_dir: package_dir.as_ref().to_path_buf(),
-                workspace_dir: workspace_dir.map(|d| d.as_ref().to_path_buf()),
-                data_dir: data_dir.as_ref().to_path_buf(),
-                auth_config,
-                cas_dir: cas_dir.as_ref().to_path_buf(),
-            }),
-        }
-    }
+	/// Create a new `Project`
+	pub fn new<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>, S: AsRef<Path>>(
+		package_dir: P,
+		workspace_dir: Option<Q>,
+		data_dir: R,
+		cas_dir: S,
+		auth_config: AuthConfig,
+	) -> Self {
+		Project {
+			shared: Arc::new(ProjectShared {
+				package_dir: package_dir.as_ref().to_path_buf(),
+				workspace_dir: workspace_dir.map(|d| d.as_ref().to_path_buf()),
+				data_dir: data_dir.as_ref().to_path_buf(),
+				auth_config,
+				cas_dir: cas_dir.as_ref().to_path_buf(),
+			}),
+		}
+	}
 
-    /// The directory of the package
-    pub fn package_dir(&self) -> &Path {
-        &self.shared.package_dir
-    }
+	/// The directory of the package
+	pub fn package_dir(&self) -> &Path {
+		&self.shared.package_dir
+	}
 
-    /// The directory of the workspace this package belongs to, if any
-    pub fn workspace_dir(&self) -> Option<&Path> {
-        self.shared.workspace_dir.as_deref()
-    }
+	/// The directory of the workspace this package belongs to, if any
+	pub fn workspace_dir(&self) -> Option<&Path> {
+		self.shared.workspace_dir.as_deref()
+	}
 
-    /// The directory to store general-purpose data
-    pub fn data_dir(&self) -> &Path {
-        &self.shared.data_dir
-    }
+	/// The directory to store general-purpose data
+	pub fn data_dir(&self) -> &Path {
+		&self.shared.data_dir
+	}
 
-    /// The authentication configuration
-    pub fn auth_config(&self) -> &AuthConfig {
-        &self.shared.auth_config
-    }
+	/// The authentication configuration
+	pub fn auth_config(&self) -> &AuthConfig {
+		&self.shared.auth_config
+	}
 
-    /// The CAS (content-addressable storage) directory
-    pub fn cas_dir(&self) -> &Path {
-        &self.shared.cas_dir
-    }
+	/// The CAS (content-addressable storage) directory
+	pub fn cas_dir(&self) -> &Path {
+		&self.shared.cas_dir
+	}
 
-    /// Read the manifest file
-    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
-    pub async fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
-        let string = fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?;
-        Ok(string)
-    }
+	/// Read the manifest file
+	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
+	pub async fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
+		let string = fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?;
+		Ok(string)
+	}
 
-    // TODO: cache the manifest
-    /// Deserialize the manifest file
-    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
-    pub async fn deser_manifest(&self) -> Result<Manifest, errors::ManifestReadError> {
-        deser_manifest(self.package_dir()).await
-    }
+	// TODO: cache the manifest
+	/// Deserialize the manifest file
+	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
+	pub async fn deser_manifest(&self) -> Result<Manifest, errors::ManifestReadError> {
+		deser_manifest(self.package_dir()).await
+	}
 
-    /// Deserialize the manifest file of the workspace root
-    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
-    pub async fn deser_workspace_manifest(
-        &self,
-    ) -> Result<Option<Manifest>, errors::ManifestReadError> {
-        let Some(workspace_dir) = self.workspace_dir() else {
-            return Ok(None);
-        };
+	/// Deserialize the manifest file of the workspace root
+	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
+	pub async fn deser_workspace_manifest(
+		&self,
+	) -> Result<Option<Manifest>, errors::ManifestReadError> {
+		let Some(workspace_dir) = self.workspace_dir() else {
+			return Ok(None);
+		};
 
-        deser_manifest(workspace_dir).await.map(Some)
-    }
+		deser_manifest(workspace_dir).await.map(Some)
+	}
 
-    /// Write the manifest file
-    #[instrument(skip(self, manifest), level = "debug")]
-    pub async fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
-        fs::write(
-            self.package_dir().join(MANIFEST_FILE_NAME),
-            manifest.as_ref(),
-        )
-        .await
-    }
+	/// Write the manifest file
+	#[instrument(skip(self, manifest), level = "debug")]
+	pub async fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
+		fs::write(
+			self.package_dir().join(MANIFEST_FILE_NAME),
+			manifest.as_ref(),
+		)
+		.await
+	}
 
-    /// Deserialize the lockfile
-    #[instrument(skip(self), ret(level = "trace"), level = "debug")]
-    pub async fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
-        let string = fs::read_to_string(self.package_dir().join(LOCKFILE_FILE_NAME)).await?;
-        Ok(match toml::from_str(&string) {
-            Ok(lockfile) => lockfile,
-            Err(e) => {
-                #[allow(deprecated)]
-                let Ok(old_lockfile) = toml::from_str::<lockfile::old::LockfileOld>(&string) else {
-                    return Err(errors::LockfileReadError::Serde(e));
-                };
+	/// Deserialize the lockfile
+	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
+	pub async fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
+		let string = fs::read_to_string(self.package_dir().join(LOCKFILE_FILE_NAME)).await?;
+		Ok(match toml::from_str(&string) {
+			Ok(lockfile) => lockfile,
+			Err(e) => {
+				#[allow(deprecated)]
+				let Ok(old_lockfile) = toml::from_str::<lockfile::old::LockfileOld>(&string) else {
+					return Err(errors::LockfileReadError::Serde(e));
+				};
 
-                #[allow(deprecated)]
-                old_lockfile.to_new()
-            }
-        })
-    }
+				#[allow(deprecated)]
+				old_lockfile.to_new()
+			}
+		})
+	}
 
-    /// Write the lockfile
-    #[instrument(skip(self, lockfile), level = "debug")]
-    pub async fn write_lockfile(
-        &self,
-        lockfile: &Lockfile,
-    ) -> Result<(), errors::LockfileWriteError> {
-        let string = toml::to_string(lockfile)?;
-        fs::write(self.package_dir().join(LOCKFILE_FILE_NAME), string).await?;
-        Ok(())
-    }
+	/// Write the lockfile
+	#[instrument(skip(self, lockfile), level = "debug")]
+	pub async fn write_lockfile(
+		&self,
+		lockfile: &Lockfile,
+	) -> Result<(), errors::LockfileWriteError> {
+		let string = toml::to_string(lockfile)?;
+		fs::write(self.package_dir().join(LOCKFILE_FILE_NAME), string).await?;
+		Ok(())
+	}
 
-    /// Get the workspace members
-    #[instrument(skip(self), level = "debug")]
-    pub async fn workspace_members(
-        &self,
-        can_ref_self: bool,
-    ) -> Result<
-        impl Stream<Item = Result<(PathBuf, Manifest), errors::WorkspaceMembersError>>,
-        errors::WorkspaceMembersError,
-    > {
-        let dir = self.workspace_dir().unwrap_or(self.package_dir());
-        let manifest = deser_manifest(dir).await?;
+	/// Get the workspace members
+	#[instrument(skip(self), level = "debug")]
+	pub async fn workspace_members(
+		&self,
+		can_ref_self: bool,
+	) -> Result<
+		impl Stream<Item = Result<(PathBuf, Manifest), errors::WorkspaceMembersError>>,
+		errors::WorkspaceMembersError,
+	> {
+		let dir = self.workspace_dir().unwrap_or(self.package_dir());
+		let manifest = deser_manifest(dir).await?;
 
-        let members = matching_globs(
-            dir,
-            manifest.workspace_members.iter().map(String::as_str),
-            false,
-            can_ref_self,
-        )
-        .await?;
+		let members = matching_globs(
+			dir,
+			manifest.workspace_members.iter().map(String::as_str),
+			false,
+			can_ref_self,
+		)
+		.await?;
 
-        Ok(try_stream! {
-            for path in members {
-                let manifest = deser_manifest(&path).await?;
-                yield (path, manifest);
-            }
-        })
-    }
+		Ok(try_stream! {
+			for path in members {
+				let manifest = deser_manifest(&path).await?;
+				yield (path, manifest);
+			}
+		})
+	}
 }
 
 /// Gets all matching paths in a directory
 #[instrument(ret, level = "trace")]
 pub async fn matching_globs<'a, P: AsRef<Path> + Debug, I: IntoIterator<Item = &'a str> + Debug>(
-    dir: P,
-    globs: I,
-    relative: bool,
-    can_ref_self: bool,
+	dir: P,
+	globs: I,
+	relative: bool,
+	can_ref_self: bool,
 ) -> Result<HashSet<PathBuf>, errors::MatchingGlobsError> {
-    let (negative_globs, mut positive_globs): (HashSet<&str>, _) =
-        globs.into_iter().partition(|glob| glob.starts_with('!'));
+	let (negative_globs, mut positive_globs): (HashSet<&str>, _) =
+		globs.into_iter().partition(|glob| glob.starts_with('!'));
 
-    let include_self = positive_globs.remove(".") && can_ref_self;
+	let include_self = positive_globs.remove(".") && can_ref_self;
 
-    let negative_globs = wax::any(
-        negative_globs
-            .into_iter()
-            .map(|glob| wax::Glob::new(&glob[1..]))
-            .collect::<Result<Vec<_>, _>>()?,
-    )?;
-    let positive_globs = wax::any(
-        positive_globs
-            .into_iter()
-            .map(wax::Glob::new)
-            .collect::<Result<Vec<_>, _>>()?,
-    )?;
+	let negative_globs = wax::any(
+		negative_globs
+			.into_iter()
+			.map(|glob| wax::Glob::new(&glob[1..]))
+			.collect::<Result<Vec<_>, _>>()?,
+	)?;
+	let positive_globs = wax::any(
+		positive_globs
+			.into_iter()
+			.map(wax::Glob::new)
+			.collect::<Result<Vec<_>, _>>()?,
+	)?;
 
-    let mut read_dirs = vec![fs::read_dir(dir.as_ref().to_path_buf()).await?];
-    let mut paths = HashSet::new();
+	let mut read_dirs = vec![fs::read_dir(dir.as_ref().to_path_buf()).await?];
+	let mut paths = HashSet::new();
 
-    if include_self {
-        paths.insert(if relative {
-            PathBuf::new()
-        } else {
-            dir.as_ref().to_path_buf()
-        });
-    }
+	if include_self {
+		paths.insert(if relative {
+			PathBuf::new()
+		} else {
+			dir.as_ref().to_path_buf()
+		});
+	}
 
-    while let Some(mut read_dir) = read_dirs.pop() {
-        while let Some(entry) = read_dir.next_entry().await? {
-            let path = entry.path();
-            if entry.file_type().await?.is_dir() {
-                read_dirs.push(fs::read_dir(&path).await?);
-            }
+	while let Some(mut read_dir) = read_dirs.pop() {
+		while let Some(entry) = read_dir.next_entry().await? {
+			let path = entry.path();
+			if entry.file_type().await?.is_dir() {
+				read_dirs.push(fs::read_dir(&path).await?);
+			}
 
-            let relative_path = path.strip_prefix(dir.as_ref()).unwrap();
+			let relative_path = path.strip_prefix(dir.as_ref()).unwrap();
 
-            if positive_globs.is_match(relative_path) && !negative_globs.is_match(relative_path) {
-                paths.insert(if relative {
-                    relative_path.to_path_buf()
-                } else {
-                    path.to_path_buf()
-                });
-            }
-        }
-    }
+			if positive_globs.is_match(relative_path) && !negative_globs.is_match(relative_path) {
+				paths.insert(if relative {
+					relative_path.to_path_buf()
+				} else {
+					path.to_path_buf()
+				});
+			}
+		}
+	}
 
-    Ok(paths)
+	Ok(paths)
 }
 
 /// A struct containing sources already having been refreshed
@@ -331,184 +331,184 @@ pub async fn matching_globs<'a, P: AsRef<Path> + Debug, I: IntoIterator<Item = &
 pub struct RefreshedSources(Arc<tokio::sync::Mutex<HashSet<u64>>>);
 
 impl RefreshedSources {
-    /// Create a new empty `RefreshedSources`
-    pub fn new() -> Self {
-        RefreshedSources::default()
-    }
+	/// Create a new empty `RefreshedSources`
+	pub fn new() -> Self {
+		RefreshedSources::default()
+	}
 
-    /// Refreshes the source asynchronously if it has not already been refreshed.
-    /// Will prevent more refreshes of the same source.
-    pub async fn refresh(
-        &self,
-        source: &PackageSources,
-        options: &RefreshOptions,
-    ) -> Result<(), source::errors::RefreshError> {
-        let mut hasher = std::hash::DefaultHasher::new();
-        source.hash(&mut hasher);
-        let hash = hasher.finish();
+	/// Refreshes the source asynchronously if it has not already been refreshed.
+	/// Will prevent more refreshes of the same source.
+	pub async fn refresh(
+		&self,
+		source: &PackageSources,
+		options: &RefreshOptions,
+	) -> Result<(), source::errors::RefreshError> {
+		let mut hasher = std::hash::DefaultHasher::new();
+		source.hash(&mut hasher);
+		let hash = hasher.finish();
 
-        let mut refreshed_sources = self.0.lock().await;
+		let mut refreshed_sources = self.0.lock().await;
 
-        if refreshed_sources.insert(hash) {
-            source.refresh(options).await
-        } else {
-            Ok(())
-        }
-    }
+		if refreshed_sources.insert(hash) {
+			source.refresh(options).await
+		} else {
+			Ok(())
+		}
+	}
 }
 
 async fn deser_manifest(path: &Path) -> Result<Manifest, errors::ManifestReadError> {
-    let string = fs::read_to_string(path.join(MANIFEST_FILE_NAME)).await?;
-    toml::from_str(&string).map_err(|e| errors::ManifestReadError::Serde(path.to_path_buf(), e))
+	let string = fs::read_to_string(path.join(MANIFEST_FILE_NAME)).await?;
+	toml::from_str(&string).map_err(|e| errors::ManifestReadError::Serde(path.to_path_buf(), e))
 }
 
 /// Find the project & workspace directory roots
 pub async fn find_roots(
-    cwd: PathBuf,
+	cwd: PathBuf,
 ) -> Result<(PathBuf, Option<PathBuf>), errors::FindRootsError> {
-    let mut current_path = Some(cwd.clone());
-    let mut project_root = None::<PathBuf>;
-    let mut workspace_dir = None::<PathBuf>;
+	let mut current_path = Some(cwd.clone());
+	let mut project_root = None::<PathBuf>;
+	let mut workspace_dir = None::<PathBuf>;
 
-    async fn get_workspace_members(
-        path: &Path,
-    ) -> Result<HashSet<PathBuf>, errors::FindRootsError> {
-        let manifest = deser_manifest(path).await?;
+	async fn get_workspace_members(
+		path: &Path,
+	) -> Result<HashSet<PathBuf>, errors::FindRootsError> {
+		let manifest = deser_manifest(path).await?;
 
-        if manifest.workspace_members.is_empty() {
-            return Ok(HashSet::new());
-        }
+		if manifest.workspace_members.is_empty() {
+			return Ok(HashSet::new());
+		}
 
-        matching_globs(
-            path,
-            manifest.workspace_members.iter().map(String::as_str),
-            false,
-            false,
-        )
-        .await
-        .map_err(errors::FindRootsError::Globbing)
-    }
+		matching_globs(
+			path,
+			manifest.workspace_members.iter().map(String::as_str),
+			false,
+			false,
+		)
+		.await
+		.map_err(errors::FindRootsError::Globbing)
+	}
 
-    while let Some(path) = current_path {
-        current_path = path.parent().map(Path::to_path_buf);
+	while let Some(path) = current_path {
+		current_path = path.parent().map(Path::to_path_buf);
 
-        if !path.join(MANIFEST_FILE_NAME).exists() {
-            continue;
-        }
+		if !path.join(MANIFEST_FILE_NAME).exists() {
+			continue;
+		}
 
-        match (project_root.as_ref(), workspace_dir.as_ref()) {
-            (Some(project_root), Some(workspace_dir)) => {
-                return Ok((project_root.clone(), Some(workspace_dir.clone())));
-            }
+		match (project_root.as_ref(), workspace_dir.as_ref()) {
+			(Some(project_root), Some(workspace_dir)) => {
+				return Ok((project_root.clone(), Some(workspace_dir.clone())));
+			}
 
-            (Some(project_root), None) => {
-                if get_workspace_members(&path).await?.contains(project_root) {
-                    workspace_dir = Some(path);
-                }
-            }
+			(Some(project_root), None) => {
+				if get_workspace_members(&path).await?.contains(project_root) {
+					workspace_dir = Some(path);
+				}
+			}
 
-            (None, None) => {
-                if get_workspace_members(&path).await?.contains(&cwd) {
-                    // initializing a new member of a workspace
-                    return Ok((cwd, Some(path)));
-                } else {
-                    project_root = Some(path);
-                }
-            }
+			(None, None) => {
+				if get_workspace_members(&path).await?.contains(&cwd) {
+					// initializing a new member of a workspace
+					return Ok((cwd, Some(path)));
+				} else {
+					project_root = Some(path);
+				}
+			}
 
-            (None, Some(_)) => unreachable!(),
-        }
-    }
+			(None, Some(_)) => unreachable!(),
+		}
+	}
 
-    // we mustn't expect the project root to be found, as that would
-    // disable the ability to run pesde in a non-project directory (for example to init it)
-    Ok((project_root.unwrap_or(cwd), workspace_dir))
+	// we mustn't expect the project root to be found, as that would
+	// disable the ability to run pesde in a non-project directory (for example to init it)
+	Ok((project_root.unwrap_or(cwd), workspace_dir))
 }
 
 /// Errors that can occur when using the pesde library
 pub mod errors {
-    use std::path::PathBuf;
-    use thiserror::Error;
+	use std::path::PathBuf;
+	use thiserror::Error;
 
-    /// Errors that can occur when reading the manifest file
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum ManifestReadError {
-        /// An IO error occurred
-        #[error("io error reading manifest file")]
-        Io(#[from] std::io::Error),
+	/// Errors that can occur when reading the manifest file
+	#[derive(Debug, Error)]
+	#[non_exhaustive]
+	pub enum ManifestReadError {
+		/// An IO error occurred
+		#[error("io error reading manifest file")]
+		Io(#[from] std::io::Error),
 
-        /// An error occurred while deserializing the manifest file
-        #[error("error deserializing manifest file at {0}")]
-        Serde(PathBuf, #[source] toml::de::Error),
-    }
+		/// An error occurred while deserializing the manifest file
+		#[error("error deserializing manifest file at {0}")]
+		Serde(PathBuf, #[source] toml::de::Error),
+	}
 
-    /// Errors that can occur when reading the lockfile
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum LockfileReadError {
-        /// An IO error occurred
-        #[error("io error reading lockfile")]
-        Io(#[from] std::io::Error),
+	/// Errors that can occur when reading the lockfile
+	#[derive(Debug, Error)]
+	#[non_exhaustive]
+	pub enum LockfileReadError {
+		/// An IO error occurred
+		#[error("io error reading lockfile")]
+		Io(#[from] std::io::Error),
 
-        /// An error occurred while deserializing the lockfile
-        #[error("error deserializing lockfile")]
-        Serde(#[from] toml::de::Error),
-    }
+		/// An error occurred while deserializing the lockfile
+		#[error("error deserializing lockfile")]
+		Serde(#[from] toml::de::Error),
+	}
 
-    /// Errors that can occur when writing the lockfile
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum LockfileWriteError {
-        /// An IO error occurred
-        #[error("io error writing lockfile")]
-        Io(#[from] std::io::Error),
+	/// Errors that can occur when writing the lockfile
+	#[derive(Debug, Error)]
+	#[non_exhaustive]
+	pub enum LockfileWriteError {
+		/// An IO error occurred
+		#[error("io error writing lockfile")]
+		Io(#[from] std::io::Error),
 
-        /// An error occurred while serializing the lockfile
-        #[error("error serializing lockfile")]
-        Serde(#[from] toml::ser::Error),
-    }
+		/// An error occurred while serializing the lockfile
+		#[error("error serializing lockfile")]
+		Serde(#[from] toml::ser::Error),
+	}
 
-    /// Errors that can occur when finding workspace members
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum WorkspaceMembersError {
-        /// An error occurred parsing the manifest file
-        #[error("error parsing manifest file")]
-        ManifestParse(#[from] ManifestReadError),
+	/// Errors that can occur when finding workspace members
+	#[derive(Debug, Error)]
+	#[non_exhaustive]
+	pub enum WorkspaceMembersError {
+		/// An error occurred parsing the manifest file
+		#[error("error parsing manifest file")]
+		ManifestParse(#[from] ManifestReadError),
 
-        /// An error occurred interacting with the filesystem
-        #[error("error interacting with the filesystem")]
-        Io(#[from] std::io::Error),
+		/// An error occurred interacting with the filesystem
+		#[error("error interacting with the filesystem")]
+		Io(#[from] std::io::Error),
 
-        /// An error occurred while globbing
-        #[error("error globbing")]
-        Globbing(#[from] MatchingGlobsError),
-    }
+		/// An error occurred while globbing
+		#[error("error globbing")]
+		Globbing(#[from] MatchingGlobsError),
+	}
 
-    /// Errors that can occur when finding matching globs
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum MatchingGlobsError {
-        /// An error occurred interacting with the filesystem
-        #[error("error interacting with the filesystem")]
-        Io(#[from] std::io::Error),
+	/// Errors that can occur when finding matching globs
+	#[derive(Debug, Error)]
+	#[non_exhaustive]
+	pub enum MatchingGlobsError {
+		/// An error occurred interacting with the filesystem
+		#[error("error interacting with the filesystem")]
+		Io(#[from] std::io::Error),
 
-        /// An error occurred while building a glob
-        #[error("error building glob")]
-        BuildGlob(#[from] wax::BuildError),
-    }
+		/// An error occurred while building a glob
+		#[error("error building glob")]
+		BuildGlob(#[from] wax::BuildError),
+	}
 
-    /// Errors that can occur when finding project roots
-    #[derive(Debug, Error)]
-    #[non_exhaustive]
-    pub enum FindRootsError {
-        /// Reading the manifest failed
-        #[error("error reading manifest")]
-        ManifestRead(#[from] ManifestReadError),
+	/// Errors that can occur when finding project roots
+	#[derive(Debug, Error)]
+	#[non_exhaustive]
+	pub enum FindRootsError {
+		/// Reading the manifest failed
+		#[error("error reading manifest")]
+		ManifestRead(#[from] ManifestReadError),
 
-        /// Globbing failed
-        #[error("error globbing")]
-        Globbing(#[from] MatchingGlobsError),
-    }
+		/// Globbing failed
+		#[error("error globbing")]
+		Globbing(#[from] MatchingGlobsError),
+	}
 }

@@ -7,29 +7,29 @@ use std::fmt::Display;
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum DependencySpecifiers {
-    /// A pesde dependency specifier
-    Pesde(pesde::specifier::PesdeDependencySpecifier),
-    /// A Wally dependency specifier
-    #[cfg(feature = "wally-compat")]
-    Wally(crate::source::wally::specifier::WallyDependencySpecifier),
-    /// A Git dependency specifier
-    Git(crate::source::git::specifier::GitDependencySpecifier),
-    /// A workspace dependency specifier
-    Workspace(crate::source::workspace::specifier::WorkspaceDependencySpecifier),
-    /// A path dependency specifier
-    Path(crate::source::path::specifier::PathDependencySpecifier),
+	/// A pesde dependency specifier
+	Pesde(pesde::specifier::PesdeDependencySpecifier),
+	/// A Wally dependency specifier
+	#[cfg(feature = "wally-compat")]
+	Wally(crate::source::wally::specifier::WallyDependencySpecifier),
+	/// A Git dependency specifier
+	Git(crate::source::git::specifier::GitDependencySpecifier),
+	/// A workspace dependency specifier
+	Workspace(crate::source::workspace::specifier::WorkspaceDependencySpecifier),
+	/// A path dependency specifier
+	Path(crate::source::path::specifier::PathDependencySpecifier),
 }
 impl DependencySpecifier for DependencySpecifiers {}
 
 impl Display for DependencySpecifiers {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DependencySpecifiers::Pesde(specifier) => write!(f, "{specifier}"),
-            #[cfg(feature = "wally-compat")]
-            DependencySpecifiers::Wally(specifier) => write!(f, "{specifier}"),
-            DependencySpecifiers::Git(specifier) => write!(f, "{specifier}"),
-            DependencySpecifiers::Workspace(specifier) => write!(f, "{specifier}"),
-            DependencySpecifiers::Path(specifier) => write!(f, "{specifier}"),
-        }
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			DependencySpecifiers::Pesde(specifier) => write!(f, "{specifier}"),
+			#[cfg(feature = "wally-compat")]
+			DependencySpecifiers::Wally(specifier) => write!(f, "{specifier}"),
+			DependencySpecifiers::Git(specifier) => write!(f, "{specifier}"),
+			DependencySpecifiers::Workspace(specifier) => write!(f, "{specifier}"),
+			DependencySpecifiers::Path(specifier) => write!(f, "{specifier}"),
+		}
+	}
 }

@@ -1,29 +1,29 @@
 use crate::{
-    auth::{get_auth_from_env, Auth, UserIdExtractor},
-    search::make_search,
-    storage::{get_storage_from_env, Storage},
+	auth::{get_auth_from_env, Auth, UserIdExtractor},
+	search::make_search,
+	storage::{get_storage_from_env, Storage},
 };
 use actix_cors::Cors;
 use actix_governor::{Governor, GovernorConfigBuilder};
 use actix_web::{
-    middleware::{from_fn, Compress, NormalizePath, TrailingSlash},
-    rt::System,
-    web,
-    web::PayloadConfig,
-    App, HttpServer,
+	middleware::{from_fn, Compress, NormalizePath, TrailingSlash},
+	rt::System,
+	web,
+	web::PayloadConfig,
+	App, HttpServer,
 };
 use fs_err::tokio as fs;
 use pesde::{
-    source::{
-        pesde::PesdePackageSource,
-        traits::{PackageSource, RefreshOptions},
-    },
-    AuthConfig, Project,
+	source::{
+		pesde::PesdePackageSource,
+		traits::{PackageSource, RefreshOptions},
+	},
+	AuthConfig, Project,
 };
 use std::{env::current_dir, path::PathBuf};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+	fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 
 mod auth;
@@ -34,25 +34,25 @@ mod search;
 mod storage;
 
 pub fn make_reqwest() -> reqwest::Client {
-    reqwest::ClientBuilder::new()
-        .user_agent(concat!(
-            env!("CARGO_PKG_NAME"),
-            "/",
-            env!("CARGO_PKG_VERSION")
-        ))
-        .build()
-        .unwrap()
+	reqwest::ClientBuilder::new()
+		.user_agent(concat!(
+			env!("CARGO_PKG_NAME"),
+			"/",
+			env!("CARGO_PKG_VERSION")
+		))
+		.build()
+		.unwrap()
 }
 
 pub struct AppState {
-    pub source: tokio::sync::Mutex<PesdePackageSource>,
-    pub project: Project,
-    pub storage: Storage,
-    pub auth: Auth,
+	pub source: tokio::sync::Mutex<PesdePackageSource>,
+	pub project: Project,
+	pub storage: Storage,
+	pub auth: Auth,
 
-    pub search_reader: tantivy::IndexReader,
-    pub search_writer: std::sync::Mutex<tantivy::IndexWriter>,
-    pub query_parser: tantivy::query::QueryParser,
+	pub search_reader: tantivy::IndexReader,
+	pub search_writer: std::sync::Mutex<tantivy::IndexWriter>,
+	pub query_parser: tantivy::query::QueryParser,
 }
 
 #[macro_export]
@@ -89,159 +89,159 @@ macro_rules! benv {
 }
 
 async fn run() -> std::io::Result<()> {
-    let address = benv!("ADDRESS" => "127.0.0.1");
-    let port: u16 = benv!(parse "PORT" => "8080");
+	let address = benv!("ADDRESS" => "127.0.0.1");
+	let port: u16 = benv!(parse "PORT" => "8080");
 
-    let cwd = current_dir().unwrap();
-    let data_dir =
-        PathBuf::from(benv!("DATA_DIR" => "{CWD}/data").replace("{CWD}", cwd.to_str().unwrap()));
-    fs::create_dir_all(&data_dir).await.unwrap();
+	let cwd = current_dir().unwrap();
+	let data_dir =
+		PathBuf::from(benv!("DATA_DIR" => "{CWD}/data").replace("{CWD}", cwd.to_str().unwrap()));
+	fs::create_dir_all(&data_dir).await.unwrap();
 
-    let project = Project::new(
-        &cwd,
-        None::<PathBuf>,
-        data_dir.join("project"),
-        &cwd,
-        AuthConfig::new().with_git_credentials(Some(gix::sec::identity::Account {
-            username: benv!(required "GIT_USERNAME"),
-            password: benv!(required "GIT_PASSWORD"),
-        })),
-    );
-    let source = PesdePackageSource::new(benv!(required "INDEX_REPO_URL").try_into().unwrap());
-    source
-        .refresh(&RefreshOptions {
-            project: project.clone(),
-        })
-        .await
-        .expect("failed to refresh source");
-    let config = source
-        .config(&project)
-        .await
-        .expect("failed to get index config");
+	let project = Project::new(
+		&cwd,
+		None::<PathBuf>,
+		data_dir.join("project"),
+		&cwd,
+		AuthConfig::new().with_git_credentials(Some(gix::sec::identity::Account {
+			username: benv!(required "GIT_USERNAME"),
+			password: benv!(required "GIT_PASSWORD"),
+		})),
+	);
+	let source = PesdePackageSource::new(benv!(required "INDEX_REPO_URL").try_into().unwrap());
+	source
+		.refresh(&RefreshOptions {
+			project: project.clone(),
+		})
+		.await
+		.expect("failed to refresh source");
+	let config = source
+		.config(&project)
+		.await
+		.expect("failed to get index config");
 
-    let (search_reader, search_writer, query_parser) = make_search(&project, &source).await;
+	let (search_reader, search_writer, query_parser) = make_search(&project, &source).await;
 
-    let app_data = web::Data::new(AppState {
-        storage: {
-            let storage = get_storage_from_env();
-            tracing::info!("storage: {storage}");
-            storage
-        },
-        auth: {
-            let auth = get_auth_from_env(&config);
-            tracing::info!("auth: {auth}");
-            auth
-        },
-        source: tokio::sync::Mutex::new(source),
-        project,
+	let app_data = web::Data::new(AppState {
+		storage: {
+			let storage = get_storage_from_env();
+			tracing::info!("storage: {storage}");
+			storage
+		},
+		auth: {
+			let auth = get_auth_from_env(&config);
+			tracing::info!("auth: {auth}");
+			auth
+		},
+		source: tokio::sync::Mutex::new(source),
+		project,
 
-        search_reader,
-        search_writer: std::sync::Mutex::new(search_writer),
-        query_parser,
-    });
+		search_reader,
+		search_writer: std::sync::Mutex::new(search_writer),
+		query_parser,
+	});
 
-    let publish_governor_config = GovernorConfigBuilder::default()
-        .key_extractor(UserIdExtractor)
-        .burst_size(12)
-        .seconds_per_request(60)
-        .use_headers()
-        .finish()
-        .unwrap();
+	let publish_governor_config = GovernorConfigBuilder::default()
+		.key_extractor(UserIdExtractor)
+		.burst_size(12)
+		.seconds_per_request(60)
+		.use_headers()
+		.finish()
+		.unwrap();
 
-    HttpServer::new(move || {
-        App::new()
-            .wrap(sentry_actix::Sentry::with_transaction())
-            .wrap(NormalizePath::new(TrailingSlash::Trim))
-            .wrap(Cors::permissive())
-            .wrap(tracing_actix_web::TracingLogger::default())
-            .wrap(Compress::default())
-            .app_data(app_data.clone())
-            .route(
-                "/",
-                web::get().to(|| async {
-                    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"))
-                }),
-            )
-            .service(
-                web::scope("/v0")
-                    .route(
-                        "/search",
-                        web::get()
-                            .to(endpoints::search::search_packages)
-                            .wrap(from_fn(auth::read_mw)),
-                    )
-                    .route(
-                        "/packages/{name}",
-                        web::get()
-                            .to(endpoints::package_versions::get_package_versions)
-                            .wrap(from_fn(auth::read_mw)),
-                    )
-                    .route(
-                        "/packages/{name}/{version}/{target}",
-                        web::get()
-                            .to(endpoints::package_version::get_package_version)
-                            .wrap(from_fn(auth::read_mw)),
-                    )
-                    .service(
-                        web::scope("/packages")
-                            .app_data(PayloadConfig::new(config.max_archive_size))
-                            .route(
-                                "",
-                                web::post()
-                                    .to(endpoints::publish_version::publish_package)
-                                    .wrap(Governor::new(&publish_governor_config))
-                                    .wrap(from_fn(auth::write_mw)),
-                            ),
-                    ),
-            )
-    })
-    .bind((address, port))?
-    .run()
-    .await
+	HttpServer::new(move || {
+		App::new()
+			.wrap(sentry_actix::Sentry::with_transaction())
+			.wrap(NormalizePath::new(TrailingSlash::Trim))
+			.wrap(Cors::permissive())
+			.wrap(tracing_actix_web::TracingLogger::default())
+			.wrap(Compress::default())
+			.app_data(app_data.clone())
+			.route(
+				"/",
+				web::get().to(|| async {
+					concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"))
+				}),
+			)
+			.service(
+				web::scope("/v0")
+					.route(
+						"/search",
+						web::get()
+							.to(endpoints::search::search_packages)
+							.wrap(from_fn(auth::read_mw)),
+					)
+					.route(
+						"/packages/{name}",
+						web::get()
+							.to(endpoints::package_versions::get_package_versions)
+							.wrap(from_fn(auth::read_mw)),
+					)
+					.route(
+						"/packages/{name}/{version}/{target}",
+						web::get()
+							.to(endpoints::package_version::get_package_version)
+							.wrap(from_fn(auth::read_mw)),
+					)
+					.service(
+						web::scope("/packages")
+							.app_data(PayloadConfig::new(config.max_archive_size))
+							.route(
+								"",
+								web::post()
+									.to(endpoints::publish_version::publish_package)
+									.wrap(Governor::new(&publish_governor_config))
+									.wrap(from_fn(auth::write_mw)),
+							),
+					),
+			)
+	})
+	.bind((address, port))?
+	.run()
+	.await
 }
 
 // can't use #[actix_web::main] because of Sentry:
 // "Note: Macros like #[tokio::main] and #[actix_web::main] are not supported. The Sentry client must be initialized before the async runtime is started so that all threads are correctly connected to the Hub."
 // https://docs.sentry.io/platforms/rust/guides/actix-web/
 fn main() -> std::io::Result<()> {
-    let _ = dotenvy::dotenv();
+	let _ = dotenvy::dotenv();
 
-    let tracing_env_filter = EnvFilter::builder()
-        .with_default_directive(LevelFilter::INFO.into())
-        .from_env_lossy()
-        .add_directive("reqwest=info".parse().unwrap())
-        .add_directive("rustls=info".parse().unwrap())
-        .add_directive("tokio_util=info".parse().unwrap())
-        .add_directive("goblin=info".parse().unwrap())
-        .add_directive("tower=info".parse().unwrap())
-        .add_directive("hyper=info".parse().unwrap())
-        .add_directive("h2=info".parse().unwrap());
+	let tracing_env_filter = EnvFilter::builder()
+		.with_default_directive(LevelFilter::INFO.into())
+		.from_env_lossy()
+		.add_directive("reqwest=info".parse().unwrap())
+		.add_directive("rustls=info".parse().unwrap())
+		.add_directive("tokio_util=info".parse().unwrap())
+		.add_directive("goblin=info".parse().unwrap())
+		.add_directive("tower=info".parse().unwrap())
+		.add_directive("hyper=info".parse().unwrap())
+		.add_directive("h2=info".parse().unwrap());
 
-    tracing_subscriber::registry()
-        .with(tracing_env_filter)
-        .with(
-            tracing_subscriber::fmt::layer()
-                .compact()
-                .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE),
-        )
-        .with(sentry::integrations::tracing::layer())
-        .init();
+	tracing_subscriber::registry()
+		.with(tracing_env_filter)
+		.with(
+			tracing_subscriber::fmt::layer()
+				.compact()
+				.with_span_events(FmtSpan::NEW | FmtSpan::CLOSE),
+		)
+		.with(sentry::integrations::tracing::layer())
+		.init();
 
-    let guard = sentry::init(sentry::ClientOptions {
-        release: sentry::release_name!(),
-        dsn: benv!(parse "SENTRY_DSN").ok(),
-        session_mode: sentry::SessionMode::Request,
-        traces_sample_rate: 1.0,
-        debug: true,
-        ..Default::default()
-    });
+	let guard = sentry::init(sentry::ClientOptions {
+		release: sentry::release_name!(),
+		dsn: benv!(parse "SENTRY_DSN").ok(),
+		session_mode: sentry::SessionMode::Request,
+		traces_sample_rate: 1.0,
+		debug: true,
+		..Default::default()
+	});
 
-    if guard.is_enabled() {
-        std::env::set_var("RUST_BACKTRACE", "full");
-        tracing::info!("sentry initialized");
-    } else {
-        tracing::info!("sentry **NOT** initialized");
-    }
+	if guard.is_enabled() {
+		std::env::set_var("RUST_BACKTRACE", "full");
+		tracing::info!("sentry initialized");
+	} else {
+		tracing::info!("sentry **NOT** initialized");
+	}
 
-    System::new().block_on(run())
+	System::new().block_on(run())
 }

@@ -3,101 +3,101 @@ use anyhow::Context;
 use clap::Args;
 use fs_err::tokio as fs;
 use pesde::{
-    names::PackageNames,
-    patches::create_patch,
-    source::ids::{PackageId, VersionId},
-    Project,
+	names::PackageNames,
+	patches::create_patch,
+	source::ids::{PackageId, VersionId},
+	Project,
 };
 use std::{path::PathBuf, str::FromStr};
 
 #[derive(Debug, Args)]
 pub struct PatchCommitCommand {
-    /// The directory containing the patch to commit
-    #[arg(index = 1)]
-    directory: PathBuf,
+	/// The directory containing the patch to commit
+	#[arg(index = 1)]
+	directory: PathBuf,
 }
 
 impl PatchCommitCommand {
-    pub async fn run(self, project: Project) -> anyhow::Result<()> {
-        let graph = if let Some(lockfile) = up_to_date_lockfile(&project).await? {
-            lockfile.graph
-        } else {
-            anyhow::bail!("outdated lockfile, please run the install command first")
-        };
+	pub async fn run(self, project: Project) -> anyhow::Result<()> {
+		let graph = if let Some(lockfile) = up_to_date_lockfile(&project).await? {
+			lockfile.graph
+		} else {
+			anyhow::bail!("outdated lockfile, please run the install command first")
+		};
 
-        let id = PackageId::new(
-            PackageNames::from_escaped(
-                self.directory
-                    .parent()
-                    .context("directory has no parent")?
-                    .parent()
-                    .context("directory has no grandparent")?
-                    .file_name()
-                    .context("directory grandparent has no name")?
-                    .to_str()
-                    .context("directory grandparent name is not valid")?,
-            )?,
-            VersionId::from_escaped(
-                self.directory
-                    .parent()
-                    .context("directory has no parent")?
-                    .file_name()
-                    .context("directory parent has no name")?
-                    .to_str()
-                    .context("directory parent name is not valid")?,
-            )?,
-        );
+		let id = PackageId::new(
+			PackageNames::from_escaped(
+				self.directory
+					.parent()
+					.context("directory has no parent")?
+					.parent()
+					.context("directory has no grandparent")?
+					.file_name()
+					.context("directory grandparent has no name")?
+					.to_str()
+					.context("directory grandparent name is not valid")?,
+			)?,
+			VersionId::from_escaped(
+				self.directory
+					.parent()
+					.context("directory has no parent")?
+					.file_name()
+					.context("directory parent has no name")?
+					.to_str()
+					.context("directory parent name is not valid")?,
+			)?,
+		);
 
-        graph.get(&id).context("package not found in graph")?;
+		graph.get(&id).context("package not found in graph")?;
 
-        let mut manifest = toml_edit::DocumentMut::from_str(
-            &project
-                .read_manifest()
-                .await
-                .context("failed to read manifest")?,
-        )
-        .context("failed to parse manifest")?;
+		let mut manifest = toml_edit::DocumentMut::from_str(
+			&project
+				.read_manifest()
+				.await
+				.context("failed to read manifest")?,
+		)
+		.context("failed to parse manifest")?;
 
-        let patch = create_patch(&self.directory).context("failed to create patch")?;
-        fs::remove_dir_all(self.directory)
-            .await
-            .context("failed to remove patch directory")?;
+		let patch = create_patch(&self.directory).context("failed to create patch")?;
+		fs::remove_dir_all(self.directory)
+			.await
+			.context("failed to remove patch directory")?;
 
-        let patches_dir = project.package_dir().join("patches");
-        fs::create_dir_all(&patches_dir)
-            .await
-            .context("failed to create patches directory")?;
+		let patches_dir = project.package_dir().join("patches");
+		fs::create_dir_all(&patches_dir)
+			.await
+			.context("failed to create patches directory")?;
 
-        let patch_file_name = format!(
-            "{}-{}.patch",
-            id.name().escaped(),
-            id.version_id().escaped()
-        );
+		let patch_file_name = format!(
+			"{}-{}.patch",
+			id.name().escaped(),
+			id.version_id().escaped()
+		);
 
-        let patch_file = patches_dir.join(&patch_file_name);
-        if patch_file.exists() {
-            anyhow::bail!("patch file already exists: {}", patch_file.display());
-        }
+		let patch_file = patches_dir.join(&patch_file_name);
+		if patch_file.exists() {
+			anyhow::bail!("patch file already exists: {}", patch_file.display());
+		}
 
-        fs::write(&patch_file, patch)
-            .await
-            .context("failed to write patch file")?;
+		fs::write(&patch_file, patch)
+			.await
+			.context("failed to write patch file")?;
 
-        manifest["patches"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-            [&id.name().to_string()][&id.version_id().to_string()] =
-            toml_edit::value(format!("patches/{patch_file_name}"));
+		manifest["patches"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+			[&id.name().to_string()][&id.version_id().to_string()] =
+			toml_edit::value(format!("patches/{patch_file_name}"));
 
-        project
-            .write_manifest(manifest.to_string())
-            .await
-            .context("failed to write manifest")?;
+		project
+			.write_manifest(manifest.to_string())
+			.await
+			.context("failed to write manifest")?;
 
-        println!(concat!(
-            "done! run `",
-            env!("CARGO_BIN_NAME"),
-            " install` to apply the patch"
-        ));
+		println!(concat!(
+			"done! run `",
+			env!("CARGO_BIN_NAME"),
+			" install` to apply the patch"
+		));
 
-        Ok(())
-    }
+		Ok(())
+	}
 }

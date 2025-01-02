@@ -6,13 +6,13 @@ use std::fmt::Display;
 pub struct NoneAuth;
 
 impl AuthImpl for NoneAuth {
-    async fn for_write_request(&self, _req: &ServiceRequest) -> Result<Option<UserId>, ActixError> {
-        Ok(Some(UserId::DEFAULT))
-    }
+	async fn for_write_request(&self, _req: &ServiceRequest) -> Result<Option<UserId>, ActixError> {
+		Ok(Some(UserId::DEFAULT))
+	}
 }
 
 impl Display for NoneAuth {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "None")
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "None")
+	}
 }
