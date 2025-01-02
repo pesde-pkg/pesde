@@ -1,9 +1,6 @@
 use crate::{
     deser_manifest,
-    manifest::{
-        target::{Target, TargetKind},
-        Manifest,
-    },
+    manifest::{target::Target, Manifest},
     names::PackageNames,
     reporters::DownloadProgressReporter,
     source::{
@@ -12,7 +9,6 @@ use crate::{
         git_index::{read_file, GitBasedSource},
         specifiers::DependencySpecifiers,
         traits::{DownloadOptions, GetTargetOptions, PackageRef, RefreshOptions, ResolveOptions},
-        wally::compat_util::get_target,
         PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
     },
     util::hash,
@@ -266,43 +262,43 @@ impl PackageSource for GitPackageSource {
 
             #[cfg(feature = "wally-compat")]
             None => {
-                match read_file(
-                    &tree,
-                    [crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME],
-                )
-                .map_err(|e| {
+                use crate::{
+                    manifest::target::TargetKind,
+                    source::wally::{
+                        compat_util::WALLY_MANIFEST_FILE_NAME,
+                        manifest::{Realm, WallyManifest},
+                    },
+                };
+
+                match read_file(&tree, [WALLY_MANIFEST_FILE_NAME]).map_err(|e| {
                     errors::ResolveError::ReadManifest(Box::new(self.repo_url.clone()), e)
                 })? {
-                    Some(m) => {
-                        match toml::from_str::<crate::source::wally::manifest::WallyManifest>(&m) {
-                            Ok(manifest) => {
-                                let dependencies = manifest.all_dependencies().map_err(|e| {
-                                    errors::ResolveError::CollectDependencies(
-                                        Box::new(self.repo_url.clone()),
-                                        e,
-                                    )
-                                })?;
-                                let name = PackageNames::Wally(manifest.package.name);
-                                let version_id = VersionId(
-                                    manifest.package.version,
-                                    match manifest.package.realm {
-                                        crate::source::wally::manifest::Realm::Server => {
-                                            TargetKind::RobloxServer
-                                        }
-                                        _ => TargetKind::Roblox,
-                                    },
-                                );
-
-                                (name, version_id, dependencies)
-                            }
-                            Err(e) => {
-                                return Err(errors::ResolveError::DeserManifest(
+                    Some(m) => match toml::from_str::<WallyManifest>(&m) {
+                        Ok(manifest) => {
+                            let dependencies = manifest.all_dependencies().map_err(|e| {
+                                errors::ResolveError::CollectDependencies(
                                     Box::new(self.repo_url.clone()),
                                     e,
-                                ))
-                            }
+                                )
+                            })?;
+                            let name = PackageNames::Wally(manifest.package.name);
+                            let version_id = VersionId(
+                                manifest.package.version,
+                                match manifest.package.realm {
+                                    Realm::Server => TargetKind::RobloxServer,
+                                    _ => TargetKind::Roblox,
+                                },
+                            );
+
+                            (name, version_id, dependencies)
                         }
-                    }
+                        Err(e) => {
+                            return Err(errors::ResolveError::DeserManifest(
+                                Box::new(self.repo_url.clone()),
+                                e,
+                            ))
+                        }
+                    },
                     None => {
                         return Err(errors::ResolveError::NoManifest(Box::new(
                             self.repo_url.clone(),
@@ -509,19 +505,22 @@ impl PackageSource for GitPackageSource {
     #[instrument(skip_all, level = "debug")]
     async fn get_target(
         &self,
-        _pkg_ref: &Self::Ref,
+        pkg_ref: &Self::Ref,
         options: &GetTargetOptions,
     ) -> Result<Target, Self::GetTargetError> {
-        match deser_manifest(&options.path).await {
-            Ok(manifest) => Ok(manifest.target),
+        if !pkg_ref.new_structure {
             #[cfg(feature = "wally-compat")]
-            Err(crate::errors::ManifestReadError::Io(e))
-                if e.kind() == std::io::ErrorKind::NotFound =>
-            {
-                get_target(options).await.map_err(Into::into)
-            }
-            Err(e) => Err(e.into()),
+            return crate::source::wally::compat_util::get_target(options)
+                .await
+                .map_err(Into::into);
+            #[cfg(not(feature = "wally-compat"))]
+            panic!("wally-compat feature is not enabled, and package is a wally package");
         }
+
+        deser_manifest(&options.path)
+            .await
+            .map(|m| m.target)
+            .map_err(Into::into)
     }
 }
 

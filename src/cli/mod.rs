@@ -11,9 +11,7 @@ use pesde::{
     },
     names::{PackageName, PackageNames},
     source::{
-        ids::{PackageId, VersionId},
-        specifiers::DependencySpecifiers,
-        workspace::specifier::VersionTypeOrReq,
+        ids::VersionId, specifiers::DependencySpecifiers, workspace::specifier::VersionTypeOrReq,
     },
     Project,
 };
@@ -165,7 +163,10 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 
 impl VersionedPackageName {
     #[cfg(feature = "patches")]
-    fn get(self, graph: &pesde::graph::DependencyGraph) -> anyhow::Result<PackageId> {
+    fn get(
+        self,
+        graph: &pesde::graph::DependencyGraph,
+    ) -> anyhow::Result<pesde::source::ids::PackageId> {
         let version_id = match self.1 {
             Some(version) => version,
             None => {
@@ -189,7 +190,7 @@ impl VersionedPackageName {
             }
         };
 
-        Ok(PackageId::new(self.0, version_id))
+        Ok(pesde::source::ids::PackageId::new(self.0, version_id))
     }
 }
 

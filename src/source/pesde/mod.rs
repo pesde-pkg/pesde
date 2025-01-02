@@ -297,6 +297,7 @@ impl PackageSource for PesdePackageSource {
         options: &GetTargetOptions,
     ) -> Result<Target, Self::GetTargetError> {
         let GetTargetOptions { id, .. } = options;
+        #[allow(irrefutable_let_patterns)]
         let PackageNames::Pesde(name) = id.name() else {
             panic!("unexpected package name");
         };

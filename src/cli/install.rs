@@ -14,8 +14,8 @@ use anyhow::Context;
 use colored::Colorize;
 use fs_err::tokio as fs;
 use pesde::{
-    download_and_link::{filter_graph, DownloadAndLinkHooks, DownloadAndLinkOptions},
-    graph::{ConvertableGraph, DependencyGraph, DownloadedGraph},
+    download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions},
+    graph::{DependencyGraph, DownloadedGraph},
     lockfile::Lockfile,
     manifest::{target::TargetKind, DependencyType},
     Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
@@ -258,11 +258,17 @@ pub async fn install(
                 bin_folder: bin_dir().await?,
             };
 
+            #[allow(unused_variables)]
             let downloaded_graph = project
                 .download_and_link(
                     &graph,
                     DownloadAndLinkOptions::<CliReporter, InstallHooks>::new(reqwest.clone())
-                        .reporter(reporter.clone())
+                        .reporter(
+                            #[cfg(feature = "patches")]
+                            reporter.clone(),
+                            #[cfg(not(feature = "patches"))]
+                            reporter,
+                        )
                         .hooks(hooks)
                         .refreshed_sources(refreshed_sources)
                         .prod(options.prod)
@@ -274,6 +280,8 @@ pub async fn install(
 
             #[cfg(feature = "patches")]
             if options.write {
+                use pesde::{download_and_link::filter_graph, graph::ConvertableGraph};
+
                 root_progress.reset();
                 root_progress.set_length(0);
                 root_progress.set_message("patch");

@@ -29,7 +29,6 @@ bin = [
     "tokio/rt",
     "tokio/rt-multi-thread",
     "tokio/macros",
-    "dep:tempfile",
 ]
 wally-compat = ["dep:async_zip", "dep:serde_json"]
 patches = ["dep:git2"]
@@ -65,6 +64,7 @@ full_moon = { version = "1.1.2", features = ["luau"] }
 url = { version = "2.5.4", features = ["serde"] }
 chrono = { version = "0.4.39", features = ["serde"] }
 sha2 = "0.10.8"
+tempfile = "3.14.0"
 wax = { version = "0.6.0", default-features = false }
 fs-err = { version = "3.0.0", features = ["tokio"] }
 
@@ -86,7 +86,6 @@ dirs = { version = "5.0.1", optional = true }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"], optional = true }
 indicatif = { version = "0.17.9", optional = true }
 inquire = { version = "0.7.5", optional = true }
-tempfile = { version = "3.14.0", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = { version = "0.52.0", optional = true }

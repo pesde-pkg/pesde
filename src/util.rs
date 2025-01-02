@@ -50,6 +50,7 @@ pub fn deserialize_gix_url_map<'de, D: Deserializer<'de>>(
         .collect()
 }
 
+#[allow(dead_code)]
 pub fn deserialize_gix_url_vec<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Vec<gix::Url>, D::Error> {
