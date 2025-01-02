@@ -266,14 +266,6 @@ pub mod errors {
     #[derive(Debug, Error)]
     #[non_exhaustive]
     pub enum ReadFile {
-        /// Error opening the repository
-        #[error("error opening repository at {0}")]
-        Open(PathBuf, #[source] Box<gix::open::Error>),
-
-        /// Error reading tree from repository
-        #[error("error getting tree from repository at {0}")]
-        Tree(PathBuf, #[source] Box<TreeError>),
-
         /// Error looking up entry in tree
         #[error("error looking up entry {0} in tree")]
         Lookup(String, #[source] gix::object::find::existing::Error),

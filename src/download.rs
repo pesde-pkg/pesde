@@ -282,9 +282,5 @@ pub mod errors {
         /// Error getting target
         #[error("failed to get target")]
         GetTargetFailed(#[from] Box<crate::source::errors::GetTargetError>),
-
-        /// Error writing package contents
-        #[error("failed to write package contents")]
-        WriteFailed(#[source] std::io::Error),
     }
 }

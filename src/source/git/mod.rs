@@ -642,10 +642,6 @@ pub mod errors {
         #[error("error creating Wally target")]
         GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
 
-        /// No manifest was found
-        #[error("no manifest found in repository {0}")]
-        NoManifest(Box<gix::Url>),
-
         /// An error occurred opening the Git repository
         #[error("error opening Git repository for url {0}")]
         OpenRepo(Box<gix::Url>, #[source] gix::open::Error),
@@ -668,10 +664,6 @@ pub mod errors {
         /// An error occurred parsing object to tree
         #[error("error parsing object to tree for repository {0}")]
         ParseObjectToTree(Box<gix::Url>, #[source] gix::object::peel::to_kind::Error),
-
-        /// An error occurred parsing the pesde manifest to UTF-8
-        #[error("error parsing the manifest for repository {0} to UTF-8")]
-        ParseManifest(#[source] std::string::FromUtf8Error),
 
         /// An error occurred while serializing the index file
         #[error("error serializing the index file for repository {0}")]
