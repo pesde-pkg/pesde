@@ -68,8 +68,14 @@ impl Project {
 
 		// step 1. link all non-wally packages (and their dependencies) temporarily without types
 		// we do this separately to allow the required tools for the scripts to be installed
-		self.link(&graph, &manifest, &Arc::new(PackageTypes::default()), false)
-			.await?;
+		self.link(
+			&graph,
+			&manifest,
+			&Arc::new(PackageTypes::default()),
+			false,
+			false,
+		)
+		.await?;
 
 		if !with_types {
 			return Ok(());
@@ -150,7 +156,7 @@ impl Project {
 		}
 
 		// step 3. link all packages (and their dependencies), this time with types
-		self.link(&graph, &manifest, &Arc::new(package_types), true)
+		self.link(&graph, &manifest, &Arc::new(package_types), true, false)
 			.await
 	}
 
@@ -164,79 +170,128 @@ impl Project {
 		node: &DependencyGraphNodeWithTarget,
 		package_id: &PackageId,
 		alias: &str,
-		package_types: &PackageTypes,
-		manifest: &Manifest,
+		package_types: &Arc<PackageTypes>,
+		manifest: &Arc<Manifest>,
+		remove: bool,
+		is_root: bool,
 	) -> Result<(), errors::LinkingError> {
 		static NO_TYPES: Vec<String> = Vec::new();
 
-		if let Some(lib_file) = node.target.lib_path() {
-			let lib_module = generator::generate_lib_linking_module(
-				&generator::get_lib_require_path(
-					node.target.kind(),
-					base_folder,
-					lib_file,
-					container_folder,
-					node.node.pkg_ref.use_new_structure(),
-					root_container_folder,
-					relative_container_folder,
-					manifest,
-				)?,
-				package_types.get(package_id).unwrap_or(&NO_TYPES),
-			);
+		#[allow(clippy::result_large_err)]
+		fn into_link_result(res: std::io::Result<()>) -> Result<(), errors::LinkingError> {
+			match res {
+				Ok(_) => Ok(()),
+				Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+				Err(e) => Err(e.into()),
+			}
+		}
 
-			write_cas(
-				base_folder.join(format!("{alias}.luau")),
-				self.cas_dir(),
-				&lib_module,
-			)
-			.await?;
+		let mut tasks = JoinSet::<Result<(), errors::LinkingError>>::new();
+
+		if let Some(lib_file) = node.target.lib_path() {
+			let destination = base_folder.join(format!("{alias}.luau"));
+
+			if remove {
+				tasks.spawn(async move { into_link_result(fs::remove_file(destination).await) });
+			} else {
+				let lib_module = generator::generate_lib_linking_module(
+					&generator::get_lib_require_path(
+						node.target.kind(),
+						base_folder,
+						lib_file,
+						container_folder,
+						node.node.pkg_ref.use_new_structure(),
+						root_container_folder,
+						relative_container_folder,
+						manifest,
+					)?,
+					package_types.get(package_id).unwrap_or(&NO_TYPES),
+				);
+				let cas_dir = self.cas_dir().to_path_buf();
+
+				tasks.spawn(async move {
+					write_cas(destination, &cas_dir, &lib_module)
+						.await
+						.map_err(Into::into)
+				});
+			}
 		}
 
 		if let Some(bin_file) = node.target.bin_path() {
-			let bin_module = generator::generate_bin_linking_module(
-				container_folder,
-				&generator::get_bin_require_path(base_folder, bin_file, container_folder),
-			);
+			let destination = base_folder.join(format!("{alias}.bin.luau"));
 
-			write_cas(
-				base_folder.join(format!("{alias}.bin.luau")),
-				self.cas_dir(),
-				&bin_module,
-			)
-			.await?;
+			if remove {
+				tasks.spawn(async move { into_link_result(fs::remove_file(destination).await) });
+			} else {
+				let bin_module = generator::generate_bin_linking_module(
+					container_folder,
+					&generator::get_bin_require_path(base_folder, bin_file, container_folder),
+				);
+				let cas_dir = self.cas_dir().to_path_buf();
+
+				tasks.spawn(async move {
+					write_cas(destination, &cas_dir, &bin_module)
+						.await
+						.map_err(Into::into)
+				});
+			}
 		}
 
-		if let Some(scripts) = node.target.scripts().filter(|s| !s.is_empty()) {
-			let scripts_base =
-				create_and_canonicalize(self.package_dir().join(SCRIPTS_LINK_FOLDER).join(alias))
-					.await?;
+		if let Some(scripts) = node
+			.target
+			.scripts()
+			.filter(|s| !s.is_empty() && node.node.direct.is_some() && is_root)
+		{
+			let scripts_container = self.package_dir().join(SCRIPTS_LINK_FOLDER);
+			let scripts_base = create_and_canonicalize(scripts_container.join(alias)).await?;
 
-			for (script_name, script_path) in scripts {
-				let script_module =
-					generator::generate_script_linking_module(&generator::get_script_require_path(
-						&scripts_base,
-						script_path,
-						container_folder,
-					));
+			if remove {
+				tasks.spawn(async move {
+					fs::remove_dir_all(scripts_base).await?;
+					if let Ok(mut entries) = fs::read_dir(&scripts_container).await {
+						if entries.next_entry().await.transpose().is_none() {
+							drop(entries);
+							fs::remove_dir(&scripts_container).await?;
+						}
+					}
 
-				write_cas(
-					scripts_base.join(format!("{script_name}.luau")),
-					self.cas_dir(),
-					&script_module,
-				)
-				.await?;
+					Ok(())
+				});
+			} else {
+				for (script_name, script_path) in scripts {
+					let destination = scripts_base.join(format!("{script_name}.luau"));
+					let script_module = generator::generate_script_linking_module(
+						&generator::get_script_require_path(
+							&scripts_base,
+							script_path,
+							container_folder,
+						),
+					);
+					let cas_dir = self.cas_dir().to_path_buf();
+
+					tasks.spawn(async move {
+						write_cas(destination, &cas_dir, &script_module)
+							.await
+							.map_err(Into::into)
+					});
+				}
 			}
+		}
+
+		while let Some(task) = tasks.join_next().await {
+			task.unwrap()?;
 		}
 
 		Ok(())
 	}
 
-	async fn link(
+	pub(crate) async fn link(
 		&self,
 		graph: &Arc<DependencyGraphWithTarget>,
 		manifest: &Arc<Manifest>,
 		package_types: &Arc<PackageTypes>,
 		is_complete: bool,
+		remove: bool,
 	) -> Result<(), errors::LinkingError> {
 		let mut tasks = graph
 			.iter()
@@ -278,6 +333,8 @@ impl Project {
 									alias,
 									&package_types,
 									&manifest,
+									remove,
+									true,
 								)
 								.await?;
 						}
@@ -330,6 +387,8 @@ impl Project {
 								dependency_alias,
 								&package_types,
 								&manifest,
+								remove,
+								false,
 							)
 							.await?;
 					}

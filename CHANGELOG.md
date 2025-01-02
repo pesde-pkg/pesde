@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inherit pesde-managed scripts from workspace root by @daimond113
 - Allow using binaries from workspace root in member packages by @daimond113
 
+### Fixed
+- Install dev packages in prod mode and remove them after use to allow them to be used in scripts by @daimond113
+
 ### Changed
 - Change handling of graphs to a flat structure by @daimond113
 - Store dependency over downloaded graphs in the lockfile by @daimond113

@@ -189,10 +189,6 @@ impl Project {
 				let container_folder =
 					node.container_folder_from_project(&id, self, manifest.target.kind());
 
-				if prod && node.resolved_ty == DependencyType::Dev {
-					continue;
-				}
-
 				downloaded_graph.insert(id, node);
 
 				let cas_dir = self.cas_dir().to_path_buf();
@@ -308,7 +304,50 @@ impl Project {
 				.map_err(errors::DownloadAndLinkError::Hook)?;
 		}
 
-		Ok(Arc::into_inner(graph).unwrap())
+		let mut graph = Arc::into_inner(graph).unwrap();
+
+		if prod {
+			let (dev_graph, prod_graph) = graph
+				.into_iter()
+				.partition::<DependencyGraphWithTarget, _>(|(_, node)| {
+					node.node.resolved_ty == DependencyType::Dev
+				});
+
+			graph = prod_graph;
+			let dev_graph = Arc::new(dev_graph);
+
+			let manifest_target_kind = manifest.target.kind();
+
+			// the `true` argument means it'll remove the dependencies linkers
+			self.link(
+				&dev_graph,
+				&Arc::new(manifest),
+				&Arc::new(Default::default()),
+				false,
+				true,
+			)
+			.await?;
+
+			let mut tasks = dev_graph
+				.iter()
+				.map(|(id, node)| {
+					let container_folder =
+						node.node
+							.container_folder_from_project(id, self, manifest_target_kind);
+					async move {
+						fs::remove_dir_all(&container_folder)
+							.await
+							.map_err(errors::DownloadAndLinkError::Io)
+					}
+				})
+				.collect::<JoinSet<_>>();
+
+			while let Some(task) = tasks.join_next().await {
+				task.unwrap()?;
+			}
+		}
+
+		Ok(graph)
 	}
 }
 
