@@ -38,17 +38,17 @@ Git dependencies are dependencies on packages hosted on a Git repository.
 
 ```toml title="pesde.toml"
 [dependencies]
-acme = { repo = "acme/package", rev = "main" }
+acme = { repo = "acme/package", rev = "aeff6" }
 ```
 
 In this example, we're specifying a dependency on the package contained within
-the `acme/package` GitHub repository at the `main` branch.
+the `acme/package` GitHub repository at the `aeff6` commit.
 
-You can also use a URL to specify the Git repository and a specific commit.
+You can also use a URL to specify the Git repository and a tag for the revision.
 
 ```toml title="pesde.toml"
 [dependencies]
-acme = { repo = "https://git.acme.local/package.git", rev = "aeff6" }
+acme = { repo = "https://git.acme.local/package.git", rev = "v0.1.0" }
 ```
 
 You can also specify a path if the package is not at the root of the repository.
