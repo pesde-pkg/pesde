@@ -40,6 +40,17 @@ You can follow the installation instructions in the
 
       pesde should now be installed on your system. You may need to restart your
       computer for the changes to take effect.
+      
+      [dev-mode-guide]: https://learn.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development
+
+      <Aside type="caution" title="Warning">
+      pesde uses symlinks which are an administrator-level operation on Windows.
+      To ensure proper functionality, enable [Developer Mode][dev-mode-guide].<br/><br/>
+      If you are getting errors such as <strong>'Failed to symlink file, a required privilege is not held by the client'</strong>, then enabling this setting will fix them.
+      </Aside>
+
+
+      
 
       </TabItem>
       <TabItem label="Linux & macOS">
@@ -77,7 +88,7 @@ You can follow the installation instructions in the
 
 </Steps>
 
-<Aside type="caution">
+<Aside type="caution" title="Warning">
 
 It is not recommended to use toolchain managers (such as Rokit or Aftman) to
 install pesde. You can use `pesde self-upgrade` if you need to update pesde.
