@@ -389,14 +389,14 @@ foo = { wally = "acme/foo", version = "1.2.3", index = "acme" }
 
 ```toml
 [dependencies]
-foo = { repo = "acme/packages", rev = "main", path = "foo" }
+foo = { repo = "acme/packages", rev = "aeff6", path = "foo" }
 ```
 
 **Git dependencies** contain the following fields:
 
 - `repo`: The URL of the Git repository.
   This can either be `<owner>/<name>` for a GitHub repository, or a full URL.
-- `rev`: The Git revision to install. This can be a branch, tag, or commit hash.
+- `rev`: The Git revision to install. This can be a tag or commit hash.
 - `path`: The path within the repository to install. If not specified, the root
   of the repository is used.
 
