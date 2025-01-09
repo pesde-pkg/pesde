@@ -9,6 +9,7 @@ use std::{
 	fmt::Display,
 	path::{Path, PathBuf},
 };
+use tokio_util::io::ReaderStream;
 
 #[derive(Debug)]
 pub struct FSStorage {
@@ -19,11 +20,11 @@ async fn read_file_to_response(
 	path: &Path,
 	content_type: &str,
 ) -> Result<HttpResponse, RegistryError> {
-	Ok(match fs::read(path).await {
-		Ok(contents) => HttpResponse::Ok()
+	Ok(match fs::File::open(path).await {
+		Ok(file) => HttpResponse::Ok()
 			.append_header((CONTENT_TYPE, content_type))
 			.append_header((CONTENT_ENCODING, "gzip"))
-			.body(contents),
+			.streaming(ReaderStream::new(file)),
 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => HttpResponse::NotFound().finish(),
 		Err(e) => return Err(e.into()),
 	})

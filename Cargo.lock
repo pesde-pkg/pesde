@@ -3730,6 +3730,7 @@ dependencies = [
  "thiserror 2.0.7",
  "tokio",
  "tokio-tar",
+ "tokio-util",
  "toml",
  "tracing",
  "tracing-actix-web",

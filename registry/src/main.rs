@@ -190,6 +190,24 @@ async fn run() -> std::io::Result<()> {
 							.to(endpoints::package_version::get_package_version)
 							.wrap(from_fn(auth::read_mw)),
 					)
+					.route(
+						"/packages/{name}/{version}/{target}/archive",
+						web::get()
+							.to(endpoints::package_archive::get_package_archive)
+							.wrap(from_fn(auth::read_mw)),
+					)
+					.route(
+						"/packages/{name}/{version}/{target}/doc",
+						web::get()
+							.to(endpoints::package_doc::get_package_doc)
+							.wrap(from_fn(auth::read_mw)),
+					)
+					.route(
+						"/packages/{name}/{version}/{target}/readme",
+						web::get()
+							.to(endpoints::package_readme::get_package_readme)
+							.wrap(from_fn(auth::read_mw)),
+					)
 					.service(
 						web::resource("/packages/{name}/{version}/{target}/yank")
 							.put(endpoints::yank_version::yank_package_version)

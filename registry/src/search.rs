@@ -132,8 +132,8 @@ pub async fn make_search(
 			.add_document(doc!(
 				id_field => pkg_name.to_string(),
 				version => v_id.version().to_string(),
-				scope => pkg_name.as_str().0,
-				name => pkg_name.as_str().1,
+				scope => pkg_name.scope(),
+				name => pkg_name.name(),
 				description => latest_entry.description.clone().unwrap_or_default(),
 				published_at => DateTime::from_timestamp_secs(latest_entry.published_at.timestamp()),
 			))
@@ -165,8 +165,8 @@ pub fn update_search_version(
 	search_writer.add_document(doc!(
         id_field => name.to_string(),
 		schema.get_field("version").unwrap() => version.to_string(),
-        schema.get_field("scope").unwrap() => name.as_str().0,
-        schema.get_field("name").unwrap() => name.as_str().1,
+        schema.get_field("scope").unwrap() => name.scope(),
+        schema.get_field("name").unwrap() => name.name(),
         schema.get_field("description").unwrap() => entry.description.clone().unwrap_or_default(),
         schema.get_field("published_at").unwrap() => DateTime::from_timestamp_secs(entry.published_at.timestamp())
     )).unwrap();
