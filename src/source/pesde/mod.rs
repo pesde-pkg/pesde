@@ -211,8 +211,14 @@ impl PackageSource for PesdePackageSource {
 		let url = config
 			.download()
 			.replace("{PACKAGE}", &urlencoding::encode(&id.name().to_string()))
-			.replace("{PACKAGE_VERSION}", &urlencoding::encode(&id.version_id().version().to_string()))
-			.replace("{PACKAGE_TARGET}", &urlencoding::encode(&id.version_id().target().to_string()));
+			.replace(
+				"{PACKAGE_VERSION}",
+				&urlencoding::encode(&id.version_id().version().to_string()),
+			)
+			.replace(
+				"{PACKAGE_TARGET}",
+				&urlencoding::encode(&id.version_id().target().to_string()),
+			);
 
 		let mut request = reqwest.get(&url).header(ACCEPT, "application/octet-stream");
 

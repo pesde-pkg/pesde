@@ -49,18 +49,13 @@ impl DependencyGraphNode {
 		let (name, version) = package_id.parts();
 
 		if self.pkg_ref.is_wally_package() {
-			return PathBuf::from(format!(
-				"{}_{}@{}",
-				name.as_str().0,
-				name.as_str().1,
-				version
-			))
-			.join(name.as_str().1);
+			return PathBuf::from(format!("{}_{}@{}", name.scope(), name.name(), version))
+				.join(name.name());
 		}
 
 		PathBuf::from(name.escaped())
 			.join(version.to_string())
-			.join(name.as_str().1)
+			.join(name.name())
 	}
 
 	/// Returns the folder to store the contents of the package in starting from the project's package directory

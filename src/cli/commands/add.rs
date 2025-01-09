@@ -181,7 +181,7 @@ impl AddCommand {
 		};
 
 		let alias = self.alias.unwrap_or_else(|| match &self.name {
-			AnyPackageIdentifier::PackageName(versioned) => versioned.0.as_str().1.to_string(),
+			AnyPackageIdentifier::PackageName(versioned) => versioned.0.name().to_string(),
 			AnyPackageIdentifier::Url((url, _)) => url
 				.path
 				.to_string()
@@ -189,7 +189,7 @@ impl AddCommand {
 				.last()
 				.map(|s| s.to_string())
 				.unwrap_or(url.path.to_string()),
-			AnyPackageIdentifier::Workspace(versioned) => versioned.0.as_str().1.to_string(),
+			AnyPackageIdentifier::Workspace(versioned) => versioned.0.name().to_string(),
 			AnyPackageIdentifier::Path(path) => path
 				.file_name()
 				.map(|s| s.to_string_lossy().to_string())

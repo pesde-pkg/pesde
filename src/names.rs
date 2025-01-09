@@ -146,6 +146,24 @@ impl PackageNames {
 	pub fn from_escaped(s: &str) -> Result<Self, errors::PackageNamesError> {
 		PackageNames::from_str(s.replacen('+', "/", 1).as_str())
 	}
+
+	/// Returns the scope of the package name
+	pub fn scope(&self) -> &str {
+		match self {
+			PackageNames::Pesde(name) => name.scope(),
+			#[cfg(feature = "wally-compat")]
+			PackageNames::Wally(name) => name.scope(),
+		}
+	}
+
+	/// Returns the name of the package name
+	pub fn name(&self) -> &str {
+		match self {
+			PackageNames::Pesde(name) => name.name(),
+			#[cfg(feature = "wally-compat")]
+			PackageNames::Wally(name) => name.name(),
+		}
+	}
 }
 
 impl Display for PackageNames {
@@ -250,6 +268,16 @@ pub mod wally {
 		/// Returns the package name as a string suitable for use in the filesystem
 		pub fn escaped(&self) -> String {
 			format!("wally#{}+{}", self.0, self.1)
+		}
+
+		/// Returns the scope of the package name
+		pub fn scope(&self) -> &str {
+			&self.0
+		}
+
+		/// Returns the name of the package name
+		pub fn name(&self) -> &str {
+			&self.1
 		}
 	}
 }

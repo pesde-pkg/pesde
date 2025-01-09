@@ -5,3 +5,4 @@ cobertura.xml
 tarpaulin-report.html
 build_rs_cov.profraw
 registry/data
+data
