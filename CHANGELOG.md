@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Change handling of graphs to a flat structure by @daimond113
 - Store dependency over downloaded graphs in the lockfile by @daimond113
 - Improve linking process by @daimond113
+- Use a proper url encoding library to ensure compatibility with all characters by @daimond113
 
 ### Removed
 - Remove old includes format compatibility by @daimond113
