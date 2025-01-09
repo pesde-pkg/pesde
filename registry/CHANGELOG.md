@@ -11,11 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add yanking & deprecating to registry by @daimond113
 - Log more information about configured auth & storage by @daimond113
 
-### Changed
-- Asyncify blocking operations by @daimond113
-
 ### Performance
 - Switch to using a `RwLock` over a `Mutex` to store repository data by @daimond113
+- Asyncify blocking operations by @daimond113
+- Asyncify reading of package data of top search results by @daimond113
 
 ## [0.1.2]
 ### Changed

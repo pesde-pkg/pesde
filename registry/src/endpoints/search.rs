@@ -1,18 +1,16 @@
 use std::collections::HashMap;
 
+use crate::{
+	error::RegistryError,
+	package::{read_package, PackageResponse},
+	AppState,
+};
 use actix_web::{web, HttpResponse};
+use pesde::names::PackageName;
 use semver::Version;
 use serde::Deserialize;
 use tantivy::{collector::Count, query::AllQuery, schema::Value, DateTime, Order};
-
-use crate::{error::RegistryError, package::PackageResponse, AppState};
-use pesde::{
-	names::PackageName,
-	source::{
-		git_index::{read_file, root_tree, GitBasedSource},
-		pesde::IndexFile,
-	},
-};
+use tokio::task::JoinSet;
 
 #[derive(Deserialize)]
 pub struct Request {
@@ -52,47 +50,58 @@ pub async fn search_packages(
 		)
 		.unwrap();
 
-	let source = app_state.source.read().await;
-	let repo = gix::open(source.path(&app_state.project))?;
-	let tree = root_tree(&repo)?;
+	// prevent a write lock on the source while we're reading the documents
+	let _guard = app_state.source.read().await;
 
-	let top_docs = top_docs
+	let mut results = Vec::with_capacity(top_docs.len());
+	results.extend((0..top_docs.len()).map(|_| None::<PackageResponse>));
+
+	let mut tasks = top_docs
 		.into_iter()
-		.map(|(_, doc_address)| {
+		.enumerate()
+		.map(|(i, (_, doc_address))| {
+			let app_state = app_state.clone();
 			let doc = searcher.doc::<HashMap<_, _>>(doc_address).unwrap();
 
-			let id = doc
-				.get(&id)
-				.unwrap()
-				.as_str()
-				.unwrap()
-				.parse::<PackageName>()
-				.unwrap();
-			let (scope, name) = id.as_str();
-			let version = doc
-				.get(&version)
-				.unwrap()
-				.as_str()
-				.unwrap()
-				.parse::<Version>()
-				.unwrap();
+			async move {
+				let id = doc
+					.get(&id)
+					.unwrap()
+					.as_str()
+					.unwrap()
+					.parse::<PackageName>()
+					.unwrap();
+				let version = doc
+					.get(&version)
+					.unwrap()
+					.as_str()
+					.unwrap()
+					.parse::<Version>()
+					.unwrap();
 
-			let file: IndexFile =
-				toml::de::from_str(&read_file(&tree, [scope, name]).unwrap().unwrap()).unwrap();
+				let file = read_package(&app_state, &id, &*app_state.source.read().await)
+					.await?
+					.unwrap();
 
-			let version_id = file
-				.entries
-				.keys()
-				.filter(|v_id| *v_id.version() == version)
-				.max()
-				.unwrap();
+				let version_id = file
+					.entries
+					.keys()
+					.filter(|v_id| *v_id.version() == version)
+					.max()
+					.unwrap();
 
-			PackageResponse::new(&id, version_id, &file)
+				Ok::<_, RegistryError>((i, PackageResponse::new(&id, version_id, &file)))
+			}
 		})
-		.collect::<Vec<_>>();
+		.collect::<JoinSet<_>>();
+
+	while let Some(res) = tasks.join_next().await {
+		let (i, res) = res.unwrap()?;
+		results[i] = Some(res);
+	}
 
 	Ok(HttpResponse::Ok().json(serde_json::json!({
-		"data": top_docs,
+		"data": results,
 		"count": count,
 	})))
 }
