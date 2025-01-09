@@ -72,7 +72,7 @@ impl AuthImpl for GitHubAuth {
 
 impl Display for GitHubAuth {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "GitHub")
+		write!(f, "GitHub (client id: {})", self.client_id)
 	}
 }
 

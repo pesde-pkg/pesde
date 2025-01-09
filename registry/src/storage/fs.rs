@@ -124,6 +124,6 @@ impl StorageImpl for FSStorage {
 
 impl Display for FSStorage {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "FS")
+		write!(f, "FS ({})", self.root.display())
 	}
 }

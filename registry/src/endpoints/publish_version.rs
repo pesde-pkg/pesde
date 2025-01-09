@@ -12,7 +12,7 @@ use async_compression::Level;
 use convert_case::{Case, Casing};
 use fs_err::tokio as fs;
 use pesde::{
-	manifest::Manifest,
+	manifest::{DependencyType, Manifest},
 	source::{
 		git_index::GitBasedSource,
 		ids::VersionId,
@@ -283,7 +283,12 @@ pub async fn publish_package(
 			RegistryError::InvalidArchive(format!("manifest has invalid dependencies: {e}"))
 		})?;
 
-		for (specifier, _) in dependencies.values() {
+		for (specifier, ty) in dependencies.values() {
+			// we need not verify dev dependencies, as they won't be installed
+			if *ty == DependencyType::Dev {
+				continue;
+			}
+
 			match specifier {
 				DependencySpecifiers::Pesde(specifier) => {
 					if specifier

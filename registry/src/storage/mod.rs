@@ -19,31 +19,27 @@ pub trait StorageImpl: Display {
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), crate::error::RegistryError>;
+	) -> Result<(), RegistryError>;
 	async fn get_package(
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, crate::error::RegistryError>;
+	) -> Result<HttpResponse, RegistryError>;
 
 	async fn store_readme(
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), crate::error::RegistryError>;
+	) -> Result<(), RegistryError>;
 	async fn get_readme(
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, crate::error::RegistryError>;
+	) -> Result<HttpResponse, RegistryError>;
 
-	async fn store_doc(
-		&self,
-		doc_hash: String,
-		contents: Vec<u8>,
-	) -> Result<(), crate::error::RegistryError>;
-	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, crate::error::RegistryError>;
+	async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), RegistryError>;
+	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, RegistryError>;
 }
 
 impl StorageImpl for Storage {
@@ -120,14 +116,14 @@ impl Display for Storage {
 pub fn get_storage_from_env() -> Storage {
 	if let Ok(endpoint) = benv!(parse "S3_ENDPOINT") {
 		Storage::S3(s3::S3Storage {
-			s3_bucket: Bucket::new(
+			bucket: Bucket::new(
 				endpoint,
 				UrlStyle::Path,
 				benv!(required "S3_BUCKET_NAME"),
 				benv!(required "S3_REGION"),
 			)
 			.unwrap(),
-			s3_credentials: Credentials::new(
+			credentials: Credentials::new(
 				benv!(required "S3_ACCESS_KEY"),
 				benv!(required "S3_SECRET_KEY"),
 			),

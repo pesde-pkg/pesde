@@ -13,8 +13,8 @@ use std::{fmt::Display, time::Duration};
 
 #[derive(Debug)]
 pub struct S3Storage {
-	pub s3_bucket: Bucket,
-	pub s3_credentials: Credentials,
+	pub bucket: Bucket,
+	pub credentials: Credentials,
 	pub reqwest_client: reqwest::Client,
 }
 
@@ -28,8 +28,8 @@ impl StorageImpl for S3Storage {
 		contents: Vec<u8>,
 	) -> Result<(), RegistryError> {
 		let object_url = PutObject::new(
-			&self.s3_bucket,
-			Some(&self.s3_credentials),
+			&self.bucket,
+			Some(&self.credentials),
 			&format!(
 				"{package_name}/{}/{}/pkg.tar.gz",
 				version.version(),
@@ -57,8 +57,8 @@ impl StorageImpl for S3Storage {
 		version: &VersionId,
 	) -> Result<HttpResponse, RegistryError> {
 		let object_url = GetObject::new(
-			&self.s3_bucket,
-			Some(&self.s3_credentials),
+			&self.bucket,
+			Some(&self.credentials),
 			&format!(
 				"{package_name}/{}/{}/pkg.tar.gz",
 				version.version(),
@@ -79,8 +79,8 @@ impl StorageImpl for S3Storage {
 		contents: Vec<u8>,
 	) -> Result<(), RegistryError> {
 		let object_url = PutObject::new(
-			&self.s3_bucket,
-			Some(&self.s3_credentials),
+			&self.bucket,
+			Some(&self.credentials),
 			&format!(
 				"{package_name}/{}/{}/readme.gz",
 				version.version(),
@@ -108,8 +108,8 @@ impl StorageImpl for S3Storage {
 		version: &VersionId,
 	) -> Result<HttpResponse, RegistryError> {
 		let object_url = GetObject::new(
-			&self.s3_bucket,
-			Some(&self.s3_credentials),
+			&self.bucket,
+			Some(&self.credentials),
 			&format!(
 				"{package_name}/{}/{}/readme.gz",
 				version.version(),
@@ -125,8 +125,8 @@ impl StorageImpl for S3Storage {
 
 	async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), RegistryError> {
 		let object_url = PutObject::new(
-			&self.s3_bucket,
-			Some(&self.s3_credentials),
+			&self.bucket,
+			Some(&self.credentials),
 			// capitalize Doc to prevent conflicts with scope names
 			&format!("Doc/{}.gz", doc_hash),
 		)
@@ -147,8 +147,8 @@ impl StorageImpl for S3Storage {
 
 	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, RegistryError> {
 		let object_url = GetObject::new(
-			&self.s3_bucket,
-			Some(&self.s3_credentials),
+			&self.bucket,
+			Some(&self.credentials),
 			&format!("Doc/{}.gz", doc_hash),
 		)
 		.sign(S3_SIGN_DURATION);
@@ -161,6 +161,6 @@ impl StorageImpl for S3Storage {
 
 impl Display for S3Storage {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "S3")
+		write!(f, "S3 (bucket name: {})", self.bucket.name())
 	}
 }
