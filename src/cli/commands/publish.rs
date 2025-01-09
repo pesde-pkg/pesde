@@ -9,7 +9,6 @@ use pesde::{
 	matching_globs,
 	scripts::ScriptName,
 	source::{
-		git_index::GitBasedSource,
 		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
 		specifiers::DependencySpecifiers,
 		traits::{GetTargetOptions, PackageRef, PackageSource, RefreshOptions, ResolveOptions},
@@ -664,25 +663,6 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 				config.max_archive_size,
 				archive.len() - config.max_archive_size
 			);
-		}
-
-		let deps = manifest.all_dependencies().context("dependency conflict")?;
-
-		if let Some((disallowed, _)) = deps.iter().find(|(_, (spec, _))| match spec {
-			DependencySpecifiers::Pesde(spec) => {
-				!config.other_registries_allowed.is_allowed_or_same(
-					source.repo_url().clone(),
-					gix::Url::try_from(spec.index.as_deref().unwrap()).unwrap(),
-				)
-			}
-			DependencySpecifiers::Git(spec) => !config.git_allowed.is_allowed(spec.repo.clone()),
-			#[cfg(feature = "wally-compat")]
-			DependencySpecifiers::Wally(spec) => !config
-				.wally_allowed
-				.is_allowed(gix::Url::try_from(spec.index.as_deref().unwrap()).unwrap()),
-			_ => false,
-		}) {
-			anyhow::bail!("dependency `{disallowed}` is not allowed on this index");
 		}
 
 		if self.dry_run {

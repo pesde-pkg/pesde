@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add path dependencies by @daimond113
 - Inherit pesde-managed scripts from workspace root by @daimond113
 - Allow using binaries from workspace root in member packages by @daimond113
+- Add yanking & deprecating by @daimond113
 
 ### Fixed
 - Install dev packages in prod mode and remove them after use to allow them to be used in scripts by @daimond113
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Remove old includes format compatibility by @daimond113
 - Remove data redundacy for workspace package references by @daimond113
+- Remove dependency checks from CLI in publish command in favor of registry checks by @daimond113
 
 ### Performance
 - Use `Arc` for more efficient cloning of multiple structs by @daimond113
