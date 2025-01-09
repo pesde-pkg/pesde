@@ -140,10 +140,15 @@ impl PackageSource for PesdePackageSource {
 			..
 		} = options;
 
-		let Some(IndexFile { entries, .. }) = self.read_index_file(&specifier.name, project)?
+		let Some(IndexFile { meta, entries, .. }) =
+			self.read_index_file(&specifier.name, project)?
 		else {
 			return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
 		};
+
+		if !meta.deprecated.is_empty() {
+			tracing::warn!("{} is deprecated: {}", specifier.name, meta.deprecated);
+		}
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
@@ -151,6 +156,7 @@ impl PackageSource for PesdePackageSource {
 			PackageNames::Pesde(specifier.name.clone()),
 			entries
 				.into_iter()
+				.filter(|(_, entry)| !entry.yanked)
 				.filter(|(VersionId(version, target), _)| {
 					specifier.version.matches(version)
 						&& specifier.target.unwrap_or(*project_target) == *target
@@ -484,6 +490,10 @@ pub struct IndexFileEntry {
 	#[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
 	pub docs: BTreeSet<DocEntry>,
 
+	/// Whether this version is yanked
+	#[serde(default, skip_serializing_if = "std::ops::Not::not")]
+	pub yanked: bool,
+
 	/// The dependencies of this package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
@@ -491,10 +501,14 @@ pub struct IndexFileEntry {
 
 /// The package metadata in the index file
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
-pub struct IndexMetadata {}
+pub struct IndexMetadata {
+	/// Whether this package is deprecated
+	#[serde(default, skip_serializing_if = "String::is_empty")]
+	pub deprecated: String,
+}
 
 /// The index file for a package
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct IndexFile {
 	/// Any package-wide metadata
 	#[serde(default, skip_serializing_if = "crate::util::is_default")]

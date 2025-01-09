@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, HttpResponse};
+use semver::Version;
 use serde::Deserialize;
 use tantivy::{collector::Count, query::AllQuery, schema::Value, DateTime, Order};
 
-use crate::{error::Error, package::PackageResponse, AppState};
+use crate::{error::RegistryError, package::PackageResponse, AppState};
 use pesde::{
 	names::PackageName,
 	source::{
@@ -18,19 +19,20 @@ pub struct Request {
 	#[serde(default)]
 	query: Option<String>,
 	#[serde(default)]
-	offset: Option<usize>,
+	offset: usize,
 }
 
 pub async fn search_packages(
 	app_state: web::Data<AppState>,
-	request: web::Query<Request>,
-) -> Result<impl Responder, Error> {
+	request_query: web::Query<Request>,
+) -> Result<HttpResponse, RegistryError> {
 	let searcher = app_state.search_reader.searcher();
 	let schema = searcher.schema();
 
 	let id = schema.get_field("id").unwrap();
+	let version = schema.get_field("version").unwrap();
 
-	let query = request.query.as_deref().unwrap_or_default().trim();
+	let query = request_query.query.as_deref().unwrap_or_default().trim();
 
 	let query = if query.is_empty() {
 		Box::new(AllQuery)
@@ -44,7 +46,7 @@ pub async fn search_packages(
 			&(
 				Count,
 				tantivy::collector::TopDocs::with_limit(50)
-					.and_offset(request.offset.unwrap_or_default())
+					.and_offset(request_query.offset)
 					.order_by_fast_field::<DateTime>("published_at", Order::Desc),
 			),
 		)
@@ -67,36 +69,25 @@ pub async fn search_packages(
 				.parse::<PackageName>()
 				.unwrap();
 			let (scope, name) = id.as_str();
+			let version = doc
+				.get(&version)
+				.unwrap()
+				.as_str()
+				.unwrap()
+				.parse::<Version>()
+				.unwrap();
 
 			let file: IndexFile =
 				toml::de::from_str(&read_file(&tree, [scope, name]).unwrap().unwrap()).unwrap();
 
-			let (latest_version, entry) = file
+			let version_id = file
 				.entries
-				.iter()
-				.max_by_key(|(v_id, _)| v_id.version())
+				.keys()
+				.filter(|v_id| *v_id.version() == version)
+				.max()
 				.unwrap();
 
-			PackageResponse {
-				name: id.to_string(),
-				version: latest_version.version().to_string(),
-				targets: file
-					.entries
-					.iter()
-					.filter(|(v_id, _)| v_id.version() == latest_version.version())
-					.map(|(_, entry)| (&entry.target).into())
-					.collect(),
-				description: entry.description.clone().unwrap_or_default(),
-				published_at: file
-					.entries
-					.values()
-					.map(|entry| entry.published_at)
-					.max()
-					.unwrap(),
-				license: entry.license.clone().unwrap_or_default(),
-				authors: entry.authors.clone(),
-				repository: entry.repository.clone().map(|url| url.to_string()),
-			}
+			PackageResponse::new(&id, version_id, &file)
 		})
 		.collect::<Vec<_>>();
 

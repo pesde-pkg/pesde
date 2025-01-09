@@ -5,31 +5,56 @@ export type SearchResponse = {
 	data: PackageResponse[]
 }
 
-export type PackageVersionsResponse = PackageResponse[]
+export type PackageVersionsResponse = {
+	name: string
+	deprecated?: string
+	versions: Record<
+		string,
+		{
+			description?: string
+			targets: Record<
+				TargetKind,
+				{ target: TargetInfoInner; yanked?: boolean } & PackageResponseInner
+			>
+		}
+	>
+}
 
 export type PackageVersionResponse = PackageResponse
+
+export type PackageResponseInner = {
+	published_at: string
+	license?: string
+	authors?: string[]
+	repository?: string
+	docs?: DocEntry[]
+	dependencies?: Record<string, DependencyEntry>
+}
 
 export type PackageResponse = {
 	name: string
 	version: string
 	targets: TargetInfo[]
-	description: string
-	published_at: string
-	license?: string
-	authors?: string[]
-	repository?: string
-	dependencies: Record<string, DependencyEntry>
-	docs?: DocEntry[]
-}
+	description?: string
+	deprecated?: string
+} & PackageResponseInner
 
-export type TargetInfo = {
-	kind: TargetKind
+export type TargetInfoInner = {
 	lib: boolean
 	bin: boolean
 	scripts?: string[]
 }
 
+export type TargetInfo = {
+	yanked?: boolean
+	kind: TargetKind
+} & TargetInfoInner
+
 export type TargetKind = "roblox" | "roblox_server" | "lune" | "luau"
+
+export const isTargetKind = (value: string | undefined): value is TargetKind => {
+	return value === "roblox" || value === "roblox_server" || value === "lune" || value === "luau"
+}
 
 export type DependencyEntry = [DependencyInfo, DependencyKind]
 
@@ -62,7 +87,6 @@ export type DocEntryCategory = DocEntryBase & {
 
 export type DocEntryPage = DocEntryBase & {
 	name: string
-	hash: string
 }
 
 export const TARGET_KIND_DISPLAY_NAMES: Record<TargetKind, string> = {

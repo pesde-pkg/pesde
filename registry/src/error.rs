@@ -4,7 +4,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum RegistryError {
 	#[error("failed to parse query")]
 	Query(#[from] tantivy::query::QueryParserError),
 
@@ -53,16 +53,16 @@ pub struct ErrorResponse {
 	pub error: String,
 }
 
-impl ResponseError for Error {
+impl ResponseError for RegistryError {
 	fn error_response(&self) -> HttpResponse<BoxBody> {
 		match self {
-			Error::Query(e) => HttpResponse::BadRequest().json(ErrorResponse {
+			RegistryError::Query(e) => HttpResponse::BadRequest().json(ErrorResponse {
 				error: format!("failed to parse query: {e}"),
 			}),
-			Error::Tar(_) => HttpResponse::BadRequest().json(ErrorResponse {
+			RegistryError::Tar(_) => HttpResponse::BadRequest().json(ErrorResponse {
 				error: "corrupt archive".to_string(),
 			}),
-			Error::InvalidArchive(e) => HttpResponse::BadRequest().json(ErrorResponse {
+			RegistryError::InvalidArchive(e) => HttpResponse::BadRequest().json(ErrorResponse {
 				error: format!("archive is invalid: {e}"),
 			}),
 			e => {
@@ -74,16 +74,16 @@ impl ResponseError for Error {
 }
 
 pub trait ReqwestErrorExt {
-	async fn into_error(self) -> Result<Self, Error>
+	async fn into_error(self) -> Result<Self, RegistryError>
 	where
 		Self: Sized;
 }
 
 impl ReqwestErrorExt for reqwest::Response {
-	async fn into_error(self) -> Result<Self, Error> {
+	async fn into_error(self) -> Result<Self, RegistryError> {
 		match self.error_for_status_ref() {
 			Ok(_) => Ok(self),
-			Err(e) => Err(Error::ReqwestResponse(self.text().await?, e)),
+			Err(e) => Err(RegistryError::ReqwestResponse(self.text().await?, e)),
 		}
 	}
 }

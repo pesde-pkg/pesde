@@ -3,6 +3,7 @@ use pesde::Project;
 mod add;
 mod auth;
 mod config;
+mod deprecate;
 mod execute;
 mod init;
 mod install;
@@ -18,6 +19,7 @@ mod self_install;
 #[cfg(feature = "version-management")]
 mod self_upgrade;
 mod update;
+mod yank;
 
 #[derive(Debug, clap::Subcommand)]
 pub enum Subcommand {
@@ -68,6 +70,12 @@ pub enum Subcommand {
 	/// Executes a binary package without needing to be run in a project directory
 	#[clap(name = "x", visible_alias = "execute", visible_alias = "exec")]
 	Execute(execute::ExecuteCommand),
+
+	/// Yanks a package from the registry
+	Yank(yank::YankCommand),
+
+	/// Deprecates a package from the registry
+	Deprecate(deprecate::DeprecateCommand),
 }
 
 impl Subcommand {
@@ -91,6 +99,8 @@ impl Subcommand {
 			Subcommand::Update(update) => update.run(project, reqwest).await,
 			Subcommand::Outdated(outdated) => outdated.run(project).await,
 			Subcommand::Execute(execute) => execute.run(project, reqwest).await,
+			Subcommand::Yank(yank) => yank.run(project, reqwest).await,
+			Subcommand::Deprecate(deprecate) => deprecate.run(project, reqwest).await,
 		}
 	}
 }

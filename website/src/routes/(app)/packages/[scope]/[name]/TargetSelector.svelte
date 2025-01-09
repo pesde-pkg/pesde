@@ -5,6 +5,7 @@
 	import { TARGET_KIND_DISPLAY_NAMES, type TargetInfo, type TargetKind } from "$lib/registry-api"
 	import { Label, useId } from "bits-ui"
 	import { getContext } from "svelte"
+	import { TriangleAlert } from "lucide-svelte"
 
 	const currentTarget = getContext<{ value: TargetInfo }>("currentTarget")
 
@@ -32,6 +33,14 @@
 
 <div class="text-heading mb-1 text-lg font-semibold">
 	<Label.Root for={id} onclick={() => (open = true)}>Target</Label.Root>
+	{#if currentTarget.value.yanked}
+		<span
+			class="ml-1 inline-flex items-center rounded bg-yellow-600/10 px-2 py-1 text-sm text-yellow-950 dark:bg-yellow-500/10 dark:text-yellow-100"
+		>
+			<TriangleAlert class="mr-1 inline-block size-4" />
+			<span class="-mb-0.5">Yanked</span>
+		</span>
+	{/if}
 </div>
 
 <Select

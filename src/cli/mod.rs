@@ -1,8 +1,10 @@
+use crate::cli::config::read_config;
 use anyhow::Context;
 use colored::Colorize;
 use fs_err::tokio as fs;
 use futures::StreamExt;
 use pesde::{
+	errors::ManifestReadError,
 	lockfile::Lockfile,
 	manifest::{
 		overrides::{OverrideKey, OverrideSpecifier},
@@ -13,7 +15,7 @@ use pesde::{
 	source::{
 		ids::VersionId, specifiers::DependencySpecifiers, workspace::specifier::VersionTypeOrReq,
 	},
-	Project,
+	Project, DEFAULT_INDEX_NAME,
 };
 use relative_path::RelativePathBuf;
 use std::{
@@ -307,6 +309,40 @@ pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 			_ => {
 				eprintln!("\n{}: not captured", "backtrace".yellow().bold());
 			}
+		}
+	}
+}
+
+pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result<gix::Url> {
+	let manifest = match project.deser_manifest().await {
+		Ok(manifest) => Some(manifest),
+		Err(e) => match e {
+			ManifestReadError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+			e => return Err(e.into()),
+		},
+	};
+
+	let index_url = match index {
+		Some(index) => match index.try_into() {
+			Ok(url) => Some(url),
+			Err(_) => None,
+		},
+		None => match manifest {
+			Some(_) => None,
+			None => Some(read_config().await?.default_index),
+		},
+	};
+
+	match index_url {
+		Some(url) => Ok(url),
+		None => {
+			let index_name = index.unwrap_or(DEFAULT_INDEX_NAME);
+
+			manifest
+				.unwrap()
+				.indices
+				.remove(index_name)
+				.with_context(|| format!("index {index_name} not found in manifest"))
 		}
 	}
 }

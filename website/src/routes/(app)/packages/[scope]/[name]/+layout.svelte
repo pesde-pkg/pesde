@@ -73,6 +73,15 @@
 		</time>
 	</div>
 	<p class="mb-6 max-w-prose">{pkgDescription}</p>
+	{#if data.pkg.deprecated}
+		<div class="admonition admonition-danger !mb-8">
+			<p class="admonition-title">
+				<span class="admonition-icon"></span>
+				<span class="admonition-label">Deprecated</span>
+			</p>
+			<p>{data.pkg.deprecated}</p>
+		</div>
+	{/if}
 
 	<div class="mb-8 lg:hidden">
 		<TargetSelector />

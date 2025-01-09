@@ -1,5 +1,5 @@
 use crate::{
-	error::{Error, ReqwestErrorExt},
+	error::{RegistryError, ReqwestErrorExt},
 	storage::StorageImpl,
 };
 use actix_web::{http::header::LOCATION, HttpResponse};
@@ -26,7 +26,7 @@ impl StorageImpl for S3Storage {
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), Error> {
+	) -> Result<(), RegistryError> {
 		let object_url = PutObject::new(
 			&self.s3_bucket,
 			Some(&self.s3_credentials),
@@ -55,7 +55,7 @@ impl StorageImpl for S3Storage {
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, Error> {
+	) -> Result<HttpResponse, RegistryError> {
 		let object_url = GetObject::new(
 			&self.s3_bucket,
 			Some(&self.s3_credentials),
@@ -77,7 +77,7 @@ impl StorageImpl for S3Storage {
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), Error> {
+	) -> Result<(), RegistryError> {
 		let object_url = PutObject::new(
 			&self.s3_bucket,
 			Some(&self.s3_credentials),
@@ -106,7 +106,7 @@ impl StorageImpl for S3Storage {
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, Error> {
+	) -> Result<HttpResponse, RegistryError> {
 		let object_url = GetObject::new(
 			&self.s3_bucket,
 			Some(&self.s3_credentials),
@@ -123,7 +123,7 @@ impl StorageImpl for S3Storage {
 			.finish())
 	}
 
-	async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), Error> {
+	async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), RegistryError> {
 		let object_url = PutObject::new(
 			&self.s3_bucket,
 			Some(&self.s3_credentials),
@@ -145,7 +145,7 @@ impl StorageImpl for S3Storage {
 		Ok(())
 	}
 
-	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, Error> {
+	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, RegistryError> {
 		let object_url = GetObject::new(
 			&self.s3_bucket,
 			Some(&self.s3_credentials),

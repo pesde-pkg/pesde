@@ -1,60 +1,14 @@
-use actix_web::{http::header::ACCEPT, web, HttpRequest, HttpResponse, Responder};
-use semver::Version;
-use serde::{Deserialize, Deserializer};
+use actix_web::{http::header::ACCEPT, web, HttpRequest, HttpResponse};
+use serde::Deserialize;
 
-use crate::{error::Error, package::PackageResponse, storage::StorageImpl, AppState};
-use pesde::{
-	manifest::target::TargetKind,
-	names::PackageName,
-	source::{
-		git_index::{read_file, root_tree, GitBasedSource},
-		pesde::{DocEntryKind, IndexFile},
-	},
+use crate::{
+	error::RegistryError,
+	package::{read_package, PackageResponse},
+	request_path::{AnyOrSpecificTarget, LatestOrSpecificVersion},
+	storage::StorageImpl,
+	AppState,
 };
-
-#[derive(Debug)]
-pub enum VersionRequest {
-	Latest,
-	Specific(Version),
-}
-
-impl<'de> Deserialize<'de> for VersionRequest {
-	fn deserialize<D>(deserializer: D) -> Result<VersionRequest, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		let s = String::deserialize(deserializer)?;
-		if s.eq_ignore_ascii_case("latest") {
-			return Ok(VersionRequest::Latest);
-		}
-
-		s.parse()
-			.map(VersionRequest::Specific)
-			.map_err(serde::de::Error::custom)
-	}
-}
-
-#[derive(Debug)]
-pub enum TargetRequest {
-	Any,
-	Specific(TargetKind),
-}
-
-impl<'de> Deserialize<'de> for TargetRequest {
-	fn deserialize<D>(deserializer: D) -> Result<TargetRequest, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		let s = String::deserialize(deserializer)?;
-		if s.eq_ignore_ascii_case("any") {
-			return Ok(TargetRequest::Any);
-		}
-
-		s.parse()
-			.map(TargetRequest::Specific)
-			.map_err(serde::de::Error::custom)
-	}
-}
+use pesde::{names::PackageName, source::pesde::DocEntryKind};
 
 #[derive(Debug, Deserialize)]
 pub struct Query {
@@ -64,65 +18,50 @@ pub struct Query {
 pub async fn get_package_version(
 	request: HttpRequest,
 	app_state: web::Data<AppState>,
-	path: web::Path<(PackageName, VersionRequest, TargetRequest)>,
-	query: web::Query<Query>,
-) -> Result<impl Responder, Error> {
+	path: web::Path<(PackageName, LatestOrSpecificVersion, AnyOrSpecificTarget)>,
+	request_query: web::Query<Query>,
+) -> Result<HttpResponse, RegistryError> {
 	let (name, version, target) = path.into_inner();
 
-	let (scope, name_part) = name.as_str();
-
-	let file: IndexFile = {
-		let source = app_state.source.lock().await;
-		let repo = gix::open(source.path(&app_state.project))?;
-		let tree = root_tree(&repo)?;
-
-		match read_file(&tree, [scope, name_part])? {
-			Some(versions) => toml::de::from_str(&versions)?,
-			None => return Ok(HttpResponse::NotFound().finish()),
-		}
+	let Some(file) = read_package(&app_state, &name, &*app_state.source.lock().await).await? else {
+		return Ok(HttpResponse::NotFound().finish());
 	};
 
-	let Some((v_id, entry, targets)) = ({
+	let Some((v_id, entry)) = ({
 		let version = match version {
-			VersionRequest::Latest => match file.entries.keys().map(|k| k.version()).max() {
+			LatestOrSpecificVersion::Latest => match file.entries.keys().map(|k| k.version()).max()
+			{
 				Some(latest) => latest.clone(),
 				None => return Ok(HttpResponse::NotFound().finish()),
 			},
-			VersionRequest::Specific(version) => version,
+			LatestOrSpecificVersion::Specific(version) => version,
 		};
 
-		let versions = file
+		let mut versions = file
 			.entries
 			.iter()
 			.filter(|(v_id, _)| *v_id.version() == version);
 
 		match target {
-			TargetRequest::Any => versions.clone().min_by_key(|(v_id, _)| *v_id.target()),
-			TargetRequest::Specific(kind) => versions
-				.clone()
-				.find(|(_, entry)| entry.target.kind() == kind),
+			AnyOrSpecificTarget::Any => versions.min_by_key(|(v_id, _)| *v_id.target()),
+			AnyOrSpecificTarget::Specific(kind) => {
+				versions.find(|(_, entry)| entry.target.kind() == kind)
+			}
 		}
-		.map(|(v_id, entry)| {
-			(
-				v_id,
-				entry,
-				versions.map(|(_, entry)| (&entry.target).into()).collect(),
-			)
-		})
 	}) else {
 		return Ok(HttpResponse::NotFound().finish());
 	};
 
-	if let Some(doc_name) = query.doc.as_deref() {
+	if let Some(doc_name) = request_query.doc.as_deref() {
 		let hash = 'finder: {
-			let mut hash = entry.docs.iter().map(|doc| &doc.kind).collect::<Vec<_>>();
-			while let Some(doc) = hash.pop() {
+			let mut queue = entry.docs.iter().map(|doc| &doc.kind).collect::<Vec<_>>();
+			while let Some(doc) = queue.pop() {
 				match doc {
 					DocEntryKind::Page { name, hash } if name == doc_name => {
 						break 'finder hash.clone()
 					}
 					DocEntryKind::Category { items, .. } => {
-						hash.extend(items.iter().map(|item| &item.kind))
+						queue.extend(items.iter().map(|item| &item.kind))
 					}
 					_ => continue,
 				};
@@ -152,20 +91,5 @@ pub async fn get_package_version(
 		};
 	}
 
-	let response = PackageResponse {
-		name: name.to_string(),
-		version: v_id.version().to_string(),
-		targets,
-		description: entry.description.clone().unwrap_or_default(),
-		published_at: entry.published_at,
-		license: entry.license.clone().unwrap_or_default(),
-		authors: entry.authors.clone(),
-		repository: entry.repository.clone().map(|url| url.to_string()),
-	};
-
-	let mut value = serde_json::to_value(response)?;
-	value["docs"] = serde_json::to_value(entry.docs.clone())?;
-	value["dependencies"] = serde_json::to_value(entry.dependencies.clone())?;
-
-	Ok(HttpResponse::Ok().json(value))
+	Ok(HttpResponse::Ok().json(PackageResponse::new(&name, v_id, &file)))
 }

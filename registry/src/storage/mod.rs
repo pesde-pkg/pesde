@@ -1,4 +1,4 @@
-use crate::{benv, error::Error, make_reqwest};
+use crate::{benv, error::RegistryError, make_reqwest};
 use actix_web::HttpResponse;
 use pesde::{names::PackageName, source::ids::VersionId};
 use rusty_s3::{Bucket, Credentials, UrlStyle};
@@ -19,31 +19,31 @@ pub trait StorageImpl: Display {
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), crate::error::Error>;
+	) -> Result<(), crate::error::RegistryError>;
 	async fn get_package(
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, crate::error::Error>;
+	) -> Result<HttpResponse, crate::error::RegistryError>;
 
 	async fn store_readme(
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), crate::error::Error>;
+	) -> Result<(), crate::error::RegistryError>;
 	async fn get_readme(
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, crate::error::Error>;
+	) -> Result<HttpResponse, crate::error::RegistryError>;
 
 	async fn store_doc(
 		&self,
 		doc_hash: String,
 		contents: Vec<u8>,
-	) -> Result<(), crate::error::Error>;
-	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, crate::error::Error>;
+	) -> Result<(), crate::error::RegistryError>;
+	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, crate::error::RegistryError>;
 }
 
 impl StorageImpl for Storage {
@@ -52,7 +52,7 @@ impl StorageImpl for Storage {
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), Error> {
+	) -> Result<(), RegistryError> {
 		match self {
 			Storage::S3(s3) => s3.store_package(package_name, version, contents).await,
 			Storage::FS(fs) => fs.store_package(package_name, version, contents).await,
@@ -63,7 +63,7 @@ impl StorageImpl for Storage {
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, Error> {
+	) -> Result<HttpResponse, RegistryError> {
 		match self {
 			Storage::S3(s3) => s3.get_package(package_name, version).await,
 			Storage::FS(fs) => fs.get_package(package_name, version).await,
@@ -75,7 +75,7 @@ impl StorageImpl for Storage {
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), Error> {
+	) -> Result<(), RegistryError> {
 		match self {
 			Storage::S3(s3) => s3.store_readme(package_name, version, contents).await,
 			Storage::FS(fs) => fs.store_readme(package_name, version, contents).await,
@@ -86,21 +86,21 @@ impl StorageImpl for Storage {
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, Error> {
+	) -> Result<HttpResponse, RegistryError> {
 		match self {
 			Storage::S3(s3) => s3.get_readme(package_name, version).await,
 			Storage::FS(fs) => fs.get_readme(package_name, version).await,
 		}
 	}
 
-	async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), Error> {
+	async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), RegistryError> {
 		match self {
 			Storage::S3(s3) => s3.store_doc(doc_hash, contents).await,
 			Storage::FS(fs) => fs.store_doc(doc_hash, contents).await,
 		}
 	}
 
-	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, Error> {
+	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, RegistryError> {
 		match self {
 			Storage::S3(s3) => s3.get_doc(doc_hash).await,
 			Storage::FS(fs) => fs.get_doc(doc_hash).await,

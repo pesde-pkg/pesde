@@ -2,7 +2,7 @@
 	import { goto } from "$app/navigation"
 	import { page } from "$app/stores"
 	import Select from "$lib/components/Select.svelte"
-	import { TARGET_KIND_DISPLAY_NAMES, type TargetInfo } from "$lib/registry-api"
+	import { TARGET_KIND_DISPLAY_NAMES, type TargetKind } from "$lib/registry-api"
 	import type { Snippet } from "svelte"
 
 	let disabled = $state(false)
@@ -23,9 +23,9 @@
 </script>
 
 <Select
-	items={$page.data.pkg.targets.map((target: TargetInfo) => ({
-		value: target.kind,
-		label: TARGET_KIND_DISPLAY_NAMES[target.kind],
+	items={Object.keys($page.data.pkg.targets).map((target) => ({
+		value: target,
+		label: TARGET_KIND_DISPLAY_NAMES[target as TargetKind],
 	}))}
 	value={$page.params.target ?? $page.data.pkg.targets[0].kind}
 	contentClass={sameWidth ? "" : "w-32"}

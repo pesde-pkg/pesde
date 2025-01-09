@@ -5,10 +5,12 @@ use pesde::{
 	names::PackageName,
 	source::{
 		git_index::{root_tree, GitBasedSource},
+		ids::VersionId,
 		pesde::{IndexFile, IndexFileEntry, PesdePackageSource, SCOPE_INFO_FILE},
 	},
 	Project,
 };
+use semver::Version;
 use tantivy::{
 	doc,
 	query::QueryParser,
@@ -18,7 +20,7 @@ use tantivy::{
 };
 use tokio::pin;
 
-pub async fn all_packages(
+async fn all_packages(
 	source: &PesdePackageSource,
 	project: &Project,
 ) -> impl Stream<Item = (PackageName, IndexFile)> {
@@ -67,6 +69,18 @@ pub async fn all_packages(
 	}
 }
 
+fn find_max(file: &IndexFile) -> Option<(&VersionId, &IndexFileEntry)> {
+	file.entries
+		.iter()
+		.filter(|(_, entry)| !entry.yanked)
+		.max_by(|(v_id_a, entry_a), (v_id_b, entry_b)| {
+			v_id_a
+				.version()
+				.cmp(v_id_b.version())
+				.then(entry_a.published_at.cmp(&entry_b.published_at))
+		})
+}
+
 pub async fn make_search(
 	project: &Project,
 	source: &PesdePackageSource,
@@ -80,6 +94,8 @@ pub async fn make_search(
 	);
 
 	let id_field = schema_builder.add_text_field("id", STRING | STORED);
+	let version = schema_builder.add_text_field("version", STRING | STORED);
+
 	let scope = schema_builder.add_text_field("scope", field_options.clone());
 	let name = schema_builder.add_text_field("name", field_options.clone());
 	let description = schema_builder.add_text_field("description", field_options);
@@ -103,18 +119,22 @@ pub async fn make_search(
 	let stream = all_packages(source, project).await;
 	pin!(stream);
 
-	while let Some((pkg_name, mut file)) = stream.next().await {
-		let Some((_, latest_entry)) = file.entries.pop_last() else {
-			tracing::error!("no versions found for {pkg_name}");
+	while let Some((pkg_name, file)) = stream.next().await {
+		if !file.meta.deprecated.is_empty() {
+			continue;
+		}
+
+		let Some((v_id, latest_entry)) = find_max(&file) else {
 			continue;
 		};
 
 		search_writer
 			.add_document(doc!(
 				id_field => pkg_name.to_string(),
+				version => v_id.version().to_string(),
 				scope => pkg_name.as_str().0,
 				name => pkg_name.as_str().1,
-				description => latest_entry.description.unwrap_or_default(),
+				description => latest_entry.description.clone().unwrap_or_default(),
 				published_at => DateTime::from_timestamp_secs(latest_entry.published_at.timestamp()),
 			))
 			.unwrap();
@@ -130,7 +150,12 @@ pub async fn make_search(
 	(search_reader, search_writer, query_parser)
 }
 
-pub fn update_version(app_state: &AppState, name: &PackageName, entry: IndexFileEntry) {
+pub fn update_search_version(
+	app_state: &AppState,
+	name: &PackageName,
+	version: &Version,
+	entry: &IndexFileEntry,
+) {
 	let mut search_writer = app_state.search_writer.lock().unwrap();
 	let schema = search_writer.index().schema();
 	let id_field = schema.get_field("id").unwrap();
@@ -139,12 +164,35 @@ pub fn update_version(app_state: &AppState, name: &PackageName, entry: IndexFile
 
 	search_writer.add_document(doc!(
         id_field => name.to_string(),
+		schema.get_field("version").unwrap() => version.to_string(),
         schema.get_field("scope").unwrap() => name.as_str().0,
         schema.get_field("name").unwrap() => name.as_str().1,
-        schema.get_field("description").unwrap() => entry.description.unwrap_or_default(),
+        schema.get_field("description").unwrap() => entry.description.clone().unwrap_or_default(),
         schema.get_field("published_at").unwrap() => DateTime::from_timestamp_secs(entry.published_at.timestamp())
     )).unwrap();
 
 	search_writer.commit().unwrap();
 	app_state.search_reader.reload().unwrap();
+}
+
+pub fn search_version_changed(app_state: &AppState, name: &PackageName, file: &IndexFile) {
+	let entry = if file.meta.deprecated.is_empty() {
+		find_max(file)
+	} else {
+		None
+	};
+
+	let Some((v_id, entry)) = entry else {
+		let mut search_writer = app_state.search_writer.lock().unwrap();
+		let schema = search_writer.index().schema();
+		let id_field = schema.get_field("id").unwrap();
+
+		search_writer.delete_term(Term::from_field_text(id_field, &name.to_string()));
+		search_writer.commit().unwrap();
+		app_state.search_reader.reload().unwrap();
+
+		return;
+	};
+
+	update_search_version(app_state, name, v_id.version(), entry);
 }

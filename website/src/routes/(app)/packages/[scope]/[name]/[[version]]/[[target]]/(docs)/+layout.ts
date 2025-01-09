@@ -1,8 +1,10 @@
 import {
 	fetchRegistryJson,
+	isTargetKind,
 	RegistryHttpError,
 	type PackageVersionResponse,
 	type PackageVersionsResponse,
+	type TargetKind,
 } from "$lib/registry-api"
 import { error, redirect } from "@sveltejs/kit"
 import type { LayoutLoad } from "./$types"
@@ -11,27 +13,30 @@ type FetchPackageOptions = {
 	scope: string
 	name: string
 	version: string
-	target: string
+	target: TargetKind
 }
 
 const fetchPackageAndVersions = async (fetcher: typeof fetch, options: FetchPackageOptions) => {
 	const { scope, name, version, target } = options
 
 	try {
-		const [pkg, versions] = await Promise.all([
-			fetchRegistryJson<PackageVersionResponse>(
-				`packages/${encodeURIComponent(`${scope}/${name}`)}/${version}/${target}`,
-				fetcher,
-			),
+		const versionsResponse = await fetchRegistryJson<PackageVersionsResponse>(
+			`packages/${encodeURIComponent(`${scope}/${name}`)}`,
+			fetcher,
+		)
 
-			fetchRegistryJson<PackageVersionsResponse>(
-				`packages/${encodeURIComponent(`${scope}/${name}`)}`,
-				fetcher,
-			),
-		])
+		const versions = Object.keys(versionsResponse.versions).reverse()
 
-		versions.reverse()
-		return { pkg, versions }
+		return {
+			pkg: {
+				name: versionsResponse.name,
+				version,
+				targets: versionsResponse.versions[version].targets,
+				description: versionsResponse.versions[version].description,
+				...versionsResponse.versions[version].targets[target],
+			},
+			versions,
+		}
 	} catch (e) {
 		if (e instanceof RegistryHttpError && e.response.status === 404) {
 			error(404, "This package does not exist.")
@@ -47,7 +52,7 @@ export const load: LayoutLoad = async ({ params, url, fetch }) => {
 		error(404, "Not Found")
 	}
 
-	if (version === undefined || target === undefined || version === "latest" || target === "any") {
+	if (version === undefined || version === "latest" || !isTargetKind(target)) {
 		const pkg = await fetchRegistryJson<PackageVersionResponse>(
 			`packages/${encodeURIComponent(`${scope}/${name}`)}/${version ?? "latest"}/${target ?? "any"}`,
 			fetch,
@@ -62,6 +67,6 @@ export const load: LayoutLoad = async ({ params, url, fetch }) => {
 
 	return {
 		pkg,
-		versions: versions.map((v) => v.version),
+		versions,
 	}
 }

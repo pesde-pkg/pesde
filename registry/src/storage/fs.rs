@@ -1,4 +1,4 @@
-use crate::{error::Error, storage::StorageImpl};
+use crate::{error::RegistryError, storage::StorageImpl};
 use actix_web::{
 	http::header::{CONTENT_ENCODING, CONTENT_TYPE},
 	HttpResponse,
@@ -15,7 +15,10 @@ pub struct FSStorage {
 	pub root: PathBuf,
 }
 
-async fn read_file_to_response(path: &Path, content_type: &str) -> Result<HttpResponse, Error> {
+async fn read_file_to_response(
+	path: &Path,
+	content_type: &str,
+) -> Result<HttpResponse, RegistryError> {
 	Ok(match fs::read(path).await {
 		Ok(contents) => HttpResponse::Ok()
 			.append_header((CONTENT_TYPE, content_type))
@@ -32,7 +35,7 @@ impl StorageImpl for FSStorage {
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), Error> {
+	) -> Result<(), RegistryError> {
 		let (scope, name) = package_name.as_str();
 
 		let path = self
@@ -52,7 +55,7 @@ impl StorageImpl for FSStorage {
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, Error> {
+	) -> Result<HttpResponse, RegistryError> {
 		let (scope, name) = package_name.as_str();
 
 		let path = self
@@ -70,7 +73,7 @@ impl StorageImpl for FSStorage {
 		package_name: &PackageName,
 		version: &VersionId,
 		contents: Vec<u8>,
-	) -> Result<(), Error> {
+	) -> Result<(), RegistryError> {
 		let (scope, name) = package_name.as_str();
 
 		let path = self
@@ -90,7 +93,7 @@ impl StorageImpl for FSStorage {
 		&self,
 		package_name: &PackageName,
 		version: &VersionId,
-	) -> Result<HttpResponse, Error> {
+	) -> Result<HttpResponse, RegistryError> {
 		let (scope, name) = package_name.as_str();
 
 		let path = self
@@ -103,7 +106,7 @@ impl StorageImpl for FSStorage {
 		read_file_to_response(&path.join("readme.gz"), "text/plain").await
 	}
 
-	async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), Error> {
+	async fn store_doc(&self, doc_hash: String, contents: Vec<u8>) -> Result<(), RegistryError> {
 		let path = self.root.join("Doc");
 		fs::create_dir_all(&path).await?;
 
@@ -112,7 +115,7 @@ impl StorageImpl for FSStorage {
 		Ok(())
 	}
 
-	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, Error> {
+	async fn get_doc(&self, doc_hash: &str) -> Result<HttpResponse, RegistryError> {
 		let path = self.root.join("Doc");
 
 		read_file_to_response(&path.join(format!("{doc_hash}.gz")), "text/plain").await

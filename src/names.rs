@@ -97,6 +97,16 @@ impl PackageName {
 	pub fn escaped(&self) -> String {
 		format!("{}+{}", self.0, self.1)
 	}
+
+	/// Returns the scope of the package name
+	pub fn scope(&self) -> &str {
+		&self.0
+	}
+
+	/// Returns the name of the package name
+	pub fn name(&self) -> &str {
+		&self.1
+	}
 }
 
 /// All possible package names

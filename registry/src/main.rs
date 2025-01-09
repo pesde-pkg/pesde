@@ -29,7 +29,9 @@ use tracing_subscriber::{
 mod auth;
 mod endpoints;
 mod error;
+mod git;
 mod package;
+mod request_path;
 mod search;
 mod storage;
 
@@ -176,11 +178,23 @@ async fn run() -> std::io::Result<()> {
 							.to(endpoints::package_versions::get_package_versions)
 							.wrap(from_fn(auth::read_mw)),
 					)
+					.service(
+						web::resource("/packages/{name}/deprecate")
+							.put(endpoints::deprecate_version::deprecate_package_version)
+							.delete(endpoints::deprecate_version::deprecate_package_version)
+							.wrap(from_fn(auth::write_mw)),
+					)
 					.route(
 						"/packages/{name}/{version}/{target}",
 						web::get()
 							.to(endpoints::package_version::get_package_version)
 							.wrap(from_fn(auth::read_mw)),
+					)
+					.service(
+						web::resource("/packages/{name}/{version}/{target}/yank")
+							.put(endpoints::yank_version::yank_package_version)
+							.delete(endpoints::yank_version::yank_package_version)
+							.wrap(from_fn(auth::write_mw)),
 					)
 					.service(
 						web::scope("/packages")

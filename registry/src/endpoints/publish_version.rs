@@ -1,22 +1,22 @@
 use crate::{
 	auth::UserId,
-	benv,
-	error::{Error, ErrorResponse},
-	search::update_version,
+	error::{ErrorResponse, RegistryError},
+	git::push_changes,
+	package::{read_package, read_scope_info},
+	search::update_search_version,
 	storage::StorageImpl,
 	AppState,
 };
-use actix_web::{web, web::Bytes, HttpResponse, Responder};
+use actix_web::{web, web::Bytes, HttpResponse};
 use async_compression::Level;
 use convert_case::{Case, Casing};
 use fs_err::tokio as fs;
-use git2::{Remote, Repository, Signature};
 use pesde::{
 	manifest::Manifest,
 	source::{
-		git_index::{read_file, root_tree, GitBasedSource},
+		git_index::GitBasedSource,
 		ids::VersionId,
-		pesde::{DocEntry, DocEntryKind, IndexFile, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
+		pesde::{DocEntry, DocEntryKind, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
 		specifiers::DependencySpecifiers,
 		traits::RefreshOptions,
 		IGNORED_DIRS, IGNORED_FILES,
@@ -28,34 +28,12 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
 	collections::{BTreeSet, HashMap},
-	io::{Cursor, Write},
+	io::Cursor,
 };
 use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
 	task::JoinSet,
 };
-
-fn signature<'a>() -> Signature<'a> {
-	Signature::now(
-		&benv!(required "COMMITTER_GIT_NAME"),
-		&benv!(required "COMMITTER_GIT_EMAIL"),
-	)
-	.unwrap()
-}
-
-fn get_refspec(repo: &Repository, remote: &mut Remote) -> Result<String, git2::Error> {
-	let upstream_branch_buf = repo.branch_upstream_name(repo.head()?.name().unwrap())?;
-	let upstream_branch = upstream_branch_buf.as_str().unwrap();
-
-	let refspec_buf = remote
-		.refspecs()
-		.find(|r| r.direction() == git2::Direction::Fetch && r.dst_matches(upstream_branch))
-		.unwrap()
-		.rtransform(upstream_branch)?;
-	let refspec = refspec_buf.as_str().unwrap();
-
-	Ok(refspec.to_string())
-}
 
 const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 
@@ -73,7 +51,7 @@ pub async fn publish_package(
 	app_state: web::Data<AppState>,
 	bytes: Bytes,
 	user_id: web::ReqData<UserId>,
-) -> Result<impl Responder, Error> {
+) -> Result<HttpResponse, RegistryError> {
 	let source = app_state.source.lock().await;
 	source
 		.refresh(&RefreshOptions {
@@ -102,12 +80,14 @@ pub async fn publish_package(
 		let file_name = entry
 			.file_name()
 			.to_str()
-			.ok_or_else(|| Error::InvalidArchive("file name contains non UTF-8 characters".into()))?
+			.ok_or_else(|| {
+				RegistryError::InvalidArchive("file name contains non UTF-8 characters".into())
+			})?
 			.to_string();
 
 		if entry.file_type().await?.is_dir() {
 			if IGNORED_DIRS.contains(&file_name.as_str()) {
-				return Err(Error::InvalidArchive(format!(
+				return Err(RegistryError::InvalidArchive(format!(
 					"archive contains forbidden directory: {file_name}"
 				)));
 			}
@@ -125,7 +105,7 @@ pub async fn publish_package(
 							.file_name()
 							.to_str()
 							.ok_or_else(|| {
-								Error::InvalidArchive(
+								RegistryError::InvalidArchive(
 									"file name contains non UTF-8 characters".into(),
 								)
 							})?
@@ -192,7 +172,7 @@ pub async fn publish_package(
 
 						let info: DocEntryInfo =
 							serde_yaml::from_str(&front_matter).map_err(|_| {
-								Error::InvalidArchive(format!(
+								RegistryError::InvalidArchive(format!(
 									"doc {file_name}'s frontmatter isn't valid YAML"
 								))
 							})?;
@@ -208,7 +188,7 @@ pub async fn publish_package(
 									.with_extension("")
 									.to_str()
 									.ok_or_else(|| {
-										Error::InvalidArchive(
+										RegistryError::InvalidArchive(
 											"file name contains non UTF-8 characters".into(),
 										)
 									})?
@@ -248,7 +228,7 @@ pub async fn publish_package(
 		if IGNORED_FILES.contains(&file_name.as_str())
 			|| ADDITIONAL_FORBIDDEN_FILES.contains(&file_name.as_str())
 		{
-			return Err(Error::InvalidArchive(format!(
+			return Err(RegistryError::InvalidArchive(format!(
 				"archive contains forbidden file: {file_name}"
 			)));
 		}
@@ -264,7 +244,7 @@ pub async fn publish_package(
 			.is_some()
 		{
 			if readme.is_some() {
-				return Err(Error::InvalidArchive(
+				return Err(RegistryError::InvalidArchive(
 					"archive contains multiple readme files".into(),
 				));
 			}
@@ -279,7 +259,7 @@ pub async fn publish_package(
 	}
 
 	let Some(manifest) = manifest else {
-		return Err(Error::InvalidArchive(
+		return Err(RegistryError::InvalidArchive(
 			"archive doesn't contain a manifest".into(),
 		));
 	};
@@ -300,7 +280,7 @@ pub async fn publish_package(
 
 	{
 		let dependencies = manifest.all_dependencies().map_err(|e| {
-			Error::InvalidArchive(format!("manifest has invalid dependencies: {e}"))
+			RegistryError::InvalidArchive(format!("manifest has invalid dependencies: {e}"))
 		})?;
 
 		for (specifier, _) in dependencies.values() {
@@ -317,7 +297,7 @@ pub async fn publish_package(
 						})
 						.is_none()
 					{
-						return Err(Error::InvalidArchive(format!(
+						return Err(RegistryError::InvalidArchive(format!(
 							"invalid index in pesde dependency {specifier}"
 						)));
 					}
@@ -332,43 +312,37 @@ pub async fn publish_package(
 						})
 						.is_none()
 					{
-						return Err(Error::InvalidArchive(format!(
+						return Err(RegistryError::InvalidArchive(format!(
 							"invalid index in wally dependency {specifier}"
 						)));
 					}
 				}
 				DependencySpecifiers::Git(specifier) => {
 					if !config.git_allowed.is_allowed(specifier.repo.clone()) {
-						return Err(Error::InvalidArchive(
+						return Err(RegistryError::InvalidArchive(
 							"git dependencies are not allowed".into(),
 						));
 					}
 				}
 				DependencySpecifiers::Workspace(_) => {
 					// workspace specifiers are to be transformed into pesde specifiers by the sender
-					return Err(Error::InvalidArchive(
+					return Err(RegistryError::InvalidArchive(
 						"non-transformed workspace dependency".into(),
 					));
 				}
 				DependencySpecifiers::Path(_) => {
-					return Err(Error::InvalidArchive(
+					return Err(RegistryError::InvalidArchive(
 						"path dependencies are not allowed".into(),
 					));
 				}
 			}
 		}
 
-		let repo = Repository::open_bare(source.path(&app_state.project))?;
-		let gix_repo = gix::open(repo.path())?;
+		let mut files = HashMap::new();
 
-		let gix_tree = root_tree(&gix_repo)?;
-
-		let (scope, name) = manifest.name.as_str();
-		let mut oids = vec![];
-
-		match read_file(&gix_tree, [scope, SCOPE_INFO_FILE])? {
+		let scope = read_scope_info(&app_state, manifest.name.scope(), &source).await?;
+		match scope {
 			Some(info) => {
-				let info: ScopeInfo = toml::de::from_str(&info)?;
 				if !info.owners.contains(&user_id.0) {
 					return Ok(HttpResponse::Forbidden().finish());
 				}
@@ -378,14 +352,13 @@ pub async fn publish_package(
 					owners: BTreeSet::from([user_id.0]),
 				})?;
 
-				let mut blob_writer = repo.blob_writer(None)?;
-				blob_writer.write_all(scope_info.as_bytes())?;
-				oids.push((SCOPE_INFO_FILE, blob_writer.commit()?));
+				files.insert(SCOPE_INFO_FILE.to_string(), scope_info.into_bytes());
 			}
-		};
+		}
 
-		let mut file: IndexFile =
-			toml::de::from_str(&read_file(&gix_tree, [scope, name])?.unwrap_or_default())?;
+		let mut file = read_package(&app_state, &manifest.name, &source)
+			.await?
+			.unwrap_or_default();
 
 		let new_entry = IndexFileEntry {
 			target: manifest.target.clone(),
@@ -394,28 +367,21 @@ pub async fn publish_package(
 			license: manifest.license.clone(),
 			authors: manifest.authors.clone(),
 			repository: manifest.repository.clone(),
+			yanked: false,
 			docs,
 
 			dependencies,
 		};
 
-		let this_version = file
+		let same_version = file
 			.entries
-			.keys()
-			.find(|v_id| *v_id.version() == manifest.version);
-		if let Some(this_version) = this_version {
-			let other_entry = file.entries.get(this_version).unwrap();
-
+			.iter()
+			.find(|(v_id, _)| *v_id.version() == manifest.version);
+		if let Some((_, other_entry)) = same_version {
 			// description cannot be different - which one to render in the "Recently published" list?
-			// the others cannot be different because what to return from the versions endpoint?
-			if other_entry.description != new_entry.description
-				|| other_entry.license != new_entry.license
-				|| other_entry.authors != new_entry.authors
-				|| other_entry.repository != new_entry.repository
-			{
+			if other_entry.description != new_entry.description {
 				return Ok(HttpResponse::BadRequest().json(ErrorResponse {
-					error: "same version with different description or license already exists"
-						.to_string(),
+					error: "same versions with different descriptions are forbidden".to_string(),
 				}));
 			}
 		}
@@ -431,60 +397,24 @@ pub async fn publish_package(
 			return Ok(HttpResponse::Conflict().finish());
 		}
 
-		let mut remote = repo.find_remote("origin")?;
-		let refspec = get_refspec(&repo, &mut remote)?;
+		files.insert(
+			manifest.name.name().to_string(),
+			toml::to_string(&file)?.into_bytes(),
+		);
 
-		let reference = repo.find_reference(&refspec)?;
-
-		{
-			let index_content = toml::to_string(&file)?;
-			let mut blob_writer = repo.blob_writer(None)?;
-			blob_writer.write_all(index_content.as_bytes())?;
-			oids.push((name, blob_writer.commit()?));
-		}
-
-		let old_root_tree = reference.peel_to_tree()?;
-		let old_scope_tree = match old_root_tree.get_name(scope) {
-			Some(entry) => Some(repo.find_tree(entry.id())?),
-			None => None,
-		};
-
-		let mut scope_tree = repo.treebuilder(old_scope_tree.as_ref())?;
-		for (file, oid) in oids {
-			scope_tree.insert(file, oid, 0o100644)?;
-		}
-
-		let scope_tree_id = scope_tree.write()?;
-		let mut root_tree = repo.treebuilder(Some(&repo.find_tree(old_root_tree.id())?))?;
-		root_tree.insert(scope, scope_tree_id, 0o040000)?;
-
-		let tree_oid = root_tree.write()?;
-
-		repo.commit(
-			Some("HEAD"),
-			&signature(),
-			&signature(),
-			&format!(
+		push_changes(
+			&app_state,
+			&source,
+			manifest.name.scope().to_string(),
+			files,
+			format!(
 				"add {}@{} {}",
 				manifest.name, manifest.version, manifest.target
 			),
-			&repo.find_tree(tree_oid)?,
-			&[&reference.peel_to_commit()?],
-		)?;
+		)
+		.await?;
 
-		let mut push_options = git2::PushOptions::new();
-		let mut remote_callbacks = git2::RemoteCallbacks::new();
-
-		let git_creds = app_state.project.auth_config().git_credentials().unwrap();
-		remote_callbacks.credentials(|_, _, _| {
-			git2::Cred::userpass_plaintext(&git_creds.username, &git_creds.password)
-		});
-
-		push_options.remote_callbacks(remote_callbacks);
-
-		remote.push(&[refspec], Some(&mut push_options))?;
-
-		update_version(&app_state, &manifest.name, new_entry);
+		update_search_version(&app_state, &manifest.name, &manifest.version, &new_entry);
 	}
 
 	let version_id = VersionId::new(manifest.version.clone(), manifest.target.kind());
@@ -527,8 +457,5 @@ pub async fn publish_package(
 		res.unwrap()?;
 	}
 
-	Ok(HttpResponse::Ok().body(format!(
-		"published {}@{} {}",
-		manifest.name, manifest.version, manifest.target
-	)))
+	Ok(HttpResponse::Ok().body(format!("published {}@{version_id}", manifest.name)))
 }
