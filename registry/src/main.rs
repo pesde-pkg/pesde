@@ -47,7 +47,7 @@ pub fn make_reqwest() -> reqwest::Client {
 }
 
 pub struct AppState {
-	pub source: tokio::sync::Mutex<PesdePackageSource>,
+	pub source: tokio::sync::RwLock<PesdePackageSource>,
 	pub project: Project,
 	pub storage: Storage,
 	pub auth: Auth,
@@ -134,7 +134,7 @@ async fn run() -> std::io::Result<()> {
 			tracing::info!("auth: {auth}");
 			auth
 		},
-		source: tokio::sync::Mutex::new(source),
+		source: tokio::sync::RwLock::new(source),
 		project,
 
 		search_reader,

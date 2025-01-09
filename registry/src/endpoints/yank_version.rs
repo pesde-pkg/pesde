@@ -20,7 +20,7 @@ pub async fn yank_package_version(
 ) -> Result<HttpResponse, RegistryError> {
 	let yanked = request.method() != Method::DELETE;
 	let (name, version, target) = path.into_inner();
-	let source = app_state.source.lock().await;
+	let source = app_state.source.write().await;
 
 	let Some(scope_info) = read_scope_info(&app_state, name.scope(), &source).await? else {
 		return Ok(HttpResponse::NotFound().finish());

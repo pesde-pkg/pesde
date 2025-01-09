@@ -52,7 +52,7 @@ pub async fn publish_package(
 	bytes: Bytes,
 	user_id: web::ReqData<UserId>,
 ) -> Result<HttpResponse, RegistryError> {
-	let source = app_state.source.lock().await;
+	let source = app_state.source.write().await;
 	source
 		.refresh(&RefreshOptions {
 			project: app_state.project.clone(),

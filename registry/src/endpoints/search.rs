@@ -52,7 +52,7 @@ pub async fn search_packages(
 		)
 		.unwrap();
 
-	let source = app_state.source.lock().await;
+	let source = app_state.source.read().await;
 	let repo = gix::open(source.path(&app_state.project))?;
 	let tree = root_tree(&repo)?;
 

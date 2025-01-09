@@ -23,7 +23,7 @@ pub async fn get_package_version(
 ) -> Result<HttpResponse, RegistryError> {
 	let (name, version, target) = path.into_inner();
 
-	let Some(file) = read_package(&app_state, &name, &*app_state.source.lock().await).await? else {
+	let Some(file) = read_package(&app_state, &name, &*app_state.source.read().await).await? else {
 		return Ok(HttpResponse::NotFound().finish());
 	};
 
