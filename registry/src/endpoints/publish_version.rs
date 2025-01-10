@@ -419,7 +419,7 @@ pub async fn publish_package(
 		)
 		.await?;
 
-		update_search_version(&app_state, &manifest.name, &manifest.version, &new_entry);
+		update_search_version(&app_state, &manifest.name, &new_entry);
 	}
 
 	let version_id = VersionId::new(manifest.version.clone(), manifest.target.kind());

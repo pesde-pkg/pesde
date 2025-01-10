@@ -20,7 +20,7 @@ use pesde::{
 	},
 	AuthConfig, Project,
 };
-use std::{env::current_dir, path::PathBuf};
+use std::{env::current_dir, path::PathBuf, sync::Arc};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
 	fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
@@ -47,7 +47,7 @@ pub fn make_reqwest() -> reqwest::Client {
 }
 
 pub struct AppState {
-	pub source: tokio::sync::RwLock<PesdePackageSource>,
+	pub source: Arc<tokio::sync::RwLock<PesdePackageSource>>,
 	pub project: Project,
 	pub storage: Storage,
 	pub auth: Auth,
@@ -134,7 +134,7 @@ async fn run() -> std::io::Result<()> {
 			tracing::info!("auth: {auth}");
 			auth
 		},
-		source: tokio::sync::RwLock::new(source),
+		source: Arc::new(tokio::sync::RwLock::new(source)),
 		project,
 
 		search_reader,

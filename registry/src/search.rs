@@ -10,7 +10,6 @@ use pesde::{
 	},
 	Project,
 };
-use semver::Version;
 use tantivy::{
 	doc,
 	query::QueryParser,
@@ -69,7 +68,7 @@ async fn all_packages(
 	}
 }
 
-fn find_max(file: &IndexFile) -> Option<(&VersionId, &IndexFileEntry)> {
+pub fn find_max_searchable(file: &IndexFile) -> Option<(&VersionId, &IndexFileEntry)> {
 	file.entries
 		.iter()
 		.filter(|(_, entry)| !entry.yanked)
@@ -94,7 +93,6 @@ pub async fn make_search(
 	);
 
 	let id_field = schema_builder.add_text_field("id", STRING | STORED);
-	let version = schema_builder.add_text_field("version", STRING | STORED);
 
 	let scope = schema_builder.add_text_field("scope", field_options.clone());
 	let name = schema_builder.add_text_field("name", field_options.clone());
@@ -124,14 +122,13 @@ pub async fn make_search(
 			continue;
 		}
 
-		let Some((v_id, latest_entry)) = find_max(&file) else {
+		let Some((_, latest_entry)) = find_max_searchable(&file) else {
 			continue;
 		};
 
 		search_writer
 			.add_document(doc!(
 				id_field => pkg_name.to_string(),
-				version => v_id.version().to_string(),
 				scope => pkg_name.scope(),
 				name => pkg_name.name(),
 				description => latest_entry.description.clone().unwrap_or_default(),
@@ -150,12 +147,7 @@ pub async fn make_search(
 	(search_reader, search_writer, query_parser)
 }
 
-pub fn update_search_version(
-	app_state: &AppState,
-	name: &PackageName,
-	version: &Version,
-	entry: &IndexFileEntry,
-) {
+pub fn update_search_version(app_state: &AppState, name: &PackageName, entry: &IndexFileEntry) {
 	let mut search_writer = app_state.search_writer.lock().unwrap();
 	let schema = search_writer.index().schema();
 	let id_field = schema.get_field("id").unwrap();
@@ -164,7 +156,6 @@ pub fn update_search_version(
 
 	search_writer.add_document(doc!(
         id_field => name.to_string(),
-		schema.get_field("version").unwrap() => version.to_string(),
         schema.get_field("scope").unwrap() => name.scope(),
         schema.get_field("name").unwrap() => name.name(),
         schema.get_field("description").unwrap() => entry.description.clone().unwrap_or_default(),
@@ -177,12 +168,12 @@ pub fn update_search_version(
 
 pub fn search_version_changed(app_state: &AppState, name: &PackageName, file: &IndexFile) {
 	let entry = if file.meta.deprecated.is_empty() {
-		find_max(file)
+		find_max_searchable(file)
 	} else {
 		None
 	};
 
-	let Some((v_id, entry)) = entry else {
+	let Some((_, entry)) = entry else {
 		let mut search_writer = app_state.search_writer.lock().unwrap();
 		let schema = search_writer.index().schema();
 		let id_field = schema.get_field("id").unwrap();
@@ -194,5 +185,5 @@ pub fn search_version_changed(app_state: &AppState, name: &PackageName, file: &I
 		return;
 	};
 
-	update_search_version(app_state, name, v_id.version(), entry);
+	update_search_version(app_state, name, entry);
 }
