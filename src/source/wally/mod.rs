@@ -247,9 +247,11 @@ impl PackageSource for WallyPackageSource {
 
 		let mut request = reqwest
 			.get(format!(
-				"{}/v1/package-contents/{scope}/{name}/{}",
+				"{}/v1/package-contents/{}/{}/{}",
 				config.api.as_str().trim_end_matches('/'),
-				id.version_id().version()
+				urlencoding::encode(scope),
+				urlencoding::encode(name),
+				urlencoding::encode(&id.version_id().version().to_string())
 			))
 			.header(
 				"Wally-Version",
