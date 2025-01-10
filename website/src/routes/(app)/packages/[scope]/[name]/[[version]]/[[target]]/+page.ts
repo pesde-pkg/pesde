@@ -10,13 +10,8 @@ const fetchReadme = async (
 ) => {
 	try {
 		const res = await fetchRegistry(
-			`packages/${encodeURIComponent(name)}/${version}/${target}`,
+			`packages/${encodeURIComponent(name)}/${encodeURIComponent(version)}/${encodeURIComponent(target)}/readme`,
 			fetcher,
-			{
-				headers: {
-					Accept: "text/plain",
-				},
-			},
 		)
 
 		return res.text()

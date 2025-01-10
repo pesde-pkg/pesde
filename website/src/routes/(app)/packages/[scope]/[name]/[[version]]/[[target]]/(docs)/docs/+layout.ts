@@ -6,7 +6,7 @@ export const load: LayoutLoad = async ({ params, parent }) => {
 	const parentData = await parent()
 
 	const { scope, name, version, target } = params
-	const basePath = `/packages/${scope}/${name}/${version ?? "latest"}/${target ?? "any"}`
+	const basePath = `/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}/${encodeURIComponent(version ?? "latest")}/${encodeURIComponent(target ?? "any")}`
 
 	function docEntryToSidebarItem(entry: DocEntry): SidebarItem {
 		if ("name" in entry) {

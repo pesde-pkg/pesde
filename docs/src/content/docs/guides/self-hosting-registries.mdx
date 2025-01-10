@@ -23,7 +23,7 @@ the following content:
 api = "https://registry.acme.local/"
 
 # package download URL (optional)
-download = "{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}"
+download = "{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}/archive"
 
 # the client ID of the GitHub OAuth app (optional)
 github_oauth_client_id = "a1d648966fdfbdcd9295"
@@ -58,7 +58,7 @@ scripts_packages = ["pesde/scripts_rojo"]
   - `{PACKAGE_VERSION}`: The package version.
   - `{PACKAGE_TARGET}`: The package target.
 
-  Defaults to `{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}`.
+  Defaults to `{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}/archive`.
 
 - **github_oauth_client_id**: This is required if you use GitHub OAuth for
   authentication. See below for more information.

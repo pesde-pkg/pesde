@@ -11,7 +11,7 @@
 
 	const basePath = $derived.by(() => {
 		const { scope, name } = $page.params
-		return `/packages/${scope}/${name}`
+		return `/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`
 	})
 
 	const activeTab = $derived(

@@ -18,7 +18,7 @@ const fetchPackage = async (fetcher: typeof fetch, options: FetchPackageOptions)
 
 	try {
 		return await fetchRegistryJson<PackageVersionResponse>(
-			`packages/${encodeURIComponent(`${scope}/${name}`)}/${version}/${target}`,
+			`packages/${encodeURIComponent(`${scope}/${name}`)}/${encodeURIComponent(version)}/${encodeURIComponent(target)}`,
 			fetcher,
 		)
 	} catch (e) {

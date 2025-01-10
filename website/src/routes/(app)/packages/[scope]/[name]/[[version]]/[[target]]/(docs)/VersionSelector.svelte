@@ -18,7 +18,7 @@
 
 	const basePath = $derived.by(() => {
 		const { scope, name } = $page.params
-		return `/packages/${scope}/${name}`
+		return `/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}`
 	})
 </script>
 
@@ -32,7 +32,7 @@
 		const path = $page.data.activeTab === "docs" ? "docs/intro" : "reference"
 
 		fetchRegistryJson<PackageVersionResponse>(
-			`packages/${encodeURIComponent($page.data.pkg.name)}/${version}/any`,
+			`packages/${encodeURIComponent($page.data.pkg.name)}/${encodeURIComponent(version)}/any`,
 			fetch,
 		)
 			.then((pkg) => goto(`${basePath}/${version}/${pkg.targets[0].kind}/${path}`))

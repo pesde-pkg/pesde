@@ -55,7 +55,7 @@
 										? {
 												href: isWally
 													? `https://wally.run/package/${stripWally(dependencyInfo.wally)}`
-													: `/packages/${dependencyInfo.name}/latest/${target}`,
+													: `/packages/${dependencyInfo.name}/latest/${encodeURIComponent(target)}`,
 											}
 										: {}}
 									class="after:absolute after:inset-0 after:content-['']"

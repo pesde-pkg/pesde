@@ -41,7 +41,7 @@
 							>
 								<a
 									class="flex items-center truncate"
-									href={`/packages/${scope}/${name}/${$page.params.version ?? "latest"}/${$page.params.target ?? "any"}`}
+									href={`/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}/${encodeURIComponent($page.params.version ?? "latest")}/${encodeURIComponent($page.params.target ?? "any")}`}
 								>
 									{#snippet separator()}
 										<span class="text-body/60 px-2 text-xl">/</span>

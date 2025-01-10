@@ -12,7 +12,7 @@
 
 	const basePath = $derived.by(() => {
 		const { scope, name, version, target } = $page.params
-		return `/packages/${scope}/${name}/${version ?? "latest"}/${target ?? "any"}`
+		return `/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}/${encodeURIComponent(version ?? "latest")}/${encodeURIComponent(target ?? "any")}`
 	})
 
 	const href = $derived(`${basePath}/${tab}`)

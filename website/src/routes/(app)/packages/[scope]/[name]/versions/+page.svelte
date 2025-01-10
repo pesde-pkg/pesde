@@ -22,7 +22,7 @@
 		>
 			<h2 class="text-heading font-semibold">
 				<a
-					href={`/packages/${data.name}/${pkgVersion.version}/any`}
+					href={`/packages/${data.name}/${encodeURIComponent(pkgVersion.version)}/any`}
 					class="after:absolute after:inset-0 after:content-['']"
 				>
 					{pkgVersion.version}

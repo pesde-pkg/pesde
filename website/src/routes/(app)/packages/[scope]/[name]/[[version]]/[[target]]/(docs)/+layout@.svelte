@@ -13,6 +13,7 @@
 	import Toc from "./Toc.svelte"
 	import TocObserver from "./TocObserver.svelte"
 	import VersionSelector from "./VersionSelector.svelte"
+	import { TARGET_KIND_DISPLAY_NAMES, type TargetInfo, type TargetKind } from "$lib/registry-api"
 
 	const { children, data } = $props()
 	const [scope, name] = data.pkg.name.split("/")
@@ -84,7 +85,7 @@
 				<span class="flex min-w-0 items-center">
 					<a
 						class="flex min-w-0 items-center"
-						href={`/packages/${scope}/${name}/${$page.params.version ?? "latest"}/${$page.params.target ?? "any"}`}
+						href={`/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}/${encodeURIComponent($page.params.version ?? "latest")}/${encodeURIComponent($page.params.target ?? "any")}`}
 					>
 						<span class="text-primary mr-2">
 							<Logomark class="h-7" />
@@ -98,6 +99,9 @@
 							<button
 								{...props}
 								class="flex items-center transition-opacity data-[disabled]:opacity-50"
+								class:line-through={(
+									Object.entries($page.data.pkg.targets) as [TargetKind, TargetInfo][]
+								).find(([name]) => TARGET_KIND_DISPLAY_NAMES[name] === label)?.[1]?.yanked}
 							>
 								{label}
 								<ChevronsUpDown class="ml-1 size-4" />

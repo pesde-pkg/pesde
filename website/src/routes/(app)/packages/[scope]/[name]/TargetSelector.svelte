@@ -13,9 +13,9 @@
 		const { scope, name } = $page.params
 		if ("target" in $page.params) {
 			const { version } = $page.params
-			return `/packages/${scope}/${name}/${version}`
+			return `/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}/${encodeURIComponent(version)}`
 		}
-		return `/packages/${scope}/${name}/latest`
+		return `/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}/latest`
 	})
 
 	const items = ($page.data.pkg.targets as TargetInfo[]).map((target) => {

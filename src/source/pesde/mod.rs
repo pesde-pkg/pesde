@@ -1,6 +1,6 @@
 use gix::Url;
 use relative_path::RelativePathBuf;
-use reqwest::header::{ACCEPT, AUTHORIZATION};
+use reqwest::header::AUTHORIZATION;
 use serde::{Deserialize, Serialize};
 use std::{
 	collections::{BTreeMap, BTreeSet, HashSet},
@@ -220,7 +220,7 @@ impl PackageSource for PesdePackageSource {
 				&urlencoding::encode(&id.version_id().target().to_string()),
 			);
 
-		let mut request = reqwest.get(&url).header(ACCEPT, "application/octet-stream");
+		let mut request = reqwest.get(&url);
 
 		if let Some(token) = project.auth_config().tokens().get(&self.repo_url) {
 			tracing::debug!("using token for {}", self.repo_url);
@@ -412,7 +412,7 @@ impl IndexConfig {
 	pub fn download(&self) -> String {
 		self.download
 			.as_deref()
-			.unwrap_or("{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}")
+			.unwrap_or("{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}/archive")
 			.replace("{API_URL}", self.api())
 	}
 }

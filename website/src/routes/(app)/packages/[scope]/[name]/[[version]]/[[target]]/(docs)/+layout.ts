@@ -54,13 +54,16 @@ export const load: LayoutLoad = async ({ params, url, fetch }) => {
 
 	if (version === undefined || version === "latest" || !isTargetKind(target)) {
 		const pkg = await fetchRegistryJson<PackageVersionResponse>(
-			`packages/${encodeURIComponent(`${scope}/${name}`)}/${version ?? "latest"}/${target ?? "any"}`,
+			`packages/${encodeURIComponent(`${scope}/${name}`)}/${encodeURIComponent(version ?? "latest")}/${encodeURIComponent(target ?? "any")}`,
 			fetch,
 		)
 
-		const path = url.pathname.split("/").slice(6).join("/")
+		const path = url.pathname.split("/").slice(6).map(encodeURIComponent).join("/")
 
-		return redirect(303, `/packages/${scope}/${name}/${pkg.version}/${pkg.targets[0].kind}/${path}`)
+		return redirect(
+			303,
+			`/packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}/${encodeURIComponent(pkg.version)}/${encodeURIComponent(pkg.targets[0].kind)}/${path}`,
+		)
 	}
 
 	const { pkg, versions } = await fetchPackageAndVersions(fetch, { scope, name, version, target })
