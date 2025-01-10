@@ -1,6 +1,6 @@
 use crate::{error::RegistryError, storage::StorageImpl};
 use actix_web::{
-	http::header::{CONTENT_ENCODING, CONTENT_TYPE},
+	http::header::{CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE},
 	HttpResponse,
 };
 use fs_err::tokio as fs;
@@ -24,6 +24,7 @@ async fn read_file_to_response(
 		Ok(file) => HttpResponse::Ok()
 			.append_header((CONTENT_TYPE, content_type))
 			.append_header((CONTENT_ENCODING, "gzip"))
+			.append_header((CONTENT_LENGTH, file.metadata().await?.len()))
 			.streaming(ReaderStream::new(file)),
 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => HttpResponse::NotFound().finish(),
 		Err(e) => return Err(e.into()),
