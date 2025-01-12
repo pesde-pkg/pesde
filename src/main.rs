@@ -1,14 +1,16 @@
 #[cfg(feature = "version-management")]
-use crate::cli::version::{check_for_updates, get_or_download_version, TagInfo};
+use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
 use crate::cli::{auth::get_tokens, display_err, home_dir, HOME_DIR};
 use anyhow::Context;
 use clap::{builder::styling::AnsiColor, Parser};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
-use pesde::{find_roots, AuthConfig, Project};
+use pesde::{engine::EngineKind, find_roots, AuthConfig, Project};
+use semver::VersionReq;
 use std::{
 	io,
 	path::{Path, PathBuf},
+	str::FromStr,
 	sync::Mutex,
 };
 use tempfile::NamedTempFile;
@@ -135,27 +137,30 @@ impl<'a> MakeWriter<'a> for IndicatifWriter {
 
 async fn run() -> anyhow::Result<()> {
 	let cwd = std::env::current_dir().expect("failed to get current working directory");
+	let current_exe = std::env::current_exe().expect("failed to get current executable path");
+	let exe_name = current_exe.file_stem().unwrap();
 
 	#[cfg(windows)]
 	'scripts: {
-		let exe = std::env::current_exe().expect("failed to get current executable path");
-		if exe.parent().is_some_and(|parent| {
-			parent.file_name().is_some_and(|parent| parent != "bin")
-				|| parent
-					.parent()
-					.and_then(|parent| parent.file_name())
-					.is_some_and(|parent| parent != HOME_DIR)
-		}) {
+		// we're called the same as the binary, so we're not a (legal) script
+		if exe_name == env!("CARGO_PKG_NAME") {
 			break 'scripts;
 		}
 
-		let exe_name = exe.file_name().unwrap().to_string_lossy();
-		let exe_name = exe_name
-			.strip_suffix(std::env::consts::EXE_SUFFIX)
-			.unwrap_or(&exe_name);
+		if let Some(bin_folder) = current_exe.parent() {
+			// we're not in {path}/bin/{exe}
+			if bin_folder.file_name().is_some_and(|parent| parent != "bin") {
+				break 'scripts;
+			}
 
-		if exe_name == env!("CARGO_BIN_NAME") {
-			break 'scripts;
+			// we're not in {path}/.pesde/bin/{exe}
+			if bin_folder
+				.parent()
+				.and_then(|home_folder| home_folder.file_name())
+				.is_some_and(|home_folder| home_folder != HOME_DIR)
+			{
+				break 'scripts;
+			}
 		}
 
 		// the bin script will search for the project root itself, so we do that to ensure
@@ -164,9 +169,11 @@ async fn run() -> anyhow::Result<()> {
 		let status = std::process::Command::new("lune")
 			.arg("run")
 			.arg(
-				exe.parent()
-					.map(|p| p.join(".impl").join(exe.file_name().unwrap()))
-					.unwrap_or(exe)
+				current_exe
+					.parent()
+					.unwrap_or(&current_exe)
+					.join(".impl")
+					.join(current_exe.file_name().unwrap())
 					.with_extension("luau"),
 			)
 			.arg("--")
@@ -265,33 +272,49 @@ async fn run() -> anyhow::Result<()> {
 	};
 
 	#[cfg(feature = "version-management")]
-	{
-		let target_version = project
+	'engines: {
+		let Some(engine) = exe_name
+			.to_str()
+			.and_then(|str| EngineKind::from_str(str).ok())
+		else {
+			break 'engines;
+		};
+
+		let req = project
 			.deser_manifest()
 			.await
 			.ok()
-			.and_then(|manifest| manifest.pesde_version);
+			.and_then(|mut manifest| manifest.engines.remove(&engine));
 
-		let exe_path = if let Some(version) = target_version {
-			get_or_download_version(&reqwest, TagInfo::Incomplete(version), false).await?
-		} else {
-			None
-		};
-
-		if let Some(exe_path) = exe_path {
-			let status = std::process::Command::new(exe_path)
-				.args(std::env::args_os().skip(1))
-				.status()
-				.expect("failed to run new version");
-
-			std::process::exit(status.code().unwrap());
+		if engine == EngineKind::Pesde {
+			match &req {
+				// we're already running a compatible version
+				Some(req) if req.matches(&current_version()) => break 'engines,
+				// the user has not requested a specific version, so we'll just use the current one
+				None => break 'engines,
+				_ => (),
+			}
 		}
 
-		display_err(
-			check_for_updates(&reqwest).await,
-			" while checking for updates",
-		);
+		let exe_path =
+			get_or_download_engine(&reqwest, engine, req.unwrap_or(VersionReq::STAR)).await?;
+		if exe_path == current_exe {
+			break 'engines;
+		}
+
+		let status = std::process::Command::new(exe_path)
+			.args(std::env::args_os().skip(1))
+			.status()
+			.expect("failed to run new version");
+
+		std::process::exit(status.code().unwrap());
 	}
+
+	#[cfg(feature = "version-management")]
+	display_err(
+		check_for_updates(&reqwest).await,
+		" while checking for updates",
+	);
 
 	let cli = Cli::parse();
 

@@ -1,4 +1,5 @@
 use crate::{
+	engine::EngineKind,
 	manifest::{
 		overrides::{OverrideKey, OverrideSpecifier},
 		target::Target,
@@ -7,7 +8,7 @@ use crate::{
 	source::specifiers::DependencySpecifiers,
 };
 use relative_path::RelativePathBuf;
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use tracing::instrument;
@@ -85,15 +86,16 @@ pub struct Manifest {
 		crate::names::PackageNames,
 		BTreeMap<crate::source::ids::VersionId, RelativePathBuf>,
 	>,
-	#[serde(default, skip_serializing)]
-	/// Which version of the pesde CLI this package uses
-	pub pesde_version: Option<Version>,
 	/// A list of globs pointing to workspace members' directories
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub workspace_members: Vec<String>,
 	/// The Roblox place of this project
 	#[serde(default, skip_serializing)]
 	pub place: BTreeMap<target::RobloxPlaceKind, String>,
+	/// The engines this package supports
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	#[cfg_attr(feature = "schema", schemars(with = "BTreeMap<EngineKind, String>"))]
+	pub engines: BTreeMap<EngineKind, VersionReq>,
 
 	/// The standard dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]

@@ -9,6 +9,11 @@
 
 #![allow(unused_variables)]
 
+use async_stream::stream;
+use futures::StreamExt;
+use std::sync::Arc;
+use tokio::io::AsyncBufRead;
+
 /// Reports downloads.
 pub trait DownloadsReporter<'a>: Send + Sync {
 	/// The [`DownloadProgressReporter`] type associated with this reporter.
@@ -61,3 +66,32 @@ pub trait PatchProgressReporter: Send + Sync {
 }
 
 impl PatchProgressReporter for () {}
+
+pub(crate) fn response_to_async_read<R: DownloadProgressReporter>(
+	response: reqwest::Response,
+	reporter: Arc<R>,
+) -> impl AsyncBufRead {
+	let total_len = response.content_length().unwrap_or(0);
+	reporter.report_progress(total_len, 0);
+
+	let mut bytes_downloaded = 0;
+	let mut stream = response.bytes_stream();
+	let bytes = stream!({
+		while let Some(chunk) = stream.next().await {
+			let chunk = match chunk {
+				Ok(chunk) => chunk,
+				Err(err) => {
+					yield Err(std::io::Error::new(std::io::ErrorKind::Other, err));
+					continue;
+				}
+			};
+			bytes_downloaded += chunk.len() as u64;
+			reporter.report_progress(total_len, bytes_downloaded);
+			yield Ok(chunk);
+		}
+
+		reporter.report_done();
+	});
+
+	tokio_util::io::StreamReader::new(bytes)
+}

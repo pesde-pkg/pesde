@@ -8,7 +8,6 @@ use std::{
 	hash::Hash,
 	path::PathBuf,
 };
-use tokio_util::io::StreamReader;
 
 use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
@@ -16,7 +15,7 @@ use specifier::PesdeDependencySpecifier;
 use crate::{
 	manifest::{target::Target, DependencyType},
 	names::{PackageName, PackageNames},
-	reporters::DownloadProgressReporter,
+	reporters::{response_to_async_read, DownloadProgressReporter},
 	source::{
 		fs::{store_in_cas, FsEntry, PackageFs},
 		git_index::{read_file, root_tree, GitBasedSource},
@@ -28,7 +27,7 @@ use crate::{
 };
 use fs_err::tokio as fs;
 use futures::StreamExt;
-use tokio::task::spawn_blocking;
+use tokio::{pin, task::spawn_blocking};
 use tracing::instrument;
 
 /// The pesde package reference
@@ -229,23 +228,8 @@ impl PackageSource for PesdePackageSource {
 
 		let response = request.send().await?.error_for_status()?;
 
-		let total_len = response.content_length().unwrap_or(0);
-		reporter.report_progress(total_len, 0);
-
-		let mut bytes_downloaded = 0;
-		let bytes = response
-			.bytes_stream()
-			.inspect(|chunk| {
-				chunk.as_ref().ok().inspect(|chunk| {
-					bytes_downloaded += chunk.len() as u64;
-					reporter.report_progress(total_len, bytes_downloaded);
-				});
-			})
-			.map(|result| {
-				result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-			});
-
-		let bytes = StreamReader::new(bytes);
+		let bytes = response_to_async_read(response, reporter.clone());
+		pin!(bytes);
 
 		let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes);
 		let mut archive = tokio_tar::Archive::new(&mut decoder);
@@ -296,8 +280,6 @@ impl PackageSource for PesdePackageSource {
 		fs::write(&index_file, toml::to_string(&fs)?)
 			.await
 			.map_err(errors::DownloadError::WriteIndex)?;
-
-		reporter.report_done();
 
 		Ok(fs)
 	}

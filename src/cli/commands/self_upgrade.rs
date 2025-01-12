@@ -1,13 +1,15 @@
 use crate::cli::{
 	config::read_config,
 	version::{
-		current_version, get_or_download_version, get_remote_version, no_build_metadata,
-		update_bin_exe, TagInfo, VersionType,
+		current_version, find_latest_version, get_or_download_engine, no_build_metadata,
+		replace_bin_exe,
 	},
 };
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
+use pesde::engine::EngineKind;
+use semver::VersionReq;
 
 #[derive(Debug, Args)]
 pub struct SelfUpgradeCommand {
@@ -25,7 +27,7 @@ impl SelfUpgradeCommand {
 				.context("no cached version found")?
 				.1
 		} else {
-			get_remote_version(&reqwest, VersionType::Latest).await?
+			find_latest_version(&reqwest).await?
 		};
 
 		let latest_version_no_metadata = no_build_metadata(&latest_version);
@@ -46,10 +48,13 @@ impl SelfUpgradeCommand {
 			return Ok(());
 		}
 
-		let path = get_or_download_version(&reqwest, TagInfo::Complete(latest_version), true)
-			.await?
-			.unwrap();
-		update_bin_exe(&path).await?;
+		let path = get_or_download_engine(
+			&reqwest,
+			EngineKind::Pesde,
+			VersionReq::parse(&format!("={latest_version}")).unwrap(),
+		)
+		.await?;
+		replace_bin_exe(EngineKind::Pesde, &path).await?;
 
 		println!("upgraded to version {display_latest_version}!");
 
