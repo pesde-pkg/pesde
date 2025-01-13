@@ -53,7 +53,7 @@ impl DeprecateCommand {
 				Method::PUT
 			},
 			format!(
-				"{}/v0/packages/{}/deprecate",
+				"{}/v1/packages/{}/deprecate",
 				config.api(),
 				urlencoding::encode(&self.package.to_string()),
 			),

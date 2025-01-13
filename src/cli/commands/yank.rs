@@ -108,7 +108,7 @@ impl YankCommand {
 				Method::PUT
 			},
 			format!(
-				"{}/v0/packages/{}/{}/{}/yank",
+				"{}/v1/packages/{}/{}/{}/yank",
 				config.api(),
 				urlencoding::encode(&package.to_string()),
 				urlencoding::encode(&version.to_string()),

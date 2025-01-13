@@ -677,7 +677,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 		}
 
 		let mut request = reqwest
-			.post(format!("{}/v0/packages", config.api()))
+			.post(format!("{}/v1/packages", config.api()))
 			.body(archive);
 
 		if let Some(token) = project.auth_config().tokens().get(index_url) {

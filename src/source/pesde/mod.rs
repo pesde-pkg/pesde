@@ -412,7 +412,7 @@ impl IndexConfig {
 	pub fn download(&self) -> String {
 		self.download
 			.as_deref()
-			.unwrap_or("{API_URL}/v0/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}/archive")
+			.unwrap_or("{API_URL}/v1/packages/{PACKAGE}/{PACKAGE_VERSION}/{PACKAGE_TARGET}/archive")
 			.replace("{API_URL}", self.api())
 	}
 }
