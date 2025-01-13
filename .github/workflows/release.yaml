@@ -96,11 +96,9 @@ jobs:
           if [ ${{ matrix.host }} = "windows" ]; then
             mv target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe ${{ env.BIN_NAME }}.exe
             7z a ${{ env.ARCHIVE_NAME }}.zip ${{ env.BIN_NAME }}.exe
-            tar -czf ${{ env.ARCHIVE_NAME }}.tar.gz ${{ env.BIN_NAME }}.exe
           else
             mv target/${{ matrix.target }}/release/${{ env.BIN_NAME }} ${{ env.BIN_NAME }}
             zip -r ${{ env.ARCHIVE_NAME }}.zip ${{ env.BIN_NAME }}
-            tar -czf ${{ env.ARCHIVE_NAME }}.tar.gz ${{ env.BIN_NAME }}
           fi
 
       - name: Upload zip artifact
@@ -108,12 +106,6 @@ jobs:
         with:
           name: ${{ env.ARCHIVE_NAME }}.zip
           path: ${{ env.ARCHIVE_NAME }}.zip
-
-      - name: Upload tar.gz artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARCHIVE_NAME }}.tar.gz
-          path: ${{ env.ARCHIVE_NAME }}.tar.gz
 
   publish:
     name: Publish to crates.io
