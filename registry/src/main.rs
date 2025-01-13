@@ -150,6 +150,8 @@ async fn run() -> std::io::Result<()> {
 		.finish()
 		.unwrap();
 
+	let publish_payload_config = PayloadConfig::new(config.max_archive_size);
+
 	HttpServer::new(move || {
 		App::new()
 			.wrap(sentry_actix::Sentry::with_transaction())
@@ -166,6 +168,38 @@ async fn run() -> std::io::Result<()> {
 			)
 			.service(
 				web::scope("/v0")
+					.route(
+						"/search",
+						web::get()
+							.to(endpoints::search::search_packages)
+							.wrap(from_fn(auth::read_mw)),
+					)
+					.route(
+						"/packages/{name}",
+						web::get()
+							.to(endpoints::package_versions::get_package_versions_v0)
+							.wrap(from_fn(auth::read_mw)),
+					)
+					.route(
+						"/packages/{name}/{version}/{target}",
+						web::get()
+							.to(endpoints::package_version::get_package_version_v0)
+							.wrap(from_fn(auth::read_mw)),
+					)
+					.service(
+						web::scope("/packages")
+							.app_data(publish_payload_config.clone())
+							.route(
+								"",
+								web::post()
+									.to(endpoints::publish_version::publish_package)
+									.wrap(Governor::new(&publish_governor_config))
+									.wrap(from_fn(auth::write_mw)),
+							),
+					),
+			)
+			.service(
+				web::scope("/v1")
 					.route(
 						"/search",
 						web::get()
@@ -216,7 +250,7 @@ async fn run() -> std::io::Result<()> {
 					)
 					.service(
 						web::scope("/packages")
-							.app_data(PayloadConfig::new(config.max_archive_size))
+							.app_data(publish_payload_config.clone())
 							.route(
 								"",
 								web::post()

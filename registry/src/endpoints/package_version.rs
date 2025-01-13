@@ -16,7 +16,7 @@ pub struct Query {
 	doc: Option<String>,
 }
 
-pub async fn get_package_version(
+pub async fn get_package_version_v0(
 	request: HttpRequest,
 	app_state: web::Data<AppState>,
 	path: web::Path<(PackageName, LatestOrSpecificVersion, AnyOrSpecificTarget)>,
@@ -32,35 +32,48 @@ pub async fn get_package_version(
 		return Ok(HttpResponse::NotFound().finish());
 	};
 
-	// TODO: this is deprecated, since the introduction of the specific endpoints for readme, doc and archive.
-	//	     remove this when we drop 0.5 support.
-	{
-		if let Some(doc_name) = request_query.doc.as_deref() {
-			let Some(hash) = find_package_doc(&file, v_id, doc_name) else {
-				return Ok(HttpResponse::NotFound().finish());
-			};
+	if let Some(doc_name) = request_query.doc.as_deref() {
+		let Some(hash) = find_package_doc(&file, v_id, doc_name) else {
+			return Ok(HttpResponse::NotFound().finish());
+		};
 
-			return app_state.storage.get_doc(hash).await;
-		}
-
-		let accept = request
-			.headers()
-			.get(ACCEPT)
-			.and_then(|accept| accept.to_str().ok())
-			.and_then(|accept| match accept.to_lowercase().as_str() {
-				"text/plain" => Some(true),
-				"application/octet-stream" => Some(false),
-				_ => None,
-			});
-
-		if let Some(readme) = accept {
-			return if readme {
-				app_state.storage.get_readme(&name, v_id).await
-			} else {
-				app_state.storage.get_package(&name, v_id).await
-			};
-		}
+		return app_state.storage.get_doc(hash).await;
 	}
+
+	let accept = request
+		.headers()
+		.get(ACCEPT)
+		.and_then(|accept| accept.to_str().ok())
+		.and_then(|accept| match accept.to_lowercase().as_str() {
+			"text/plain" => Some(true),
+			"application/octet-stream" => Some(false),
+			_ => None,
+		});
+
+	if let Some(readme) = accept {
+		return if readme {
+			app_state.storage.get_readme(&name, v_id).await
+		} else {
+			app_state.storage.get_package(&name, v_id).await
+		};
+	}
+
+	Ok(HttpResponse::Ok().json(PackageResponse::new(&name, v_id, &file)))
+}
+
+pub async fn get_package_version(
+	app_state: web::Data<AppState>,
+	path: web::Path<(PackageName, LatestOrSpecificVersion, AnyOrSpecificTarget)>,
+) -> Result<HttpResponse, RegistryError> {
+	let (name, version, target) = path.into_inner();
+
+	let Some(file) = read_package(&app_state, &name, &*app_state.source.read().await).await? else {
+		return Ok(HttpResponse::NotFound().finish());
+	};
+
+	let Some(v_id) = resolve_version_and_target(&file, version, target) else {
+		return Ok(HttpResponse::NotFound().finish());
+	};
 
 	Ok(HttpResponse::Ok().json(PackageResponse::new(&name, v_id, &file)))
 }
