@@ -13,7 +13,6 @@ use crate::{
 use reqwest::header::ACCEPT;
 use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, path::PathBuf};
-use tokio::io::AsyncBufRead;
 
 /// The GitHub engine source
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -73,7 +72,7 @@ impl EngineSource for GitHubEngineSource {
 		&self,
 		engine_ref: &Self::Ref,
 		options: &DownloadOptions<R>,
-	) -> Result<Archive<impl AsyncBufRead + 'static>, Self::DownloadError> {
+	) -> Result<Archive, Self::DownloadError> {
 		let DownloadOptions {
 			reqwest,
 			reporter,
@@ -91,6 +90,8 @@ impl EngineSource for GitHubEngineSource {
 			.find(|asset| asset.name.eq_ignore_ascii_case(&desired_asset_name))
 			.ok_or(errors::DownloadError::AssetNotFound)?;
 
+		reporter.report_start();
+
 		let response = reqwest
 			.get(asset.url.clone())
 			.header(ACCEPT, "application/octet-stream")
@@ -100,7 +101,7 @@ impl EngineSource for GitHubEngineSource {
 
 		Ok(Archive {
 			info: asset.name.parse()?,
-			reader: response_to_async_read(response, reporter.clone()),
+			reader: Box::pin(response_to_async_read(response, reporter.clone())),
 		})
 	}
 }

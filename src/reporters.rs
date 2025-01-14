@@ -15,17 +15,17 @@ use std::sync::Arc;
 use tokio::io::AsyncBufRead;
 
 /// Reports downloads.
-pub trait DownloadsReporter<'a>: Send + Sync {
+pub trait DownloadsReporter: Send + Sync {
 	/// The [`DownloadProgressReporter`] type associated with this reporter.
-	type DownloadProgressReporter: DownloadProgressReporter + 'a;
+	type DownloadProgressReporter: DownloadProgressReporter + 'static;
 
 	/// Starts a new download.
-	fn report_download<'b>(&'a self, name: &'b str) -> Self::DownloadProgressReporter;
+	fn report_download(self: Arc<Self>, name: String) -> Self::DownloadProgressReporter;
 }
 
-impl DownloadsReporter<'_> for () {
+impl DownloadsReporter for () {
 	type DownloadProgressReporter = ();
-	fn report_download(&self, name: &str) -> Self::DownloadProgressReporter {}
+	fn report_download(self: Arc<Self>, name: String) -> Self::DownloadProgressReporter {}
 }
 
 /// Reports the progress of a single download.
@@ -46,17 +46,17 @@ pub trait DownloadProgressReporter: Send + Sync {
 impl DownloadProgressReporter for () {}
 
 /// Reports the progress of applying patches.
-pub trait PatchesReporter<'a>: Send + Sync {
+pub trait PatchesReporter: Send + Sync {
 	/// The [`PatchProgressReporter`] type associated with this reporter.
-	type PatchProgressReporter: PatchProgressReporter + 'a;
+	type PatchProgressReporter: PatchProgressReporter + 'static;
 
 	/// Starts a new patch.
-	fn report_patch<'b>(&'a self, name: &'b str) -> Self::PatchProgressReporter;
+	fn report_patch(self: Arc<Self>, name: String) -> Self::PatchProgressReporter;
 }
 
-impl PatchesReporter<'_> for () {
+impl PatchesReporter for () {
 	type PatchProgressReporter = ();
-	fn report_patch(&self, name: &str) -> Self::PatchProgressReporter {}
+	fn report_patch(self: Arc<Self>, name: String) -> Self::PatchProgressReporter {}
 }
 
 /// Reports the progress of a single patch.

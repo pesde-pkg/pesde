@@ -81,7 +81,7 @@ pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
 
 impl<Reporter, Hooks> DownloadAndLinkOptions<Reporter, Hooks>
 where
-	Reporter: for<'a> DownloadsReporter<'a> + Send + Sync + 'static,
+	Reporter: DownloadsReporter + Send + Sync + 'static,
 	Hooks: DownloadAndLinkHooks + Send + Sync + 'static,
 {
 	/// Creates a new download options with the given reqwest client and reporter.
@@ -149,7 +149,7 @@ impl Project {
 		options: DownloadAndLinkOptions<Reporter, Hooks>,
 	) -> Result<DependencyGraphWithTarget, errors::DownloadAndLinkError<Hooks::Error>>
 	where
-		Reporter: for<'a> DownloadsReporter<'a> + 'static,
+		Reporter: DownloadsReporter + 'static,
 		Hooks: DownloadAndLinkHooks + 'static,
 	{
 		let DownloadAndLinkOptions {

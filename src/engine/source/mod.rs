@@ -7,7 +7,6 @@ use crate::{
 };
 use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, path::PathBuf};
-use tokio::io::AsyncBufRead;
 
 /// Archives
 pub mod archive;
@@ -69,7 +68,7 @@ impl EngineSource for EngineSources {
 		&self,
 		engine_ref: &Self::Ref,
 		options: &DownloadOptions<R>,
-	) -> Result<Archive<impl AsyncBufRead + 'static>, Self::DownloadError> {
+	) -> Result<Archive, Self::DownloadError> {
 		match (self, engine_ref) {
 			(EngineSources::GitHub(source), EngineRefs::GitHub(release)) => {
 				source.download(release, options).await.map_err(Into::into)

@@ -29,7 +29,7 @@ pub(crate) struct DownloadGraphOptions<Reporter> {
 
 impl<Reporter> DownloadGraphOptions<Reporter>
 where
-	Reporter: for<'a> DownloadsReporter<'a> + Send + Sync + 'static,
+	Reporter: DownloadsReporter + Send + Sync + 'static,
 {
 	/// Creates a new download options with the given reqwest client and reporter.
 	pub(crate) fn new(reqwest: reqwest::Client) -> Self {
@@ -85,7 +85,7 @@ impl Project {
 		errors::DownloadGraphError,
 	>
 	where
-		Reporter: for<'a> DownloadsReporter<'a> + Send + Sync + 'static,
+		Reporter: DownloadsReporter + Send + Sync + 'static,
 	{
 		let DownloadGraphOptions {
 			reqwest,
@@ -111,8 +111,8 @@ impl Project {
 
 				async move {
 					let progress_reporter = reporter
-						.as_deref()
-						.map(|reporter| reporter.report_download(&package_id.to_string()));
+						.clone()
+						.map(|reporter| reporter.report_download(package_id.to_string()));
 
 					let _permit = semaphore.acquire().await;
 

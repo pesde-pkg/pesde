@@ -3,6 +3,7 @@ use crate::cli::{
 	config::{read_config, write_config, CliConfig},
 	files::make_executable,
 	home_dir,
+	reporters::run_with_reporter,
 };
 use anyhow::Context;
 use colored::Colorize;
@@ -15,11 +16,13 @@ use pesde::{
 		},
 		EngineKind,
 	},
+	reporters::DownloadsReporter,
 	version_matches,
 };
 use semver::{Version, VersionReq};
 use std::{
 	collections::BTreeSet,
+	env::current_exe,
 	path::{Path, PathBuf},
 	sync::Arc,
 };
@@ -159,28 +162,25 @@ pub async fn get_or_download_engine(
 		.await
 		.context("failed to read engines directory")?;
 
-	let mut matching_versions = BTreeSet::new();
+	let mut installed_versions = BTreeSet::new();
 
 	while let Some(entry) = read_dir.next_entry().await? {
 		let path = entry.path();
 
-		#[cfg(windows)]
-		let version = path.file_stem();
-		#[cfg(not(windows))]
-		let version = path.file_name();
-
-		let Some(version) = version.and_then(|s| s.to_str()) else {
+		let Some(version) = path.file_name().and_then(|s| s.to_str()) else {
 			continue;
 		};
 
 		if let Ok(version) = Version::parse(version) {
-			if version_matches(&version, &req) {
-				matching_versions.insert(version);
-			}
+			installed_versions.insert(version);
 		}
 	}
 
-	if let Some(version) = matching_versions.pop_last() {
+	let max_matching = installed_versions
+		.iter()
+		.filter(|v| version_matches(v, &req))
+		.last();
+	if let Some(version) = max_matching {
 		return Ok(path
 			.join(version.to_string())
 			.join(source.expected_file_name())
@@ -198,39 +198,65 @@ pub async fn get_or_download_engine(
 		.context("failed to resolve versions")?;
 	let (version, engine_ref) = versions.pop_last().context("no matching versions found")?;
 
+	let path = path.join(version.to_string());
+
+	fs::create_dir_all(&path)
+		.await
+		.context("failed to create engine container folder")?;
+
 	let path = path
-		.join(version.to_string())
 		.join(source.expected_file_name())
 		.with_extension(std::env::consts::EXE_EXTENSION);
-
-	let archive = source
-		.download(
-			&engine_ref,
-			&DownloadOptions {
-				reqwest: reqwest.clone(),
-				reporter: Arc::new(()),
-				version,
-			},
-		)
-		.await
-		.context("failed to download engine")?;
 
 	let mut file = fs::File::create(&path)
 		.await
 		.context("failed to create new file")?;
-	tokio::io::copy(
-		&mut archive
-			.find_executable(source.expected_file_name())
+
+	run_with_reporter(|_, root_progress, reporter| async {
+		let root_progress = root_progress;
+
+		root_progress.set_message("download");
+
+		let reporter = reporter.report_download(format!("{engine} v{version}"));
+
+		let archive = source
+			.download(
+				&engine_ref,
+				&DownloadOptions {
+					reqwest: reqwest.clone(),
+					reporter: Arc::new(reporter),
+					version: version.clone(),
+				},
+			)
 			.await
-			.context("failed to find executable")?,
-		&mut file,
-	)
-	.await
-	.context("failed to write to file")?;
+			.context("failed to download engine")?;
+
+		tokio::io::copy(
+			&mut archive
+				.find_executable(source.expected_file_name())
+				.await
+				.context("failed to find executable")?,
+			&mut file,
+		)
+		.await
+		.context("failed to write to file")?;
+
+		Ok::<_, anyhow::Error>(())
+	})
+	.await?;
 
 	make_executable(&path)
 		.await
 		.context("failed to make downloaded version executable")?;
+
+	// replace the executable if there isn't any installed, or the one installed is out of date
+	if installed_versions.pop_last().is_none_or(|v| version > v) {
+		replace_bin_exe(
+			engine,
+			&current_exe().context("failed to get current exe path")?,
+		)
+		.await?;
+	}
 
 	Ok(path)
 }

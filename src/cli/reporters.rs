@@ -99,31 +99,29 @@ impl<W> CliReporter<W> {
 	}
 }
 
-pub struct CliDownloadProgressReporter<'a, W> {
-	root_reporter: &'a CliReporter<W>,
+pub struct CliDownloadProgressReporter<W> {
+	root_reporter: Arc<CliReporter<W>>,
 	name: String,
 	progress: OnceLock<ProgressBar>,
 	set_progress: Once,
 }
 
-impl<'a, W: Write + Send + Sync + 'static> DownloadsReporter<'a> for CliReporter<W> {
-	type DownloadProgressReporter = CliDownloadProgressReporter<'a, W>;
+impl<W: Write + Send + Sync + 'static> DownloadsReporter for CliReporter<W> {
+	type DownloadProgressReporter = CliDownloadProgressReporter<W>;
 
-	fn report_download<'b>(&'a self, name: &'b str) -> Self::DownloadProgressReporter {
+	fn report_download<'b>(self: Arc<Self>, name: String) -> Self::DownloadProgressReporter {
 		self.root_progress.inc_length(1);
 
 		CliDownloadProgressReporter {
 			root_reporter: self,
-			name: name.to_string(),
+			name,
 			progress: OnceLock::new(),
 			set_progress: Once::new(),
 		}
 	}
 }
 
-impl<W: Write + Send + Sync + 'static> DownloadProgressReporter
-	for CliDownloadProgressReporter<'_, W>
-{
+impl<W: Write + Send + Sync + 'static> DownloadProgressReporter for CliDownloadProgressReporter<W> {
 	fn report_start(&self) {
 		let progress = self.root_reporter.multi_progress.add(ProgressBar::new(0));
 		progress.set_style(self.root_reporter.child_style.clone());
@@ -171,16 +169,16 @@ impl<W: Write + Send + Sync + 'static> DownloadProgressReporter
 	}
 }
 
-pub struct CliPatchProgressReporter<'a, W> {
-	root_reporter: &'a CliReporter<W>,
+pub struct CliPatchProgressReporter<W> {
+	root_reporter: Arc<CliReporter<W>>,
 	name: String,
 	progress: ProgressBar,
 }
 
-impl<'a, W: Write + Send + Sync + 'static> PatchesReporter<'a> for CliReporter<W> {
-	type PatchProgressReporter = CliPatchProgressReporter<'a, W>;
+impl<W: Write + Send + Sync + 'static> PatchesReporter for CliReporter<W> {
+	type PatchProgressReporter = CliPatchProgressReporter<W>;
 
-	fn report_patch<'b>(&'a self, name: &'b str) -> Self::PatchProgressReporter {
+	fn report_patch(self: Arc<Self>, name: String) -> Self::PatchProgressReporter {
 		let progress = self.multi_progress.add(ProgressBar::new(0));
 		progress.set_style(self.child_style.clone());
 		progress.set_message(format!("- {name}"));
@@ -195,7 +193,7 @@ impl<'a, W: Write + Send + Sync + 'static> PatchesReporter<'a> for CliReporter<W
 	}
 }
 
-impl<W: Write + Send + Sync + 'static> PatchProgressReporter for CliPatchProgressReporter<'_, W> {
+impl<W: Write + Send + Sync + 'static> PatchProgressReporter for CliPatchProgressReporter<W> {
 	fn report_done(&self) {
 		if self.progress.is_hidden() {
 			writeln!(

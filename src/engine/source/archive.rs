@@ -53,22 +53,22 @@ impl FromStr for ArchiveInfo {
 	}
 }
 
+pub(crate) type ArchiveReader = Pin<Box<dyn AsyncBufRead>>;
+
 /// An archive
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Archive<R: AsyncBufRead + 'static> {
+pub struct Archive {
 	pub(crate) info: ArchiveInfo,
-	pub(crate) reader: R,
+	pub(crate) reader: ArchiveReader,
 }
 
-#[derive(Debug)]
-enum TarReader<R: AsyncBufRead> {
-	Gzip(async_compression::tokio::bufread::GzipDecoder<R>),
-	Plain(R),
+enum TarReader {
+	Gzip(async_compression::tokio::bufread::GzipDecoder<ArchiveReader>),
+	Plain(ArchiveReader),
 }
 
 // TODO: try to see if we can avoid the unsafe blocks
 
-impl<R: AsyncBufRead> AsyncRead for TarReader<R> {
+impl AsyncRead for TarReader {
 	fn poll_read(
 		self: Pin<&mut Self>,
 		cx: &mut Context<'_>,
@@ -83,8 +83,8 @@ impl<R: AsyncBufRead> AsyncRead for TarReader<R> {
 	}
 }
 
-enum ArchiveEntryInner<R: AsyncBufRead + 'static> {
-	Tar(tokio_tar::Entry<tokio_tar::Archive<TarReader<Pin<Box<R>>>>>),
+enum ArchiveEntryInner {
+	Tar(tokio_tar::Entry<tokio_tar::Archive<TarReader>>),
 	Zip {
 		archive: *mut async_zip::tokio::read::seek::ZipFileReader<std::io::Cursor<Vec<u8>>>,
 		reader: ManuallyDrop<
@@ -99,7 +99,7 @@ enum ArchiveEntryInner<R: AsyncBufRead + 'static> {
 	},
 }
 
-impl<R: AsyncBufRead> Drop for ArchiveEntryInner<R> {
+impl Drop for ArchiveEntryInner {
 	fn drop(&mut self) {
 		match self {
 			Self::Tar(_) => {}
@@ -112,9 +112,9 @@ impl<R: AsyncBufRead> Drop for ArchiveEntryInner<R> {
 }
 
 /// An entry in an archive. Usually the executable
-pub struct ArchiveEntry<R: AsyncBufRead + 'static>(ArchiveEntryInner<R>);
+pub struct ArchiveEntry(ArchiveEntryInner);
 
-impl<R: AsyncBufRead> AsyncRead for ArchiveEntry<R> {
+impl AsyncRead for ArchiveEntry {
 	fn poll_read(
 		self: Pin<&mut Self>,
 		cx: &mut Context<'_>,
@@ -131,12 +131,12 @@ impl<R: AsyncBufRead> AsyncRead for ArchiveEntry<R> {
 	}
 }
 
-impl<R: AsyncBufRead + 'static> Archive<R> {
+impl Archive {
 	/// Finds the executable in the archive and returns it as an [`ArchiveEntry`]
 	pub async fn find_executable(
 		self,
 		expected_file_name: &str,
-	) -> Result<ArchiveEntry<R>, errors::FindExecutableError> {
+	) -> Result<ArchiveEntry, errors::FindExecutableError> {
 		#[derive(Debug, PartialEq, Eq)]
 		struct Candidate {
 			path: PathBuf,
@@ -188,10 +188,11 @@ impl<R: AsyncBufRead + 'static> Archive<R> {
 			ArchiveInfo(ArchiveKind::Tar, encoding) => {
 				use async_compression::tokio::bufread as decoders;
 
-				let reader = Box::pin(self.reader);
 				let reader = match encoding {
-					Some(EncodingKind::Gzip) => TarReader::Gzip(decoders::GzipDecoder::new(reader)),
-					None => TarReader::Plain(reader),
+					Some(EncodingKind::Gzip) => {
+						TarReader::Gzip(decoders::GzipDecoder::new(self.reader))
+					}
+					None => TarReader::Plain(self.reader),
 				};
 
 				let mut archive = tokio_tar::Archive::new(reader);

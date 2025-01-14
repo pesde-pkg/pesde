@@ -1,7 +1,6 @@
 use crate::{engine::source::archive::Archive, reporters::DownloadProgressReporter};
 use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, fmt::Debug, future::Future, path::PathBuf, sync::Arc};
-use tokio::io::AsyncBufRead;
 
 /// Options for resolving an engine
 #[derive(Debug, Clone)]
@@ -48,7 +47,5 @@ pub trait EngineSource: Debug {
 		&self,
 		engine_ref: &Self::Ref,
 		options: &DownloadOptions<R>,
-	) -> impl Future<Output = Result<Archive<impl AsyncBufRead + 'static>, Self::DownloadError>>
-	       + Send
-	       + Sync;
+	) -> impl Future<Output = Result<Archive, Self::DownloadError>> + Send + Sync;
 }

@@ -299,7 +299,7 @@ async fn run() -> anyhow::Result<()> {
 		let exe_path =
 			get_or_download_engine(&reqwest, engine, req.unwrap_or(VersionReq::STAR)).await?;
 		if exe_path == current_exe {
-			break 'engines;
+			anyhow::bail!("engine linker executed by itself")
 		}
 
 		let status = std::process::Command::new(exe_path)
