@@ -8,6 +8,7 @@ use crate::{
 		traits::{DownloadOptions, EngineSource, ResolveOptions},
 	},
 	reporters::{response_to_async_read, DownloadProgressReporter},
+	util::no_build_metadata,
 	version_matches,
 };
 use reqwest::header::ACCEPT;
@@ -80,14 +81,21 @@ impl EngineSource for GitHubEngineSource {
 			..
 		} = options;
 
-		let desired_asset_name = self
-			.asset_template
-			.replace("{VERSION}", &version.to_string());
+		let desired_asset_names = [
+			self.asset_template
+				.replace("{VERSION}", &version.to_string()),
+			self.asset_template
+				.replace("{VERSION}", &no_build_metadata(version).to_string()),
+		];
 
 		let asset = engine_ref
 			.assets
 			.iter()
-			.find(|asset| asset.name.eq_ignore_ascii_case(&desired_asset_name))
+			.find(|asset| {
+				desired_asset_names
+					.iter()
+					.any(|name| asset.name.eq_ignore_ascii_case(name))
+			})
 			.ok_or(errors::DownloadError::AssetNotFound)?;
 
 		reporter.report_start();

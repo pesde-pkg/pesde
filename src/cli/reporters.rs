@@ -109,7 +109,7 @@ pub struct CliDownloadProgressReporter<W> {
 impl<W: Write + Send + Sync + 'static> DownloadsReporter for CliReporter<W> {
 	type DownloadProgressReporter = CliDownloadProgressReporter<W>;
 
-	fn report_download<'b>(self: Arc<Self>, name: String) -> Self::DownloadProgressReporter {
+	fn report_download(self: Arc<Self>, name: String) -> Self::DownloadProgressReporter {
 		self.root_progress.inc_length(1);
 
 		CliDownloadProgressReporter {

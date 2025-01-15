@@ -1,8 +1,7 @@
-use crate::cli::{version::replace_bin_exe, HOME_DIR};
+use crate::cli::{version::replace_pesde_bin_exe, HOME_DIR};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
-use pesde::engine::EngineKind;
 use std::env::current_exe;
 
 #[derive(Debug, Args)]
@@ -72,11 +71,7 @@ and then restart your shell.
 			);
 		}
 
-		replace_bin_exe(
-			EngineKind::Pesde,
-			&current_exe().context("failed to get current exe path")?,
-		)
-		.await?;
+		replace_pesde_bin_exe(&current_exe().context("failed to get current exe path")?).await?;
 
 		Ok(())
 	}

@@ -138,12 +138,17 @@ impl<'a> MakeWriter<'a> for IndicatifWriter {
 async fn run() -> anyhow::Result<()> {
 	let cwd = std::env::current_dir().expect("failed to get current working directory");
 	let current_exe = std::env::current_exe().expect("failed to get current executable path");
-	let exe_name = current_exe.file_stem().unwrap();
+	let exe_name = current_exe
+		.file_stem()
+		.unwrap()
+		.to_str()
+		.expect("exe name is not valid utf-8");
+	let exe_name_engine = EngineKind::from_str(exe_name);
 
 	#[cfg(windows)]
 	'scripts: {
-		// we're called the same as the binary, so we're not a (legal) script
-		if exe_name == env!("CARGO_PKG_NAME") {
+		// if we're an engine, we don't want to run any scripts
+		if exe_name_engine.is_ok() {
 			break 'scripts;
 		}
 
@@ -273,10 +278,7 @@ async fn run() -> anyhow::Result<()> {
 
 	#[cfg(feature = "version-management")]
 	'engines: {
-		let Some(engine) = exe_name
-			.to_str()
-			.and_then(|str| EngineKind::from_str(str).ok())
-		else {
+		let Ok(engine) = exe_name_engine else {
 			break 'engines;
 		};
 

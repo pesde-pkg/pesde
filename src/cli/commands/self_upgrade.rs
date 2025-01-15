@@ -1,9 +1,11 @@
-use crate::cli::{
-	config::read_config,
-	version::{
-		current_version, find_latest_version, get_or_download_engine, no_build_metadata,
-		replace_bin_exe,
+use crate::{
+	cli::{
+		config::read_config,
+		version::{
+			current_version, find_latest_version, get_or_download_engine, replace_pesde_bin_exe,
+		},
 	},
+	util::no_build_metadata,
 };
 use anyhow::Context;
 use clap::Args;
@@ -54,7 +56,7 @@ impl SelfUpgradeCommand {
 			VersionReq::parse(&format!("={latest_version}")).unwrap(),
 		)
 		.await?;
-		replace_bin_exe(EngineKind::Pesde, &path).await?;
+		replace_pesde_bin_exe(&path).await?;
 
 		println!("upgraded to version {display_latest_version}!");
 

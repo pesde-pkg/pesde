@@ -1,5 +1,6 @@
 use crate::AuthConfig;
 use gix::bstr::BStr;
+use semver::Version;
 use serde::{Deserialize, Deserializer, Serializer};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
@@ -87,4 +88,10 @@ pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
 
 pub fn is_default<T: Default + Eq>(t: &T) -> bool {
 	t == &T::default()
+}
+
+pub fn no_build_metadata(version: &Version) -> Version {
+	let mut version = version.clone();
+	version.build = semver::BuildMetadata::EMPTY;
+	version
 }

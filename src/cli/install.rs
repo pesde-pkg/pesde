@@ -200,6 +200,21 @@ pub async fn install(
 			let root_progress = root_progress;
 
 			root_progress.set_prefix(format!("{} {}: ", manifest.name, manifest.target));
+			#[cfg(feature = "version-management")]
+			{
+				root_progress.set_message("update engine linkers");
+
+				let mut tasks = manifest
+					.engines
+					.keys()
+					.map(|engine| crate::cli::version::make_linker_if_needed(*engine))
+					.collect::<JoinSet<_>>();
+
+				while let Some(task) = tasks.join_next().await {
+					task.unwrap()?;
+				}
+			}
+
 			root_progress.set_message("clean");
 
 			if options.write {
