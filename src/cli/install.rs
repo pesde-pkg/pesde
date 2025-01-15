@@ -1,10 +1,3 @@
-use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
-	num::NonZeroUsize,
-	sync::Arc,
-	time::Instant,
-};
-
 use super::files::make_executable;
 use crate::cli::{
 	bin_dir,
@@ -16,10 +9,19 @@ use colored::Colorize;
 use fs_err::tokio as fs;
 use pesde::{
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions},
+	engine::EngineKind,
 	graph::{DependencyGraph, DependencyGraphWithTarget},
 	lockfile::Lockfile,
-	manifest::{target::TargetKind, DependencyType},
-	Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
+	manifest::{target::TargetKind, DependencyType, Manifest},
+	names::PackageNames,
+	source::{pesde::PesdePackageSource, refs::PackageRefs},
+	version_matches, Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
+};
+use std::{
+	collections::{BTreeMap, BTreeSet, HashMap},
+	num::NonZeroUsize,
+	sync::Arc,
+	time::Instant,
 };
 use tokio::task::JoinSet;
 
@@ -196,7 +198,8 @@ pub async fn install(
 	let overrides = resolve_overrides(&manifest)?;
 
 	let (new_lockfile, old_graph) =
-		reporters::run_with_reporter(|_, root_progress, reporter| async {
+		reporters::run_with_reporter(|multi, root_progress, reporter| async {
+			let multi = multi;
 			let root_progress = root_progress;
 
 			root_progress.set_prefix(format!("{} {}: ", manifest.name, manifest.target));
@@ -300,8 +303,103 @@ pub async fn install(
 					root_progress.set_message("patch");
 
 					project
-						.apply_patches(&downloaded_graph.convert(), reporter)
+						.apply_patches(&downloaded_graph.clone().convert(), reporter)
 						.await?;
+				}
+
+				#[cfg(feature = "version-management")]
+				{
+					let mut tasks = manifest
+						.engines
+						.into_iter()
+						.map(|(engine, req)| async move {
+							Ok::<_, anyhow::Error>(
+								crate::cli::version::get_installed_versions(engine)
+									.await?
+									.into_iter()
+									.filter(|version| version_matches(version, &req))
+									.last()
+									.map(|version| (engine, version)),
+							)
+						})
+						.collect::<JoinSet<_>>();
+
+					let mut resolved_engine_versions = HashMap::new();
+					while let Some(task) = tasks.join_next().await {
+						let Some((engine, version)) = task.unwrap()? else {
+							continue;
+						};
+						resolved_engine_versions.insert(engine, version);
+					}
+
+					let manifest_target_kind = manifest.target.kind();
+					let mut tasks = downloaded_graph.iter()
+						.map(|(id, node)| {
+							let id = id.clone();
+							let node = node.clone();
+							let project = project.clone();
+
+							async move {
+								let engines = match &node.node.pkg_ref {
+									PackageRefs::Pesde(pkg_ref) => {
+										let source = PesdePackageSource::new(pkg_ref.index_url.clone());
+										#[allow(irrefutable_let_patterns)]
+										let PackageNames::Pesde(name) = id.name() else {
+											panic!("unexpected package name");
+										};
+
+										let mut file = source.read_index_file(name, &project).await.context("failed to read package index file")?.context("package not found in index")?;
+										file
+											.entries
+											.remove(id.version_id())
+											.context("package version not found in index")?
+											.engines
+									}
+									#[cfg(feature = "wally-compat")]
+									PackageRefs::Wally(_) => Default::default(),
+									_ => {
+										let path = node.node.container_folder_from_project(
+											&id,
+											&project,
+											manifest_target_kind,
+										);
+
+										match fs::read_to_string(path.join(MANIFEST_FILE_NAME)).await {
+											Ok(manifest) => match toml::from_str::<Manifest>(&manifest) {
+												Ok(manifest) => manifest.engines,
+												Err(e) => return Err(e).context("failed to read package manifest"),
+											},
+											Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
+											Err(e) => return Err(e).context("failed to read package manifest"),
+										}
+									}
+								};
+
+								Ok((id, engines))
+							}
+						})
+						.collect::<JoinSet<_>>();
+
+					while let Some(task) = tasks.join_next().await {
+						let (id, required_engines) = task.unwrap()?;
+
+						for (engine, req) in required_engines {
+							if engine == EngineKind::Pesde {
+								continue;
+							}
+
+							let Some(version) = resolved_engine_versions.get(&engine) else {
+								tracing::debug!("package {id} requires {engine} {req}, but it is not installed");
+								continue;
+							};
+
+							if !version_matches(version, &req) {
+								multi.suspend(|| {
+									println!("{}: package {id} requires {engine} {req}, but {version} is installed", "warn".yellow().bold());
+								});
+							}
+						}
+					}
 				}
 			}
 
@@ -325,7 +423,7 @@ pub async fn install(
 
 			anyhow::Ok((new_lockfile, old_graph.unwrap_or_default()))
 		})
-		.await?;
+			.await?;
 
 	let elapsed = start.elapsed();
 

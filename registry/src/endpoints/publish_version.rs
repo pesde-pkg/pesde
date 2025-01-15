@@ -368,6 +368,7 @@ pub async fn publish_package(
 		let new_entry = IndexFileEntry {
 			target: manifest.target.clone(),
 			published_at: chrono::Utc::now(),
+			engines: manifest.engines.clone(),
 			description: manifest.description.clone(),
 			license: manifest.license.clone(),
 			authors: manifest.authors.clone(),

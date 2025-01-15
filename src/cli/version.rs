@@ -142,24 +142,19 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 	Ok(())
 }
 
-#[instrument(skip(reqwest), level = "trace")]
-pub async fn get_or_download_engine(
-	reqwest: &reqwest::Client,
-	engine: EngineKind,
-	req: VersionReq,
-) -> anyhow::Result<PathBuf> {
+const ENGINES_DIR: &str = "engines";
+
+#[instrument(level = "trace")]
+pub async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeSet<Version>> {
 	let source = engine.source();
-
-	let path = home_dir()?.join("engines").join(source.directory());
-	fs::create_dir_all(&path)
-		.await
-		.context("failed to create engines directory")?;
-
-	let mut read_dir = fs::read_dir(&path)
-		.await
-		.context("failed to read engines directory")?;
-
+	let path = home_dir()?.join(ENGINES_DIR).join(source.directory());
 	let mut installed_versions = BTreeSet::new();
+
+	let mut read_dir = match fs::read_dir(&path).await {
+		Ok(read_dir) => read_dir,
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(installed_versions),
+		Err(e) => return Err(e).context("failed to read engines directory"),
+	};
 
 	while let Some(entry) = read_dir.next_entry().await? {
 		let path = entry.path();
@@ -172,6 +167,20 @@ pub async fn get_or_download_engine(
 			installed_versions.insert(version);
 		}
 	}
+
+	Ok(installed_versions)
+}
+
+#[instrument(skip(reqwest), level = "trace")]
+pub async fn get_or_download_engine(
+	reqwest: &reqwest::Client,
+	engine: EngineKind,
+	req: VersionReq,
+) -> anyhow::Result<PathBuf> {
+	let source = engine.source();
+	let path = home_dir()?.join(ENGINES_DIR).join(source.directory());
+
+	let installed_versions = get_installed_versions(engine).await?;
 
 	let max_matching = installed_versions
 		.iter()

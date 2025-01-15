@@ -13,6 +13,7 @@ use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
 use crate::{
+	engine::EngineKind,
 	manifest::{target::Target, DependencyType},
 	names::{PackageName, PackageNames},
 	reporters::{response_to_async_read, DownloadProgressReporter},
@@ -27,6 +28,7 @@ use crate::{
 };
 use fs_err::tokio as fs;
 use futures::StreamExt;
+use semver::VersionReq;
 use tokio::{pin, task::spawn_blocking};
 use tracing::instrument;
 
@@ -94,23 +96,31 @@ impl PesdePackageSource {
 		.unwrap()
 	}
 
-	fn read_index_file(
+	/// Reads the index file of a package
+	pub async fn read_index_file(
 		&self,
 		name: &PackageName,
 		project: &Project,
 	) -> Result<Option<IndexFile>, errors::ReadIndexFileError> {
-		let (scope, name) = name.as_str();
-		let repo = gix::open(self.path(project)).map_err(Box::new)?;
-		let tree = root_tree(&repo).map_err(Box::new)?;
-		let string = match read_file(&tree, [scope, name]) {
-			Ok(Some(s)) => s,
-			Ok(None) => return Ok(None),
-			Err(e) => {
-				return Err(errors::ReadIndexFileError::ReadFile(e));
-			}
-		};
+		let path = self.path(project);
+		let name = name.clone();
 
-		toml::from_str(&string).map_err(Into::into)
+		spawn_blocking(move || {
+			let (scope, name) = name.as_str();
+			let repo = gix::open(&path).map_err(Box::new)?;
+			let tree = root_tree(&repo).map_err(Box::new)?;
+			let string = match read_file(&tree, [scope, name]) {
+				Ok(Some(s)) => s,
+				Ok(None) => return Ok(None),
+				Err(e) => {
+					return Err(errors::ReadIndexFileError::ReadFile(e));
+				}
+			};
+
+			toml::from_str(&string).map_err(Into::into)
+		})
+		.await
+		.unwrap()
 	}
 }
 
@@ -140,7 +150,7 @@ impl PackageSource for PesdePackageSource {
 		} = options;
 
 		let Some(IndexFile { meta, entries, .. }) =
-			self.read_index_file(&specifier.name, project)?
+			self.read_index_file(&specifier.name, project).await?
 		else {
 			return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
 		};
@@ -296,7 +306,8 @@ impl PackageSource for PesdePackageSource {
 			panic!("unexpected package name");
 		};
 
-		let Some(IndexFile { mut entries, .. }) = self.read_index_file(name, &options.project)?
+		let Some(IndexFile { mut entries, .. }) =
+			self.read_index_file(name, &options.project).await?
 		else {
 			return Err(errors::GetTargetError::NotFound(name.to_string()));
 		};
@@ -460,6 +471,9 @@ pub struct IndexFileEntry {
 	/// When this package was published
 	#[serde(default = "chrono::Utc::now")]
 	pub published_at: chrono::DateTime<chrono::Utc>,
+	/// The engines this package supports
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub engines: BTreeMap<EngineKind, VersionReq>,
 
 	/// The description of this package
 	#[serde(default, skip_serializing_if = "Option::is_none")]
