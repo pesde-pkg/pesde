@@ -14,7 +14,7 @@ use pesde::{
 	lockfile::Lockfile,
 	manifest::{target::TargetKind, Alias, DependencyType, Manifest},
 	names::PackageNames,
-	source::{pesde::PesdePackageSource, refs::PackageRefs},
+	source::{pesde::PesdePackageSource, refs::PackageRefs, traits::PackageRef, PackageSources},
 	version_matches, Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use std::{
@@ -254,6 +254,41 @@ pub async fn install(
 				)
 				.await
 				.context("failed to build dependency graph")?;
+
+			let mut tasks = graph
+				.iter()
+				.filter_map(|(id, node)| {
+					let PackageSources::Pesde(source) = node.pkg_ref.source() else {
+						return None;
+					};
+					#[allow(irrefutable_let_patterns)]
+					let PackageNames::Pesde(name) = id.name().clone() else {
+						panic!("unexpected package name");
+					};
+					let project = project.clone();
+
+					Some(async move {
+						let file = source.read_index_file(&name, &project).await.context("failed to read package index file")?.context("package not found in index")?;
+
+						Ok::<_, anyhow::Error>(if file.meta.deprecated.is_empty() {
+							None
+						} else {
+							Some((name, file.meta.deprecated))
+						})
+					})
+				})
+				.collect::<JoinSet<_>>();
+
+			while let Some(task) = tasks.join_next().await {
+				let Some((name, reason)) = task.unwrap()? else {
+					continue;
+				};
+
+				multi.suspend(|| {
+					println!("{}: package {name} is deprecated: {reason}", "warn".yellow().bold());
+				});
+			}
+
 			let graph = Arc::new(graph);
 
 			if options.write {

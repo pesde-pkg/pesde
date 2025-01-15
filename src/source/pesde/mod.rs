@@ -149,15 +149,11 @@ impl PackageSource for PesdePackageSource {
 			..
 		} = options;
 
-		let Some(IndexFile { meta, entries, .. }) =
+		let Some(IndexFile { entries, .. }) =
 			self.read_index_file(&specifier.name, project).await?
 		else {
 			return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
 		};
-
-		if !meta.deprecated.is_empty() {
-			tracing::warn!("{} is deprecated: {}", specifier.name, meta.deprecated);
-		}
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
