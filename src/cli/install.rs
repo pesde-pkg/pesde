@@ -318,7 +318,7 @@ pub async fn install(
 									.await?
 									.into_iter()
 									.filter(|version| version_matches(version, &req))
-									.last()
+									.next_back()
 									.map(|version| (engine, version)),
 							)
 						})

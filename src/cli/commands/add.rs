@@ -186,7 +186,7 @@ impl AddCommand {
 				.path
 				.to_string()
 				.split('/')
-				.last()
+				.next_back()
 				.map(|s| s.to_string())
 				.unwrap_or(url.path.to_string()),
 			AnyPackageIdentifier::Workspace(versioned) => versioned.0.name().to_string(),
