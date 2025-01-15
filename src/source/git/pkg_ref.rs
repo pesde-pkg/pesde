@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::{
-	manifest::DependencyType,
+	manifest::{Alias, DependencyType},
 	source::{git::GitPackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
 
@@ -19,12 +19,12 @@ pub struct GitPackageRef {
 	pub tree_id: String,
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
+	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 	/// Whether this package uses the new structure
 	pub new_structure: bool,
 }
 impl PackageRef for GitPackageRef {
-	fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
+	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)> {
 		&self.dependencies
 	}
 

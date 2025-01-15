@@ -10,7 +10,12 @@ use crate::{
 use relative_path::RelativePathBuf;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use serde_with::{DeserializeFromStr, SerializeDisplay};
+use std::{
+	collections::{BTreeMap, HashMap},
+	fmt::Display,
+	str::FromStr,
+};
 use tracing::instrument;
 
 /// Overrides
@@ -99,17 +104,73 @@ pub struct Manifest {
 
 	/// The standard dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<String, DependencySpecifiers>,
+	pub dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The peer dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub peer_dependencies: BTreeMap<String, DependencySpecifiers>,
+	pub peer_dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The dev dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dev_dependencies: BTreeMap<String, DependencySpecifiers>,
+	pub dev_dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The user-defined fields of the package
 	#[cfg_attr(feature = "schema", schemars(skip))]
 	#[serde(flatten)]
 	pub user_defined_fields: HashMap<String, toml::Value>,
+}
+
+/// An alias of a dependency
+#[derive(
+	SerializeDisplay, DeserializeFromStr, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
+pub struct Alias(String);
+
+impl Display for Alias {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.pad(&self.0)
+	}
+}
+
+impl FromStr for Alias {
+	type Err = errors::AliasFromStr;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if s.is_empty() {
+			return Err(errors::AliasFromStr::Empty);
+		}
+
+		if !s
+			.chars()
+			.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+		{
+			return Err(errors::AliasFromStr::InvalidCharacters(s.to_string()));
+		}
+
+		if EngineKind::from_str(s).is_ok() {
+			return Err(errors::AliasFromStr::EngineName(s.to_string()));
+		}
+
+		Ok(Self(s.to_string()))
+	}
+}
+
+#[cfg(feature = "schema")]
+impl schemars::JsonSchema for Alias {
+	fn schema_name() -> std::borrow::Cow<'static, str> {
+		"Alias".into()
+	}
+
+	fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+		schemars::json_schema!({
+			"type": "string",
+			"pattern": r#"^[a-zA-Z0-9_-]+$"#,
+		})
+	}
+}
+
+impl Alias {
+	/// Get the alias as a string
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
 }
 
 /// A dependency type
@@ -129,10 +190,8 @@ impl Manifest {
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
 	pub fn all_dependencies(
 		&self,
-	) -> Result<
-		BTreeMap<String, (DependencySpecifiers, DependencyType)>,
-		errors::AllDependenciesError,
-	> {
+	) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::AllDependenciesError>
+	{
 		let mut all_deps = BTreeMap::new();
 
 		for (deps, ty) in [
@@ -153,7 +212,25 @@ impl Manifest {
 
 /// Errors that can occur when interacting with manifests
 pub mod errors {
+	use crate::manifest::Alias;
 	use thiserror::Error;
+
+	/// Errors that can occur when parsing an alias from a string
+	#[derive(Debug, Error)]
+	#[non_exhaustive]
+	pub enum AliasFromStr {
+		/// The alias is empty
+		#[error("the alias is empty")]
+		Empty,
+
+		/// The alias contains characters outside a-z, A-Z, 0-9, -, and _
+		#[error("alias `{0}` contains characters outside a-z, A-Z, 0-9, -, and _")]
+		InvalidCharacters(String),
+
+		/// The alias is an engine name
+		#[error("alias `{0}` is an engine name")]
+		EngineName(String),
+	}
 
 	/// Errors that can occur when trying to get all dependencies from a manifest
 	#[derive(Debug, Error)]
@@ -161,6 +238,6 @@ pub mod errors {
 	pub enum AllDependenciesError {
 		/// Another specifier is already using the alias
 		#[error("another specifier is already using the alias {0}")]
-		AliasConflict(String),
+		AliasConflict(Alias),
 	}
 }

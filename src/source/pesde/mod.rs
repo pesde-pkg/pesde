@@ -14,7 +14,7 @@ use specifier::PesdeDependencySpecifier;
 
 use crate::{
 	engine::EngineKind,
-	manifest::{target::Target, DependencyType},
+	manifest::{target::Target, Alias, DependencyType},
 	names::{PackageName, PackageNames},
 	reporters::{response_to_async_read, DownloadProgressReporter},
 	source::{
@@ -498,7 +498,7 @@ pub struct IndexFileEntry {
 
 	/// The dependencies of this package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
+	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 }
 
 /// The package metadata in the index file

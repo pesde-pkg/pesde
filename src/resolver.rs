@@ -1,6 +1,6 @@
 use crate::{
 	graph::{DependencyGraph, DependencyGraphNode},
-	manifest::{overrides::OverrideSpecifier, DependencyType},
+	manifest::{overrides::OverrideSpecifier, Alias, DependencyType},
 	source::{
 		ids::PackageId,
 		pesde::PesdePackageSource,
@@ -92,12 +92,12 @@ impl Project {
 
 				let Some(alias) = all_specifiers.remove(&(specifier.clone(), *source_ty)) else {
 					tracing::debug!(
-                            "dependency {package_id} (old alias {old_alias}) from old dependency graph is no longer in the manifest",
-                        );
+						"dependency {package_id} (old alias {old_alias}) from old dependency graph is no longer in the manifest",
+					);
 					continue;
 				};
 
-				let span = tracing::info_span!("resolve from old graph", alias);
+				let span = tracing::info_span!("resolve from old graph", alias = alias.as_str());
 				let _guard = span.enter();
 
 				tracing::debug!("resolved {package_id} from old dependency graph");
@@ -121,6 +121,7 @@ impl Project {
 					let inner_span =
 						tracing::info_span!("resolve dependency", path = path.join(">"));
 					let _inner_guard = inner_span.enter();
+
 					if let Some(dep_node) = previous_graph.get(dep_id) {
 						tracing::debug!("resolved sub-dependency {dep_id}");
 						insert_node(&mut graph, dep_id, dep_node.clone(), false);
@@ -262,7 +263,7 @@ impl Project {
                         .get_mut(&dependant_id)
                         .expect("dependant package not found in graph")
                         .dependencies
-                                .insert(package_id.clone(), alias.clone());
+                        .insert(package_id.clone(), alias.clone());
                 }
 
                 let pkg_ref = &resolved[package_id.version_id()];
@@ -339,7 +340,7 @@ impl Project {
                         tracing::debug!(
                             "overridden specifier found for {} ({dependency_spec})",
                             path.iter()
-                                .map(String::as_str)
+                                .map(Alias::as_str)
                                 .chain(std::iter::once(dependency_alias.as_str()))
                                 .collect::<Vec<_>>()
                                 .join(">"),
@@ -368,7 +369,7 @@ impl Project {
 
                 Ok(())
             }
-                .instrument(tracing::info_span!("resolve new/changed", path = path.join(">")))
+                .instrument(tracing::info_span!("resolve new/changed", path = path.iter().map(Alias::as_str).collect::<Vec<_>>().join(">")))
                 .await?;
 		}
 
@@ -388,6 +389,7 @@ impl Project {
 
 /// Errors that can occur when resolving dependencies
 pub mod errors {
+	use crate::manifest::Alias;
 	use thiserror::Error;
 
 	/// Errors that can occur when creating a dependency graph
@@ -425,6 +427,6 @@ pub mod errors {
 
 		/// An alias for an override was not found in the manifest
 		#[error("alias `{0}` not found in manifest")]
-		AliasNotFound(String),
+		AliasNotFound(Alias),
 	}
 }

@@ -12,7 +12,7 @@ use pesde::{
 	engine::EngineKind,
 	graph::{DependencyGraph, DependencyGraphWithTarget},
 	lockfile::Lockfile,
-	manifest::{target::TargetKind, DependencyType, Manifest},
+	manifest::{target::TargetKind, Alias, DependencyType, Manifest},
 	names::PackageNames,
 	source::{pesde::PesdePackageSource, refs::PackageRefs},
 	version_matches, Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
@@ -25,7 +25,7 @@ use std::{
 };
 use tokio::task::JoinSet;
 
-fn bin_link_file(alias: &str) -> String {
+fn bin_link_file(alias: &Alias) -> String {
 	let mut all_combinations = BTreeSet::new();
 
 	for a in TargetKind::VARIANTS {
@@ -70,23 +70,13 @@ impl DownloadAndLinkHooks for InstallHooks {
 			.values()
 			.filter(|node| node.target.bin_path().is_some())
 			.filter_map(|node| node.node.direct.as_ref())
-			.map(|(alias, _, _)| alias)
-			.filter(|alias| {
-				if *alias == env!("CARGO_BIN_NAME") {
-					tracing::warn!(
-						"package {alias} has the same name as the CLI, skipping bin link"
-					);
-					return false;
-				}
-				true
-			})
-			.map(|alias| {
+			.map(|(alias, _, _)| {
 				let bin_folder = self.bin_folder.clone();
 				let alias = alias.clone();
 
 				async move {
 					let bin_exec_file = bin_folder
-						.join(&alias)
+						.join(alias.as_str())
 						.with_extension(std::env::consts::EXE_EXTENSION);
 
 					let impl_folder = bin_folder.join(".impl");
@@ -94,7 +84,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 						.await
 						.context("failed to create bin link folder")?;
 
-					let bin_file = impl_folder.join(&alias).with_extension("luau");
+					let bin_file = impl_folder.join(alias.as_str()).with_extension("luau");
 					fs::write(&bin_file, bin_link_file(&alias))
 						.await
 						.context("failed to write bin link file")?;

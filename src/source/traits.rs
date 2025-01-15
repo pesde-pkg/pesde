@@ -1,7 +1,7 @@
 use crate::{
 	manifest::{
 		target::{Target, TargetKind},
-		DependencyType,
+		Alias, DependencyType,
 	},
 	reporters::DownloadProgressReporter,
 	source::{ids::PackageId, DependencySpecifiers, PackageFs, PackageSources, ResolveResult},
@@ -21,7 +21,7 @@ pub trait DependencySpecifier: Debug + Display {}
 /// A reference to a package
 pub trait PackageRef: Debug {
 	/// The dependencies of this package
-	fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)>;
+	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)>;
 	/// Whether to use the new structure (`packages` folders inside the package's content folder) or the old structure (Wally-style, with linker files in the parent of the folder containing the package's contents)
 	fn use_new_structure(&self) -> bool;
 	/// The source of this package
