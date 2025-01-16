@@ -286,11 +286,13 @@ async fn run() -> anyhow::Result<()> {
 			break 'engines;
 		};
 
-		let req = project
-			.deser_manifest()
-			.await
-			.ok()
-			.and_then(|mut manifest| manifest.engines.remove(&engine));
+		let req = match project.deser_manifest().await {
+			Ok(mut manifest) => manifest.engines.remove(&engine),
+			Err(pesde::errors::ManifestReadError::Io(e)) if e.kind() == io::ErrorKind::NotFound => {
+				None
+			}
+			Err(e) => return Err(e.into()),
+		};
 
 		if engine == EngineKind::Pesde {
 			match &req {
