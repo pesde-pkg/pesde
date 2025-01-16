@@ -1,5 +1,5 @@
 use crate::{
-	manifest::DependencyType,
+	manifest::{Alias, DependencyType},
 	source::{path::PathPackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
 use serde::{Deserialize, Serialize};
@@ -12,10 +12,10 @@ pub struct PathPackageRef {
 	pub path: PathBuf,
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
+	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 }
 impl PackageRef for PathPackageRef {
-	fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
+	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)> {
 		&self.dependencies
 	}
 

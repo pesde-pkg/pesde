@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	manifest::DependencyType,
+	manifest::{Alias, DependencyType},
 	source::{wally::WallyPackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
 
@@ -18,10 +18,10 @@ pub struct WallyPackageRef {
 	pub index_url: gix::Url,
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
+	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 }
 impl PackageRef for WallyPackageRef {
-	fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
+	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)> {
 		&self.dependencies
 	}
 

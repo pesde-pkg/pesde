@@ -1,8 +1,9 @@
-use crate::cli::{version::update_bin_exe, HOME_DIR};
+use crate::cli::{version::replace_pesde_bin_exe, HOME_DIR};
 use anyhow::Context;
 use clap::Args;
 use colored::Colorize;
 use std::env::current_exe;
+
 #[derive(Debug, Args)]
 pub struct SelfInstallCommand {
 	/// Skip adding the bin directory to the PATH
@@ -70,7 +71,7 @@ and then restart your shell.
 			);
 		}
 
-		update_bin_exe(&current_exe().context("failed to get current exe path")?).await?;
+		replace_pesde_bin_exe(&current_exe().context("failed to get current exe path")?).await?;
 
 		Ok(())
 	}

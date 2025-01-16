@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-	manifest::{errors, DependencyType},
+	manifest::{errors, Alias, DependencyType},
 	names::wally::WallyPackageName,
 	source::{specifiers::DependencySpecifiers, wally::specifier::WallyDependencySpecifier},
 };
@@ -28,9 +28,9 @@ pub struct WallyPackage {
 
 pub fn deserialize_specifiers<'de, D: Deserializer<'de>>(
 	deserializer: D,
-) -> Result<BTreeMap<String, WallyDependencySpecifier>, D::Error> {
+) -> Result<BTreeMap<Alias, WallyDependencySpecifier>, D::Error> {
 	// specifier is in form of `name@version_req`
-	BTreeMap::<String, String>::deserialize(deserializer)?
+	BTreeMap::<Alias, String>::deserialize(deserializer)?
 		.into_iter()
 		.map(|(k, v)| {
 			let (name, version) = v.split_once('@').ok_or_else(|| {
@@ -54,11 +54,11 @@ pub fn deserialize_specifiers<'de, D: Deserializer<'de>>(
 pub struct WallyManifest {
 	pub package: WallyPackage,
 	#[serde(default, deserialize_with = "deserialize_specifiers")]
-	pub dependencies: BTreeMap<String, WallyDependencySpecifier>,
+	pub dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
 	#[serde(default, deserialize_with = "deserialize_specifiers")]
-	pub server_dependencies: BTreeMap<String, WallyDependencySpecifier>,
+	pub server_dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
 	#[serde(default, deserialize_with = "deserialize_specifiers")]
-	pub dev_dependencies: BTreeMap<String, WallyDependencySpecifier>,
+	pub dev_dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
 }
 
 impl WallyManifest {
@@ -66,10 +66,8 @@ impl WallyManifest {
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
 	pub fn all_dependencies(
 		&self,
-	) -> Result<
-		BTreeMap<String, (DependencySpecifiers, DependencyType)>,
-		errors::AllDependenciesError,
-	> {
+	) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::AllDependenciesError>
+	{
 		let mut all_deps = BTreeMap::new();
 
 		for (deps, ty) in [

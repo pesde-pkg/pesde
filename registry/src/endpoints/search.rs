@@ -50,8 +50,10 @@ pub async fn search_packages(
 
 	let source = Arc::new(app_state.source.clone().read_owned().await);
 
-	let mut results = Vec::with_capacity(top_docs.len());
-	results.extend((0..top_docs.len()).map(|_| None::<PackageResponse>));
+	let mut results = top_docs
+		.iter()
+		.map(|_| None::<PackageResponse>)
+		.collect::<Vec<_>>();
 
 	let mut tasks = top_docs
 		.into_iter()

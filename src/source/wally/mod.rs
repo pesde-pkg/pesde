@@ -1,7 +1,7 @@
 use crate::{
 	manifest::target::{Target, TargetKind},
 	names::PackageNames,
-	reporters::DownloadProgressReporter,
+	reporters::{response_to_async_read, DownloadProgressReporter},
 	source::{
 		fs::{store_in_cas, FsEntry, PackageFs},
 		git_index::{read_file, root_tree, GitBasedSource},
@@ -20,14 +20,13 @@ use crate::{
 	Project,
 };
 use fs_err::tokio as fs;
-use futures::StreamExt;
 use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf};
-use tokio::{io::AsyncReadExt, task::spawn_blocking};
-use tokio_util::{compat::FuturesAsyncReadCompatExt, io::StreamReader};
+use tokio::{io::AsyncReadExt, pin, task::spawn_blocking};
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 use tracing::instrument;
 
 pub(crate) mod compat_util;
@@ -268,22 +267,9 @@ impl PackageSource for WallyPackageSource {
 		let response = request.send().await?.error_for_status()?;
 
 		let total_len = response.content_length().unwrap_or(0);
-		reporter.report_progress(total_len, 0);
+		let bytes = response_to_async_read(response, reporter.clone());
+		pin!(bytes);
 
-		let mut bytes_downloaded = 0;
-		let bytes = response
-			.bytes_stream()
-			.inspect(|chunk| {
-				chunk.as_ref().ok().inspect(|chunk| {
-					bytes_downloaded += chunk.len() as u64;
-					reporter.report_progress(total_len, bytes_downloaded);
-				});
-			})
-			.map(|result| {
-				result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-			});
-
-		let mut bytes = StreamReader::new(bytes);
 		let mut buf = Vec::with_capacity(total_len as usize);
 		bytes.read_to_end(&mut buf).await?;
 
@@ -334,8 +320,6 @@ impl PackageSource for WallyPackageSource {
 		fs::write(&index_file, toml::to_string(&fs)?)
 			.await
 			.map_err(errors::DownloadError::WriteIndex)?;
-
-		reporter.report_done();
 
 		Ok(fs)
 	}

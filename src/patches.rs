@@ -84,7 +84,7 @@ impl Project {
 		reporter: Arc<Reporter>,
 	) -> Result<(), errors::ApplyPatchesError>
 	where
-		Reporter: for<'a> PatchesReporter<'a> + Send + Sync + 'static,
+		Reporter: PatchesReporter + Send + Sync + 'static,
 	{
 		let manifest = self.deser_manifest().await?;
 
@@ -112,7 +112,7 @@ impl Project {
 					async move {
 						tracing::debug!("applying patch");
 
-						let progress_reporter = reporter.report_patch(&package_id.to_string());
+						let progress_reporter = reporter.report_patch(package_id.to_string());
 
 						let patch = fs::read(&patch_path)
 							.await

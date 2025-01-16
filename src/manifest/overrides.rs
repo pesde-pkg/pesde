@@ -1,4 +1,4 @@
-use crate::source::specifiers::DependencySpecifiers;
+use crate::{manifest::Alias, source::specifiers::DependencySpecifiers};
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
@@ -10,7 +10,7 @@ use std::{
 #[derive(
 	Debug, DeserializeFromStr, SerializeDisplay, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
 )]
-pub struct OverrideKey(pub Vec<Vec<String>>);
+pub struct OverrideKey(pub Vec<Vec<Alias>>);
 
 impl FromStr for OverrideKey {
 	type Err = errors::OverrideKeyFromStr;
@@ -18,8 +18,13 @@ impl FromStr for OverrideKey {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let overrides = s
 			.split(',')
-			.map(|overrides| overrides.split('>').map(ToString::to_string).collect())
-			.collect::<Vec<Vec<String>>>();
+			.map(|overrides| {
+				overrides
+					.split('>')
+					.map(Alias::from_str)
+					.collect::<Result<_, _>>()
+			})
+			.collect::<Result<Vec<Vec<Alias>>, _>>()?;
 
 		if overrides.is_empty() {
 			return Err(errors::OverrideKeyFromStr::Empty);
@@ -38,7 +43,7 @@ impl schemars::JsonSchema for OverrideKey {
 	fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
 		schemars::json_schema!({
 			"type": "string",
-			"pattern": r#"^([a-zA-Z]+(>[a-zA-Z]+)+)(,([a-zA-Z]+(>[a-zA-Z]+)+))*$"#,
+			"pattern": r#"^(?:[a-zA-Z0-9_-]+>[a-zA-Z0-9_-]+(?:>[a-zA-Z0-9_-]+)*)(?:,(?:[a-zA-Z0-9_-]+>[a-zA-Z0-9_-]+(?:>[a-zA-Z0-9_-]+)*))*$"#,
 		})
 	}
 }
@@ -53,7 +58,7 @@ impl Display for OverrideKey {
 				.map(|overrides| {
 					overrides
 						.iter()
-						.map(String::as_str)
+						.map(Alias::as_str)
 						.collect::<Vec<_>>()
 						.join(">")
 				})
@@ -71,7 +76,7 @@ pub enum OverrideSpecifier {
 	/// A specifier for a dependency
 	Specifier(DependencySpecifiers),
 	/// An alias for a dependency the current project depends on
-	Alias(String),
+	Alias(Alias),
 }
 
 /// Errors that can occur when interacting with override keys
@@ -85,5 +90,9 @@ pub mod errors {
 		/// The override key is empty
 		#[error("empty override key")]
 		Empty,
+
+		/// An alias in the override key is invalid
+		#[error("invalid alias in override key")]
+		InvalidAlias(#[from] crate::manifest::errors::AliasFromStr),
 	}
 }

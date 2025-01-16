@@ -8,15 +8,15 @@ use std::{
 	hash::Hash,
 	path::PathBuf,
 };
-use tokio_util::io::StreamReader;
 
 use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
 use crate::{
-	manifest::{target::Target, DependencyType},
+	engine::EngineKind,
+	manifest::{target::Target, Alias, DependencyType},
 	names::{PackageName, PackageNames},
-	reporters::DownloadProgressReporter,
+	reporters::{response_to_async_read, DownloadProgressReporter},
 	source::{
 		fs::{store_in_cas, FsEntry, PackageFs},
 		git_index::{read_file, root_tree, GitBasedSource},
@@ -28,7 +28,8 @@ use crate::{
 };
 use fs_err::tokio as fs;
 use futures::StreamExt;
-use tokio::task::spawn_blocking;
+use semver::VersionReq;
+use tokio::{pin, task::spawn_blocking};
 use tracing::instrument;
 
 /// The pesde package reference
@@ -95,23 +96,31 @@ impl PesdePackageSource {
 		.unwrap()
 	}
 
-	fn read_index_file(
+	/// Reads the index file of a package
+	pub async fn read_index_file(
 		&self,
 		name: &PackageName,
 		project: &Project,
 	) -> Result<Option<IndexFile>, errors::ReadIndexFileError> {
-		let (scope, name) = name.as_str();
-		let repo = gix::open(self.path(project)).map_err(Box::new)?;
-		let tree = root_tree(&repo).map_err(Box::new)?;
-		let string = match read_file(&tree, [scope, name]) {
-			Ok(Some(s)) => s,
-			Ok(None) => return Ok(None),
-			Err(e) => {
-				return Err(errors::ReadIndexFileError::ReadFile(e));
-			}
-		};
+		let path = self.path(project);
+		let name = name.clone();
 
-		toml::from_str(&string).map_err(Into::into)
+		spawn_blocking(move || {
+			let (scope, name) = name.as_str();
+			let repo = gix::open(&path).map_err(Box::new)?;
+			let tree = root_tree(&repo).map_err(Box::new)?;
+			let string = match read_file(&tree, [scope, name]) {
+				Ok(Some(s)) => s,
+				Ok(None) => return Ok(None),
+				Err(e) => {
+					return Err(errors::ReadIndexFileError::ReadFile(e));
+				}
+			};
+
+			toml::from_str(&string).map_err(Into::into)
+		})
+		.await
+		.unwrap()
 	}
 }
 
@@ -140,15 +149,11 @@ impl PackageSource for PesdePackageSource {
 			..
 		} = options;
 
-		let Some(IndexFile { meta, entries, .. }) =
-			self.read_index_file(&specifier.name, project)?
+		let Some(IndexFile { entries, .. }) =
+			self.read_index_file(&specifier.name, project).await?
 		else {
 			return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
 		};
-
-		if !meta.deprecated.is_empty() {
-			tracing::warn!("{} is deprecated: {}", specifier.name, meta.deprecated);
-		}
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
@@ -229,23 +234,8 @@ impl PackageSource for PesdePackageSource {
 
 		let response = request.send().await?.error_for_status()?;
 
-		let total_len = response.content_length().unwrap_or(0);
-		reporter.report_progress(total_len, 0);
-
-		let mut bytes_downloaded = 0;
-		let bytes = response
-			.bytes_stream()
-			.inspect(|chunk| {
-				chunk.as_ref().ok().inspect(|chunk| {
-					bytes_downloaded += chunk.len() as u64;
-					reporter.report_progress(total_len, bytes_downloaded);
-				});
-			})
-			.map(|result| {
-				result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-			});
-
-		let bytes = StreamReader::new(bytes);
+		let bytes = response_to_async_read(response, reporter.clone());
+		pin!(bytes);
 
 		let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes);
 		let mut archive = tokio_tar::Archive::new(&mut decoder);
@@ -297,8 +287,6 @@ impl PackageSource for PesdePackageSource {
 			.await
 			.map_err(errors::DownloadError::WriteIndex)?;
 
-		reporter.report_done();
-
 		Ok(fs)
 	}
 
@@ -314,7 +302,8 @@ impl PackageSource for PesdePackageSource {
 			panic!("unexpected package name");
 		};
 
-		let Some(IndexFile { mut entries, .. }) = self.read_index_file(name, &options.project)?
+		let Some(IndexFile { mut entries, .. }) =
+			self.read_index_file(name, &options.project).await?
 		else {
 			return Err(errors::GetTargetError::NotFound(name.to_string()));
 		};
@@ -478,6 +467,9 @@ pub struct IndexFileEntry {
 	/// When this package was published
 	#[serde(default = "chrono::Utc::now")]
 	pub published_at: chrono::DateTime<chrono::Utc>,
+	/// The engines this package supports
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub engines: BTreeMap<EngineKind, VersionReq>,
 
 	/// The description of this package
 	#[serde(default, skip_serializing_if = "Option::is_none")]
@@ -502,7 +494,7 @@ pub struct IndexFileEntry {
 
 	/// The dependencies of this package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
+	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 }
 
 /// The package metadata in the index file

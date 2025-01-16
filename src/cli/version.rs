@@ -1,96 +1,58 @@
-use crate::cli::{
-	bin_dir,
-	config::{read_config, write_config, CliConfig},
-	files::make_executable,
-	home_dir,
+use crate::{
+	cli::{
+		bin_dir,
+		config::{read_config, write_config, CliConfig},
+		files::make_executable,
+		home_dir,
+		reporters::run_with_reporter,
+	},
+	util::no_build_metadata,
 };
 use anyhow::Context;
 use colored::Colorize;
 use fs_err::tokio as fs;
-use futures::StreamExt;
-use reqwest::header::ACCEPT;
-use semver::Version;
-use serde::Deserialize;
+use pesde::{
+	engine::{
+		source::{
+			traits::{DownloadOptions, EngineSource, ResolveOptions},
+			EngineSources,
+		},
+		EngineKind,
+	},
+	reporters::DownloadsReporter,
+	version_matches,
+};
+use semver::{Version, VersionReq};
 use std::{
+	collections::BTreeSet,
 	env::current_exe,
 	path::{Path, PathBuf},
+	sync::Arc,
 };
-use tokio::io::AsyncWrite;
 use tracing::instrument;
 
 pub fn current_version() -> Version {
 	Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
 }
 
-#[derive(Debug, Deserialize)]
-struct Release {
-	tag_name: String,
-	assets: Vec<Asset>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Asset {
-	name: String,
-	url: url::Url,
-}
-
-#[instrument(level = "trace")]
-fn get_repo() -> (String, String) {
-	let mut parts = env!("CARGO_PKG_REPOSITORY").split('/').skip(3);
-	let (owner, repo) = (
-		parts.next().unwrap().to_string(),
-		parts.next().unwrap().to_string(),
-	);
-
-	tracing::trace!("repository for updates: {owner}/{repo}");
-
-	(owner, repo)
-}
-
-#[derive(Debug)]
-pub enum VersionType {
-	Latest,
-	Specific(Version),
-}
-
-#[instrument(skip(reqwest), level = "trace")]
-pub async fn get_remote_version(
-	reqwest: &reqwest::Client,
-	ty: VersionType,
-) -> anyhow::Result<Version> {
-	let (owner, repo) = get_repo();
-
-	let mut releases = reqwest
-		.get(format!(
-			"https://api.github.com/repos/{owner}/{repo}/releases",
-		))
-		.send()
-		.await
-		.context("failed to send request to GitHub API")?
-		.error_for_status()
-		.context("failed to get GitHub API response")?
-		.json::<Vec<Release>>()
-		.await
-		.context("failed to parse GitHub API response")?
-		.into_iter()
-		.filter_map(|release| Version::parse(release.tag_name.trim_start_matches('v')).ok());
-
-	match ty {
-		VersionType::Latest => releases.max(),
-		VersionType::Specific(version) => {
-			releases.find(|v| no_build_metadata(v) == no_build_metadata(&version))
-		}
-	}
-	.context("failed to find latest version")
-}
-
-pub fn no_build_metadata(version: &Version) -> Version {
-	let mut version = version.clone();
-	version.build = semver::BuildMetadata::EMPTY;
-	version
-}
-
 const CHECK_INTERVAL: chrono::Duration = chrono::Duration::hours(6);
+
+pub async fn find_latest_version(reqwest: &reqwest::Client) -> anyhow::Result<Version> {
+	let version = EngineSources::pesde()
+		.resolve(
+			&VersionReq::STAR,
+			&ResolveOptions {
+				reqwest: reqwest.clone(),
+			},
+		)
+		.await
+		.context("failed to resolve version")?
+		.pop_last()
+		.context("no versions found")?
+		.0;
+
+	Ok(version)
+}
 
 #[instrument(skip(reqwest), level = "trace")]
 pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> {
@@ -104,7 +66,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 		version
 	} else {
 		tracing::debug!("checking for updates");
-		let version = get_remote_version(reqwest, VersionType::Latest).await?;
+		let version = find_latest_version(reqwest).await?;
 
 		write_config(&CliConfig {
 			last_checked_updates: Some((chrono::Utc::now(), version.clone())),
@@ -180,154 +142,132 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 	Ok(())
 }
 
-#[instrument(skip(reqwest, writer), level = "trace")]
-pub async fn download_github_release<W: AsyncWrite + Unpin>(
-	reqwest: &reqwest::Client,
-	version: &Version,
-	mut writer: W,
-) -> anyhow::Result<()> {
-	let (owner, repo) = get_repo();
+const ENGINES_DIR: &str = "engines";
 
-	let release = reqwest
-		.get(format!(
-			"https://api.github.com/repos/{owner}/{repo}/releases/tags/v{version}",
-		))
-		.send()
-		.await
-		.context("failed to send request to GitHub API")?
-		.error_for_status()
-		.context("failed to get GitHub API response")?
-		.json::<Release>()
-		.await
-		.context("failed to parse GitHub API response")?;
+#[instrument(level = "trace")]
+pub async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeSet<Version>> {
+	let source = engine.source();
+	let path = home_dir()?.join(ENGINES_DIR).join(source.directory());
+	let mut installed_versions = BTreeSet::new();
 
-	let asset = release
-		.assets
-		.into_iter()
-		.find(|asset| {
-			asset.name.ends_with(&format!(
-				"-{}-{}.tar.gz",
-				std::env::consts::OS,
-				std::env::consts::ARCH
-			))
-		})
-		.context("failed to find asset for current platform")?;
+	let mut read_dir = match fs::read_dir(&path).await {
+		Ok(read_dir) => read_dir,
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(installed_versions),
+		Err(e) => return Err(e).context("failed to read engines directory"),
+	};
 
-	let bytes = reqwest
-		.get(asset.url)
-		.header(ACCEPT, "application/octet-stream")
-		.send()
-		.await
-		.context("failed to send request to download asset")?
-		.error_for_status()
-		.context("failed to download asset")?
-		.bytes()
-		.await
-		.context("failed to download asset")?;
+	while let Some(entry) = read_dir.next_entry().await? {
+		let path = entry.path();
 
-	let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes.as_ref());
-	let mut archive = tokio_tar::Archive::new(&mut decoder);
+		let Some(version) = path.file_name().and_then(|s| s.to_str()) else {
+			continue;
+		};
 
-	let mut entry = archive
-		.entries()
-		.context("failed to read archive entries")?
-		.next()
-		.await
-		.context("archive has no entry")?
-		.context("failed to get first archive entry")?;
+		if let Ok(version) = Version::parse(version) {
+			installed_versions.insert(version);
+		}
+	}
 
-	tokio::io::copy(&mut entry, &mut writer)
-		.await
-		.context("failed to write archive entry to file")
-		.map(|_| ())
-}
-
-#[derive(Debug)]
-pub enum TagInfo {
-	Complete(Version),
-	Incomplete(Version),
+	Ok(installed_versions)
 }
 
 #[instrument(skip(reqwest), level = "trace")]
-pub async fn get_or_download_version(
+pub async fn get_or_download_engine(
 	reqwest: &reqwest::Client,
-	tag: TagInfo,
-	always_give_path: bool,
-) -> anyhow::Result<Option<PathBuf>> {
-	let path = home_dir()?.join("versions");
+	engine: EngineKind,
+	req: VersionReq,
+) -> anyhow::Result<PathBuf> {
+	let source = engine.source();
+	let path = home_dir()?.join(ENGINES_DIR).join(source.directory());
+
+	let installed_versions = get_installed_versions(engine).await?;
+
+	let max_matching = installed_versions
+		.iter()
+		.filter(|v| version_matches(v, &req))
+		.next_back();
+	if let Some(version) = max_matching {
+		return Ok(path
+			.join(version.to_string())
+			.join(source.expected_file_name())
+			.with_extension(std::env::consts::EXE_EXTENSION));
+	}
+
+	let mut versions = source
+		.resolve(
+			&req,
+			&ResolveOptions {
+				reqwest: reqwest.clone(),
+			},
+		)
+		.await
+		.context("failed to resolve versions")?;
+	let (version, engine_ref) = versions.pop_last().context("no matching versions found")?;
+
+	let path = path.join(version.to_string());
+
 	fs::create_dir_all(&path)
 		.await
-		.context("failed to create versions directory")?;
+		.context("failed to create engine container folder")?;
 
-	let version = match &tag {
-		TagInfo::Complete(version) => version,
-		// don't fetch the version since it could be cached
-		TagInfo::Incomplete(version) => version,
-	};
+	let path = path
+		.join(source.expected_file_name())
+		.with_extension(std::env::consts::EXE_EXTENSION);
 
-	let path = path.join(format!(
-		"{}{}",
-		no_build_metadata(version),
-		std::env::consts::EXE_SUFFIX
-	));
+	let mut file = fs::File::create(&path)
+		.await
+		.context("failed to create new file")?;
 
-	let is_requested_version = !always_give_path && *version == current_version();
+	run_with_reporter(|_, root_progress, reporter| async {
+		let root_progress = root_progress;
 
-	if path.exists() {
-		tracing::debug!("version already exists");
+		root_progress.set_message("download");
 
-		return Ok(if is_requested_version {
-			None
-		} else {
-			Some(path)
-		});
-	}
+		let reporter = reporter.report_download(format!("{engine} v{version}"));
 
-	if is_requested_version {
-		tracing::debug!("copying current executable to version directory");
-		fs::copy(current_exe()?, &path)
+		let archive = source
+			.download(
+				&engine_ref,
+				&DownloadOptions {
+					reqwest: reqwest.clone(),
+					reporter: Arc::new(reporter),
+					version: version.clone(),
+				},
+			)
 			.await
-			.context("failed to copy current executable to version directory")?;
-	} else {
-		let version = match tag {
-			TagInfo::Complete(version) => version,
-			TagInfo::Incomplete(version) => {
-				get_remote_version(reqwest, VersionType::Specific(version))
-					.await
-					.context("failed to get remote version")?
-			}
-		};
+			.context("failed to download engine")?;
 
-		tracing::debug!("downloading version");
-		download_github_release(
-			reqwest,
-			&version,
-			fs::File::create(&path)
+		tokio::io::copy(
+			&mut archive
+				.find_executable(source.expected_file_name())
 				.await
-				.context("failed to create version file")?,
+				.context("failed to find executable")?,
+			&mut file,
 		)
-		.await?;
-	}
+		.await
+		.context("failed to write to file")?;
+
+		Ok::<_, anyhow::Error>(())
+	})
+	.await?;
 
 	make_executable(&path)
 		.await
 		.context("failed to make downloaded version executable")?;
 
-	Ok(if is_requested_version {
-		None
-	} else {
-		Some(path)
-	})
+	if engine != EngineKind::Pesde {
+		make_linker_if_needed(engine).await?;
+	}
+
+	Ok(path)
 }
 
 #[instrument(level = "trace")]
-pub async fn update_bin_exe(downloaded_file: &Path) -> anyhow::Result<()> {
-	let bin_exe_path = bin_dir().await?.join(format!(
-		"{}{}",
-		env!("CARGO_BIN_NAME"),
-		std::env::consts::EXE_SUFFIX
-	));
-	let mut downloaded_file = downloaded_file.to_path_buf();
+pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
+	let bin_exe_path = bin_dir()
+		.await?
+		.join(EngineKind::Pesde.to_string())
+		.with_extension(std::env::consts::EXE_EXTENSION);
 
 	let exists = bin_exe_path.exists();
 
@@ -339,23 +279,42 @@ pub async fn update_bin_exe(downloaded_file: &Path) -> anyhow::Result<()> {
 		let tempfile = tempfile::Builder::new()
 			.make(|_| Ok(()))
 			.context("failed to create temporary file")?;
-		let path = tempfile.into_temp_path().to_path_buf();
+		let temp_path = tempfile.into_temp_path().to_path_buf();
 		#[cfg(windows)]
-		let path = path.with_extension("exe");
+		let temp_path = temp_path.with_extension("exe");
 
-		let current_exe = current_exe().context("failed to get current exe path")?;
-		if current_exe == downloaded_file {
-			downloaded_file = path.to_path_buf();
+		match fs::rename(&bin_exe_path, &temp_path).await {
+			Ok(_) => {}
+			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+			Err(e) => return Err(e).context("failed to rename existing executable"),
 		}
-
-		fs::rename(&bin_exe_path, &path)
-			.await
-			.context("failed to rename current executable")?;
 	}
 
-	fs::copy(downloaded_file, &bin_exe_path)
+	fs::copy(with, &bin_exe_path)
 		.await
 		.context("failed to copy executable to bin folder")?;
 
 	make_executable(&bin_exe_path).await
+}
+
+#[instrument(level = "trace")]
+pub async fn make_linker_if_needed(engine: EngineKind) -> anyhow::Result<()> {
+	let bin_dir = bin_dir().await?;
+	let linker = bin_dir
+		.join(engine.to_string())
+		.with_extension(std::env::consts::EXE_EXTENSION);
+	let exists = linker.exists();
+
+	if !exists {
+		let exe = current_exe().context("failed to get current exe path")?;
+
+		#[cfg(windows)]
+		let result = fs::symlink_file(exe, linker);
+		#[cfg(not(windows))]
+		let result = fs::symlink(exe, linker);
+
+		result.await.context("failed to create symlink")?;
+	}
+
+	Ok(())
 }

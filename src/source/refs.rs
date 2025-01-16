@@ -1,5 +1,5 @@
 use crate::{
-	manifest::DependencyType,
+	manifest::{Alias, DependencyType},
 	source::{pesde, specifiers::DependencySpecifiers, traits::PackageRef, PackageSources},
 };
 use serde::{Deserialize, Serialize};
@@ -35,7 +35,7 @@ impl PackageRefs {
 }
 
 impl PackageRef for PackageRefs {
-	fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
+	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)> {
 		match self {
 			PackageRefs::Pesde(pkg_ref) => pkg_ref.dependencies(),
 			#[cfg(feature = "wally-compat")]

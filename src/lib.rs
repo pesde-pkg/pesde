@@ -15,6 +15,7 @@ use async_stream::try_stream;
 use fs_err::tokio as fs;
 use futures::Stream;
 use gix::sec::identity::Account;
+use semver::{Version, VersionReq};
 use std::{
 	collections::{HashMap, HashSet},
 	fmt::Debug,
@@ -29,6 +30,8 @@ use wax::Pattern;
 pub mod download;
 /// Utility for downloading and linking in the correct order
 pub mod download_and_link;
+/// Handling of engines
+pub mod engine;
 /// Graphs
 pub mod graph;
 /// Linking packages
@@ -117,8 +120,8 @@ struct ProjectShared {
 	package_dir: PathBuf,
 	workspace_dir: Option<PathBuf>,
 	data_dir: PathBuf,
-	auth_config: AuthConfig,
 	cas_dir: PathBuf,
+	auth_config: AuthConfig,
 }
 
 /// The main struct of the pesde library, representing a project
@@ -130,11 +133,11 @@ pub struct Project {
 
 impl Project {
 	/// Create a new `Project`
-	pub fn new<P: AsRef<Path>, Q: AsRef<Path>, R: AsRef<Path>, S: AsRef<Path>>(
-		package_dir: P,
-		workspace_dir: Option<Q>,
-		data_dir: R,
-		cas_dir: S,
+	pub fn new(
+		package_dir: impl AsRef<Path>,
+		workspace_dir: Option<impl AsRef<Path>>,
+		data_dir: impl AsRef<Path>,
+		cas_dir: impl AsRef<Path>,
 		auth_config: AuthConfig,
 	) -> Self {
 		Project {
@@ -142,8 +145,8 @@ impl Project {
 				package_dir: package_dir.as_ref().to_path_buf(),
 				workspace_dir: workspace_dir.map(|d| d.as_ref().to_path_buf()),
 				data_dir: data_dir.as_ref().to_path_buf(),
-				auth_config,
 				cas_dir: cas_dir.as_ref().to_path_buf(),
+				auth_config,
 			}),
 		}
 	}
@@ -163,14 +166,14 @@ impl Project {
 		&self.shared.data_dir
 	}
 
-	/// The authentication configuration
-	pub fn auth_config(&self) -> &AuthConfig {
-		&self.shared.auth_config
-	}
-
 	/// The CAS (content-addressable storage) directory
 	pub fn cas_dir(&self) -> &Path {
 		&self.shared.cas_dir
+	}
+
+	/// The authentication configuration
+	pub fn auth_config(&self) -> &AuthConfig {
+		&self.shared.auth_config
 	}
 
 	/// Read the manifest file
@@ -423,6 +426,12 @@ pub async fn find_roots(
 	// we mustn't expect the project root to be found, as that would
 	// disable the ability to run pesde in a non-project directory (for example to init it)
 	Ok((project_root.unwrap_or(cwd), workspace_dir))
+}
+
+/// Returns whether a version matches a version requirement
+/// Differs from `VersionReq::matches` in that EVERY version matches `*`
+pub fn version_matches(version: &Version, req: &VersionReq) -> bool {
+	*req == VersionReq::STAR || req.matches(version)
 }
 
 /// Errors that can occur when using the pesde library

@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use pesde::{
 	manifest::{
 		target::{Target, TargetKind},
-		DependencyType,
+		Alias, DependencyType,
 	},
 	names::PackageName,
 	source::{
@@ -125,7 +125,7 @@ pub struct PackageResponseInner {
 	#[serde(skip_serializing_if = "BTreeSet::is_empty")]
 	docs: BTreeSet<RegistryDocEntry>,
 	#[serde(skip_serializing_if = "BTreeMap::is_empty")]
-	dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
+	dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 }
 
 impl PackageResponseInner {

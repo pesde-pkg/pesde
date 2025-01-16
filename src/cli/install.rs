@@ -1,10 +1,3 @@
-use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
-	num::NonZeroUsize,
-	sync::Arc,
-	time::Instant,
-};
-
 use super::files::make_executable;
 use crate::cli::{
 	bin_dir,
@@ -16,14 +9,23 @@ use colored::Colorize;
 use fs_err::tokio as fs;
 use pesde::{
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions},
+	engine::EngineKind,
 	graph::{DependencyGraph, DependencyGraphWithTarget},
 	lockfile::Lockfile,
-	manifest::{target::TargetKind, DependencyType},
-	Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
+	manifest::{target::TargetKind, Alias, DependencyType, Manifest},
+	names::PackageNames,
+	source::{pesde::PesdePackageSource, refs::PackageRefs, traits::PackageRef, PackageSources},
+	version_matches, Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
+};
+use std::{
+	collections::{BTreeMap, BTreeSet, HashMap},
+	num::NonZeroUsize,
+	sync::Arc,
+	time::Instant,
 };
 use tokio::task::JoinSet;
 
-fn bin_link_file(alias: &str) -> String {
+fn bin_link_file(alias: &Alias) -> String {
 	let mut all_combinations = BTreeSet::new();
 
 	for a in TargetKind::VARIANTS {
@@ -68,23 +70,13 @@ impl DownloadAndLinkHooks for InstallHooks {
 			.values()
 			.filter(|node| node.target.bin_path().is_some())
 			.filter_map(|node| node.node.direct.as_ref())
-			.map(|(alias, _, _)| alias)
-			.filter(|alias| {
-				if *alias == env!("CARGO_BIN_NAME") {
-					tracing::warn!(
-						"package {alias} has the same name as the CLI, skipping bin link"
-					);
-					return false;
-				}
-				true
-			})
-			.map(|alias| {
+			.map(|(alias, _, _)| {
 				let bin_folder = self.bin_folder.clone();
 				let alias = alias.clone();
 
 				async move {
 					let bin_exec_file = bin_folder
-						.join(&alias)
+						.join(alias.as_str())
 						.with_extension(std::env::consts::EXE_EXTENSION);
 
 					let impl_folder = bin_folder.join(".impl");
@@ -92,7 +84,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 						.await
 						.context("failed to create bin link folder")?;
 
-					let bin_file = impl_folder.join(&alias).with_extension("luau");
+					let bin_file = impl_folder.join(alias.as_str()).with_extension("luau");
 					fs::write(&bin_file, bin_link_file(&alias))
 						.await
 						.context("failed to write bin link file")?;
@@ -196,10 +188,26 @@ pub async fn install(
 	let overrides = resolve_overrides(&manifest)?;
 
 	let (new_lockfile, old_graph) =
-		reporters::run_with_reporter(|_, root_progress, reporter| async {
+		reporters::run_with_reporter(|multi, root_progress, reporter| async {
+			let multi = multi;
 			let root_progress = root_progress;
 
 			root_progress.set_prefix(format!("{} {}: ", manifest.name, manifest.target));
+			#[cfg(feature = "version-management")]
+			{
+				root_progress.set_message("update engine linkers");
+
+				let mut tasks = manifest
+					.engines
+					.keys()
+					.map(|engine| crate::cli::version::make_linker_if_needed(*engine))
+					.collect::<JoinSet<_>>();
+
+				while let Some(task) = tasks.join_next().await {
+					task.unwrap()?;
+				}
+			}
+
 			root_progress.set_message("clean");
 
 			if options.write {
@@ -246,6 +254,41 @@ pub async fn install(
 				)
 				.await
 				.context("failed to build dependency graph")?;
+
+			let mut tasks = graph
+				.iter()
+				.filter_map(|(id, node)| {
+					let PackageSources::Pesde(source) = node.pkg_ref.source() else {
+						return None;
+					};
+					#[allow(irrefutable_let_patterns)]
+					let PackageNames::Pesde(name) = id.name().clone() else {
+						panic!("unexpected package name");
+					};
+					let project = project.clone();
+
+					Some(async move {
+						let file = source.read_index_file(&name, &project).await.context("failed to read package index file")?.context("package not found in index")?;
+
+						Ok::<_, anyhow::Error>(if file.meta.deprecated.is_empty() {
+							None
+						} else {
+							Some((name, file.meta.deprecated))
+						})
+					})
+				})
+				.collect::<JoinSet<_>>();
+
+			while let Some(task) = tasks.join_next().await {
+				let Some((name, reason)) = task.unwrap()? else {
+					continue;
+				};
+
+				multi.suspend(|| {
+					println!("{}: package {name} is deprecated: {reason}", "warn".yellow().bold());
+				});
+			}
+
 			let graph = Arc::new(graph);
 
 			if options.write {
@@ -285,8 +328,103 @@ pub async fn install(
 					root_progress.set_message("patch");
 
 					project
-						.apply_patches(&downloaded_graph.convert(), reporter)
+						.apply_patches(&downloaded_graph.clone().convert(), reporter)
 						.await?;
+				}
+
+				#[cfg(feature = "version-management")]
+				{
+					let mut tasks = manifest
+						.engines
+						.into_iter()
+						.map(|(engine, req)| async move {
+							Ok::<_, anyhow::Error>(
+								crate::cli::version::get_installed_versions(engine)
+									.await?
+									.into_iter()
+									.filter(|version| version_matches(version, &req))
+									.next_back()
+									.map(|version| (engine, version)),
+							)
+						})
+						.collect::<JoinSet<_>>();
+
+					let mut resolved_engine_versions = HashMap::new();
+					while let Some(task) = tasks.join_next().await {
+						let Some((engine, version)) = task.unwrap()? else {
+							continue;
+						};
+						resolved_engine_versions.insert(engine, version);
+					}
+
+					let manifest_target_kind = manifest.target.kind();
+					let mut tasks = downloaded_graph.iter()
+						.map(|(id, node)| {
+							let id = id.clone();
+							let node = node.clone();
+							let project = project.clone();
+
+							async move {
+								let engines = match &node.node.pkg_ref {
+									PackageRefs::Pesde(pkg_ref) => {
+										let source = PesdePackageSource::new(pkg_ref.index_url.clone());
+										#[allow(irrefutable_let_patterns)]
+										let PackageNames::Pesde(name) = id.name() else {
+											panic!("unexpected package name");
+										};
+
+										let mut file = source.read_index_file(name, &project).await.context("failed to read package index file")?.context("package not found in index")?;
+										file
+											.entries
+											.remove(id.version_id())
+											.context("package version not found in index")?
+											.engines
+									}
+									#[cfg(feature = "wally-compat")]
+									PackageRefs::Wally(_) => Default::default(),
+									_ => {
+										let path = node.node.container_folder_from_project(
+											&id,
+											&project,
+											manifest_target_kind,
+										);
+
+										match fs::read_to_string(path.join(MANIFEST_FILE_NAME)).await {
+											Ok(manifest) => match toml::from_str::<Manifest>(&manifest) {
+												Ok(manifest) => manifest.engines,
+												Err(e) => return Err(e).context("failed to read package manifest"),
+											},
+											Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
+											Err(e) => return Err(e).context("failed to read package manifest"),
+										}
+									}
+								};
+
+								Ok((id, engines))
+							}
+						})
+						.collect::<JoinSet<_>>();
+
+					while let Some(task) = tasks.join_next().await {
+						let (id, required_engines) = task.unwrap()?;
+
+						for (engine, req) in required_engines {
+							if engine == EngineKind::Pesde {
+								continue;
+							}
+
+							let Some(version) = resolved_engine_versions.get(&engine) else {
+								tracing::debug!("package {id} requires {engine} {req}, but it is not installed");
+								continue;
+							};
+
+							if !version_matches(version, &req) {
+								multi.suspend(|| {
+									println!("{}: package {id} requires {engine} {req}, but {version} is installed", "warn".yellow().bold());
+								});
+							}
+						}
+					}
 				}
 			}
 
@@ -310,7 +448,7 @@ pub async fn install(
 
 			anyhow::Ok((new_lockfile, old_graph.unwrap_or_default()))
 		})
-		.await?;
+			.await?;
 
 	let elapsed = start.elapsed();
 

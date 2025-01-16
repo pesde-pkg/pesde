@@ -41,7 +41,7 @@ pub mod old {
 		manifest::{
 			overrides::OverrideKey,
 			target::{Target, TargetKind},
-			DependencyType,
+			Alias, DependencyType,
 		},
 		names::{PackageName, PackageNames},
 		source::{
@@ -60,10 +60,10 @@ pub mod old {
 	pub struct DependencyGraphNodeOld {
 		/// The alias, specifier, and original (as in the manifest) type for the dependency, if it is a direct dependency (i.e. used by the current project)
 		#[serde(default, skip_serializing_if = "Option::is_none")]
-		pub direct: Option<(String, DependencySpecifiers, DependencyType)>,
+		pub direct: Option<(Alias, DependencySpecifiers, DependencyType)>,
 		/// The dependencies of the package
 		#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-		pub dependencies: BTreeMap<PackageNames, (VersionId, String)>,
+		pub dependencies: BTreeMap<PackageNames, (VersionId, Alias)>,
 		/// The resolved (transformed, for example Peer -> Standard) type of the dependency
 		pub resolved_ty: DependencyType,
 		/// Whether the resolved type should be Peer if this isn't depended on

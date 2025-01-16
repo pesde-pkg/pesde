@@ -7,7 +7,7 @@ use semver::VersionReq;
 
 use crate::cli::{config::read_config, AnyPackageIdentifier, VersionedPackageName};
 use pesde::{
-	manifest::target::TargetKind,
+	manifest::{target::TargetKind, Alias},
 	names::PackageNames,
 	source::{
 		git::{specifier::GitDependencySpecifier, GitPackageSource},
@@ -37,7 +37,7 @@ pub struct AddCommand {
 
 	/// The alias to use for the package
 	#[arg(short, long)]
-	alias: Option<String>,
+	alias: Option<Alias>,
 
 	/// Whether to add the package as a peer dependency
 	#[arg(short, long)]
@@ -180,24 +180,29 @@ impl AddCommand {
 			"dependencies"
 		};
 
-		let alias = self.alias.unwrap_or_else(|| match &self.name {
-			AnyPackageIdentifier::PackageName(versioned) => versioned.0.name().to_string(),
-			AnyPackageIdentifier::Url((url, _)) => url
-				.path
-				.to_string()
-				.split('/')
-				.last()
-				.map(|s| s.to_string())
-				.unwrap_or(url.path.to_string()),
-			AnyPackageIdentifier::Workspace(versioned) => versioned.0.name().to_string(),
-			AnyPackageIdentifier::Path(path) => path
-				.file_name()
-				.map(|s| s.to_string_lossy().to_string())
-				.expect("path has no file name"),
-		});
+		let alias = match self.alias {
+			Some(alias) => alias,
+			None => match &self.name {
+				AnyPackageIdentifier::PackageName(versioned) => versioned.0.name().to_string(),
+				AnyPackageIdentifier::Url((url, _)) => url
+					.path
+					.to_string()
+					.split('/')
+					.next_back()
+					.map(|s| s.to_string())
+					.unwrap_or(url.path.to_string()),
+				AnyPackageIdentifier::Workspace(versioned) => versioned.0.name().to_string(),
+				AnyPackageIdentifier::Path(path) => path
+					.file_name()
+					.map(|s| s.to_string_lossy().to_string())
+					.expect("path has no file name"),
+			}
+			.parse()
+			.context("auto-generated alias is invalid. use --alias to specify one")?,
+		};
 
 		let field = &mut manifest[dependency_key]
-			.or_insert(toml_edit::Item::Table(toml_edit::Table::new()))[&alias];
+			.or_insert(toml_edit::Item::Table(toml_edit::Table::new()))[alias.as_str()];
 
 		match specifier {
 			DependencySpecifiers::Pesde(spec) => {

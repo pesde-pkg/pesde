@@ -1,7 +1,7 @@
 use crate::{
 	graph::{DependencyGraphNodeWithTarget, DependencyGraphWithTarget},
 	linking::generator::get_file_types,
-	manifest::Manifest,
+	manifest::{Alias, Manifest},
 	scripts::{execute_script, ExecuteScriptHooks, ScriptName},
 	source::{
 		fs::{cas_path, store_in_cas},
@@ -169,7 +169,7 @@ impl Project {
 		relative_container_folder: &Path,
 		node: &DependencyGraphNodeWithTarget,
 		package_id: &PackageId,
-		alias: &str,
+		alias: &Alias,
 		package_types: &Arc<PackageTypes>,
 		manifest: &Arc<Manifest>,
 		remove: bool,
@@ -243,7 +243,8 @@ impl Project {
 			.filter(|s| !s.is_empty() && node.node.direct.is_some() && is_root)
 		{
 			let scripts_container = self.package_dir().join(SCRIPTS_LINK_FOLDER);
-			let scripts_base = create_and_canonicalize(scripts_container.join(alias)).await?;
+			let scripts_base =
+				create_and_canonicalize(scripts_container.join(alias.as_str())).await?;
 
 			if remove {
 				tasks.spawn(async move {

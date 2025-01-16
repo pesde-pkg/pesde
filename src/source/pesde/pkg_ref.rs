@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	manifest::DependencyType,
+	manifest::{Alias, DependencyType},
 	source::{pesde::PesdePackageSource, DependencySpecifiers, PackageRef, PackageSources},
 };
 
@@ -18,10 +18,10 @@ pub struct PesdePackageRef {
 	pub index_url: gix::Url,
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<String, (DependencySpecifiers, DependencyType)>,
+	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 }
 impl PackageRef for PesdePackageRef {
-	fn dependencies(&self) -> &BTreeMap<String, (DependencySpecifiers, DependencyType)> {
+	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)> {
 		&self.dependencies
 	}
 
