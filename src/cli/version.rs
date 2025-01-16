@@ -193,33 +193,21 @@ pub async fn get_or_download_engine(
 			.with_extension(std::env::consts::EXE_EXTENSION));
 	}
 
-	let mut versions = source
-		.resolve(
-			&req,
-			&ResolveOptions {
-				reqwest: reqwest.clone(),
-			},
-		)
-		.await
-		.context("failed to resolve versions")?;
-	let (version, engine_ref) = versions.pop_last().context("no matching versions found")?;
-
-	let path = path.join(version.to_string());
-
-	fs::create_dir_all(&path)
-		.await
-		.context("failed to create engine container folder")?;
-
-	let path = path
-		.join(source.expected_file_name())
-		.with_extension(std::env::consts::EXE_EXTENSION);
-
-	let mut file = fs::File::create(&path)
-		.await
-		.context("failed to create new file")?;
-
 	run_with_reporter(|_, root_progress, reporter| async {
 		let root_progress = root_progress;
+		let reporter = reporter;
+
+		root_progress.set_message("resolve version");
+		let mut versions = source
+			.resolve(
+				&req,
+				&ResolveOptions {
+					reqwest: reqwest.clone(),
+				},
+			)
+			.await
+			.context("failed to resolve versions")?;
+		let (version, engine_ref) = versions.pop_last().context("no matching versions found")?;
 
 		root_progress.set_message("download");
 
@@ -236,6 +224,18 @@ pub async fn get_or_download_engine(
 			)
 			.await
 			.context("failed to download engine")?;
+
+		let path = path.join(version.to_string());
+		fs::create_dir_all(&path)
+			.await
+			.context("failed to create engine container folder")?;
+		let path = path
+			.join(source.expected_file_name())
+			.with_extension(std::env::consts::EXE_EXTENSION);
+
+		let mut file = fs::File::create(&path)
+			.await
+			.context("failed to create new file")?;
 
 		tokio::io::copy(
 			&mut archive
