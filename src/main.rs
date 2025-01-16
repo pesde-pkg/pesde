@@ -137,6 +137,10 @@ impl<'a> MakeWriter<'a> for IndicatifWriter {
 
 async fn run() -> anyhow::Result<()> {
 	let cwd = std::env::current_dir().expect("failed to get current working directory");
+	// Unix doesn't return the symlinked path, so we need to get it from the 0 argument
+	#[cfg(unix)]
+	let current_exe = PathBuf::from(std::env::args_os().next().expect("argument 0 not set"));
+	#[cfg(not(unix))]
 	let current_exe = std::env::current_exe().expect("failed to get current executable path");
 	let exe_name = current_exe
 		.file_stem()
