@@ -60,7 +60,7 @@ impl EngineSource for GitHubEngineSource {
 			.into_iter()
 			.filter_map(
 				|release| match release.tag_name.trim_start_matches('v').parse() {
-					Ok(version) if version_matches(&version, requirement) => {
+					Ok(version) if version_matches(requirement, &version) => {
 						Some((version, release))
 					}
 					_ => None,

@@ -430,7 +430,7 @@ pub async fn find_roots(
 
 /// Returns whether a version matches a version requirement
 /// Differs from `VersionReq::matches` in that EVERY version matches `*`
-pub fn version_matches(version: &Version, req: &VersionReq) -> bool {
+pub fn version_matches(req: &VersionReq, version: &Version) -> bool {
 	*req == VersionReq::STAR || req.matches(version)
 }
 

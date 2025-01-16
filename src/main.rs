@@ -5,7 +5,7 @@ use anyhow::Context;
 use clap::{builder::styling::AnsiColor, Parser};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
-use pesde::{engine::EngineKind, find_roots, AuthConfig, Project};
+use pesde::{engine::EngineKind, find_roots, version_matches, AuthConfig, Project};
 use semver::VersionReq;
 use std::{
 	io,
@@ -297,7 +297,7 @@ async fn run() -> anyhow::Result<()> {
 		if engine == EngineKind::Pesde {
 			match &req {
 				// we're already running a compatible version
-				Some(req) if req.matches(&current_version()) => break 'engines,
+				Some(req) if version_matches(req, &current_version()) => break 'engines,
 				// the user has not requested a specific version, so we'll just use the current one
 				None => break 'engines,
 				_ => (),

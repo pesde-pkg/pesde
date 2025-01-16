@@ -342,7 +342,7 @@ pub async fn install(
 								crate::cli::version::get_installed_versions(engine)
 									.await?
 									.into_iter()
-									.filter(|version| version_matches(version, &req))
+									.filter(|version| version_matches(&req, version))
 									.next_back()
 									.map(|version| (engine, version)),
 							)
@@ -418,7 +418,7 @@ pub async fn install(
 								continue;
 							};
 
-							if !version_matches(version, &req) {
+							if !version_matches(&req, version) {
 								multi.suspend(|| {
 									println!("{}: package {id} requires {engine} {req}, but {version} is installed", "warn".yellow().bold());
 								});

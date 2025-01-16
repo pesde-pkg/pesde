@@ -24,7 +24,7 @@ use crate::{
 		DependencySpecifiers, PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
 	},
 	util::hash,
-	Project,
+	version_matches, Project,
 };
 use fs_err::tokio as fs;
 use futures::StreamExt;
@@ -163,7 +163,7 @@ impl PackageSource for PesdePackageSource {
 				.into_iter()
 				.filter(|(_, entry)| !entry.yanked)
 				.filter(|(VersionId(version, target), _)| {
-					specifier.version.matches(version)
+					version_matches(&specifier.version, version)
 						&& specifier.target.unwrap_or(*project_target) == *target
 				})
 				.map(|(id, entry)| {

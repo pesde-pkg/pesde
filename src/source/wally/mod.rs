@@ -17,7 +17,7 @@ use crate::{
 		PackageSources, ResolveResult, IGNORED_DIRS, IGNORED_FILES,
 	},
 	util::hash,
-	Project,
+	version_matches, Project,
 };
 use fs_err::tokio as fs;
 use gix::Url;
@@ -182,7 +182,9 @@ impl PackageSource for WallyPackageSource {
 				PackageNames::Wally(specifier.name.clone()),
 				entries
 					.into_iter()
-					.filter(|manifest| specifier.version.matches(&manifest.package.version))
+					.filter(|manifest| {
+						version_matches(&specifier.version, &manifest.package.version)
+					})
 					.map(|manifest| {
 						let dependencies = manifest.all_dependencies().map_err(|e| {
 							errors::ResolveError::AllDependencies(specifier.to_string(), e)

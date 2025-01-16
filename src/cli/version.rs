@@ -184,7 +184,7 @@ pub async fn get_or_download_engine(
 
 	let max_matching = installed_versions
 		.iter()
-		.filter(|v| version_matches(v, &req))
+		.filter(|v| version_matches(&req, v))
 		.next_back();
 	if let Some(version) = max_matching {
 		return Ok(path
