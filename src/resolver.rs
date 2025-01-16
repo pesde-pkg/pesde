@@ -124,6 +124,12 @@ impl Project {
 
 					if let Some(dep_node) = previous_graph.get(dep_id) {
 						tracing::debug!("resolved sub-dependency {dep_id}");
+						if graph.contains_key(dep_id) {
+							tracing::debug!(
+								"sub-dependency {dep_id} already resolved in new graph",
+							);
+							continue;
+						}
 						insert_node(&mut graph, dep_id, dep_node.clone(), false);
 
 						dep_node
