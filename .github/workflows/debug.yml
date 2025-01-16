@@ -40,6 +40,11 @@ jobs:
             runs-on: ubuntu-latest
             artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-linux-x86_64
 
+          - job-name: linux-aaarch64
+            target: aarch64-unknown-linux-gnu
+            runs-on: ubuntu-24.04-arm
+            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-linux-aarch64
+
           - job-name: macos-x86_64
             target: x86_64-apple-darwin
             runs-on: macos-13
