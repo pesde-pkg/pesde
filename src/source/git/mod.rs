@@ -1,6 +1,6 @@
 use crate::{
 	deser_manifest,
-	manifest::{target::Target, Manifest},
+	manifest::{target::Target, Alias, DependencyType, Manifest},
 	names::PackageNames,
 	reporters::DownloadProgressReporter,
 	source::{
@@ -56,6 +56,113 @@ impl GitPackageSource {
 	}
 }
 
+fn transform_pesde_dependencies(
+	manifest: &Manifest,
+	repo_url: Url,
+	rev: &str,
+	root_tree: &gix::Tree,
+) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
+	let dependencies = manifest
+		.all_dependencies()
+		.map_err(|e| errors::ResolveError::CollectDependencies(Box::new(repo_url.clone()), e))?;
+
+	dependencies
+		.into_iter()
+		.map(|(alias, (mut spec, ty))| {
+			match &mut spec {
+				DependencySpecifiers::Pesde(specifier) => {
+					let index_name = specifier
+						.index
+						.as_deref()
+						.unwrap_or(DEFAULT_INDEX_NAME)
+						.to_string();
+					specifier.index = Some(
+						manifest
+							.indices
+							.get(&index_name)
+							.ok_or_else(|| {
+								errors::ResolveError::PesdeIndexNotFound(
+									index_name.clone(),
+									Box::new(repo_url.clone()),
+								)
+							})?
+							.to_string(),
+					);
+				}
+				#[cfg(feature = "wally-compat")]
+				DependencySpecifiers::Wally(specifier) => {
+					let index_name = specifier
+						.index
+						.as_deref()
+						.unwrap_or(DEFAULT_INDEX_NAME)
+						.to_string();
+					specifier.index = Some(
+						manifest
+							.wally_indices
+							.get(&index_name)
+							.ok_or_else(|| {
+								errors::ResolveError::WallyIndexNotFound(
+									index_name.clone(),
+									Box::new(repo_url.clone()),
+								)
+							})?
+							.to_string(),
+					);
+				}
+				DependencySpecifiers::Git(_) => {}
+				DependencySpecifiers::Workspace(specifier) => {
+					let lockfile = read_file(root_tree, [LOCKFILE_FILE_NAME]).map_err(|e| {
+						errors::ResolveError::ReadLockfile(Box::new(repo_url.clone()), e)
+					})?;
+
+					let lockfile = match lockfile {
+						Some(l) => match toml::from_str::<crate::Lockfile>(&l) {
+							Ok(l) => l,
+							Err(e) => {
+								return Err(errors::ResolveError::DeserLockfile(
+									Box::new(repo_url.clone()),
+									e,
+								))
+							}
+						},
+						None => {
+							return Err(errors::ResolveError::NoLockfile(Box::new(
+								repo_url.clone(),
+							)))
+						}
+					};
+
+					let target = specifier.target.unwrap_or(manifest.target.kind());
+
+					let path = lockfile
+						.workspace
+						.get(&specifier.name)
+						.and_then(|targets| targets.get(&target))
+						.ok_or_else(|| {
+							errors::ResolveError::NoPathForWorkspaceMember(
+								specifier.name.to_string(),
+								target,
+								Box::new(repo_url.clone()),
+							)
+						})?
+						.clone();
+
+					spec = DependencySpecifiers::Git(GitDependencySpecifier {
+						repo: repo_url.clone(),
+						rev: rev.to_string(),
+						path: Some(path),
+					})
+				}
+				DependencySpecifiers::Path(_) => {
+					return Err(errors::ResolveError::Path(Box::new(repo_url.clone())))
+				}
+			}
+
+			Ok((alias, (spec, ty)))
+		})
+		.collect()
+}
+
 impl PackageSource for GitPackageSource {
 	type Specifier = GitDependencySpecifier;
 	type Ref = GitPackageRef;
@@ -77,191 +184,80 @@ impl PackageSource for GitPackageSource {
 	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
 		let ResolveOptions { project, .. } = options;
 
-		let repo = gix::open(self.path(project))
-			.map_err(|e| errors::ResolveError::OpenRepo(Box::new(self.repo_url.clone()), e))?;
-		let rev = repo
-			.rev_parse_single(BStr::new(&specifier.rev))
-			.map_err(|e| {
-				errors::ResolveError::ParseRev(
-					specifier.rev.clone(),
-					Box::new(self.repo_url.clone()),
-					e,
-				)
+		let path = self.path(project);
+		let repo_url = self.repo_url.clone();
+		let specifier = specifier.clone();
+
+		let (name, version_id, dependencies, tree_id) = spawn_blocking(move || {
+			let repo = gix::open(path).map_err(|e| {
+				errors::ResolveError::OpenRepo(Box::new(repo_url.clone()), Box::new(e))
 			})?;
-
-		// TODO: possibly use the search algorithm from src/main.rs to find the workspace root
-
-		let root_tree = rev
-			.object()
-			.map_err(|e| {
-				errors::ResolveError::ParseRevToObject(Box::new(self.repo_url.clone()), e)
-			})?
-			.peel_to_tree()
-			.map_err(|e| {
-				errors::ResolveError::ParseObjectToTree(Box::new(self.repo_url.clone()), e)
-			})?;
-
-		let tree = if let Some(path) = &specifier.path {
-			root_tree
-				.lookup_entry_by_path(path.as_str())
+			let rev = repo
+				.rev_parse_single(BStr::new(&specifier.rev))
 				.map_err(|e| {
-					errors::ResolveError::ReadTreeEntry(
-						Box::new(self.repo_url.clone()),
-						path.clone(),
-						e,
+					errors::ResolveError::ParseRev(
+						specifier.rev.clone(),
+						Box::new(repo_url.clone()),
+						Box::new(e),
 					)
-				})?
-				.ok_or_else(|| {
-					errors::ResolveError::NoEntryAtPath(
-						Box::new(self.repo_url.clone()),
-						path.clone(),
-					)
-				})?
+				})?;
+
+			// TODO: possibly use the search algorithm from src/main.rs to find the workspace root
+
+			let root_tree = rev
 				.object()
-				.map_err(|e| {
-					errors::ResolveError::ParseEntryToObject(Box::new(self.repo_url.clone()), e)
-				})?
+				.map_err(|e| errors::ResolveError::ParseRevToObject(Box::new(repo_url.clone()), e))?
 				.peel_to_tree()
 				.map_err(|e| {
-					errors::ResolveError::ParseObjectToTree(Box::new(self.repo_url.clone()), e)
-				})?
-		} else {
-			root_tree.clone()
-		};
+					errors::ResolveError::ParseObjectToTree(Box::new(repo_url.clone()), e)
+				})?;
 
-		let manifest = match read_file(&tree, [MANIFEST_FILE_NAME])
-			.map_err(|e| errors::ResolveError::ReadManifest(Box::new(self.repo_url.clone()), e))?
-		{
-			Some(m) => match toml::from_str::<Manifest>(&m) {
-				Ok(m) => Some(m),
-				Err(e) => {
-					return Err(errors::ResolveError::DeserManifest(
-						Box::new(self.repo_url.clone()),
-						e,
-					))
-				}
-			},
-			None => None,
-		};
-
-		let (name, version_id, dependencies) = match manifest {
-			Some(manifest) => {
-				let dependencies = manifest
-					.all_dependencies()
+			let tree = if let Some(path) = &specifier.path {
+				root_tree
+					.lookup_entry_by_path(path.as_str())
 					.map_err(|e| {
-						errors::ResolveError::CollectDependencies(
-							Box::new(self.repo_url.clone()),
+						errors::ResolveError::ReadTreeEntry(
+							Box::new(repo_url.clone()),
+							path.clone(),
 							e,
 						)
 					})?
-					.into_iter()
-					.map(|(alias, (mut spec, ty))| {
-						match &mut spec {
-							DependencySpecifiers::Pesde(specifier) => {
-								let index_name = specifier
-									.index
-									.as_deref()
-									.unwrap_or(DEFAULT_INDEX_NAME)
-									.to_string();
-								specifier.index = Some(
-									manifest
-										.indices
-										.get(&index_name)
-										.ok_or_else(|| {
-											errors::ResolveError::PesdeIndexNotFound(
-												index_name.clone(),
-												Box::new(self.repo_url.clone()),
-											)
-										})?
-										.to_string(),
-								);
-							}
-							#[cfg(feature = "wally-compat")]
-							DependencySpecifiers::Wally(specifier) => {
-								let index_name = specifier
-									.index
-									.as_deref()
-									.unwrap_or(DEFAULT_INDEX_NAME)
-									.to_string();
-								specifier.index = Some(
-									manifest
-										.wally_indices
-										.get(&index_name)
-										.ok_or_else(|| {
-											errors::ResolveError::WallyIndexNotFound(
-												index_name.clone(),
-												Box::new(self.repo_url.clone()),
-											)
-										})?
-										.to_string(),
-								);
-							}
-							DependencySpecifiers::Git(_) => {}
-							DependencySpecifiers::Workspace(specifier) => {
-								let lockfile = read_file(&root_tree, [LOCKFILE_FILE_NAME])
-									.map_err(|e| {
-										errors::ResolveError::ReadLockfile(
-											Box::new(self.repo_url.clone()),
-											e,
-										)
-									})?;
+					.ok_or_else(|| {
+						errors::ResolveError::NoEntryAtPath(
+							Box::new(repo_url.clone()),
+							path.clone(),
+						)
+					})?
+					.object()
+					.map_err(|e| {
+						errors::ResolveError::ParseEntryToObject(Box::new(repo_url.clone()), e)
+					})?
+					.peel_to_tree()
+					.map_err(|e| {
+						errors::ResolveError::ParseObjectToTree(Box::new(repo_url.clone()), e)
+					})?
+			} else {
+				root_tree.clone()
+			};
 
-								let lockfile = match lockfile {
-									Some(l) => match toml::from_str::<crate::Lockfile>(&l) {
-										Ok(l) => l,
-										Err(e) => {
-											return Err(errors::ResolveError::DeserLockfile(
-												Box::new(self.repo_url.clone()),
-												e,
-											))
-										}
-									},
-									None => {
-										return Err(errors::ResolveError::NoLockfile(Box::new(
-											self.repo_url.clone(),
-										)))
-									}
-								};
-
-								let target = specifier.target.unwrap_or(manifest.target.kind());
-
-								let path = lockfile
-									.workspace
-									.get(&specifier.name)
-									.and_then(|targets| targets.get(&target))
-									.ok_or_else(|| {
-										errors::ResolveError::NoPathForWorkspaceMember(
-											specifier.name.to_string(),
-											target,
-											Box::new(self.repo_url.clone()),
-										)
-									})?
-									.clone();
-
-								spec = DependencySpecifiers::Git(GitDependencySpecifier {
-									repo: self.repo_url.clone(),
-									rev: rev.to_string(),
-									path: Some(path),
-								})
-							}
-							DependencySpecifiers::Path(_) => {
-								return Err(errors::ResolveError::Path(Box::new(
-									self.repo_url.clone(),
-								)))
-							}
-						}
-
-						Ok((alias, (spec, ty)))
-					})
-					.collect::<Result<_, errors::ResolveError>>()?;
-				let name = PackageNames::Pesde(manifest.name);
-				let version_id = VersionId(manifest.version, manifest.target.kind());
-
-				(name, version_id, dependencies)
-			}
+			let manifest = match read_file(&tree, [MANIFEST_FILE_NAME])
+				.map_err(|e| errors::ResolveError::ReadManifest(Box::new(repo_url.clone()), e))?
+			{
+				Some(m) => match toml::from_str::<Manifest>(&m) {
+					Ok(m) => Some(m),
+					Err(e) => {
+						return Err(errors::ResolveError::DeserManifest(
+							Box::new(repo_url.clone()),
+							e,
+						))
+					}
+				},
+				None => None,
+			};
 
 			#[cfg(feature = "wally-compat")]
-			None => {
+			let Some(manifest) = manifest
+			else {
 				use crate::{
 					manifest::target::TargetKind,
 					source::wally::{
@@ -270,49 +266,62 @@ impl PackageSource for GitPackageSource {
 					},
 				};
 
-				match read_file(&tree, [WALLY_MANIFEST_FILE_NAME]).map_err(|e| {
-					errors::ResolveError::ReadManifest(Box::new(self.repo_url.clone()), e)
-				})? {
-					Some(m) => match toml::from_str::<WallyManifest>(&m) {
-						Ok(manifest) => {
-							let dependencies = manifest.all_dependencies().map_err(|e| {
-								errors::ResolveError::CollectDependencies(
-									Box::new(self.repo_url.clone()),
-									e,
-								)
-							})?;
-							let name = PackageNames::Wally(manifest.package.name);
-							let version_id = VersionId(
-								manifest.package.version,
-								match manifest.package.realm {
-									Realm::Server => TargetKind::RobloxServer,
-									_ => TargetKind::Roblox,
-								},
-							);
+				let manifest = read_file(&tree, [WALLY_MANIFEST_FILE_NAME]).map_err(|e| {
+					errors::ResolveError::ReadManifest(Box::new(repo_url.clone()), e)
+				})?;
 
-							(name, version_id, dependencies)
-						}
-						Err(e) => {
-							return Err(errors::ResolveError::DeserManifest(
-								Box::new(self.repo_url.clone()),
-								e,
-							))
-						}
-					},
-					None => {
-						return Err(errors::ResolveError::NoManifest(Box::new(
-							self.repo_url.clone(),
-						)))
+				let Some(manifest) = manifest else {
+					return Err(errors::ResolveError::NoManifest(Box::new(repo_url.clone())));
+				};
+
+				let manifest = match toml::from_str::<WallyManifest>(&manifest) {
+					Ok(manifest) => manifest,
+					Err(e) => {
+						return Err(errors::ResolveError::DeserManifest(
+							Box::new(repo_url.clone()),
+							e,
+						))
 					}
-				}
-			}
+				};
+				let dependencies = manifest.all_dependencies().map_err(|e| {
+					errors::ResolveError::CollectDependencies(Box::new(repo_url.clone()), e)
+				})?;
+
+				return Ok((
+					PackageNames::Wally(manifest.package.name),
+					VersionId(
+						manifest.package.version,
+						match manifest.package.realm {
+							Realm::Shared => TargetKind::Roblox,
+							Realm::Server => TargetKind::RobloxServer,
+						},
+					),
+					dependencies,
+					tree.id.to_string(),
+				));
+			};
 			#[cfg(not(feature = "wally-compat"))]
-			None => {
-				return Err(errors::ResolveError::NoManifest(Box::new(
-					self.repo_url.clone(),
-				)))
-			}
-		};
+			let Some(manifest) = manifest
+			else {
+				return Err(errors::ResolveError::NoManifest(Box::new(repo_url.clone())));
+			};
+
+			let dependencies = transform_pesde_dependencies(
+				&manifest,
+				repo_url.clone(),
+				&specifier.rev,
+				&root_tree,
+			)?;
+
+			Ok((
+				PackageNames::Pesde(manifest.name),
+				VersionId(manifest.version, manifest.target.kind()),
+				dependencies,
+				tree.id.to_string(),
+			))
+		})
+		.await
+		.unwrap()?;
 
 		let new_structure = matches!(name, PackageNames::Pesde(_));
 
@@ -322,7 +331,7 @@ impl PackageSource for GitPackageSource {
 				version_id,
 				GitPackageRef {
 					repo: self.repo_url.clone(),
-					tree_id: tree.id.to_string(),
+					tree_id,
 					new_structure,
 					dependencies,
 				},
@@ -362,65 +371,52 @@ impl PackageSource for GitPackageSource {
 			Err(e) => return Err(errors::DownloadError::Io(e)),
 		}
 
-		let repo = gix::open(self.path(project))
-			.map_err(|e| errors::DownloadError::OpenRepo(Box::new(self.repo_url.clone()), e))?
-			.into_sync();
+		let path = self.path(project);
 		let repo_url = self.repo_url.clone();
-		let tree_id = pkg_ref.tree_id.clone();
+		let tree_id = match pkg_ref.tree_id.parse::<ObjectId>() {
+			Ok(oid) => oid,
+			Err(e) => return Err(errors::DownloadError::ParseTreeId(Box::new(repo_url), e)),
+		};
 
-		let (repo, records) = spawn_blocking(move || {
-			let repo = repo.to_thread_local();
+		let records = spawn_blocking(move || {
+			let repo = gix::open(path)
+				.map_err(|e| errors::DownloadError::OpenRepo(Box::new(repo_url.clone()), e))?;
 
 			let mut recorder = Recorder::default();
 
-			{
-				let object_id = match tree_id.parse::<ObjectId>() {
-					Ok(oid) => oid,
-					Err(e) => {
-						return Err(errors::DownloadError::ParseTreeId(Box::new(repo_url), e))
-					}
-				};
-				let object = match repo.find_object(object_id) {
-					Ok(object) => object,
-					Err(e) => {
-						return Err(errors::DownloadError::ParseOidToObject(
-							object_id,
-							Box::new(repo_url),
-							e,
-						))
-					}
-				};
-
-				let tree = match object.peel_to_tree() {
-					Ok(tree) => tree,
-					Err(e) => {
-						return Err(errors::DownloadError::ParseObjectToTree(
-							Box::new(repo_url),
-							e,
-						))
-					}
-				};
-
-				if let Err(e) = tree.traverse().breadthfirst(&mut recorder) {
-					return Err(errors::DownloadError::TraverseTree(Box::new(repo_url), e));
+			let object = match repo.find_object(tree_id) {
+				Ok(object) => object,
+				Err(e) => {
+					return Err(errors::DownloadError::ParseOidToObject(
+						tree_id,
+						Box::new(repo_url),
+						e,
+					))
 				}
+			};
+
+			let tree = match object.peel_to_tree() {
+				Ok(tree) => tree,
+				Err(e) => {
+					return Err(errors::DownloadError::ParseObjectToTree(
+						Box::new(repo_url),
+						e,
+					))
+				}
+			};
+
+			if let Err(e) = tree.traverse().breadthfirst(&mut recorder) {
+				return Err(errors::DownloadError::TraverseTree(Box::new(repo_url), e));
 			}
 
-			Ok::<_, errors::DownloadError>((repo.into_sync(), recorder.records))
-		})
-		.await
-		.unwrap()?;
-
-		let records = {
-			let repo = repo.to_thread_local();
-
-			records
+			recorder
+				.records
 				.into_iter()
 				.map(|entry| {
 					let object = repo.find_object(entry.oid).map_err(|e| {
 						errors::DownloadError::ParseOidToObject(
 							entry.oid,
-							Box::new(self.repo_url.clone()),
+							Box::new(repo_url.clone()),
 							e,
 						)
 					})?;
@@ -434,8 +430,10 @@ impl PackageSource for GitPackageSource {
 						},
 					))
 				})
-				.collect::<Result<Vec<_>, _>>()?
-		};
+				.collect::<Result<Vec<_>, _>>()
+		})
+		.await
+		.unwrap()?;
 
 		let mut tasks = records
 			.into_iter()
@@ -537,14 +535,14 @@ pub mod errors {
 	pub enum ResolveError {
 		/// An error occurred opening the Git repository
 		#[error("error opening Git repository for url {0}")]
-		OpenRepo(Box<gix::Url>, #[source] gix::open::Error),
+		OpenRepo(Box<gix::Url>, #[source] Box<gix::open::Error>),
 
 		/// An error occurred parsing rev
 		#[error("error parsing rev {0} for repository {1}")]
 		ParseRev(
 			String,
 			Box<gix::Url>,
-			#[source] gix::revision::spec::parse::single::Error,
+			#[source] Box<gix::revision::spec::parse::single::Error>,
 		),
 
 		/// An error occurred parsing rev to object
