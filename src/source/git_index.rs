@@ -24,7 +24,7 @@ pub trait GitBasedSource {
 
 		let project = project.clone();
 
-		if path.exists() {
+		if fs::metadata(&path).await.is_ok() {
 			spawn_blocking(move || {
 				let repo = match gix::open(&path) {
 					Ok(repo) => repo,
