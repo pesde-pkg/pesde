@@ -14,15 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inherit pesde-managed scripts from workspace root by @daimond113
 - Allow using binaries from workspace root in member packages by @daimond113
 - Add yanking & deprecating by @daimond113
+- Add engines as a form of managing runtimes by @daimond113
+- Modify existing installed packages instead of always reinstalling by @daimond113
 
 ### Fixed
 - Install dev packages in prod mode and remove them after use to allow them to be used in scripts by @daimond113
+- Fix infinite loop in the resolver in packages depending on themselves by @daimond113
+- Do Git operations inside spawn_blocking to avoid performance issues by @daimond113
+- Scope CAS package indices to the source by @daimond113
 
 ### Changed
 - Change handling of graphs to a flat structure by @daimond113
 - Store dependency over downloaded graphs in the lockfile by @daimond113
 - Improve linking process by @daimond113
 - Use a proper url encoding library to ensure compatibility with all characters by @daimond113
+- The `*` specifier now matches all versions, even prereleases by @daimond113
 
 ### Removed
 - Remove old includes format compatibility by @daimond113
