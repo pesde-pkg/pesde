@@ -417,32 +417,6 @@ impl Project {
 		}
 
 		if !force {
-			let used_paths = Arc::new(
-				graph
-					.iter()
-					.filter(|(_, node)| !node.node.pkg_ref.is_wally_package())
-					.map(|(id, node)| {
-						node.node
-							.container_folder(id)
-							.version_folder()
-							.to_path_buf()
-					})
-					.collect::<HashSet<_>>(),
-			);
-			#[cfg(feature = "wally-compat")]
-			let used_wally_paths = Arc::new(
-				graph
-					.iter()
-					.filter(|(_, node)| node.node.pkg_ref.is_wally_package())
-					.map(|(id, node)| {
-						node.node
-							.container_folder(id)
-							.version_folder()
-							.to_path_buf()
-					})
-					.collect::<HashSet<_>>(),
-			);
-
 			async fn remove_empty_dir(path: &Path) -> std::io::Result<()> {
 				match fs::remove_dir(path).await {
 					Ok(()) => Ok(()),
@@ -451,6 +425,126 @@ impl Project {
 					Err(e) => Err(e),
 				}
 			}
+
+			async fn index_entry(
+				entry: fs::DirEntry,
+				packages_index_dir: &Path,
+				tasks: &mut JoinSet<std::io::Result<()>>,
+				used_paths: &Arc<HashSet<PathBuf>>,
+				#[cfg(feature = "wally-compat")] used_wally_paths: &Arc<HashSet<PathBuf>>,
+			) -> std::io::Result<()> {
+				let path = entry.path();
+				let path_relative = path.strip_prefix(packages_index_dir).unwrap().to_path_buf();
+
+				let is_wally = entry
+					.file_name()
+					.to_str()
+					.expect("non UTF-8 folder name in packages index")
+					.contains("@");
+				if is_wally {
+					#[cfg(feature = "wally-compat")]
+					if !used_wally_paths.contains(&path_relative) {
+						tasks.spawn(async { fs::remove_dir_all(path).await });
+					}
+
+					#[cfg(not(feature = "wally-compat"))]
+					{
+						tracing::error!(
+							"found Wally package in index despite feature being disabled at `{}`",
+							path.display()
+						);
+					}
+
+					return Ok(());
+				}
+
+				let used_paths = used_paths.clone();
+				tasks.spawn(async move {
+					let mut tasks = JoinSet::new();
+
+					let mut entries = fs::read_dir(&path).await?;
+					while let Some(entry) = entries.next_entry().await? {
+						let version = entry.file_name();
+						let path_relative = path_relative.join(&version);
+
+						if used_paths.contains(&path_relative) {
+							continue;
+						}
+
+						let path = entry.path();
+						tasks.spawn(async { fs::remove_dir_all(path).await });
+					}
+
+					while let Some(task) = tasks.join_next().await {
+						task.unwrap()?;
+					}
+
+					remove_empty_dir(&path).await
+				});
+
+				Ok(())
+			}
+
+			async fn packages_entry(
+				entry: fs::DirEntry,
+				tasks: &mut JoinSet<std::io::Result<()>>,
+				expected_aliases: &Arc<HashSet<Alias>>,
+			) -> std::io::Result<()> {
+				let expected_aliases = expected_aliases.clone();
+				tasks.spawn(async move {
+					if !entry.file_type().await?.is_file() {
+						return Ok(());
+					}
+
+					let path = entry.path();
+					let name = path
+						.file_stem()
+						.unwrap()
+						.to_str()
+						.expect("non UTF-8 file name in packages folder");
+					let name = name.strip_suffix(".bin").unwrap_or(name);
+					let name = match name.parse::<Alias>() {
+						Ok(name) => name,
+						Err(e) => {
+							tracing::error!("invalid alias in packages folder: {e}");
+							return Ok(());
+						}
+					};
+
+					if !expected_aliases.contains(&name) {
+						fs::remove_file(path).await?;
+					}
+
+					Ok(())
+				});
+
+				Ok(())
+			}
+
+			let used_paths = graph
+				.iter()
+				.filter(|(_, node)| !node.node.pkg_ref.is_wally_package())
+				.map(|(id, node)| {
+					node.node
+						.container_folder(id)
+						.version_folder()
+						.to_path_buf()
+				})
+				.collect::<HashSet<_>>();
+			let used_paths = Arc::new(used_paths);
+			#[cfg(feature = "wally-compat")]
+			let used_wally_paths = graph
+				.iter()
+				.filter(|(_, node)| node.node.pkg_ref.is_wally_package())
+				.map(|(id, node)| {
+					node.node
+						.container_folder(id)
+						.version_folder()
+						.to_path_buf()
+				})
+				.collect::<HashSet<_>>();
+			#[cfg(feature = "wally-compat")]
+			let used_wally_paths = Arc::new(used_wally_paths);
 
 			let mut tasks = all_packages_dirs()
 				.into_iter()
@@ -461,10 +555,20 @@ impl Project {
 					#[cfg(feature = "wally-compat")]
 					let used_wally_paths = used_wally_paths.clone();
 
-					let expected_aliases = graph.iter()
-						.filter(|(id, _)| manifest.target.kind().packages_folder(id.version_id().target()) == folder)
-						.filter_map(|(_, node)| node.node.direct.as_ref().map(|(alias, _, _)| alias.clone()))
+					let expected_aliases = graph
+						.iter()
+						.filter(|(id, _)| {
+							manifest
+								.target
+								.kind()
+								.packages_folder(id.version_id().target())
+								== folder
+						})
+						.filter_map(|(_, node)| {
+							node.node.direct.as_ref().map(|(alias, _, _)| alias.clone())
+						})
 						.collect::<HashSet<_>>();
+					let expected_aliases = Arc::new(expected_aliases);
 
 					async move {
 						let mut index_entries = match fs::read_dir(&packages_index_dir).await {
@@ -474,88 +578,7 @@ impl Project {
 						};
 						// we don't handle NotFound here because the upper level will handle it
 						let mut packages_entries = fs::read_dir(&packages_dir).await?;
-
 						let mut tasks = JoinSet::new();
-
-						async fn index_entry(
-							entry: fs::DirEntry,
-							packages_index_dir: &Path,
-							tasks: &mut JoinSet<std::io::Result<()>>,
-							used_paths: &HashSet<PathBuf>,
-							#[cfg(feature = "wally-compat")] used_wally_paths: &HashSet<PathBuf>,
-						) -> std::io::Result<()> {
-							let path = entry.path();
-							let path_relative = path.strip_prefix(packages_index_dir).unwrap();
-
-							let is_wally = entry.file_name().to_str().expect("non UTF-8 folder name in packages index").contains("@");
-							if is_wally {
-								#[cfg(feature = "wally-compat")]
-								if !used_wally_paths.contains(path_relative) {
-									tasks.spawn(async {
-										fs::remove_dir_all(path).await
-									});
-								}
-
-								#[cfg(not(feature = "wally-compat"))]
-								{
-									tracing::error!("found Wally package in index despite feature being disabled at `{}`", path.display());
-								}
-
-								return Ok(());
-							}
-
-							let mut tasks = JoinSet::new();
-
-							let mut entries = fs::read_dir(&path).await?;
-							while let Some(entry) = entries.next_entry().await? {
-								let version = entry.file_name();
-								let path_relative = path_relative.join(&version);
-
-								if used_paths.contains(&path_relative) {
-									continue;
-								}
-
-								let path = entry.path();
-								tasks.spawn(async {
-									fs::remove_dir_all(path).await
-								});
-							}
-
-							while let Some(task) = tasks.join_next().await {
-								task.unwrap()?;
-							}
-
-							remove_empty_dir(&path).await
-						}
-
-						async fn packages_entry(
-							entry: fs::DirEntry,
-							tasks: &mut JoinSet<std::io::Result<()>>,
-							expected_aliases: &HashSet<Alias>,
-						) -> std::io::Result<()> {
-							if !entry.file_type().await?.is_file() {
-								return Ok(());
-							}
-
-							let path = entry.path();
-							let name= path.file_stem().unwrap().to_str().expect("non UTF-8 file name in packages folder");
-							let name = name.strip_suffix(".bin").unwrap_or(name);
-							let name = match name.parse::<Alias>() {
-								Ok(name) => name,
-								Err(e) => {
-									tracing::error!("invalid alias in packages folder: {e}");
-									return Ok(())
-								},
-							};
-
-							if !expected_aliases.contains(&name) {
-								tasks.spawn(async {
-									fs::remove_file(path).await
-								});
-							}
-
-							Ok(())
-						}
 
 						loop {
 							tokio::select! {
@@ -577,7 +600,7 @@ impl Project {
 									).await?;
 								}
 								else => break,
-							};
+							}
 						}
 
 						while let Some(task) = tasks.join_next().await {

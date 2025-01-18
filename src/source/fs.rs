@@ -117,6 +117,119 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin, P: AsRef<Path>
 	Ok(hash)
 }
 
+async fn package_fs_cas(
+	entries: BTreeMap<RelativePathBuf, FsEntry>,
+	destination: &Path,
+	cas_dir_path: &Path,
+	link: bool,
+) -> std::io::Result<()> {
+	let mut tasks = entries
+		.iter()
+		.map(|(path, entry)| {
+			let destination = destination.to_path_buf();
+			let cas_dir_path = cas_dir_path.to_path_buf();
+			let path = path.to_path(destination);
+			let entry = entry.clone();
+
+			async move {
+				match entry {
+					FsEntry::File(hash) => {
+						if let Some(parent) = path.parent() {
+							fs::create_dir_all(parent).await?;
+						}
+
+						let cas_file_path = cas_path(&hash, &cas_dir_path);
+
+						if link {
+							fs::hard_link(cas_file_path, path).await?;
+						} else {
+							fs::copy(cas_file_path, &path).await?;
+							set_readonly(&path, false).await?;
+						}
+					}
+					FsEntry::Directory => {
+						fs::create_dir_all(path).await?;
+					}
+				}
+
+				Ok::<_, std::io::Error>(())
+			}
+		})
+		.collect::<JoinSet<_>>();
+
+	while let Some(task) = tasks.join_next().await {
+		task.unwrap()?;
+	}
+
+	Ok(())
+}
+
+async fn package_fs_copy(
+	src: &Path,
+	target: TargetKind,
+	destination: &Path,
+) -> std::io::Result<()> {
+	fs::create_dir_all(destination).await?;
+
+	let mut tasks = JoinSet::new();
+	let mut read_dir = fs::read_dir(src).await?;
+
+	'entry: while let Some(entry) = read_dir.next_entry().await? {
+		let path = entry.path();
+		let relative_path = path.strip_prefix(src).unwrap();
+		let dest_path = destination.join(relative_path);
+		let file_name = relative_path
+			.file_name()
+			.unwrap()
+			.to_str()
+			.ok_or(std::io::Error::new(
+				std::io::ErrorKind::InvalidData,
+				"invalid file name",
+			))?;
+
+		if entry.file_type().await?.is_dir() {
+			if IGNORED_DIRS.contains(&file_name) {
+				continue;
+			}
+
+			for other_target in TargetKind::VARIANTS {
+				if target.packages_folder(*other_target) == file_name {
+					continue 'entry;
+				}
+			}
+
+			tasks.spawn(async {
+				#[cfg(windows)]
+				let res = fs::symlink_dir(path, dest_path).await;
+				#[cfg(unix)]
+				let res = fs::symlink(path, dest_path).await;
+
+				res
+			});
+			continue;
+		}
+
+		if IGNORED_FILES.contains(&file_name) {
+			continue;
+		}
+
+		tasks.spawn(async {
+			#[cfg(windows)]
+			let res = fs::symlink_file(path, dest_path).await;
+			#[cfg(unix)]
+			let res = fs::symlink(path, dest_path).await;
+
+			res
+		});
+	}
+
+	while let Some(task) = tasks.join_next().await {
+		task.unwrap()?;
+	}
+
+	Ok(())
+}
+
 impl PackageFs {
 	/// Write the package to the given destination
 	#[instrument(skip(self), level = "debug")]
@@ -128,87 +241,18 @@ impl PackageFs {
 	) -> std::io::Result<()> {
 		match self {
 			PackageFs::CAS(entries) => {
-				let mut tasks = entries
-					.iter()
-					.map(|(path, entry)| {
-						let destination = destination.as_ref().to_path_buf();
-						let cas_path = cas_path.as_ref().to_path_buf();
-						let path = path.to_path(destination);
-						let entry = entry.clone();
-
-						async move {
-							match entry {
-								FsEntry::File(hash) => {
-									if let Some(parent) = path.parent() {
-										fs::create_dir_all(parent).await?;
-									}
-
-									let (prefix, rest) = hash.split_at(2);
-									let cas_file_path = cas_path.join(prefix).join(rest);
-
-									if link {
-										fs::hard_link(cas_file_path, path).await?;
-									} else {
-										fs::copy(cas_file_path, &path).await?;
-										set_readonly(&path, false).await?;
-									}
-								}
-								FsEntry::Directory => {
-									fs::create_dir_all(path).await?;
-								}
-							}
-
-							Ok::<_, std::io::Error>(())
-						}
-					})
-					.collect::<JoinSet<_>>();
-
-				while let Some(task) = tasks.join_next().await {
-					task.unwrap()?;
-				}
+				package_fs_cas(
+					entries.clone(),
+					destination.as_ref(),
+					cas_path.as_ref(),
+					link,
+				)
+				.await
 			}
 			PackageFs::Copy(src, target) => {
-				fs::create_dir_all(destination.as_ref()).await?;
-
-				let mut read_dir = fs::read_dir(src).await?;
-				'entry: while let Some(entry) = read_dir.next_entry().await? {
-					let relative_path =
-						RelativePathBuf::from_path(entry.path().strip_prefix(src).unwrap())
-							.unwrap();
-					let dest_path = relative_path.to_path(destination.as_ref());
-					let file_name = relative_path.file_name().unwrap();
-
-					if entry.file_type().await?.is_dir() {
-						if IGNORED_DIRS.contains(&file_name) {
-							continue;
-						}
-
-						for other_target in TargetKind::VARIANTS {
-							if target.packages_folder(*other_target) == file_name {
-								continue 'entry;
-							}
-						}
-
-						#[cfg(windows)]
-						fs::symlink_dir(entry.path(), dest_path).await?;
-						#[cfg(unix)]
-						fs::symlink(entry.path(), dest_path).await?;
-						continue;
-					}
-
-					if IGNORED_FILES.contains(&file_name) {
-						continue;
-					}
-
-					#[cfg(windows)]
-					fs::symlink_file(entry.path(), dest_path).await?;
-					#[cfg(unix)]
-					fs::symlink(entry.path(), dest_path).await?;
-				}
+				package_fs_copy(src, *target, destination.as_ref()).await
 			}
 		}
-
-		Ok(())
 	}
 
 	/// Returns the contents of the file with the given hash
@@ -216,14 +260,13 @@ impl PackageFs {
 	pub async fn read_file<P: AsRef<Path> + Debug, H: AsRef<str> + Debug>(
 		&self,
 		file_hash: H,
-		cas_path: P,
+		cas_dir_path: P,
 	) -> Option<String> {
 		if !matches!(self, PackageFs::CAS(_)) {
 			return None;
 		}
 
-		let (prefix, rest) = file_hash.as_ref().split_at(2);
-		let cas_file_path = cas_path.as_ref().join(prefix).join(rest);
+		let cas_file_path = cas_path(file_hash.as_ref(), cas_dir_path.as_ref());
 		fs::read_to_string(cas_file_path).await.ok()
 	}
 }
