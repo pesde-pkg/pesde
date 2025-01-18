@@ -151,8 +151,8 @@ impl Project {
 
 		let mut package_types = PackageTypes::new();
 		while let Some(task) = tasks.join_next().await {
-			let (version_id, types) = task.unwrap()?;
-			package_types.insert(version_id, types);
+			let (package_id, types) = task.unwrap()?;
+			package_types.insert(package_id, types);
 		}
 
 		// step 3. link all packages (and their dependencies), this time with types
@@ -248,12 +248,12 @@ impl Project {
 
 			if remove {
 				tasks.spawn(async move {
-					fs::remove_dir_all(scripts_base).await?;
-					if let Ok(mut entries) = fs::read_dir(&scripts_container).await {
-						if entries.next_entry().await.transpose().is_none() {
-							drop(entries);
-							fs::remove_dir(&scripts_container).await?;
-						}
+					into_link_result(fs::remove_dir_all(scripts_base).await)?;
+					// remove the scripts container if it's empty
+					match fs::remove_dir(scripts_container).await {
+						Ok(_) => {}
+						Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {}
+						r => return into_link_result(r),
 					}
 
 					Ok(())
@@ -319,8 +319,8 @@ impl Project {
 						.await?;
 						let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
-						let container_folder =
-							packages_container_folder.join(node.node.container_folder(&package_id));
+						let container_folder = packages_container_folder
+							.join(node.node.container_folder(&package_id).path());
 
 						if let Some((alias, _, _)) = &node.node.direct {
 							project
@@ -367,10 +367,10 @@ impl Project {
 						let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
 
 						let container_folder = packages_container_folder
-							.join(dependency_node.node.container_folder(dependency_id));
+							.join(dependency_node.node.container_folder(dependency_id).path());
 
 						let linker_folder = create_and_canonicalize(node_container_folder.join(
-							node.node.base_folder(
+							node.node.dependencies_dir(
 								package_id.version_id(),
 								dependency_node.target.kind(),
 							),

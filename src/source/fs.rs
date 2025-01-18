@@ -184,7 +184,7 @@ impl PackageFs {
 						}
 
 						for other_target in TargetKind::VARIANTS {
-							if target.packages_folder(other_target) == file_name {
+							if target.packages_folder(*other_target) == file_name {
 								continue 'entry;
 							}
 						}

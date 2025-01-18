@@ -30,7 +30,7 @@ fn bin_link_file(alias: &Alias) -> String {
 
 	for a in TargetKind::VARIANTS {
 		for b in TargetKind::VARIANTS {
-			all_combinations.insert((a, b));
+			all_combinations.insert((*a, *b));
 		}
 	}
 
@@ -136,6 +136,7 @@ pub struct InstallOptions {
 	pub write: bool,
 	pub use_lockfile: bool,
 	pub network_concurrency: NonZeroUsize,
+	pub force: bool,
 }
 
 pub async fn install(
@@ -153,6 +154,8 @@ pub async fn install(
 		.await
 		.context("failed to read manifest")?;
 
+	let mut has_irrecoverable_changes = false;
+
 	let lockfile = if options.locked {
 		match up_to_date_lockfile(project).await? {
 			None => {
@@ -168,9 +171,11 @@ pub async fn install(
 			Ok(lockfile) => {
 				if lockfile.overrides != resolve_overrides(&manifest)? {
 					tracing::debug!("overrides are different");
+					has_irrecoverable_changes = true;
 					None
 				} else if lockfile.target != manifest.target.kind() {
 					tracing::debug!("target kind is different");
+					has_irrecoverable_changes = true;
 					None
 				} else {
 					Some(lockfile)
@@ -195,6 +200,7 @@ pub async fn install(
 			root_progress.set_prefix(format!("{} {}: ", manifest.name, manifest.target));
 			#[cfg(feature = "version-management")]
 			{
+				root_progress.reset();
 				root_progress.set_message("update engine linkers");
 
 				let mut tasks = manifest
@@ -203,39 +209,6 @@ pub async fn install(
 					.map(|engine| crate::cli::version::make_linker_if_needed(*engine))
 					.collect::<JoinSet<_>>();
 
-				while let Some(task) = tasks.join_next().await {
-					task.unwrap()?;
-				}
-			}
-
-			root_progress.set_message("clean");
-
-			if options.write {
-				let mut deleted_folders = HashMap::new();
-
-				for target_kind in TargetKind::VARIANTS {
-					let folder = manifest.target.kind().packages_folder(target_kind);
-					let package_dir = project.package_dir().to_path_buf();
-
-					deleted_folders
-						.entry(folder.to_string())
-						.or_insert_with(|| async move {
-							tracing::debug!("deleting the {folder} folder");
-
-							if let Some(e) = fs::remove_dir_all(package_dir.join(&folder))
-								.await
-								.err()
-								.filter(|e| e.kind() != std::io::ErrorKind::NotFound)
-							{
-								return Err(e)
-									.context(format!("failed to remove the {folder} folder"));
-							};
-
-							Ok(())
-						});
-				}
-
-				let mut tasks = deleted_folders.into_values().collect::<JoinSet<_>>();
 				while let Some(task) = tasks.join_next().await {
 					task.unwrap()?;
 				}
@@ -315,7 +288,8 @@ pub async fn install(
 							.hooks(hooks)
 							.refreshed_sources(refreshed_sources)
 							.prod(options.prod)
-							.network_concurrency(options.network_concurrency),
+							.network_concurrency(options.network_concurrency)
+							.force(options.force || has_irrecoverable_changes),
 					)
 					.await
 					.context("failed to download and link dependencies")?;
@@ -428,6 +402,7 @@ pub async fn install(
 				}
 			}
 
+			root_progress.reset();
 			root_progress.set_message("finish");
 
 			let new_lockfile = Lockfile {

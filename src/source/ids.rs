@@ -21,8 +21,8 @@ impl VersionId {
 	}
 
 	/// Access the target
-	pub fn target(&self) -> &TargetKind {
-		&self.1
+	pub fn target(&self) -> TargetKind {
+		self.1
 	}
 
 	/// Returns this version ID as a string that can be used in the filesystem
@@ -36,8 +36,8 @@ impl VersionId {
 	}
 
 	/// Access the parts of the version ID
-	pub fn parts(&self) -> (&Version, &TargetKind) {
-		(&self.0, &self.1)
+	pub fn parts(&self) -> (&Version, TargetKind) {
+		(&self.0, self.1)
 	}
 }
 

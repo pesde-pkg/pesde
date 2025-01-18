@@ -264,7 +264,7 @@ impl InitCommand {
 					field["version"] = toml_edit::value(spec.version.to_string());
 					field["target"] = toml_edit::value(
 						spec.target
-							.unwrap_or_else(|| *id.version_id().target())
+							.unwrap_or_else(|| id.version_id().target())
 							.to_string(),
 					);
 				}

@@ -209,7 +209,7 @@ impl AddCommand {
 				field["name"] = toml_edit::value(spec.name.clone().to_string());
 				field["version"] = toml_edit::value(format!("^{}", version_id.version()));
 
-				if *version_id.target() != project_target {
+				if version_id.target() != project_target {
 					field["target"] = toml_edit::value(version_id.target().to_string());
 				}
 

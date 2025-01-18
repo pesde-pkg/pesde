@@ -60,7 +60,7 @@ impl TargetKind {
 
 	/// The folder to store packages in for this target
 	/// self is the project's target, dependency is the target of the dependency
-	pub fn packages_folder(&self, dependency: &Self) -> String {
+	pub fn packages_folder(self, dependency: Self) -> String {
 		// the code below might seem better, but it's just going to create issues with users trying
 		// to use a build script, since imports would break between targets
 

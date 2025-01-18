@@ -369,7 +369,7 @@ impl Project {
                             .chain(std::iter::once(dependency_alias))
                             .collect(),
                         overridden.is_some(),
-                        *package_id.version_id().target(),
+                        package_id.version_id().target(),
                     ));
                 }
 

@@ -68,7 +68,7 @@ pub fn resolve_version_and_target(
 		.filter(|(v_id, _)| *v_id.version() == version);
 
 	match target {
-		AnyOrSpecificTarget::Any => versions.min_by_key(|(v_id, _)| *v_id.target()),
+		AnyOrSpecificTarget::Any => versions.min_by_key(|(v_id, _)| v_id.target()),
 		AnyOrSpecificTarget::Specific(kind) => {
 			versions.find(|(_, entry)| entry.target.kind() == kind)
 		}

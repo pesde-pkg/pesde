@@ -15,6 +15,10 @@ pub struct UpdateCommand {
 	/// The maximum number of concurrent network requests
 	#[arg(long, default_value = "16")]
 	network_concurrency: NonZeroUsize,
+
+	/// Whether to re-install all dependencies even if they are already installed
+	#[arg(long)]
+	force: bool,
 }
 
 impl UpdateCommand {
@@ -25,6 +29,7 @@ impl UpdateCommand {
 			write: !self.no_install,
 			network_concurrency: self.network_concurrency,
 			use_lockfile: false,
+			force: self.force,
 		};
 
 		install(&options, &project, reqwest.clone(), true).await?;
