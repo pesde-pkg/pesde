@@ -159,12 +159,13 @@ when the package is installed in order to generate the necessary configuration.
 
 **Allowed in:** `luau`, `lune`
 
-A list of scripts that will be linked to the project's `.pesde` directory, and
+A list of scripts that will be linked to the dependant's `.pesde` directory, and
 copied over to the [scripts](#scripts-1) section when initialising a project with
-this package.
+this package as the scripts package.
 
 ```toml
-scripts = { roblox_sync_config_generator = "scripts/roblox_sync_config_generator.luau" }
+[target.scripts]
+roblox_sync_config_generator = "scripts/roblox_sync_config_generator.luau"
 ```
 
 ## `[scripts]`
@@ -188,10 +189,6 @@ sync tools.
 `process.args` will contain the directory containing the package, and the list
 of files specified within the [`target.build_files`](#build_files) of the
 package.
-
-You can find template scripts inside the
-[`pesde-scripts` repository](https://github.com/pesde-pkg/scripts)
-for various sync tools.
 
 <LinkCard
 	title="Roblox"
