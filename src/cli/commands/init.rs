@@ -134,7 +134,7 @@ impl InitCommand {
 
 		if target_env.is_roblox()
 			|| inquire::prompt_confirmation(
-				"would you like to setup default Roblox compatibility scripts?",
+				"would you like to setup Roblox compatibility scripts?",
 			)
 			.unwrap()
 		{
