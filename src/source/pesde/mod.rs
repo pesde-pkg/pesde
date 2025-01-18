@@ -197,6 +197,7 @@ impl PackageSource for PesdePackageSource {
 		let index_file = project
 			.cas_dir()
 			.join("index")
+			.join(hash(self.as_bytes()))
 			.join(id.name().escaped())
 			.join(id.version_id().version().to_string())
 			.join(id.version_id().target().to_string());

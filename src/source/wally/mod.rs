@@ -229,6 +229,7 @@ impl PackageSource for WallyPackageSource {
 		let index_file = project
 			.cas_dir()
 			.join("wally_index")
+			.join(hash(self.as_bytes()))
 			.join(id.name().escaped())
 			.join(id.version_id().version().to_string());
 
