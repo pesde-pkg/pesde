@@ -7,7 +7,6 @@ use std::{
 	time::Duration,
 };
 
-use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use pesde::reporters::{
 	DownloadProgressReporter, DownloadsReporter, PatchProgressReporter, PatchesReporter,
@@ -77,6 +76,7 @@ pub struct CliReporter<W = Stdout> {
 }
 
 impl<W> CliReporter<W> {
+	#[allow(unknown_lints, clippy::literal_string_with_formatting_args)]
 	pub fn with_writer(
 		writer: W,
 		multi_progress: MultiProgress,
@@ -84,13 +84,13 @@ impl<W> CliReporter<W> {
 	) -> Self {
 		Self {
 			writer: Mutex::new(writer),
-			child_style: ProgressStyle::with_template(&"{msg}".dimmed().to_string()).unwrap(),
+			child_style: ProgressStyle::with_template("{msg:.dim}").unwrap(),
 			child_style_with_bytes: ProgressStyle::with_template(
-				&"{msg} {bytes}/{total_bytes}".dimmed().to_string(),
+				"{msg:.dim} {bytes:.dim}/{total_bytes:.dim}",
 			)
 			.unwrap(),
 			child_style_with_bytes_without_total: ProgressStyle::with_template(
-				&"{msg} {bytes}".dimmed().to_string(),
+				"{msg:.dim} {bytes:.dim}",
 			)
 			.unwrap(),
 			multi_progress,

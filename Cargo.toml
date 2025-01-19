@@ -17,13 +17,14 @@ bin = [
     "dep:indicatif",
     "dep:inquire",
     "dep:toml_edit",
-    "dep:colored",
+    "dep:console",
     "dep:anyhow",
     "dep:keyring",
     "dep:open",
-    "gix/worktree-mutation",
+    "dep:paste",
     "dep:serde_json",
-    "dep:winreg",
+    "dep:windows-registry",
+    "gix/worktree-mutation",
     "fs-err/expose_original_error",
     "tokio/rt",
     "tokio/rt-multi-thread",
@@ -79,16 +80,17 @@ schemars = { git = "https://github.com/daimond113/schemars", rev = "bc7c7d6", fe
 anyhow = { version = "1.0.95", optional = true }
 open = { version = "5.3.2", optional = true }
 keyring = { version = "3.6.1", features = ["crypto-rust", "windows-native", "apple-native", "async-secret-service", "async-io"], optional = true }
-colored = { version = "3.0.0", optional = true }
+console = { version = "0.15.10", optional = true }
 toml_edit = { version = "0.22.22", optional = true }
 clap = { version = "4.5.26", features = ["derive"], optional = true }
 dirs = { version = "6.0.0", optional = true }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"], optional = true }
 indicatif = { version = "0.17.9", optional = true }
-inquire = { version = "0.7.5", optional = true }
+inquire = { version = "0.7.5", default-features = false, features = ["console", "one-liners"], optional = true }
+paste = { version = "1.0.15", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winreg = { version = "0.55.0", optional = true }
+windows-registry = { version = "0.4.0", optional = true }
 
 [workspace]
 resolver = "2"

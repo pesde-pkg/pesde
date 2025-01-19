@@ -2,7 +2,6 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use clap::Args;
-use colored::Colorize;
 use semver::VersionReq;
 
 use crate::cli::{config::read_config, AnyPackageIdentifier, VersionedPackageName};
@@ -64,8 +63,7 @@ impl AddCommand {
 						.cloned();
 
 					if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
-						println!("{}: index {index} not found", "error".red().bold());
-						return Ok(());
+						anyhow::bail!("index {index} not found");
 					}
 
 					let index = match index {
@@ -91,8 +89,7 @@ impl AddCommand {
 						.cloned();
 
 					if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
-						println!("{}: wally index {index} not found", "error".red().bold());
-						return Ok(());
+						anyhow::bail!("wally index {index} not found");
 					}
 
 					let index = index.context("no wally index found")?;
@@ -159,9 +156,7 @@ impl AddCommand {
 			.pop_last()
 			.map(|(v_id, _)| v_id)
 		else {
-			println!("{}: no versions found for package", "error".red().bold());
-
-			return Ok(());
+			anyhow::bail!("no versions found for package");
 		};
 
 		let project_target = manifest.target.kind();

@@ -1,12 +1,15 @@
 use anyhow::Context;
 use clap::Args;
-use colored::Colorize;
+use console::style;
 use serde::Deserialize;
 use std::thread::spawn;
 use tokio::time::sleep;
 use url::Url;
 
-use crate::cli::auth::{get_token_login, set_token};
+use crate::cli::{
+	auth::{get_token_login, set_token},
+	style::URL_STYLE,
+};
 use pesde::{
 	source::{
 		pesde::PesdePackageSource,
@@ -89,8 +92,8 @@ impl LoginCommand {
 
 		println!(
 			"copy your one-time code: {}\npress enter to open {} in your browser...",
-			response.user_code.bold(),
-			response.verification_uri.as_str().blue()
+			style(response.user_code).bold(),
+			URL_STYLE.apply_to(response.verification_uri.as_str())
 		);
 
 		spawn(move || {
@@ -184,7 +187,7 @@ impl LoginCommand {
 			let token = format!("Bearer {token}");
 			println!(
 				"logged in as {} for {index_url}",
-				get_token_login(&reqwest, &token).await?.bold()
+				style(get_token_login(&reqwest, &token).await?).bold()
 			);
 
 			token

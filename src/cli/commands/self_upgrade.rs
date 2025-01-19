@@ -1,6 +1,7 @@
 use crate::{
 	cli::{
 		config::read_config,
+		style::{ADDED_STYLE, CLI_STYLE, REMOVED_STYLE},
 		version::{
 			current_version, find_latest_version, get_or_download_engine, replace_pesde_bin_exe,
 		},
@@ -9,7 +10,6 @@ use crate::{
 };
 use anyhow::Context;
 use clap::Args;
-use colored::Colorize;
 use pesde::engine::EngineKind;
 use semver::VersionReq;
 
@@ -39,13 +39,14 @@ impl SelfUpgradeCommand {
 			return Ok(());
 		}
 
-		let display_latest_version = latest_version_no_metadata.to_string().yellow().bold();
+		let display_latest_version = ADDED_STYLE.apply_to(latest_version_no_metadata);
 
-		if !inquire::prompt_confirmation(format!(
+		let confirmed = inquire::prompt_confirmation(format!(
 			"are you sure you want to upgrade {} from {} to {display_latest_version}?",
-			env!("CARGO_BIN_NAME").cyan(),
-			env!("CARGO_PKG_VERSION").yellow().bold()
-		))? {
+			CLI_STYLE.apply_to(env!("CARGO_BIN_NAME")),
+			REMOVED_STYLE.apply_to(env!("CARGO_PKG_VERSION"))
+		))?;
+		if !confirmed {
 			println!("cancelled upgrade");
 			return Ok(());
 		}

@@ -1,6 +1,8 @@
-use crate::cli::config::read_config;
+use crate::cli::{
+	config::read_config,
+	style::{ERROR_STYLE, INFO_STYLE, WARN_STYLE},
+};
 use anyhow::Context;
-use colored::Colorize;
 use fs_err::tokio as fs;
 use futures::StreamExt;
 use pesde::{
@@ -33,6 +35,7 @@ pub mod config;
 pub mod files;
 pub mod install;
 pub mod reporters;
+pub mod style;
 #[cfg(feature = "version-management")]
 pub mod version;
 
@@ -284,14 +287,17 @@ pub async fn run_on_workspace_members<F: Future<Output = anyhow::Result<()>>>(
 
 pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 	if let Err(err) = result {
-		eprintln!("{}: {err}\n", format!("error{prefix}").red().bold());
+		eprintln!(
+			"{}: {err}\n",
+			ERROR_STYLE.apply_to(format!("error{prefix}"))
+		);
 
 		let cause = err.chain().skip(1).collect::<Vec<_>>();
 
 		if !cause.is_empty() {
-			eprintln!("{}:", "caused by".red().bold());
+			eprintln!("{}:", ERROR_STYLE.apply_to("caused by"));
 			for err in cause {
-				eprintln!("  - {err}");
+				eprintln!("\t- {}", ERROR_STYLE.apply_to(err));
 			}
 		}
 
@@ -300,14 +306,14 @@ pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 			std::backtrace::BacktraceStatus::Disabled => {
 				eprintln!(
 					"\n{}: set RUST_BACKTRACE=1 for a backtrace",
-					"help".yellow().bold()
+					INFO_STYLE.apply_to("help")
 				);
 			}
 			std::backtrace::BacktraceStatus::Captured => {
-				eprintln!("\n{}:\n{backtrace}", "backtrace".yellow().bold());
+				eprintln!("\n{}:\n{backtrace}", WARN_STYLE.apply_to("backtrace"));
 			}
 			_ => {
-				eprintln!("\n{}: not captured", "backtrace".yellow().bold());
+				eprintln!("\n{}: not captured", WARN_STYLE.apply_to("backtrace"));
 			}
 		}
 	}

@@ -1,7 +1,9 @@
-use crate::cli::config::read_config;
+use crate::cli::{
+	config::read_config,
+	style::{ERROR_PREFIX, INFO_STYLE, SUCCESS_STYLE},
+};
 use anyhow::Context;
 use clap::Args;
-use colored::Colorize;
 use inquire::validator::Validation;
 use pesde::{
 	errors::ManifestReadError,
@@ -42,8 +44,7 @@ impl InitCommand {
 	pub async fn run(self, project: Project) -> anyhow::Result<()> {
 		match project.read_manifest().await {
 			Ok(_) => {
-				println!("{}", "project already initialized".red());
-				return Ok(());
+				anyhow::bail!("project already initialized");
 			}
 			Err(ManifestReadError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {}
 			Err(e) => return Err(e.into()),
@@ -133,10 +134,8 @@ impl InitCommand {
 		let refreshed_sources = RefreshedSources::new();
 
 		if target_env.is_roblox()
-			|| inquire::prompt_confirmation(
-				"would you like to setup Roblox compatibility scripts?",
-			)
-			.unwrap()
+			|| inquire::prompt_confirmation("would you like to setup Roblox compatibility scripts?")
+				.unwrap()
 		{
 			refreshed_sources
 				.refresh(
@@ -270,8 +269,7 @@ impl InitCommand {
 				}
 			} else {
 				println!(
-                    "{}",
-                    "no scripts package configured, this can cause issues with Roblox compatibility".red()
+                    "{ERROR_PREFIX}: no scripts package configured, this can cause issues with Roblox compatibility"
                 );
 				if !inquire::prompt_confirmation("initialize regardless?").unwrap() {
 					return Ok(());
@@ -283,8 +281,8 @@ impl InitCommand {
 
 		println!(
 			"{}\n{}: run `install` to fully finish setup",
-			"initialized project".green(),
-			"tip".cyan().bold()
+			SUCCESS_STYLE.apply_to("initialized project"),
+			INFO_STYLE.apply_to("tip")
 		);
 		Ok(())
 	}

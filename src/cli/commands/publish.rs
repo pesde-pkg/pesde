@@ -1,8 +1,12 @@
-use crate::cli::{display_err, run_on_workspace_members, up_to_date_lockfile};
+use crate::cli::{
+	display_err, run_on_workspace_members,
+	style::{ERROR_PREFIX, ERROR_STYLE, SUCCESS_STYLE, WARN_PREFIX},
+	up_to_date_lockfile,
+};
 use anyhow::Context;
 use async_compression::Level;
 use clap::Args;
-use colored::Colorize;
+use console::style;
 use fs_err::tokio as fs;
 use pesde::{
 	manifest::{target::Target, DependencyType},
@@ -56,10 +60,9 @@ impl PublishCommand {
 
 		if let Err(err) = full_moon::parse(contents) {
 			eprintln!(
-				"{}: {name} is not a valid Luau file:\n{}",
-				"error".red().bold(),
+				"{ERROR_PREFIX}: {name} is not a valid Luau file:\n{}",
 				err.into_iter()
-					.map(|err| format!("\t- {err}"))
+					.map(|err| format!("\t- {}", ERROR_STYLE.apply_to(err)))
 					.collect::<Vec<_>>()
 					.join("\n")
 			);
@@ -84,14 +87,20 @@ impl PublishCommand {
 
 		println!(
 			"\n{}\n",
-			format!("[now publishing {} {}]", manifest.name, manifest.target)
-				.bold()
-				.on_bright_black()
+			style(format!(
+				"[now publishing {} {}]",
+				manifest.name, manifest.target
+			))
+			.bold()
+			.on_black()
 		);
 
 		if manifest.private {
 			if !is_root {
-				println!("{}", "package is private, cannot publish".red().bold());
+				println!(
+					"{}",
+					ERROR_STYLE.apply_to("package is private, cannot publish")
+				);
 			}
 
 			return Ok(());
@@ -209,10 +218,7 @@ impl PublishCommand {
 		.context("failed to get included files")?;
 
 		if paths.insert(PathBuf::from(MANIFEST_FILE_NAME)) {
-			println!(
-				"{}: {MANIFEST_FILE_NAME} was not included, adding it",
-				"warn".yellow().bold()
-			);
+			println!("{WARN_PREFIX}: {MANIFEST_FILE_NAME} was not included, adding it",);
 		}
 
 		if paths.iter().any(|p| p.starts_with(".git")) {
@@ -225,17 +231,11 @@ impl PublishCommand {
 				"readme" | "readme.md" | "readme.txt"
 			)
 		}) {
-			println!(
-				"{}: no README file included, consider adding one",
-				"warn".yellow().bold()
-			);
+			println!("{WARN_PREFIX}: no README file included, consider adding one",);
 		}
 
 		if !paths.iter().any(|p| p.starts_with("docs")) {
-			println!(
-				"{}: docs directory not included, consider adding one",
-				"warn".yellow().bold()
-			);
+			println!("{WARN_PREFIX}: docs directory not included, consider adding one",);
 		}
 
 		for path in &paths {
@@ -306,20 +306,14 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 					.unwrap()
 					.to_path_buf(),
 			) {
-				println!(
-					"{}: {name} was not included, adding {relative_export_path}",
-					"warn".yellow().bold()
-				);
+				println!("{WARN_PREFIX}: {name} was not included, adding {relative_export_path}",);
 			}
 
 			if roblox_target
 				.as_mut()
 				.is_some_and(|build_files| build_files.insert(first_part.to_string()))
 			{
-				println!(
-					"{}: {name} was not in build files, adding {first_part}",
-					"warn".yellow().bold()
-				);
+				println!("{WARN_PREFIX}: {name} was not in build files, adding {first_part}",);
 			}
 		}
 
@@ -327,8 +321,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 			for build_file in build_files.iter() {
 				if build_file.eq_ignore_ascii_case(MANIFEST_FILE_NAME) {
 					println!(
-						"{}: {MANIFEST_FILE_NAME} is in build files, please remove it",
-						"warn".yellow().bold()
+						"{WARN_PREFIX}: {MANIFEST_FILE_NAME} is in build files, please remove it",
 					);
 
 					continue;
@@ -381,10 +374,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 						.unwrap()
 						.to_path_buf(),
 				) {
-					println!(
-						"{}: script {name} was not included, adding {path}",
-						"warn".yellow().bold()
-					);
+					println!("{WARN_PREFIX}: script {name} was not included, adding {path}",);
 				}
 			}
 		}
@@ -521,7 +511,10 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 		}
 
 		{
-			println!("\n{}", "please confirm the following information:".bold());
+			println!(
+				"\n{}",
+				style("please confirm the following information:").bold()
+			);
 			println!("name: {}", manifest.name);
 			println!("version: {}", manifest.version);
 			println!(
@@ -594,7 +587,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 			if !self.dry_run
 				&& !self.yes && !inquire::Confirm::new("is this information correct?").prompt()?
 			{
-				println!("\n{}", "publish aborted".red().bold());
+				println!("\n{}", ERROR_STYLE.apply_to("publish aborted"));
 
 				return Ok(());
 			}
@@ -670,7 +663,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 
 			println!(
 				"{}",
-				"(dry run) package written to package.tar.gz".green().bold()
+				SUCCESS_STYLE.apply_to("(dry run) package written to package.tar.gz")
 			);
 
 			return Ok(());
@@ -694,22 +687,19 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 			.context("failed to get response text")?;
 		match status {
 			StatusCode::CONFLICT => {
-				println!("{}", "package version already exists".red().bold());
+				anyhow::bail!("package version already exists");
 			}
 			StatusCode::FORBIDDEN => {
-				println!(
-					"{}",
-					"unauthorized to publish under this scope".red().bold()
-				);
+				anyhow::bail!("unauthorized to publish under this scope");
 			}
 			StatusCode::BAD_REQUEST => {
-				println!("{}: {text}", "invalid package".red().bold());
+				anyhow::bail!("invalid package: {text}");
 			}
 			code if !code.is_success() => {
 				anyhow::bail!("failed to publish package: {code} ({text})");
 			}
 			_ => {
-				println!("{text}");
+				println!("{}", SUCCESS_STYLE.apply_to(text));
 			}
 		}
 

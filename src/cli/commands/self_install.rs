@@ -1,7 +1,11 @@
-use crate::cli::{version::replace_pesde_bin_exe, HOME_DIR};
+use crate::cli::{
+	style::{ADDED_STYLE, CLI_STYLE},
+	version::replace_pesde_bin_exe,
+	HOME_DIR,
+};
 use anyhow::Context;
 use clap::Args;
-use colored::Colorize;
+use console::style;
 use std::env::current_exe;
 
 #[derive(Debug, Args)]
@@ -17,15 +21,14 @@ impl SelfInstallCommand {
 		#[cfg(windows)]
 		{
 			if !self.skip_add_to_path {
+				use crate::cli::style::WARN_STYLE;
 				use anyhow::Context;
-				use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+				use windows_registry::CURRENT_USER;
 
-				let current_user = RegKey::predef(HKEY_CURRENT_USER);
-				let env = current_user
-					.create_subkey("Environment")
-					.context("failed to open Environment key")?
-					.0;
-				let path: String = env.get_value("Path").context("failed to get Path value")?;
+				let env = CURRENT_USER
+					.create("Environment")
+					.context("failed to open Environment key")?;
+				let path = env.get_string("Path").context("failed to get Path value")?;
 
 				let bin_dir = crate::cli::bin_dir().await?;
 				let bin_dir = bin_dir.to_string_lossy();
@@ -34,23 +37,21 @@ impl SelfInstallCommand {
 
 				if !exists {
 					let new_path = format!("{path};{bin_dir}");
-					env.set_value("Path", &new_path)
+					env.set_string("Path", &new_path)
 						.context("failed to set Path value")?;
 
 					println!(
-						"\nin order to allow binary exports as executables {}.\n\n{}",
-						format!("`~/{HOME_DIR}/bin` was added to PATH").green(),
-						"please restart your shell for this to take effect"
-							.yellow()
-							.bold()
+						"\nin order to allow proper functionality {} was added to PATH.\n\n{}",
+						style(format!("`~/{HOME_DIR}/bin`")).green(),
+						WARN_STYLE.apply_to("please restart your shell for this to take effect")
 					);
 				}
 			}
 
 			println!(
 				"installed {} {}!",
-				env!("CARGO_BIN_NAME").cyan(),
-				env!("CARGO_PKG_VERSION").yellow(),
+				CLI_STYLE.apply_to(env!("CARGO_BIN_NAME")),
+				ADDED_STYLE.apply_to(env!("CARGO_PKG_VERSION")),
 			);
 		}
 
@@ -63,11 +64,9 @@ impl SelfInstallCommand {
 
 and then restart your shell.
 "#,
-				env!("CARGO_BIN_NAME").cyan(),
-				env!("CARGO_PKG_VERSION").yellow(),
-				format!(r#"export PATH="$PATH:~/{HOME_DIR}/bin""#)
-					.bold()
-					.green()
+				CLI_STYLE.apply_to(env!("CARGO_BIN_NAME")),
+				ADDED_STYLE.apply_to(env!("CARGO_PKG_VERSION")),
+				style(format!(r#"export PATH="$PATH:$HOME/{HOME_DIR}/bin""#)).green(),
 			);
 		}
 

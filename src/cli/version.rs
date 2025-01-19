@@ -5,11 +5,12 @@ use crate::{
 		files::make_executable,
 		home_dir,
 		reporters::run_with_reporter,
+		style::{ADDED_STYLE, CLI_STYLE, REMOVED_STYLE, URL_STYLE},
 	},
 	util::no_build_metadata,
 };
 use anyhow::Context;
-use colored::Colorize;
+use console::Style;
 use fs_err::tokio as fs;
 use pesde::{
 	engine::{
@@ -83,61 +84,33 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 		return Ok(());
 	}
 
-	let name = env!("CARGO_BIN_NAME");
+	let alert_style = Style::new().yellow();
 	let changelog = format!("{}/releases/tag/v{version}", env!("CARGO_PKG_REPOSITORY"));
 
-	let unformatted_messages = [
+	let messages = [
+		format!(
+			"{} {} → {}",
+			alert_style.apply_to("update available!").bold(),
+			REMOVED_STYLE.apply_to(current_version),
+			ADDED_STYLE.apply_to(version_no_metadata)
+		),
+		format!(
+			"run {} to upgrade",
+			CLI_STYLE.apply_to(concat!("`", env!("CARGO_BIN_NAME"), " self-upgrade`")),
+		),
 		"".to_string(),
-		format!("update available! {current_version} → {version_no_metadata}"),
-		format!("changelog: {changelog}"),
-		format!("run `{name} self-upgrade` to upgrade"),
-		"".to_string(),
+		format!("changelog: {}", URL_STYLE.apply_to(changelog)),
 	];
 
-	let width = unformatted_messages
-		.iter()
-		.map(|s| s.chars().count())
-		.max()
-		.unwrap()
-		+ 4;
+	let column = alert_style.apply_to("┃");
 
-	let column = "│".bright_magenta();
+	let message = messages
+		.into_iter()
+		.map(|s| format!("{column}  {s}"))
+		.collect::<Vec<_>>()
+		.join("\n");
 
-	let message = [
-		"".to_string(),
-		format!(
-			"update available! {} → {}",
-			current_version.to_string().red(),
-			version_no_metadata.to_string().green()
-		),
-		format!("changelog: {}", changelog.blue()),
-		format!(
-			"run `{} {}` to upgrade",
-			name.blue(),
-			"self-upgrade".yellow()
-		),
-		"".to_string(),
-	]
-	.into_iter()
-	.enumerate()
-	.map(|(i, s)| {
-		let text_length = unformatted_messages[i].chars().count();
-		let padding = (width as f32 - text_length as f32) / 2f32;
-		let padding_l = " ".repeat(padding.floor() as usize);
-		let padding_r = " ".repeat(padding.ceil() as usize);
-		format!("{column}{padding_l}{s}{padding_r}{column}")
-	})
-	.collect::<Vec<_>>()
-	.join("\n");
-
-	let lines = "─".repeat(width).bright_magenta();
-
-	let tl = "╭".bright_magenta();
-	let tr = "╮".bright_magenta();
-	let bl = "╰".bright_magenta();
-	let br = "╯".bright_magenta();
-
-	println!("\n{tl}{lines}{tr}\n{message}\n{bl}{lines}{br}\n");
+	println!("\n{message}\n");
 
 	Ok(())
 }

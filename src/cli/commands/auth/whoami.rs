@@ -1,6 +1,6 @@
 use crate::cli::auth::{get_token_login, get_tokens};
 use clap::Args;
-use colored::Colorize;
+use console::style;
 
 #[derive(Debug, Args)]
 pub struct WhoAmICommand {}
@@ -18,7 +18,7 @@ impl WhoAmICommand {
 
 		println!(
 			"logged in as {} into {index_url}",
-			get_token_login(&reqwest, token).await?.bold()
+			style(get_token_login(&reqwest, token).await?).bold()
 		);
 
 		Ok(())

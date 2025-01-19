@@ -1,7 +1,6 @@
 use crate::cli::get_index;
 use anyhow::Context;
 use clap::Args;
-use colored::Colorize;
 use pesde::{
 	names::PackageName,
 	source::{
@@ -83,20 +82,10 @@ impl DeprecateCommand {
 		let prefix = if self.undo { "un" } else { "" };
 		match status {
 			StatusCode::CONFLICT => {
-				println!(
-					"{}",
-					format!("version is already {prefix}deprecated")
-						.red()
-						.bold()
-				);
+				anyhow::bail!("version is already {prefix}deprecated");
 			}
 			StatusCode::FORBIDDEN => {
-				println!(
-					"{}",
-					format!("unauthorized to {prefix}deprecate under this scope")
-						.red()
-						.bold()
-				);
+				anyhow::bail!("unauthorized to {prefix}deprecate under this scope");
 			}
 			code if !code.is_success() => {
 				anyhow::bail!("failed to {prefix}deprecate package: {code} ({text})");

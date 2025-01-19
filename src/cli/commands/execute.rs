@@ -5,7 +5,7 @@ use crate::cli::{
 };
 use anyhow::Context;
 use clap::Args;
-use colored::Colorize;
+use console::style;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
@@ -190,7 +190,7 @@ impl ExecuteCommand {
 					.context("failed to build dependency graph")?;
 
 				multi_progress.suspend(|| {
-					eprintln!("{}", format!("using {}", format!("{id}").bold()).dimmed())
+					eprintln!("{}", style(format!("using {}", style(id).bold())).dim());
 				});
 
 				root_progress.reset();

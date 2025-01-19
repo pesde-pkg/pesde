@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
-use crate::cli::{up_to_date_lockfile, VersionedPackageName};
+use crate::cli::{
+	style::{CLI_STYLE, INFO_STYLE, WARN_PREFIX},
+	up_to_date_lockfile, VersionedPackageName,
+};
 use anyhow::Context;
 use clap::Args;
-use colored::Colorize;
+use console::style;
 use fs_err::tokio as fs;
 use pesde::{
 	patches::setup_patches_repo,
@@ -68,17 +71,13 @@ impl PatchCommand {
 		setup_patches_repo(&directory)?;
 
 		println!(
-			concat!(
-				"done! modify the files in the directory, then run `",
-				env!("CARGO_BIN_NAME"),
-				r#" patch-commit {}` to apply.
-{}: do not commit these changes
-{}: the {} file will be ignored when patching"#
-			),
-			directory.display().to_string().bold().cyan(),
-			"warning".yellow(),
-			"note".blue(),
-			MANIFEST_FILE_NAME
+			r#"done! modify the files in the directory, then run {} {}{} to apply.
+{WARN_PREFIX}: do not commit these changes
+{}: the {MANIFEST_FILE_NAME} file will be ignored when patching"#,
+			CLI_STYLE.apply_to(concat!("`", env!("CARGO_BIN_NAME"), " patch-commit")),
+			style(format!("'{}'", directory.display())).cyan().bold(),
+			CLI_STYLE.apply_to("`"),
+			INFO_STYLE.apply_to("note")
 		);
 
 		open::that(directory)?;

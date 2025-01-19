@@ -1,7 +1,6 @@
-use crate::cli::get_index;
+use crate::cli::{get_index, style::SUCCESS_STYLE};
 use anyhow::Context;
 use clap::Args;
-use colored::Colorize;
 use pesde::{
 	manifest::target::TargetKind,
 	names::PackageName,
@@ -131,24 +130,16 @@ impl YankCommand {
 		let prefix = if self.undo { "un" } else { "" };
 		match status {
 			StatusCode::CONFLICT => {
-				println!(
-					"{}",
-					format!("version is already {prefix}yanked").red().bold()
-				);
+				anyhow::bail!("version is already {prefix}yanked");
 			}
 			StatusCode::FORBIDDEN => {
-				println!(
-					"{}",
-					format!("unauthorized to {prefix}yank under this scope")
-						.red()
-						.bold()
-				);
+				anyhow::bail!("unauthorized to {prefix}yank under this scope");
 			}
 			code if !code.is_success() => {
 				anyhow::bail!("failed to {prefix}yank package: {code} ({text})");
 			}
 			_ => {
-				println!("{text}");
+				println!("{}", SUCCESS_STYLE.apply_to(text));
 			}
 		}
 

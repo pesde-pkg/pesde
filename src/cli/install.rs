@@ -2,10 +2,12 @@ use super::files::make_executable;
 use crate::cli::{
 	bin_dir,
 	reporters::{self, CliReporter},
-	resolve_overrides, run_on_workspace_members, up_to_date_lockfile,
+	resolve_overrides, run_on_workspace_members,
+	style::{ADDED_STYLE, REMOVED_STYLE, WARN_PREFIX},
+	up_to_date_lockfile,
 };
 use anyhow::Context;
-use colored::Colorize;
+use console::style;
 use fs_err::tokio as fs;
 use pesde::{
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions},
@@ -258,7 +260,7 @@ pub async fn install(
 				};
 
 				multi.suspend(|| {
-					println!("{}: package {name} is deprecated: {reason}", "warn".yellow().bold());
+					println!("{WARN_PREFIX}: package {name} is deprecated: {reason}");
 				});
 			}
 
@@ -394,7 +396,7 @@ pub async fn install(
 
 							if !version_matches(&req, version) {
 								multi.suspend(|| {
-									println!("{}: package {id} requires {engine} {req}, but {version} is installed", "warn".yellow().bold());
+									println!("{WARN_PREFIX}: package {id} requires {engine} {req}, but {version} is installed");
 								});
 							}
 						}
@@ -485,7 +487,7 @@ pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: D
 		.map(|(key, &node)| (key, node))
 		.collect::<Vec<_>>();
 
-	let prefix = prefix.bold();
+	let prefix = style(prefix).bold();
 
 	let no_changes = added_pkgs.is_empty()
 		&& removed_pkgs.is_empty()
@@ -496,9 +498,16 @@ pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: D
 		println!("{prefix} already up to date");
 	} else {
 		let mut change_signs = [
-			(!added_pkgs.is_empty()).then(|| format!("+{}", added_pkgs.len()).green().to_string()),
-			(!removed_pkgs.is_empty())
-				.then(|| format!("-{}", removed_pkgs.len()).red().to_string()),
+			(!added_pkgs.is_empty()).then(|| {
+				ADDED_STYLE
+					.apply_to(format!("+{}", added_pkgs.len()))
+					.to_string()
+			}),
+			(!removed_pkgs.is_empty()).then(|| {
+				REMOVED_STYLE
+					.apply_to(format!("-{}", removed_pkgs.len()))
+					.to_string()
+			}),
 		]
 		.into_iter()
 		.flatten()
@@ -507,7 +516,7 @@ pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: D
 
 		let changes_empty = change_signs.is_empty();
 		if changes_empty {
-			change_signs = "(no changes)".dimmed().to_string();
+			change_signs = style("(no changes)").dim().to_string();
 		}
 
 		println!("{prefix} {change_signs}");
@@ -515,8 +524,8 @@ pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: D
 		if !changes_empty {
 			println!(
 				"{}{}",
-				"+".repeat(added_pkgs.len()).green(),
-				"-".repeat(removed_pkgs.len()).red()
+				ADDED_STYLE.apply_to("+".repeat(added_pkgs.len())),
+				REMOVED_STYLE.apply_to("-".repeat(removed_pkgs.len()))
 			);
 		}
 
@@ -547,14 +556,18 @@ pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: D
 				DependencyType::Peer => "peer_dependencies",
 				DependencyType::Dev => "dev_dependencies",
 			};
-			println!("{}", format!("{ty_name}:").yellow().bold());
+			println!("{}", style(format!("{ty_name}:")).yellow().bold());
 
 			for (id, added) in set {
 				println!(
 					"{} {} {}",
-					if added { "+".green() } else { "-".red() },
+					if added {
+						ADDED_STYLE.apply_to("+")
+					} else {
+						REMOVED_STYLE.apply_to("-")
+					},
 					id.name(),
-					id.version_id().to_string().dimmed()
+					style(id.version_id()).dim()
 				);
 			}
 		}
