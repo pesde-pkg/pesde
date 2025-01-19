@@ -455,7 +455,7 @@ impl Project {
 						);
 					}
 
-					return ();
+					return;
 				}
 
 				let used_paths = used_paths.clone();
