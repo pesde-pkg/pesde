@@ -99,6 +99,9 @@ members = ["registry"]
 [profile.dev.package.full_moon]
 opt-level = 3
 
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
 [profile.release]
 opt-level = "s"
 lto = true

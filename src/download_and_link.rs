@@ -426,13 +426,13 @@ impl Project {
 				}
 			}
 
-			async fn index_entry(
+			fn index_entry(
 				entry: fs::DirEntry,
 				packages_index_dir: &Path,
 				tasks: &mut JoinSet<std::io::Result<()>>,
 				used_paths: &Arc<HashSet<PathBuf>>,
 				#[cfg(feature = "wally-compat")] used_wally_paths: &Arc<HashSet<PathBuf>>,
-			) -> std::io::Result<()> {
+			) {
 				let path = entry.path();
 				let path_relative = path.strip_prefix(packages_index_dir).unwrap().to_path_buf();
 
@@ -455,7 +455,7 @@ impl Project {
 						);
 					}
 
-					return Ok(());
+					return ();
 				}
 
 				let used_paths = used_paths.clone();
@@ -481,15 +481,13 @@ impl Project {
 
 					remove_empty_dir(&path).await
 				});
-
-				Ok(())
 			}
 
-			async fn packages_entry(
+			fn packages_entry(
 				entry: fs::DirEntry,
 				tasks: &mut JoinSet<std::io::Result<()>>,
 				expected_aliases: &Arc<HashSet<Alias>>,
-			) -> std::io::Result<()> {
+			) {
 				let expected_aliases = expected_aliases.clone();
 				tasks.spawn(async move {
 					if !entry.file_type().await?.is_file() {
@@ -517,8 +515,6 @@ impl Project {
 
 					Ok(())
 				});
-
-				Ok(())
 			}
 
 			let used_paths = graph
@@ -590,14 +586,14 @@ impl Project {
 										&used_paths,
 										#[cfg(feature = "wally-compat")]
 										&used_wally_paths,
-									).await?;
+									);
 								}
 								Some(entry) = packages_entries.next_entry().map(Result::transpose) => {
 									packages_entry(
 										entry?,
 										&mut tasks,
 										&expected_aliases,
-									).await?;
+									);
 								}
 								else => break,
 							}
