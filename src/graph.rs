@@ -12,10 +12,7 @@ use crate::{
 	Project, PACKAGES_CONTAINER_NAME,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-	collections::BTreeMap,
-	path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, path::PathBuf};
 
 /// A graph of dependencies
 pub type Graph<Node> = BTreeMap<PackageId, Node>;
@@ -38,22 +35,6 @@ pub struct DependencyGraphNode {
 	pub pkg_ref: PackageRefs,
 }
 
-/// A container folder
-#[derive(Debug, Clone)]
-pub struct ContainerFolder(PathBuf);
-
-impl ContainerFolder {
-	/// Returns the path of the container folder
-	pub fn path(&self) -> &Path {
-		&self.0
-	}
-
-	/// Returns the version's folder
-	pub fn version_folder(&self) -> &Path {
-		self.0.parent().unwrap()
-	}
-}
-
 impl DependencyGraphNode {
 	pub(crate) fn dependencies_dir(
 		&self,
@@ -68,26 +49,22 @@ impl DependencyGraphNode {
 	}
 
 	/// Returns the folder to store the contents of the package in
-	pub fn container_folder(&self, package_id: &PackageId) -> ContainerFolder {
+	pub fn container_folder(&self, package_id: &PackageId) -> PathBuf {
 		let (name, v_id) = package_id.parts();
 
 		if self.pkg_ref.is_wally_package() {
-			return ContainerFolder(
-				PathBuf::from(format!(
-					"{}_{}@{}",
-					name.scope(),
-					name.name(),
-					v_id.version()
-				))
-				.join(name.name()),
-			);
+			return PathBuf::from(format!(
+				"{}_{}@{}",
+				name.scope(),
+				name.name(),
+				v_id.version()
+			))
+			.join(name.name());
 		}
 
-		ContainerFolder(
-			PathBuf::from(name.escaped())
-				.join(v_id.version().to_string())
-				.join(name.name()),
-		)
+		PathBuf::from(name.escaped())
+			.join(v_id.version().to_string())
+			.join(name.name())
 	}
 
 	/// Returns the folder to store the contents of the package in starting from the project's package directory
@@ -101,7 +78,7 @@ impl DependencyGraphNode {
 			.package_dir()
 			.join(manifest_target_kind.packages_folder(package_id.version_id().target()))
 			.join(PACKAGES_CONTAINER_NAME)
-			.join(self.container_folder(package_id).path())
+			.join(self.container_folder(package_id))
 	}
 }
 

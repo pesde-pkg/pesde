@@ -5,7 +5,7 @@
 
 use crate::{
 	lockfile::Lockfile,
-	manifest::Manifest,
+	manifest::{target::TargetKind, Manifest},
 	source::{
 		traits::{PackageSource, RefreshOptions},
 		PackageSources,
@@ -432,6 +432,16 @@ pub async fn find_roots(
 /// Differs from `VersionReq::matches` in that EVERY version matches `*`
 pub fn version_matches(req: &VersionReq, version: &Version) -> bool {
 	*req == VersionReq::STAR || req.matches(version)
+}
+
+pub(crate) fn all_packages_dirs() -> HashSet<String> {
+	let mut dirs = HashSet::new();
+	for target_kind_a in TargetKind::VARIANTS {
+		for target_kind_b in TargetKind::VARIANTS {
+			dirs.insert(target_kind_a.packages_folder(*target_kind_b));
+		}
+	}
+	dirs
 }
 
 /// Errors that can occur when using the pesde library

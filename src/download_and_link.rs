@@ -1,25 +1,26 @@
 use crate::{
+	all_packages_dirs,
 	download::DownloadGraphOptions,
 	graph::{
 		DependencyGraph, DependencyGraphNode, DependencyGraphNodeWithTarget,
 		DependencyGraphWithTarget,
 	},
-	manifest::{target::TargetKind, Alias, DependencyType},
+	manifest::{target::TargetKind, DependencyType},
 	reporters::DownloadsReporter,
 	source::{
 		ids::PackageId,
 		traits::{GetTargetOptions, PackageRef, PackageSource},
 	},
-	Project, RefreshedSources, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
+	Project, RefreshedSources, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
-use futures::{FutureExt, TryStreamExt};
+use futures::TryStreamExt;
 use std::{
-	collections::{HashMap, HashSet},
+	collections::HashMap,
 	convert::Infallible,
 	future::{self, Future},
 	num::NonZeroUsize,
-	path::{Path, PathBuf},
+	path::PathBuf,
 	sync::Arc,
 };
 use tokio::{pin, task::JoinSet};
@@ -151,16 +152,6 @@ impl Clone for DownloadAndLinkOptions {
 	}
 }
 
-fn all_packages_dirs() -> HashSet<String> {
-	let mut dirs = HashSet::new();
-	for target_kind_a in TargetKind::VARIANTS {
-		for target_kind_b in TargetKind::VARIANTS {
-			dirs.insert(target_kind_a.packages_folder(*target_kind_b));
-		}
-	}
-	dirs
-}
-
 impl Project {
 	/// Downloads a graph of dependencies and links them in the correct order
 	#[instrument(skip_all, fields(prod = options.prod), level = "debug")]
@@ -188,35 +179,24 @@ impl Project {
 		let manifest = self.deser_manifest().await?;
 
 		if force {
-			let mut deleted_folders = HashMap::new();
+			async fn remove_dir(dir: PathBuf) -> std::io::Result<()> {
+				tracing::debug!("force deleting the `{}` folder", dir.display());
 
-			async fn remove_dir(package_dir: PathBuf, folder: String) -> std::io::Result<()> {
-				tracing::debug!("force deleting the {folder} folder");
-
-				match fs::remove_dir_all(package_dir.join(&folder)).await {
+				match fs::remove_dir_all(dir).await {
 					Ok(()) => Ok(()),
 					Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
 					Err(e) => Err(e),
 				}
 			}
 
-			for folder in all_packages_dirs() {
-				let package_dir = self.package_dir().to_path_buf();
+			let mut tasks = all_packages_dirs()
+				.into_iter()
+				.map(|folder| remove_dir(self.package_dir().join(&folder)))
+				.chain(std::iter::once(remove_dir(
+					self.package_dir().join(SCRIPTS_LINK_FOLDER),
+				)))
+				.collect::<JoinSet<_>>();
 
-				deleted_folders
-					.entry(folder.to_string())
-					.or_insert_with(|| remove_dir(package_dir, folder));
-			}
-
-			deleted_folders.insert(
-				SCRIPTS_LINK_FOLDER.to_string(),
-				remove_dir(
-					self.package_dir().to_path_buf(),
-					SCRIPTS_LINK_FOLDER.to_string(),
-				),
-			);
-
-			let mut tasks = deleted_folders.into_values().collect::<JoinSet<_>>();
 			while let Some(task) = tasks.join_next().await {
 				task.unwrap()?;
 			}
@@ -393,227 +373,13 @@ impl Project {
 		}
 
 		let mut graph = Arc::into_inner(graph).unwrap();
-		let manifest = Arc::new(manifest);
 
 		if prod {
-			let (dev_graph, prod_graph) = graph
-				.into_iter()
-				.partition::<DependencyGraphWithTarget, _>(|(_, node)| {
-					node.node.resolved_ty == DependencyType::Dev
-				});
-
-			graph = prod_graph;
-			let dev_graph = Arc::new(dev_graph);
-
-			// the `true` argument means it'll remove the dependencies linkers
-			self.link(
-				&dev_graph,
-				&manifest,
-				&Arc::new(Default::default()),
-				false,
-				true,
-			)
-			.await?;
+			graph.retain(|_, node| node.node.resolved_ty != DependencyType::Dev);
 		}
 
-		if !force {
-			async fn remove_empty_dir(path: &Path) -> std::io::Result<()> {
-				match fs::remove_dir(path).await {
-					Ok(()) => Ok(()),
-					Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-					Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => Ok(()),
-					Err(e) => Err(e),
-				}
-			}
-
-			fn index_entry(
-				entry: fs::DirEntry,
-				packages_index_dir: &Path,
-				tasks: &mut JoinSet<std::io::Result<()>>,
-				used_paths: &Arc<HashSet<PathBuf>>,
-				#[cfg(feature = "wally-compat")] used_wally_paths: &Arc<HashSet<PathBuf>>,
-			) {
-				let path = entry.path();
-				let path_relative = path.strip_prefix(packages_index_dir).unwrap().to_path_buf();
-
-				let is_wally = entry
-					.file_name()
-					.to_str()
-					.expect("non UTF-8 folder name in packages index")
-					.contains("@");
-				if is_wally {
-					#[cfg(feature = "wally-compat")]
-					if !used_wally_paths.contains(&path_relative) {
-						tasks.spawn(async { fs::remove_dir_all(path).await });
-					}
-
-					#[cfg(not(feature = "wally-compat"))]
-					{
-						tracing::error!(
-							"found Wally package in index despite feature being disabled at `{}`",
-							path.display()
-						);
-					}
-
-					return;
-				}
-
-				let used_paths = used_paths.clone();
-				tasks.spawn(async move {
-					let mut tasks = JoinSet::new();
-
-					let mut entries = fs::read_dir(&path).await?;
-					while let Some(entry) = entries.next_entry().await? {
-						let version = entry.file_name();
-						let path_relative = path_relative.join(&version);
-
-						if used_paths.contains(&path_relative) {
-							continue;
-						}
-
-						let path = entry.path();
-						tasks.spawn(async { fs::remove_dir_all(path).await });
-					}
-
-					while let Some(task) = tasks.join_next().await {
-						task.unwrap()?;
-					}
-
-					remove_empty_dir(&path).await
-				});
-			}
-
-			fn packages_entry(
-				entry: fs::DirEntry,
-				tasks: &mut JoinSet<std::io::Result<()>>,
-				expected_aliases: &Arc<HashSet<Alias>>,
-			) {
-				let expected_aliases = expected_aliases.clone();
-				tasks.spawn(async move {
-					if !entry.file_type().await?.is_file() {
-						return Ok(());
-					}
-
-					let path = entry.path();
-					let name = path
-						.file_stem()
-						.unwrap()
-						.to_str()
-						.expect("non UTF-8 file name in packages folder");
-					let name = name.strip_suffix(".bin").unwrap_or(name);
-					let name = match name.parse::<Alias>() {
-						Ok(name) => name,
-						Err(e) => {
-							tracing::error!("invalid alias in packages folder: {e}");
-							return Ok(());
-						}
-					};
-
-					if !expected_aliases.contains(&name) {
-						fs::remove_file(path).await?;
-					}
-
-					Ok(())
-				});
-			}
-
-			let used_paths = graph
-				.iter()
-				.filter(|(_, node)| !node.node.pkg_ref.is_wally_package())
-				.map(|(id, node)| {
-					node.node
-						.container_folder(id)
-						.version_folder()
-						.to_path_buf()
-				})
-				.collect::<HashSet<_>>();
-			let used_paths = Arc::new(used_paths);
-			#[cfg(feature = "wally-compat")]
-			let used_wally_paths = graph
-				.iter()
-				.filter(|(_, node)| node.node.pkg_ref.is_wally_package())
-				.map(|(id, node)| {
-					node.node
-						.container_folder(id)
-						.version_folder()
-						.to_path_buf()
-				})
-				.collect::<HashSet<_>>();
-			#[cfg(feature = "wally-compat")]
-			let used_wally_paths = Arc::new(used_wally_paths);
-
-			let mut tasks = all_packages_dirs()
-				.into_iter()
-				.map(|folder| {
-					let packages_dir = self.package_dir().join(&folder);
-					let packages_index_dir = packages_dir.join(PACKAGES_CONTAINER_NAME);
-					let used_paths = used_paths.clone();
-					#[cfg(feature = "wally-compat")]
-					let used_wally_paths = used_wally_paths.clone();
-
-					let expected_aliases = graph
-						.iter()
-						.filter(|(id, _)| {
-							manifest
-								.target
-								.kind()
-								.packages_folder(id.version_id().target())
-								== folder
-						})
-						.filter_map(|(_, node)| {
-							node.node.direct.as_ref().map(|(alias, _, _)| alias.clone())
-						})
-						.collect::<HashSet<_>>();
-					let expected_aliases = Arc::new(expected_aliases);
-
-					async move {
-						let mut index_entries = match fs::read_dir(&packages_index_dir).await {
-							Ok(entries) => entries,
-							Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-							Err(e) => return Err(e),
-						};
-						// we don't handle NotFound here because the upper level will handle it
-						let mut packages_entries = fs::read_dir(&packages_dir).await?;
-						let mut tasks = JoinSet::new();
-
-						loop {
-							tokio::select! {
-								Some(entry) = index_entries.next_entry().map(Result::transpose) => {
-									index_entry(
-										entry?,
-										&packages_index_dir,
-										&mut tasks,
-										&used_paths,
-										#[cfg(feature = "wally-compat")]
-										&used_wally_paths,
-									);
-								}
-								Some(entry) = packages_entries.next_entry().map(Result::transpose) => {
-									packages_entry(
-										entry?,
-										&mut tasks,
-										&expected_aliases,
-									);
-								}
-								else => break,
-							}
-						}
-
-						while let Some(task) = tasks.join_next().await {
-							task.unwrap()?;
-						}
-
-						remove_empty_dir(&packages_index_dir).await?;
-						remove_empty_dir(&packages_dir).await?;
-
-						Ok::<_, std::io::Error>(())
-					}
-				})
-				.collect::<JoinSet<_>>();
-
-			while let Some(task) = tasks.join_next().await {
-				task.unwrap()?;
-			}
+		if prod || !force {
+			self.remove_unused(&graph).await?;
 		}
 
 		Ok(graph)
@@ -651,5 +417,9 @@ pub mod errors {
 		/// Error getting a target
 		#[error("error getting target")]
 		GetTarget(#[from] crate::source::errors::GetTargetError),
+
+		/// Removing unused dependencies failed
+		#[error("error removing unused dependencies")]
+		RemoveUnused(#[from] crate::linking::incremental::errors::RemoveUnusedError),
 	}
 }
