@@ -154,7 +154,13 @@ impl Project {
 		let manifest = self.deser_manifest().await?;
 		let used_paths = graph
 			.iter()
-			.map(|(id, node)| node.node.container_folder(id).parent().unwrap().to_path_buf())
+			.map(|(id, node)| {
+				node.node
+					.container_folder(id)
+					.parent()
+					.unwrap()
+					.to_path_buf()
+			})
 			.collect::<HashSet<_>>();
 		let used_paths = Arc::new(used_paths);
 
@@ -249,7 +255,7 @@ impl Project {
 		while let Some(task) = tasks.join_next().await {
 			task.unwrap()?;
 		}
-		
+
 		remove_empty_dir(&scripts_dir).await?;
 
 		Ok(())
