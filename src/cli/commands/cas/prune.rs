@@ -3,7 +3,7 @@ use clap::Args;
 use fs_err::tokio as fs;
 use pesde::Project;
 use std::{collections::HashSet, path::Path};
-use tokio::task::{spawn_blocking, JoinSet};
+use tokio::task::JoinSet;
 
 #[derive(Debug, Args)]
 pub struct PruneCommand {}
@@ -32,7 +32,7 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 		};
 
 		let path = path.to_path_buf();
-		return spawn_blocking(move || unsafe {
+		return tokio::task::spawn_blocking(move || unsafe {
 			let handle = CreateFileW(
 				PWSTR(
 					path.as_os_str()
