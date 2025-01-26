@@ -2,6 +2,7 @@ use pesde::Project;
 
 mod add;
 mod auth;
+mod cas;
 mod config;
 mod deprecate;
 mod execute;
@@ -29,6 +30,10 @@ pub enum Subcommand {
 	/// Configuration-related commands
 	#[command(subcommand)]
 	Config(config::ConfigCommands),
+
+	/// CAS-related commands
+	#[command(subcommand)]
+	Cas(cas::CasCommands),
 
 	/// Initializes a manifest file in the current directory
 	Init(init::InitCommand),
@@ -83,6 +88,7 @@ impl Subcommand {
 		match self {
 			Subcommand::Auth(auth) => auth.run(project, reqwest).await,
 			Subcommand::Config(config) => config.run().await,
+			Subcommand::Cas(cas) => cas.run(project).await,
 			Subcommand::Init(init) => init.run(project).await,
 			Subcommand::Run(run) => run.run(project).await,
 			Subcommand::Install(install) => install.run(project, reqwest).await,

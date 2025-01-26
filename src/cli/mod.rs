@@ -297,7 +297,7 @@ pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 		if !cause.is_empty() {
 			eprintln!("{}:", ERROR_STYLE.apply_to("caused by"));
 			for err in cause {
-				eprintln!("\t- {}", ERROR_STYLE.apply_to(err));
+				eprintln!("\t- {err}");
 			}
 		}
 
