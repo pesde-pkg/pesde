@@ -3,6 +3,7 @@ use std::path::{Component, Path};
 use crate::manifest::{target::TargetKind, Manifest};
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
 use relative_path::RelativePath;
+use tracing::instrument;
 
 struct TypeVisitor {
 	types: Vec<String>,
@@ -116,6 +117,7 @@ fn luau_style_path(path: &Path) -> String {
 // This function should be simplified (especially to reduce the number of arguments),
 // but it's not clear how to do that while maintaining the current functionality.
 /// Get the require path for a library
+#[instrument(skip(project_manifest), level = "trace")]
 #[allow(clippy::too_many_arguments)]
 pub fn get_lib_require_path(
 	target: TargetKind,
@@ -128,11 +130,10 @@ pub fn get_lib_require_path(
 	project_manifest: &Manifest,
 ) -> Result<String, errors::GetLibRequirePath> {
 	let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
+	tracing::debug!("diffed path: {}", path.display());
 	let path = if use_new_structure {
-		tracing::debug!("using new structure for require path with {lib_file:?}");
 		lib_file.to_path(path)
 	} else {
-		tracing::debug!("using old structure for require path with {lib_file:?}");
 		path
 	};
 
@@ -200,12 +201,14 @@ return require({require_path})"#,
 }
 
 /// Get the require path for a binary
+#[instrument(level = "trace")]
 pub fn get_bin_require_path(
 	base_dir: &Path,
 	bin_file: &RelativePath,
 	destination_dir: &Path,
 ) -> String {
 	let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
+	tracing::debug!("diffed path: {}", path.display());
 	let path = bin_file.to_path(path);
 
 	luau_style_path(&path)
@@ -217,12 +220,14 @@ pub fn generate_script_linking_module(require_path: &str) -> String {
 }
 
 /// Get the require path for a script
+#[instrument(level = "trace")]
 pub fn get_script_require_path(
 	base_dir: &Path,
 	script_file: &RelativePath,
 	destination_dir: &Path,
 ) -> String {
 	let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
+	tracing::debug!("diffed path: {}", path.display());
 	let path = script_file.to_path(path);
 
 	luau_style_path(&path)
