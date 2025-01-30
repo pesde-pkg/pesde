@@ -9,7 +9,8 @@ use crate::{
 		git_index::{read_file, GitBasedSource},
 		specifiers::DependencySpecifiers,
 		traits::{DownloadOptions, GetTargetOptions, PackageRef, RefreshOptions, ResolveOptions},
-		PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
+		PackageSource, ResolveResult, VersionId, ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS,
+		IGNORED_FILES,
 	},
 	util::hash,
 	Project, DEFAULT_INDEX_NAME, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
@@ -447,9 +448,9 @@ impl PackageSource for GitPackageSource {
 					return false;
 				}
 
-				if pkg_ref.use_new_structure() && name == "default.project.json" {
+				if pkg_ref.use_new_structure() && ADDITIONAL_FORBIDDEN_FILES.contains(&name) {
 					tracing::debug!(
-						"removing default.project.json from {}#{} at {path} - using new structure",
+						"removing {name} from {}#{} at {path} - using new structure",
 						pkg_ref.repo,
 						pkg_ref.tree_id
 					);

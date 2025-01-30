@@ -1,6 +1,6 @@
 use crate::{
 	manifest::target::TargetKind,
-	source::{IGNORED_DIRS, IGNORED_FILES},
+	source::{ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS, IGNORED_FILES},
 };
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
@@ -209,7 +209,7 @@ async fn package_fs_copy(
 			continue;
 		}
 
-		if IGNORED_FILES.contains(&file_name) {
+		if IGNORED_FILES.contains(&file_name) || ADDITIONAL_FORBIDDEN_FILES.contains(&file_name) {
 			continue;
 		}
 

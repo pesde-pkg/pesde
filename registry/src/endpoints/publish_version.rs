@@ -19,7 +19,7 @@ use pesde::{
 		pesde::{DocEntry, DocEntryKind, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
 		specifiers::DependencySpecifiers,
 		traits::RefreshOptions,
-		IGNORED_DIRS, IGNORED_FILES,
+		ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS, IGNORED_FILES,
 	},
 	MANIFEST_FILE_NAME,
 };
@@ -34,8 +34,6 @@ use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
 	task::JoinSet,
 };
-
-const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 
 #[derive(Debug, Deserialize, Default)]
 struct DocEntryInfo {
