@@ -24,6 +24,7 @@ bin = [
     "dep:paste",
     "dep:serde_json",
     "dep:windows-registry",
+    "dep:windows",
     "gix/worktree-mutation",
     "fs-err/expose_original_error",
     "tokio/rt",
@@ -91,6 +92,7 @@ paste = { version = "1.0.15", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-registry = { version = "0.4.0", optional = true }
+windows = { version = "0.59.0", features = ["Win32_Storage", "Win32_Storage_FileSystem", "Win32_Security"], optional = true }
 
 [workspace]
 resolver = "2"

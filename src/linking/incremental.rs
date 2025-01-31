@@ -1,6 +1,6 @@
 use crate::{
-	all_packages_dirs, graph::DependencyGraphWithTarget, manifest::Alias, Project,
-	PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
+	all_packages_dirs, graph::DependencyGraphWithTarget, manifest::Alias, util::remove_empty_dir,
+	Project, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
 use futures::FutureExt;
@@ -10,15 +10,6 @@ use std::{
 	sync::Arc,
 };
 use tokio::task::JoinSet;
-
-async fn remove_empty_dir(path: &Path) -> std::io::Result<()> {
-	match fs::remove_dir(path).await {
-		Ok(()) => Ok(()),
-		Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-		Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => Ok(()),
-		Err(e) => Err(e),
-	}
-}
 
 fn index_entry(
 	entry: fs::DirEntry,
