@@ -1,9 +1,13 @@
 use crate::AuthConfig;
+use fs_err::tokio as fs;
 use gix::bstr::BStr;
 use semver::Version;
 use serde::{Deserialize, Deserializer, Serializer};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashSet};
+use std::{
+	collections::{BTreeMap, HashSet},
+	path::Path,
+};
 
 pub fn authenticate_conn(
 	conn: &mut gix::remote::Connection<
@@ -94,4 +98,17 @@ pub fn no_build_metadata(version: &Version) -> Version {
 	let mut version = version.clone();
 	version.build = semver::BuildMetadata::EMPTY;
 	version
+}
+
+pub async fn remove_empty_dir(path: &Path) -> std::io::Result<()> {
+	match fs::remove_dir(path).await {
+		Ok(()) => Ok(()),
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+		Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => Ok(()),
+		// concurrent removal on Windows seems to fail with PermissionDenied
+		// TODO: investigate why this happens and whether we can avoid it without ignoring all PermissionDenied errors
+		#[cfg(windows)]
+		Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Ok(()),
+		Err(e) => Err(e),
+	}
 }

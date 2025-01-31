@@ -1,6 +1,9 @@
-use crate::cli::{
-	reporters::run_with_reporter,
-	style::{INFO_STYLE, SUCCESS_STYLE},
+use crate::{
+	cli::{
+		reporters::run_with_reporter,
+		style::{INFO_STYLE, SUCCESS_STYLE},
+	},
+	util::remove_empty_dir,
 };
 use anyhow::Context;
 use async_stream::try_stream;
@@ -150,17 +153,21 @@ async fn discover_cas_packages(cas_dir: &Path) -> anyhow::Result<HashMap<PathBuf
 		.into_iter()
 		.map(|index| cas_dir.join(index))
 		.map(|index| async move {
-			let mut tasks = read_dir_stream(&index)
-				.await
-				.context("failed to read index directory")?
+			let mut res = HashMap::new();
+
+			let tasks = match read_dir_stream(&index).await {
+				Ok(tasks) => tasks,
+				Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(res),
+				Err(e) => return Err(e).context("failed to read cas index directory"),
+			};
+
+			let mut tasks = tasks
 				.map(|entry| async move {
 					read_entry(entry.context("failed to read cas index dir entry")?).await
 				})
 				.collect::<ExtendJoinSet<Result<_, anyhow::Error>>>()
 				.await
 				.0;
-
-			let mut res = HashMap::new();
 
 			while let Some(task) = tasks.join_next().await {
 				res.extend(task.unwrap()?);
@@ -180,8 +187,15 @@ async fn discover_cas_packages(cas_dir: &Path) -> anyhow::Result<HashMap<PathBuf
 }
 
 async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
-	let mut tasks = read_dir_stream(cas_dir)
-		.await?
+	let mut res = HashSet::new();
+
+	let tasks = match read_dir_stream(cas_dir).await {
+		Ok(tasks) => tasks,
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(res),
+		Err(e) => return Err(e).context("failed to read cas directory"),
+	};
+
+	let mut tasks = tasks
 		.map(|cas_entry| async move {
 			let cas_entry = cas_entry.context("failed to read cas dir entry")?;
 			let prefix = cas_entry.file_name();
@@ -212,9 +226,13 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
 							return Ok(None);
 						}
 
-						fs::remove_file(path)
+						fs::remove_file(&path)
 							.await
 							.context("failed to remove unused file")?;
+
+						if let Some(parent) = path.parent() {
+							remove_empty_dir(parent).await?;
+						}
 
 						Ok(Some(hash))
 					}
@@ -237,8 +255,6 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
 		.collect::<ExtendJoinSet<Result<_, anyhow::Error>>>()
 		.await
 		.0;
-
-	let mut res = HashSet::new();
 
 	while let Some(removed_hashes) = tasks.join_next().await {
 		let Some(removed_hashes) = removed_hashes.unwrap()? else {
@@ -288,10 +304,24 @@ impl PruneCommand {
 				};
 
 				if removed_hashes.contains(&hash) {
+					let cas_dir = project.cas_dir().to_path_buf();
 					tasks.spawn(async move {
-						fs::remove_file(path)
+						fs::remove_file(dbg!(&path))
 							.await
-							.context("failed to remove unused file")
+							.context("failed to remove unused file")?;
+
+						// remove empty directories up to the cas dir
+						let mut path = &*path;
+						while let Some(parent) = path.parent() {
+							if parent == cas_dir {
+								break;
+							}
+
+							remove_empty_dir(parent).await?;
+							path = parent;
+						}
+
+						Ok::<_, anyhow::Error>(())
 					});
 					removed_packages += 1;
 					// if at least one file is removed, the package is not used
