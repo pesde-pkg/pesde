@@ -481,7 +481,7 @@ impl PackageSource for GitPackageSource {
 			entries.insert(path, entry);
 		}
 
-		let fs = PackageFs::CAS(entries);
+		let fs = PackageFs::Cas(entries);
 
 		if let Some(parent) = index_file.parent() {
 			fs::create_dir_all(parent).await?;

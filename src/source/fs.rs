@@ -36,7 +36,7 @@ pub enum FsEntry {
 #[serde(untagged)]
 pub enum PackageFs {
 	/// A package stored in the CAS
-	CAS(BTreeMap<RelativePathBuf, FsEntry>),
+	Cas(BTreeMap<RelativePathBuf, FsEntry>),
 	/// A package that's to be copied
 	Copy(PathBuf, TargetKind),
 }
@@ -240,7 +240,7 @@ impl PackageFs {
 		link: bool,
 	) -> std::io::Result<()> {
 		match self {
-			PackageFs::CAS(entries) => {
+			PackageFs::Cas(entries) => {
 				package_fs_cas(
 					entries.clone(),
 					destination.as_ref(),
@@ -262,7 +262,7 @@ impl PackageFs {
 		file_hash: H,
 		cas_dir_path: P,
 	) -> Option<String> {
-		if !matches!(self, PackageFs::CAS(_)) {
+		if !matches!(self, PackageFs::Cas(_)) {
 			return None;
 		}
 
