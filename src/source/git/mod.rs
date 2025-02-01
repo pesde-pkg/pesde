@@ -388,7 +388,7 @@ impl PackageSource for GitPackageSource {
 			let object = match repo.find_object(tree_id) {
 				Ok(object) => object,
 				Err(e) => {
-					return Err(errors::DownloadError::ParseOidToObject(
+					return Err(errors::DownloadError::OidToTree(
 						tree_id,
 						Box::new(repo_url),
 						e,
@@ -413,6 +413,11 @@ impl PackageSource for GitPackageSource {
 			recorder
 				.records
 				.into_iter()
+				.filter(|entry| {
+					// we do not support submodules, so we filter them out so
+					// find_object does not error
+					entry.mode.kind() != gix::object::tree::EntryKind::Commit
+				})
 				.map(|entry| {
 					let object = repo.find_object(entry.oid).map_err(|e| {
 						errors::DownloadError::ParseOidToObject(
@@ -650,6 +655,14 @@ pub mod errors {
 		TraverseTree(
 			Box<gix::Url>,
 			#[source] gix::traverse::tree::breadthfirst::Error,
+		),
+
+		/// Getting the tree by object id failed
+		#[error("error getting tree from object id {0} for repository {1}")]
+		OidToTree(
+			ObjectId,
+			Box<gix::Url>,
+			#[source] gix::object::find::existing::Error,
 		),
 
 		/// An error occurred parsing an object id to object
