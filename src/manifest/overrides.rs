@@ -1,16 +1,14 @@
-use crate::{manifest::Alias, source::specifiers::DependencySpecifiers};
+use crate::{manifest::Alias, ser_display_deser_fromstr, source::specifiers::DependencySpecifiers};
 use serde::{Deserialize, Serialize};
-use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
 	fmt::{Display, Formatter},
 	str::FromStr,
 };
 
 /// An override key
-#[derive(
-	Debug, DeserializeFromStr, SerializeDisplay, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct OverrideKey(pub Vec<Vec<Alias>>);
+ser_display_deser_fromstr!(OverrideKey);
 
 impl FromStr for OverrideKey {
 	type Err = errors::OverrideKeyFromStr;

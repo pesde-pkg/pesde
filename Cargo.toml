@@ -47,7 +47,6 @@ uninlined_format_args = "warn"
 [dependencies]
 serde = { version = "1.0.217", features = ["derive"] }
 toml = "0.8.19"
-serde_with = "3.12.0"
 gix = { version = "0.70.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials", "parallel"] }
 semver = { version = "1.0.24", features = ["serde"] }
 reqwest = { version = "0.12.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
@@ -63,7 +62,7 @@ async-stream = "0.3.6"
 futures = "0.3.31"
 full_moon = { version = "1.2.0", features = ["luau"] }
 url = { version = "2.5.4", features = ["serde"] }
-chrono = { version = "0.4.39", features = ["serde"] }
+jiff = { version = "0.1.28", default-features = false, features = ["serde", "std"] }
 sha2 = "0.10.8"
 tempfile = "3.15.0"
 wax = { version = "0.6.0", default-features = false }
@@ -80,7 +79,7 @@ schemars = { git = "https://github.com/daimond113/schemars", rev = "bc7c7d6", fe
 
 anyhow = { version = "1.0.95", optional = true }
 open = { version = "5.3.2", optional = true }
-keyring = { version = "3.6.1", features = ["crypto-rust", "windows-native", "apple-native", "async-secret-service", "async-io"], optional = true }
+keyring = { version = "3.6.1", features = ["crypto-rust", "windows-native", "apple-native", "async-secret-service", "tokio"], optional = true }
 console = { version = "0.15.10", optional = true }
 toml_edit = { version = "0.22.22", optional = true }
 clap = { version = "4.5.26", features = ["derive"], optional = true }
@@ -109,6 +108,7 @@ opt-level = "s"
 lto = true
 incremental = true
 codegen-units = 1
+panic = "abort"
 
 [profile.release.package.pesde-registry]
 # add debug symbols for Sentry stack traces

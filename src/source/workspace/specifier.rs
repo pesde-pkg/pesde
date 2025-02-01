@@ -1,6 +1,8 @@
-use crate::{manifest::target::TargetKind, names::PackageName, source::DependencySpecifier};
+use crate::{
+	manifest::target::TargetKind, names::PackageName, ser_display_deser_fromstr,
+	source::DependencySpecifier,
+};
 use serde::{Deserialize, Serialize};
-use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{fmt::Display, str::FromStr};
 
 /// The specifier for a workspace dependency
@@ -25,9 +27,7 @@ impl Display for WorkspaceDependencySpecifier {
 }
 
 /// The type of version to use when publishing a package
-#[derive(
-	Debug, SerializeDisplay, DeserializeFromStr, Clone, Copy, PartialEq, Eq, Hash, Default,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum VersionType {
 	/// The "^" version type
@@ -44,6 +44,7 @@ pub enum VersionType {
 	#[cfg_attr(feature = "schema", schemars(rename = "*"))]
 	Wildcard,
 }
+ser_display_deser_fromstr!(VersionType);
 
 impl Display for VersionType {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -73,7 +74,7 @@ impl FromStr for VersionType {
 }
 
 /// Either a version type or a version requirement
-#[derive(Debug, SerializeDisplay, DeserializeFromStr, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "schema", schemars(untagged))]
 pub enum VersionTypeOrReq {
@@ -83,6 +84,7 @@ pub enum VersionTypeOrReq {
 	#[cfg_attr(feature = "schema", schemars(with = "String"))]
 	Req(semver::VersionReq),
 }
+ser_display_deser_fromstr!(VersionTypeOrReq);
 
 impl Default for VersionTypeOrReq {
 	fn default() -> Self {

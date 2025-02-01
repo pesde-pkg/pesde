@@ -1,14 +1,11 @@
 /// Sources of engines
 pub mod source;
 
-use crate::engine::source::EngineSources;
-use serde_with::{DeserializeFromStr, SerializeDisplay};
+use crate::{engine::source::EngineSources, ser_display_deser_fromstr};
 use std::{fmt::Display, str::FromStr};
 
 /// All supported engines
-#[derive(
-	SerializeDisplay, DeserializeFromStr, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "schema", schemars(rename_all = "snake_case"))]
 pub enum EngineKind {
@@ -17,6 +14,7 @@ pub enum EngineKind {
 	/// The Lune runtime
 	Lune,
 }
+ser_display_deser_fromstr!(EngineKind);
 
 impl Display for EngineKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

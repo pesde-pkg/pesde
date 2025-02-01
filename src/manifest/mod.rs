@@ -5,12 +5,12 @@ use crate::{
 		target::Target,
 	},
 	names::PackageName,
+	ser_display_deser_fromstr,
 	source::specifiers::DependencySpecifiers,
 };
 use relative_path::RelativePathBuf;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
 	collections::{BTreeMap, HashMap},
 	fmt::Display,
@@ -118,10 +118,9 @@ pub struct Manifest {
 }
 
 /// An alias of a dependency
-#[derive(
-	SerializeDisplay, DeserializeFromStr, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Alias(String);
+ser_display_deser_fromstr!(Alias);
 
 impl Display for Alias {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

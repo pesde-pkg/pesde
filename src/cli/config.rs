@@ -16,7 +16,7 @@ pub struct CliConfig {
 	pub tokens: Tokens,
 
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub last_checked_updates: Option<(chrono::DateTime<chrono::Utc>, semver::Version)>,
+	pub last_checked_updates: Option<(jiff::Timestamp, semver::Version)>,
 }
 
 impl Default for CliConfig {

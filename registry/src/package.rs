@@ -1,5 +1,4 @@
 use crate::AppState;
-use chrono::{DateTime, Utc};
 use pesde::{
 	manifest::{
 		target::{Target, TargetKind},
@@ -115,7 +114,7 @@ impl From<pesde::source::pesde::DocEntry> for RegistryDocEntry {
 
 #[derive(Debug, Serialize)]
 pub struct PackageResponseInner {
-	published_at: DateTime<Utc>,
+	published_at: jiff::Timestamp,
 	#[serde(skip_serializing_if = "String::is_empty")]
 	license: String,
 	#[serde(skip_serializing_if = "Vec::is_empty")]

@@ -1,13 +1,11 @@
-use crate::{manifest::target::TargetKind, names::PackageNames};
+use crate::{manifest::target::TargetKind, names::PackageNames, ser_display_deser_fromstr};
 use semver::Version;
-use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{fmt::Display, str::FromStr};
 
 /// A version ID, which is a combination of a version and a target
-#[derive(
-	Debug, SerializeDisplay, DeserializeFromStr, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VersionId(pub(crate) Version, pub(crate) TargetKind);
+ser_display_deser_fromstr!(VersionId);
 
 impl VersionId {
 	/// Creates a new version ID
@@ -92,10 +90,9 @@ impl schemars::JsonSchema for VersionId {
 }
 
 /// A package ID, which is a combination of a name and a version ID
-#[derive(
-	Debug, SerializeDisplay, DeserializeFromStr, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PackageId(pub(crate) PackageNames, pub(crate) VersionId);
+ser_display_deser_fromstr!(PackageId);
 
 impl PackageId {
 	/// Creates a new package ID

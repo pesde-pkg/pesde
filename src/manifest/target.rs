@@ -1,6 +1,6 @@
+use crate::ser_display_deser_fromstr;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
-use serde_with::{DeserializeFromStr, SerializeDisplay};
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	fmt::{Display, Formatter},
@@ -8,9 +8,7 @@ use std::{
 };
 
 /// A kind of target
-#[derive(
-	SerializeDisplay, DeserializeFromStr, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "schema", schemars(rename_all = "snake_case"))]
 pub enum TargetKind {
@@ -23,6 +21,7 @@ pub enum TargetKind {
 	/// A Luau target
 	Luau,
 }
+ser_display_deser_fromstr!(TargetKind);
 
 impl Display for TargetKind {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -197,9 +196,7 @@ impl Display for Target {
 }
 
 /// The kind of a Roblox place property
-#[derive(
-	SerializeDisplay, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd,
-)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum RobloxPlaceKind {

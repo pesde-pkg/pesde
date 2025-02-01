@@ -1,6 +1,5 @@
+use crate::ser_display_deser_fromstr;
 use std::{fmt::Display, str::FromStr};
-
-use serde_with::{DeserializeFromStr, SerializeDisplay};
 
 /// The invalid part of a package name
 #[derive(Debug)]
@@ -21,10 +20,10 @@ impl Display for ErrorReason {
 }
 
 /// A pesde package name
-#[derive(
-	Debug, DeserializeFromStr, SerializeDisplay, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PackageName(String, String);
+
+ser_display_deser_fromstr!(PackageName);
 
 impl FromStr for PackageName {
 	type Err = errors::PackageNameError;
@@ -110,9 +109,7 @@ impl PackageName {
 }
 
 /// All possible package names
-#[derive(
-	Debug, DeserializeFromStr, SerializeDisplay, Clone, Hash, PartialEq, Eq, PartialOrd, Ord,
-)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "schema", schemars(untagged))]
 pub enum PackageNames {
@@ -122,6 +119,7 @@ pub enum PackageNames {
 	#[cfg(feature = "wally-compat")]
 	Wally(wally::WallyPackageName),
 }
+ser_display_deser_fromstr!(PackageNames);
 
 impl PackageNames {
 	/// Returns the parts of the package name
@@ -202,15 +200,15 @@ impl FromStr for PackageNames {
 pub mod wally {
 	use std::{fmt::Display, str::FromStr};
 
-	use serde_with::{DeserializeFromStr, SerializeDisplay};
-
-	use crate::names::{errors, ErrorReason};
+	use crate::{
+		names::{errors, ErrorReason},
+		ser_display_deser_fromstr,
+	};
 
 	/// A Wally package name
-	#[derive(
-		Debug, DeserializeFromStr, SerializeDisplay, Clone, PartialEq, Eq, Hash, PartialOrd, Ord,
-	)]
+	#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 	pub struct WallyPackageName(String, String);
+	ser_display_deser_fromstr!(WallyPackageName);
 
 	impl FromStr for WallyPackageName {
 		type Err = errors::WallyPackageNameError;

@@ -132,7 +132,7 @@ pub async fn make_search(
 				scope => pkg_name.scope(),
 				name => pkg_name.name(),
 				description => latest_entry.description.clone().unwrap_or_default(),
-				published_at => DateTime::from_timestamp_secs(latest_entry.published_at.timestamp()),
+				published_at => DateTime::from_timestamp_nanos(latest_entry.published_at.as_nanosecond() as i64),
 			))
 			.unwrap();
 	}
@@ -159,7 +159,7 @@ pub fn update_search_version(app_state: &AppState, name: &PackageName, entry: &I
         schema.get_field("scope").unwrap() => name.scope(),
         schema.get_field("name").unwrap() => name.name(),
         schema.get_field("description").unwrap() => entry.description.clone().unwrap_or_default(),
-        schema.get_field("published_at").unwrap() => DateTime::from_timestamp_secs(entry.published_at.timestamp())
+        schema.get_field("published_at").unwrap() => DateTime::from_timestamp_nanos(entry.published_at.as_nanosecond() as i64)
     )).unwrap();
 
 	search_writer.commit().unwrap();

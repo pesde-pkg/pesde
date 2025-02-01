@@ -12,6 +12,7 @@ use crate::{
 use anyhow::Context;
 use console::Style;
 use fs_err::tokio as fs;
+use jiff::SignedDuration;
 use pesde::{
 	engine::{
 		source::{
@@ -36,7 +37,7 @@ pub fn current_version() -> Version {
 	Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
 }
 
-const CHECK_INTERVAL: chrono::Duration = chrono::Duration::hours(6);
+const CHECK_INTERVAL: SignedDuration = SignedDuration::from_hours(6);
 
 pub async fn find_latest_version(reqwest: &reqwest::Client) -> anyhow::Result<Version> {
 	let version = EngineSources::pesde()
@@ -61,7 +62,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 
 	let version = if let Some((_, version)) = config
 		.last_checked_updates
-		.filter(|(time, _)| chrono::Utc::now() - *time < CHECK_INTERVAL)
+		.filter(|(time, _)| jiff::Timestamp::now().duration_since(*time) < CHECK_INTERVAL)
 	{
 		tracing::debug!("using cached version");
 		version
@@ -70,7 +71,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 		let version = find_latest_version(reqwest).await?;
 
 		write_config(&CliConfig {
-			last_checked_updates: Some((chrono::Utc::now(), version.clone())),
+			last_checked_updates: Some((jiff::Timestamp::now(), version.clone())),
 			..config
 		})
 		.await?;

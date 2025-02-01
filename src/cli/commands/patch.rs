@@ -50,7 +50,7 @@ impl PatchCommand {
 			.join("patches")
 			.join(id.name().escaped())
 			.join(id.version_id().escaped())
-			.join(chrono::Utc::now().timestamp().to_string());
+			.join(jiff::Timestamp::now().as_second().to_string());
 		fs::create_dir_all(&directory).await?;
 
 		source
