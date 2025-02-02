@@ -184,6 +184,15 @@ pub enum DependencyType {
 	Dev,
 }
 
+impl DependencyType {
+	/// All possible dependency types
+	pub const VARIANTS: &'static [DependencyType] = &[
+		DependencyType::Standard,
+		DependencyType::Peer,
+		DependencyType::Dev,
+	];
+}
+
 impl Manifest {
 	/// Get all dependencies from the manifest
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]

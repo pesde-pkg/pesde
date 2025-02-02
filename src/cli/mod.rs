@@ -11,7 +11,7 @@ use pesde::{
 	manifest::{
 		overrides::{OverrideKey, OverrideSpecifier},
 		target::TargetKind,
-		Manifest,
+		DependencyType, Manifest,
 	},
 	names::{PackageName, PackageNames},
 	source::{
@@ -350,5 +350,13 @@ pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result
 				.remove(index_name)
 				.with_context(|| format!("index {index_name} not found in manifest"))
 		}
+	}
+}
+
+pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
+	match dep_type {
+		DependencyType::Standard => "dependencies",
+		DependencyType::Dev => "dev_dependencies",
+		DependencyType::Peer => "peer_dependencies",
 	}
 }

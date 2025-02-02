@@ -1,6 +1,6 @@
 use super::files::make_executable;
 use crate::cli::{
-	bin_dir,
+	bin_dir, dep_type_to_key,
 	reporters::{self, CliReporter},
 	resolve_overrides, run_on_workspace_members,
 	style::{ADDED_STYLE, REMOVED_STYLE, WARN_PREFIX},
@@ -550,13 +550,10 @@ pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: D
 
 		for (ty, set) in dependency_groups {
 			println!();
-
-			let ty_name = match ty {
-				DependencyType::Standard => "dependencies",
-				DependencyType::Peer => "peer_dependencies",
-				DependencyType::Dev => "dev_dependencies",
-			};
-			println!("{}", style(format!("{ty_name}:")).yellow().bold());
+			println!(
+				"{}",
+				style(format!("{}:", dep_type_to_key(ty))).yellow().bold()
+			);
 
 			for (id, added) in set {
 				println!(

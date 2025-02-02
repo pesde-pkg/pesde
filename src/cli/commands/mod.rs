@@ -8,12 +8,14 @@ mod deprecate;
 mod execute;
 mod init;
 mod install;
+mod list;
 mod outdated;
 #[cfg(feature = "patches")]
 mod patch;
 #[cfg(feature = "patches")]
 mod patch_commit;
 mod publish;
+mod remove;
 mod run;
 #[cfg(feature = "version-management")]
 mod self_install;
@@ -41,6 +43,9 @@ pub enum Subcommand {
 	/// Adds a dependency to the project
 	Add(add::AddCommand),
 
+	/// Removes a dependency from the project
+	Remove(remove::RemoveCommand),
+
 	/// Installs all dependencies for the project
 	Install(install::InstallCommand),
 
@@ -49,6 +54,9 @@ pub enum Subcommand {
 
 	/// Checks for outdated dependencies
 	Outdated(outdated::OutdatedCommand),
+
+	/// Lists all dependencies in the project
+	List(list::ListCommand),
 
 	/// Runs a script, an executable package, or a file with Lune
 	Run(run::RunCommand),
@@ -91,9 +99,11 @@ impl Subcommand {
 			Subcommand::Cas(cas) => cas.run(project).await,
 			Subcommand::Init(init) => init.run(project).await,
 			Subcommand::Add(add) => add.run(project).await,
+			Subcommand::Remove(remove) => remove.run(project).await,
 			Subcommand::Install(install) => install.run(project, reqwest).await,
 			Subcommand::Update(update) => update.run(project, reqwest).await,
 			Subcommand::Outdated(outdated) => outdated.run(project).await,
+			Subcommand::List(list) => list.run(project).await,
 			Subcommand::Run(run) => run.run(project).await,
 			Subcommand::Publish(publish) => publish.run(project, reqwest).await,
 			Subcommand::Yank(yank) => yank.run(project, reqwest).await,

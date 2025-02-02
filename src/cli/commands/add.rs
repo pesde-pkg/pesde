@@ -4,9 +4,11 @@ use anyhow::Context;
 use clap::Args;
 use semver::VersionReq;
 
-use crate::cli::{config::read_config, AnyPackageIdentifier, VersionedPackageName};
+use crate::cli::{
+	config::read_config, dep_type_to_key, AnyPackageIdentifier, VersionedPackageName,
+};
 use pesde::{
-	manifest::{target::TargetKind, Alias},
+	manifest::{target::TargetKind, Alias, DependencyType},
 	names::PackageNames,
 	source::{
 		git::{specifier::GitDependencySpecifier, GitPackageSource},
@@ -167,13 +169,13 @@ impl AddCommand {
 				.context("failed to read manifest")?,
 		)
 		.context("failed to parse manifest")?;
-		let dependency_key = if self.peer {
-			"peer_dependencies"
+		let dependency_key = dep_type_to_key(if self.peer {
+			DependencyType::Peer
 		} else if self.dev {
-			"dev_dependencies"
+			DependencyType::Dev
 		} else {
-			"dependencies"
-		};
+			DependencyType::Standard
+		});
 
 		let alias = match self.alias {
 			Some(alias) => alias,
