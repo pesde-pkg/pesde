@@ -306,7 +306,7 @@ impl PruneCommand {
 				if removed_hashes.contains(&hash) {
 					let cas_dir = project.cas_dir().to_path_buf();
 					tasks.spawn(async move {
-						fs::remove_file(dbg!(&path))
+						fs::remove_file(&path)
 							.await
 							.context("failed to remove unused file")?;
 

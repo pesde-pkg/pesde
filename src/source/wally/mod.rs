@@ -1,6 +1,6 @@
 use crate::{
 	manifest::target::{Target, TargetKind},
-	names::PackageNames,
+	names::{wally::WallyPackageName, PackageNames},
 	reporters::{response_to_async_read, DownloadProgressReporter},
 	source::{
 		fs::{store_in_cas, FsEntry, PackageFs},
@@ -84,6 +84,26 @@ impl WallyPackageSource {
 		.await
 		.unwrap()
 	}
+
+	pub(crate) async fn read_index_file(
+		&self,
+		project: &Project,
+		name: &WallyPackageName,
+	) -> Result<Option<String>, errors::ResolveError> {
+		let path = self.path(project);
+		let pkg_name = name.clone();
+
+		spawn_blocking(move || {
+			let repo = gix::open(&path).map_err(Box::new)?;
+			let tree = root_tree(&repo).map_err(Box::new)?;
+			let (scope, name) = pkg_name.as_str();
+
+			read_file(&tree, [scope, name])
+				.map_err(|e| errors::ResolveError::Read(pkg_name.to_string(), Box::new(e)))
+		})
+		.await
+		.unwrap()
+	}
 }
 
 impl PackageSource for WallyPackageSource {
@@ -105,110 +125,94 @@ impl PackageSource for WallyPackageSource {
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
 	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
-		async fn inner(
-			source: &WallyPackageSource,
-			specifier: &specifier::WallyDependencySpecifier,
-			options: &ResolveOptions,
-		) -> Result<ResolveResult<WallyPackageRef>, errors::ResolveError> {
-			let ResolveOptions {
-				project,
-				refreshed_sources,
-				..
-			} = options;
+		let ResolveOptions {
+			project,
+			refreshed_sources,
+			..
+		} = options;
 
-			let Some(string) = ({
-				let repo = gix::open(source.path(project)).map_err(Box::new)?;
-				let tree = root_tree(&repo).map_err(Box::new)?;
-				let (scope, name) = specifier.name.as_str();
-				match read_file(&tree, [scope, name]) {
-					Ok(string) => string,
-					Err(e) => {
-						return Err(errors::ResolveError::Read(
-							specifier.name.to_string(),
-							Box::new(e),
-						))
-					}
-				}
-			}) else {
-				tracing::debug!(
-					"{} not found in wally registry. searching in backup registries",
-					specifier.name
-				);
-				let config = source.config(project).await.map_err(Box::new)?;
-				for registry in config.fallback_registries {
-					let source = WallyPackageSource::new(registry);
-					match refreshed_sources
-						.refresh(
-							&PackageSources::Wally(source.clone()),
-							&RefreshOptions {
-								project: project.clone(),
-							},
-						)
-						.await
-					{
-						Ok(()) => {}
-						Err(super::errors::RefreshError::Wally(e)) => {
-							return Err(errors::ResolveError::Refresh(Box::new(e)));
-						}
-						Err(e) => panic!("unexpected error: {e:?}"),
-					}
+		let mut string = self.read_index_file(project, &specifier.name).await?;
+		let mut index_url = self.repo_url.clone();
 
-					match Box::pin(inner(&source, specifier, options)).await {
-						Ok((name, results)) => {
-							tracing::debug!("found {name} in backup registry {}", source.repo_url);
-							return Ok((name, results));
-						}
-						Err(errors::ResolveError::NotFound(_)) => {
-							continue;
-						}
-						Err(e) => {
-							return Err(e);
-						}
+		if string.is_none() {
+			tracing::debug!(
+				"{} not found in Wally registry. searching in backup registries",
+				specifier.name
+			);
+			let config = self.config(project).await.map_err(Box::new)?;
+
+			for url in config.fallback_registries {
+				let source = WallyPackageSource::new(url);
+
+				match refreshed_sources
+					.refresh(
+						&PackageSources::Wally(source.clone()),
+						&RefreshOptions {
+							project: project.clone(),
+						},
+					)
+					.await
+				{
+					Ok(()) => {}
+					Err(super::errors::RefreshError::Wally(e)) => {
+						return Err(errors::ResolveError::Refresh(Box::new(e)));
 					}
+					Err(e) => panic!("unexpected error: {e:?}"),
 				}
 
-				return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
-			};
+				match source.read_index_file(project, &specifier.name).await {
+					Ok(Some(res)) => {
+						string = Some(res);
+						index_url = source.repo_url;
+						break;
+					}
+					Ok(None) => {
+						tracing::debug!("{} not found in {}", specifier.name, source.repo_url);
+						continue;
+					}
+					Err(e) => return Err(e),
+				}
+			}
+		};
 
-			let entries: Vec<WallyManifest> = string
-				.lines()
-				.map(serde_json::from_str)
-				.collect::<Result<_, _>>()
-				.map_err(|e| errors::ResolveError::Parse(specifier.name.to_string(), e))?;
+		let Some(string) = string else {
+			return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
+		};
 
-			tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
+		let entries: Vec<WallyManifest> = string
+			.lines()
+			.map(serde_json::from_str)
+			.collect::<Result<_, _>>()
+			.map_err(|e| errors::ResolveError::Parse(specifier.name.to_string(), e))?;
 
-			Ok((
-				PackageNames::Wally(specifier.name.clone()),
-				entries
-					.into_iter()
-					.filter(|manifest| {
-						version_matches(&specifier.version, &manifest.package.version)
-					})
-					.map(|manifest| {
-						let dependencies = manifest.all_dependencies().map_err(|e| {
-							errors::ResolveError::AllDependencies(specifier.to_string(), e)
-						})?;
+		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
-						Ok((
-							VersionId(
-								manifest.package.version,
-								match manifest.package.realm {
-									Realm::Server => TargetKind::RobloxServer,
-									_ => TargetKind::Roblox,
-								},
-							),
-							WallyPackageRef {
-								index_url: source.repo_url.clone(),
-								dependencies,
+		Ok((
+			PackageNames::Wally(specifier.name.clone()),
+			entries
+				.into_iter()
+				.filter(|manifest| version_matches(&specifier.version, &manifest.package.version))
+				.map(|manifest| {
+					let dependencies = manifest.all_dependencies().map_err(|e| {
+						errors::ResolveError::AllDependencies(specifier.to_string(), e)
+					})?;
+
+					Ok((
+						VersionId(
+							manifest.package.version,
+							match manifest.package.realm {
+								Realm::Server => TargetKind::RobloxServer,
+								_ => TargetKind::Roblox,
 							},
-						))
-					})
-					.collect::<Result<_, errors::ResolveError>>()?,
-			))
-		}
-
-		inner(self, specifier, options).await
+						),
+						WallyPackageRef {
+							index_url: index_url.clone(),
+							dependencies,
+						},
+					))
+				})
+				.collect::<Result<_, errors::ResolveError>>()?,
+		))
 	}
 
 	#[instrument(skip_all, level = "debug")]

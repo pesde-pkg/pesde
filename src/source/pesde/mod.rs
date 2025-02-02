@@ -466,8 +466,7 @@ pub struct IndexFileEntry {
 	/// The target for this package
 	pub target: Target,
 	/// When this package was published
-	#[serde(default = "chrono::Utc::now")]
-	pub published_at: chrono::DateTime<chrono::Utc>,
+	pub published_at: jiff::Timestamp,
 	/// The engines this package supports
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub engines: BTreeMap<EngineKind, VersionReq>,
