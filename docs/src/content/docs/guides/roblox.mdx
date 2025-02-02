@@ -188,10 +188,13 @@ This will cause the `src` directory to be directly synced into Roblox.
 
 In pesde, you should not have a `default.project.json` file in your package.
 Instead, you are required to use the `build_files` field to specify a 1:1 match
-between Roblox and the file system. pesde forbids `default.project.json` to be
-part of a published package, and regenerates it when installing a pesde git
-dependency. This allows the consumer of your package to choose the sync tool
-they want to use, instead of being constrained to only using Rojo.
+between Roblox and the file system. These are given to the
+`roblox_sync_config_generator` script to generate the configuration for the sync
+tool the user is using. pesde forbids `default.project.json` to be part of a
+published package, as well as ignoring them from Git dependencies. This allows
+the consumer of your package to choose the sync tool they want to use, instead
+of being constrained to only using Rojo as well as preventing broken packages
+from being published (for example, if the project is configured as a DataModel).
 
 This has the effect that the structure of the files in the file system ends up
 being reflected inside Roblox.
