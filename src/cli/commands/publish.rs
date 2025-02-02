@@ -218,7 +218,7 @@ impl PublishCommand {
 		.context("failed to get included files")?;
 
 		if paths.insert(PathBuf::from(MANIFEST_FILE_NAME)) {
-			println!("{WARN_PREFIX}: {MANIFEST_FILE_NAME} was not included, adding it",);
+			println!("{WARN_PREFIX}: {MANIFEST_FILE_NAME} was not included, adding it");
 		}
 
 		if paths.iter().any(|p| p.starts_with(".git")) {
@@ -231,11 +231,11 @@ impl PublishCommand {
 				"readme" | "readme.md" | "readme.txt"
 			)
 		}) {
-			println!("{WARN_PREFIX}: no README file included, consider adding one",);
+			println!("{WARN_PREFIX}: no README file included, consider adding one");
 		}
 
 		if !paths.iter().any(|p| p.starts_with("docs")) {
-			println!("{WARN_PREFIX}: docs directory not included, consider adding one",);
+			println!("{WARN_PREFIX}: docs directory not included, consider adding one");
 		}
 
 		for path in &paths {
@@ -315,14 +315,14 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 					.unwrap()
 					.to_path_buf(),
 			) {
-				println!("{WARN_PREFIX}: {name} was not included, adding {relative_export_path}",);
+				println!("{WARN_PREFIX}: {name} was not included, adding {relative_export_path}");
 			}
 
 			if roblox_target
 				.as_mut()
 				.is_some_and(|build_files| build_files.insert(first_part.to_string()))
 			{
-				println!("{WARN_PREFIX}: {name} was not in build files, adding {first_part}",);
+				println!("{WARN_PREFIX}: {name} was not in build files, adding {first_part}");
 			}
 		}
 
@@ -383,7 +383,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 						.unwrap()
 						.to_path_buf(),
 				) {
-					println!("{WARN_PREFIX}: script {name} was not included, adding {path}",);
+					println!("{WARN_PREFIX}: script {name} was not included, adding {path}");
 				}
 			}
 		}

@@ -63,7 +63,7 @@ pub async fn deprecate_package_version(
 		&source,
 		name.scope().to_string(),
 		HashMap::from([(name.name().to_string(), file_string.into_bytes())]),
-		format!("{}deprecate {name}", if deprecated { "" } else { "un" },),
+		format!("{}deprecate {name}", if deprecated { "" } else { "un" }),
 	)
 	.await?;
 
