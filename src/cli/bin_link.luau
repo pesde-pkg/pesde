@@ -78,3 +78,4 @@ if project_root ~= nil then
 end
 
 stdio.ewrite(stdio.color("red") .. "binary `{alias}` not found. are you in the right directory?" .. stdio.color("reset") .. "\n")
+process.exit(1)
