@@ -329,10 +329,7 @@ pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result
 	};
 
 	let index_url = match index {
-		Some(index) => match index.try_into() {
-			Ok(url) => Some(url),
-			Err(_) => None,
-		},
+		Some(index) => index.try_into().ok(),
 		None => match manifest {
 			Some(_) => None,
 			None => Some(read_config().await?.default_index),
