@@ -16,12 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add yanking & deprecating by @daimond113
 - Add engines as a form of managing runtimes by @daimond113
 - Modify existing installed packages instead of always reinstalling by @daimond113
+- Add `cas prune` command to remove unused CAS files & packages by @daimond113
+- Add `list` and `remove` commands to manage packages in the manifest by @daimond113
 
 ### Fixed
 - Install dev packages in prod mode and remove them after use to allow them to be used in scripts by @daimond113
 - Fix infinite loop in the resolver in packages depending on themselves by @daimond113
 - Do Git operations inside spawn_blocking to avoid performance issues by @daimond113
 - Scope CAS package indices to the source by @daimond113
+- Do not copy `default.project.json` in workspace dependencies by @daimond113
 
 ### Changed
 - Change handling of graphs to a flat structure by @daimond113
@@ -29,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve linking process by @daimond113
 - Use a proper url encoding library to ensure compatibility with all characters by @daimond113
 - The `*` specifier now matches all versions, even prereleases by @daimond113
+- Switch CLI dependencies to ones used by other dependencies to optimize the binary size by @daimond113
+- Reorder the `help` command by @daimond113
+- Ignore submodules instead of failing when using Git dependencies with submodules by @daimond113
+- Exit with code 1 from invalid directory binary linkers by @daimond113
 
 ### Removed
 - Remove old includes format compatibility by @daimond113
