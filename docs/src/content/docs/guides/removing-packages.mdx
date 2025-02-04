@@ -1,0 +1,56 @@
+---
+title: Removing Packages
+description: Learn how to remove packages from the registry.
+---
+
+pesde doesn't support removing packages from the registry. This is to ensure
+that the registry remains a reliable source of packages for everyone. However,
+pesde provides other mechanisms to handle packages that are no longer needed.
+
+## Yanking
+
+Yanking is limited to a specific version (and target) of a package. It is used
+to mark a version as broken or deprecated. Yanked versions are unavailable
+to download fresh, but they can still be installed if they are present in the
+lockfile of a project.
+
+To yank a package, you can use the `pesde yank` command:
+
+```sh
+pesde yank <PACKAGE>@<VERSION> <TARGET>
+```
+
+You can leave out the target if you want to yank all targets of the version:
+
+```sh
+pesde yank <PACKAGE>@<VERSION>
+```
+
+## Deprecating
+
+On the other hand, deprecating a package is used to mark a package as deprecated
+in the registry. This is useful when you want to discourage users from using
+a package, but don't want to break existing projects that depend on it. Unlike
+yanking, your package will still be able to be installed fresh. However, when it
+is installed, a warning will be shown to the user.
+
+To deprecate a package, you can use the `pesde deprecate` command:
+
+```sh
+pesde deprecate <PACKAGE> [REASON]
+```
+
+You must provide a non-empty reason when deprecating a package. This is to
+inform users why the package is deprecated. For example, if your package
+has been replaced by another package, you can provide a reason like:
+
+```sh
+pesde deprecate acme/old-package "This package has been replaced by acme/new-package."
+```
+
+## Other Options
+
+There are other situations in which you might want to remove a package from
+the registry. Please refer to the policies of the registry you are using for
+more information on how to handle these situations. The process for the official
+registry is described [here](/registry/policies/#package-removal).

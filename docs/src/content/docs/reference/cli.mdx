@@ -55,87 +55,17 @@ is printed.
 
 The default index is [`pesde-index`](https://github.com/pesde-pkg/index).
 
+## `pesde cas`
+
+Content-addressable storage (CAS) related commands.
+
+### `pesde cas prune`
+
+Removes unused CAS files and packages.
+
 ## `pesde init`
 
 Initializes a new pesde project in the current directory.
-
-## `pesde run`
-
-Runs a script from the current project using Lune.
-
-```sh
-pesde run [SCRIPT] [ -- <ARGS>...]
-```
-
-If no script is provided, it will run the script specified by `target.bin`
-in `pesde.toml`.
-
-If a path is provided, it will run the script at that path.
-
-If a script defined in `[scripts]` is provided, it will run that script.
-
-If a package name is provided, it will run the script specified by `target.bin`
-in that package.
-
-Arguments can be passed to the script by using `--` followed by the arguments.
-
-```sh
-pesde run foo -- --arg1 --arg2
-```
-
-## `pesde install`
-
-Installs dependencies for the current project.
-
-- `--locked`: Whether to error if the lockfile is out of date.
-- `--prod`: Whether to skip installing dev dependencies.
-
-## `pesde publish`
-
-Publishes the current project to the pesde registry.
-
-- `-d, --dry-run`: Whether to perform a dry run. This will output a
-  tarball containing the package that would be published, but will not actually
-  publish it.
-- `-y, --yes`: Whether to skip the confirmation prompt.
-- `-i, --index`: Name of the index to publish to. Defaults to `default`.
-
-## `pesde self-install`
-
-Performs the pesde installation process. This should be the first command run
-after downloading the pesde binary.
-
-## `pesde self-upgrade`
-
-Upgrades the pesde binary to the latest version.
-
-- `--use-cached`: Whether to use the version displayed in the "upgrade available"
-  message instead of checking for the latest version.
-
-## `pesde patch`
-
-```sh
-pesde patch <PACKAGE>
-```
-
-Prepares a patching environment for a package. This will copy the source code of
-the package to a temporary directory.
-
-The package specified must be in the format `<name>@<version> <target>`.
-
-<LinkCard
-	title="Overrides"
-	description="Learn more about overriding and patching packages."
-	href="/guides/overrides/"
-/>
-
-## `pesde patch-commit`
-
-```sh
-pesde patch-commit <PATH>
-```
-
-Applies the changes made in the patching environment created by `pesde patch`.
 
 ## `pesde add`
 
@@ -164,9 +94,122 @@ pesde add workspace:pesde/hello@1.2.3
 pesde add path:/home/user/package
 ```
 
+## `pesde remove`
+
+```sh
+pesde remove <ALIAS>
+```
+
+Removes a package from the dependencies of the current project.
+
+## `pesde install`
+
+Installs dependencies for the current project.
+
+- `--locked`: Whether to error if the lockfile is out of date.
+- `--prod`: Whether to not linking dev dependencies.
+- `--network-concurrency <CONCURRENCY>`: The number of concurrent network
+  requests to make at most. Defaults to 16.
+- `--force`: Whether to force reinstall all packages even if they are already
+  installed (useful if there is any issue with the current installation).
+
 ## `pesde update`
 
 Updates the dependencies of the current project.
+
+- `--no-install`: Whether to only update the lockfile without installing the
+  dependencies.
+- `--network-concurrency <CONCURRENCY>`: The number of concurrent network
+  requests to make at most. Defaults to 16.
+- `--force`: Whether to force reinstall all packages even if they are already
+  installed (useful if there is any issue with the current installation).
+
+## `pesde outdated`
+
+Lists outdated dependencies of the current project.
+
+## `pesde list`
+
+Lists the dependencies of the current project.
+
+## `pesde run`
+
+Runs a script from the current project using Lune.
+
+```sh
+pesde run [SCRIPT] [ -- <ARGS>...]
+```
+
+If no script is provided, it will run the script specified by `target.bin`
+in `pesde.toml`.
+
+If a path is provided, it will run the script at that path.
+
+If a script defined in `[scripts]` is provided, it will run that script.
+
+If a package name is provided, it will run the script specified by `target.bin`
+in that package.
+
+Arguments can be passed to the script by using `--` followed by the arguments.
+
+```sh
+pesde run foo -- --arg1 --arg2
+```
+
+## `pesde publish`
+
+Publishes the current project to the pesde registry.
+
+- `-d, --dry-run`: Whether to perform a dry run. This will output a
+  tarball containing the package that would be published, but will not actually
+  publish it.
+- `-y, --yes`: Whether to skip the confirmation prompt.
+- `-i, --index`: Name of the index to publish to. Defaults to `default`.
+- `--no-verify`: Whether to skip syntax validation of the exports of the
+  package.
+
+## `pesde yank`
+
+Yanks a version of a package from the registry.
+
+- `--undo`: Whether to unyank the package.
+- `-i, --index`: Name of the index to yank from. Defaults to `default`.
+
+## `pesde deprecate`
+
+```sh
+pesde deprecate <PACKAGE> [REASON]
+```
+
+Deprecates a package in the registry. A non-empty reason must be provided.
+
+- `--undo`: Whether to undepricate the package.
+- `-i, --index`: Name of the index to deprecate from. Defaults to `default`.
+
+## `pesde patch`
+
+```sh
+pesde patch <PACKAGE>
+```
+
+Prepares a patching environment for a package. This will copy the source code of
+the package to a temporary directory.
+
+The package specified must be in the format `<name>@<version> <target>`.
+
+<LinkCard
+	title="Overrides"
+	description="Learn more about overriding and patching packages."
+	href="/guides/overrides/"
+/>
+
+## `pesde patch-commit`
+
+```sh
+pesde patch-commit <PATH>
+```
+
+Applies the changes made in the patching environment created by `pesde patch`.
 
 ## `pesde x`
 
@@ -182,3 +225,15 @@ a pesde project.
 ```sh
 pesde x pesde/hello
 ```
+
+## `pesde self-install`
+
+Performs the pesde installation process. This should be the first command run
+after downloading the pesde binary.
+
+## `pesde self-upgrade`
+
+Upgrades the pesde binary to the latest version.
+
+- `--use-cached`: Whether to use the version displayed in the "upgrade available"
+  message instead of checking for the latest version.

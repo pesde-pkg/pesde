@@ -84,11 +84,6 @@ includes = [
 ]
 ```
 
-### `pesde_version`
-
-The version of pesde to use within this project. The `pesde` CLI will look at
-this field and run the correct version of pesde for this project.
-
 ### `workspace_members`
 
 A list of globs containing the members of this workspace.
@@ -416,7 +411,7 @@ foo = { workspace = "acme/foo", version = "^" }
 	href="/guides/workspaces/#workspace-dependencies"
 />
 
-### path
+### Path
 
 ```toml
 [dependencies]
@@ -428,18 +423,6 @@ foo = { path = "/home/user/foo" }
 - `path`: The path to the package on the local filesystem.
 
 Path dependencies are forbidden in published packages.
-
-## `[peer_dependencies]`
-
-The `[peer_dependencies]` section contains a list of peer dependencies for the
-package. These are dependencies that are required by the package, but are not
-installed automatically. Instead, they must be installed by the user of the
-package.
-
-```toml
-[peer_dependencies]
-foo = { name = "acme/foo", version = "1.2.3" }
-```
 
 ## `[dev_dependencies]`
 
@@ -460,3 +443,31 @@ foo = { name = "acme/foo", version = "1.2.3" }
 	description="Learn more about specifying dependencies in pesde."
 	href="/guides/dependencies/"
 />
+
+## `[peer_dependencies]`
+
+The `[peer_dependencies]` section contains a list of peer dependencies for the
+package. These are dependencies that are required by the package, but are not
+installed automatically. Instead, they must be installed by the user of the
+package.
+
+```toml
+[peer_dependencies]
+foo = { name = "acme/foo", version = "1.2.3" }
+```
+
+## `[engines]`
+
+The `[engines]` section contains a list of engines that the package is compatible
+with.
+
+```toml
+[engines]
+pesde = "^0.6.0"
+lune = "^0.8.9"
+```
+
+Currently, the only engines that can be specified are `pesde` and `lune`.
+Additionally, the engines you declared in your project will be installed when
+you run `pesde install`. Then, a version of the engine that satisfies the
+specified version range will be used when you run the engine.
