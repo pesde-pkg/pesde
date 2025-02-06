@@ -10,7 +10,7 @@ repository = "https://github.com/pesde-pkg/pesde"
 include = ["src/**/*", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CHANGELOG.md"]
 
 [features]
-default = ["wally-compat", "patches", "version-management"]
+default = ["wally-compat", "patches"]
 bin = [
     "dep:clap",
     "dep:dirs",
