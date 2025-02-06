@@ -92,7 +92,7 @@ impl PublishCommand {
 				manifest.name, manifest.target
 			))
 			.bold()
-			.on_black()
+			.on_color256(235)
 		);
 
 		if manifest.private {
