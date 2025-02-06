@@ -72,7 +72,7 @@ impl Display for PackageName {
 	}
 }
 
-#[cfg(feature = "schema")]
+#[cfg(test)]
 impl schemars::JsonSchema for PackageName {
 	fn schema_name() -> std::borrow::Cow<'static, str> {
 		"PackageName".into()
@@ -110,8 +110,8 @@ impl PackageName {
 
 /// All possible package names
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(untagged))]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(untagged))]
 pub enum PackageNames {
 	/// A pesde package name
 	Pesde(PackageName),
@@ -243,7 +243,7 @@ pub mod wally {
 		}
 	}
 
-	#[cfg(feature = "schema")]
+	#[cfg(test)]
 	impl schemars::JsonSchema for WallyPackageName {
 		fn schema_name() -> std::borrow::Cow<'static, str> {
 			"WallyPackageName".into()

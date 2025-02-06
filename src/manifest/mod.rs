@@ -25,7 +25,7 @@ pub mod target;
 
 /// A package manifest
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub struct Manifest {
 	/// The name of the package
 	pub name: PackageName,
@@ -50,10 +50,7 @@ pub struct Manifest {
 	pub private: bool,
 	/// The scripts of the package
 	#[serde(default, skip_serializing)]
-	#[cfg_attr(
-		feature = "schema",
-		schemars(with = "BTreeMap<String, std::path::PathBuf>")
-	)]
+	#[cfg_attr(test, schemars(with = "BTreeMap<String, std::path::PathBuf>"))]
 	pub scripts: BTreeMap<String, RelativePathBuf>,
 	/// The indices to use for the package
 	#[serde(
@@ -61,7 +58,7 @@ pub struct Manifest {
 		skip_serializing,
 		deserialize_with = "crate::util::deserialize_gix_url_map"
 	)]
-	#[cfg_attr(feature = "schema", schemars(with = "BTreeMap<String, url::Url>"))]
+	#[cfg_attr(test, schemars(with = "BTreeMap<String, url::Url>"))]
 	pub indices: BTreeMap<String, gix::Url>,
 	/// The indices to use for the package's wally dependencies
 	#[cfg(feature = "wally-compat")]
@@ -70,7 +67,7 @@ pub struct Manifest {
 		skip_serializing,
 		deserialize_with = "crate::util::deserialize_gix_url_map"
 	)]
-	#[cfg_attr(feature = "schema", schemars(with = "BTreeMap<String, url::Url>"))]
+	#[cfg_attr(test, schemars(with = "BTreeMap<String, url::Url>"))]
 	pub wally_indices: BTreeMap<String, gix::Url>,
 	/// The overrides this package has
 	#[serde(default, skip_serializing)]
@@ -82,7 +79,7 @@ pub struct Manifest {
 	#[cfg(feature = "patches")]
 	#[serde(default, skip_serializing)]
 	#[cfg_attr(
-		feature = "schema",
+		test,
 		schemars(
 			with = "BTreeMap<crate::names::PackageNames, BTreeMap<crate::source::ids::VersionId, std::path::PathBuf>>"
 		)
@@ -99,7 +96,7 @@ pub struct Manifest {
 	pub place: BTreeMap<target::RobloxPlaceKind, String>,
 	/// The engines this package supports
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	#[cfg_attr(feature = "schema", schemars(with = "BTreeMap<EngineKind, String>"))]
+	#[cfg_attr(test, schemars(with = "BTreeMap<EngineKind, String>"))]
 	pub engines: BTreeMap<EngineKind, VersionReq>,
 
 	/// The standard dependencies of the package
@@ -112,7 +109,7 @@ pub struct Manifest {
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub dev_dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The user-defined fields of the package
-	#[cfg_attr(feature = "schema", schemars(skip))]
+	#[cfg_attr(test, schemars(skip))]
 	#[serde(flatten)]
 	pub user_defined_fields: HashMap<String, toml::Value>,
 }
@@ -151,7 +148,7 @@ impl FromStr for Alias {
 	}
 }
 
-#[cfg(feature = "schema")]
+#[cfg(test)]
 impl schemars::JsonSchema for Alias {
 	fn schema_name() -> std::borrow::Cow<'static, str> {
 		"Alias".into()
@@ -247,5 +244,16 @@ pub mod errors {
 		/// Another specifier is already using the alias
 		#[error("another specifier is already using the alias {0}")]
 		AliasConflict(Alias),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	#[test]
+	pub fn generate_schema() {
+		let schema = schemars::schema_for!(super::Manifest);
+		let schema = serde_json::to_string_pretty(&schema).unwrap();
+
+		std::fs::write("manifest.schema.json", schema).unwrap();
 	}
 }

@@ -32,7 +32,7 @@ impl FromStr for OverrideKey {
 	}
 }
 
-#[cfg(feature = "schema")]
+#[cfg(test)]
 impl schemars::JsonSchema for OverrideKey {
 	fn schema_name() -> std::borrow::Cow<'static, str> {
 		"OverrideKey".into()
@@ -68,7 +68,7 @@ impl Display for OverrideKey {
 
 /// A specifier for an override
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum OverrideSpecifier {
 	/// A specifier for a dependency

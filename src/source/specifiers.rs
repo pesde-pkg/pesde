@@ -4,7 +4,7 @@ use std::fmt::Display;
 
 /// All possible dependency specifiers
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum DependencySpecifiers {
 	/// A pesde dependency specifier

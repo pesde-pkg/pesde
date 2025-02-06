@@ -6,8 +6,8 @@ use std::{fmt::Display, str::FromStr};
 
 /// All supported engines
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[cfg_attr(feature = "schema", schemars(rename_all = "snake_case"))]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(rename_all = "snake_case"))]
 pub enum EngineKind {
 	/// The pesde package manager
 	Pesde,

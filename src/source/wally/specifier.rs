@@ -7,13 +7,13 @@ use crate::{names::wally::WallyPackageName, source::DependencySpecifier};
 
 /// The specifier for a Wally dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub struct WallyDependencySpecifier {
 	/// The name of the package
 	#[serde(rename = "wally")]
 	pub name: WallyPackageName,
 	/// The version requirement for the package
-	#[cfg_attr(feature = "schema", schemars(with = "String"))]
+	#[cfg_attr(test, schemars(with = "String"))]
 	pub version: VersionReq,
 	/// The index to use for the package
 	#[serde(default, skip_serializing_if = "Option::is_none")]

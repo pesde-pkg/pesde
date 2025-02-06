@@ -60,7 +60,7 @@ impl FromStr for VersionId {
 	}
 }
 
-#[cfg(feature = "schema")]
+#[cfg(test)]
 impl schemars::JsonSchema for VersionId {
 	fn schema_name() -> std::borrow::Cow<'static, str> {
 		"VersionId".into()
