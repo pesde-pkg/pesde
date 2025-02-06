@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - Remove old includes format compatibility by @daimond113
-- Remove data redundacy for workspace package references by @daimond113
+- Remove data redundancy for workspace package references by @daimond113
 - Remove dependency checks from CLI in publish command in favor of registry checks by @daimond113
 
 ### Performance
