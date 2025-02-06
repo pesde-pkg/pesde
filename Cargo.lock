@@ -3523,7 +3523,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "pesde"
-version = "0.5.3"
+version = "0.6.0-rc.1"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -3569,7 +3569,7 @@ dependencies = [
 
 [[package]]
 name = "pesde-registry"
-version = "0.1.2"
+version = "0.2.0-rc.1"
 dependencies = [
  "actix-cors",
  "actix-governor",
