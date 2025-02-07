@@ -24,7 +24,7 @@ impl Default for CliConfig {
 		Self {
 			default_index: "https://github.com/pesde-pkg/index".try_into().unwrap(),
 
-			tokens: Tokens(Default::default()),
+			tokens: Tokens::default(),
 
 			last_checked_updates: None,
 		}

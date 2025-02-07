@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Fixed
+- Colour deprecate output to match yank output by @daimond113
+- Fix zbus panic on Linux by @daimond113
+
 ## [0.6.0-rc.1] - 2025-02-06
 ### Added
 - Improve installation experience by @lukadev-0

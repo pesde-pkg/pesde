@@ -5,9 +5,10 @@ use keyring::Entry;
 use reqwest::header::AUTHORIZATION;
 use serde::{ser::SerializeMap, Deserialize, Serialize};
 use std::collections::BTreeMap;
+use tokio::task::spawn_blocking;
 use tracing::instrument;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Tokens(pub BTreeMap<gix::Url, String>);
 
 impl Serialize for Tokens {
@@ -46,37 +47,50 @@ pub async fn get_tokens() -> anyhow::Result<Tokens> {
 		return Ok(config.tokens);
 	}
 
-	match Entry::new("tokens", env!("CARGO_PKG_NAME")) {
+	let keyring_tokens = spawn_blocking(|| match Entry::new("tokens", env!("CARGO_PKG_NAME")) {
 		Ok(entry) => match entry.get_password() {
-			Ok(token) => {
-				tracing::debug!("using tokens from keyring");
-				return serde_json::from_str(&token).context("failed to parse tokens");
-			}
-			Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoEntry) => {}
-			Err(e) => return Err(e.into()),
+			Ok(token) => serde_json::from_str(&token)
+				.map(Some)
+				.context("failed to parse tokens"),
+			Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoEntry) => Ok(None),
+			Err(e) => Err(e.into()),
 		},
-		Err(keyring::Error::PlatformFailure(_)) => {}
-		Err(e) => return Err(e.into()),
+		Err(keyring::Error::PlatformFailure(_)) => Ok(None),
+		Err(e) => Err(e.into()),
+	})
+	.await
+	.unwrap()?;
+
+	if let Some(tokens) = keyring_tokens {
+		tracing::debug!("using tokens from keyring");
+		return Ok(tokens);
 	}
 
-	Ok(Tokens(BTreeMap::new()))
+	Ok(Tokens::default())
 }
 
 #[instrument(level = "trace")]
 pub async fn set_tokens(tokens: Tokens) -> anyhow::Result<()> {
-	let entry = Entry::new("tokens", env!("CARGO_PKG_NAME"))?;
 	let json = serde_json::to_string(&tokens).context("failed to serialize tokens")?;
 
-	match entry.set_password(&json) {
-		Ok(()) => {
-			tracing::debug!("tokens saved to keyring");
-			return Ok(());
+	let to_keyring = spawn_blocking(move || {
+		let entry = Entry::new("tokens", env!("CARGO_PKG_NAME"))?;
+
+		match entry.set_password(&json) {
+			Ok(()) => Ok::<_, anyhow::Error>(true),
+			Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoEntry) => Ok(false),
+			Err(e) => Err(e.into()),
 		}
-		Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoEntry) => {}
-		Err(e) => return Err(e.into()),
+	})
+	.await
+	.unwrap()?;
+
+	if to_keyring {
+		tracing::debug!("tokens saved to keyring");
+		return Ok(());
 	}
 
-	tracing::debug!("tokens saved to config");
+	tracing::debug!("saving tokens to config");
 
 	let mut config = read_config().await?;
 	config.tokens = tokens;
