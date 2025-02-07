@@ -167,7 +167,7 @@ pub async fn get_or_download_engine(
 			.with_extension(std::env::consts::EXE_EXTENSION));
 	}
 
-	run_with_reporter(|_, root_progress, reporter| async {
+	let path = run_with_reporter(|_, root_progress, reporter| async {
 		let root_progress = root_progress;
 		let reporter = reporter;
 
@@ -221,7 +221,7 @@ pub async fn get_or_download_engine(
 		.await
 		.context("failed to write to file")?;
 
-		Ok::<_, anyhow::Error>(())
+		Ok::<_, anyhow::Error>(path)
 	})
 	.await?;
 
