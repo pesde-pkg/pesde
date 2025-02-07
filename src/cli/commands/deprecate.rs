@@ -1,4 +1,4 @@
-use crate::cli::get_index;
+use crate::cli::{get_index, style::SUCCESS_STYLE};
 use anyhow::Context;
 use clap::Args;
 use pesde::{
@@ -91,7 +91,7 @@ impl DeprecateCommand {
 				anyhow::bail!("failed to {prefix}deprecate package: {code} ({text})");
 			}
 			_ => {
-				println!("{text}");
+				println!("{}", SUCCESS_STYLE.apply_to(text));
 			}
 		}
 
