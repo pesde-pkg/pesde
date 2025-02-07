@@ -34,11 +34,16 @@ async fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<Pat
 async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
 	let hash = store_in_cas(cas_dir, contents.as_bytes()).await?;
 
-	match fs::hard_link(cas_path(&hash, cas_dir), destination).await {
-		Ok(_) => Ok(()),
-		Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-		Err(e) => Err(e),
-	}
+	match fs::remove_file(&destination).await {
+		Ok(_) => {}
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+		// TODO: investigate why this happens and whether we can avoid it without ignoring all PermissionDenied errors
+		#[cfg(windows)]
+		Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {}
+		Err(e) => return Err(e),
+	};
+
+	fs::hard_link(cas_path(&hash, cas_dir), destination).await
 }
 
 #[derive(Debug, Clone, Copy)]

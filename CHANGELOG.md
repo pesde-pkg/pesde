@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Fixed
 - Fix `self-upgrade` using the wrong path when doing a fresh download by @daimond113
+- Fix types not being re-exported by @daimond113
 
 ## [0.6.0-rc.2] - 2025-02-07
 ### Fixed
