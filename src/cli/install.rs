@@ -16,7 +16,12 @@ use pesde::{
 	lockfile::Lockfile,
 	manifest::{target::TargetKind, Alias, DependencyType, Manifest},
 	names::PackageNames,
-	source::{pesde::PesdePackageSource, refs::PackageRefs, traits::PackageRef, PackageSources},
+	source::{
+		pesde::PesdePackageSource,
+		refs::PackageRefs,
+		traits::{PackageRef, RefreshOptions},
+		PackageSources,
+	},
 	version_matches, Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use std::{
@@ -241,9 +246,23 @@ pub async fn install(
 						panic!("unexpected package name");
 					};
 					let project = project.clone();
+					let refreshed_sources = refreshed_sources.clone();
 
 					Some(async move {
-						let file = source.read_index_file(&name, &project).await.context("failed to read package index file")?.context("package not found in index")?;
+						refreshed_sources
+							.refresh(
+								&PackageSources::Pesde(source.clone()),
+								&RefreshOptions {
+									project: project.clone(),
+								},
+							)
+							.await
+							.context("failed to refresh source")?;
+
+						let file = source.read_index_file(&name, &project)
+							.await
+							.context("failed to read package index file")?
+							.context("package not found in index")?;
 
 						Ok::<_, anyhow::Error>(if file.meta.deprecated.is_empty() {
 							None
@@ -288,7 +307,7 @@ pub async fn install(
 								reporter,
 							)
 							.hooks(hooks)
-							.refreshed_sources(refreshed_sources)
+							.refreshed_sources(refreshed_sources.clone())
 							.prod(options.prod)
 							.network_concurrency(options.network_concurrency)
 							.force(options.force || has_irrecoverable_changes),
@@ -339,17 +358,32 @@ pub async fn install(
 							let id = id.clone();
 							let node = node.clone();
 							let project = project.clone();
+							let refreshed_sources = refreshed_sources.clone();
 
 							async move {
 								let engines = match &node.node.pkg_ref {
 									PackageRefs::Pesde(pkg_ref) => {
 										let source = PesdePackageSource::new(pkg_ref.index_url.clone());
+										refreshed_sources
+											.refresh(
+												&PackageSources::Pesde(source.clone()),
+												&RefreshOptions {
+													project: project.clone(),
+												},
+											)
+											.await
+											.context("failed to refresh source")?;
+
 										#[allow(irrefutable_let_patterns)]
 										let PackageNames::Pesde(name) = id.name() else {
 											panic!("unexpected package name");
 										};
 
-										let mut file = source.read_index_file(name, &project).await.context("failed to read package index file")?.context("package not found in index")?;
+										let mut file = source.read_index_file(name, &project)
+											.await
+											.context("failed to read package index file")?
+											.context("package not found in index")?;
+
 										file
 											.entries
 											.remove(id.version_id())

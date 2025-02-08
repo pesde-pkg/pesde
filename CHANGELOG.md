@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Fixed
+- Refresh sources before reading package data to ensure the index is even cloned (remote changes to lockfile) by @daimond113
+
 ## [0.6.0-rc.3] - 2025-02-08
 ### Fixed
 - Fix `self-upgrade` using the wrong path when doing a fresh download by @daimond113
