@@ -1,12 +1,13 @@
 use crate::{
-	all_packages_dirs, graph::DependencyGraphWithTarget, manifest::Alias, util::remove_empty_dir,
-	Project, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
+	all_packages_dirs, graph::DependencyGraphWithTarget, manifest::Alias, patches::remove_patch,
+	source::ids::PackageId, util::remove_empty_dir, Project, PACKAGES_CONTAINER_NAME,
+	SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
 use futures::FutureExt;
 use std::{
 	collections::HashSet,
-	path::{Path, PathBuf},
+	path::{Component, Path, PathBuf},
 	sync::Arc,
 };
 use tokio::task::JoinSet;
@@ -14,19 +15,33 @@ use tokio::task::JoinSet;
 fn index_entry(
 	entry: fs::DirEntry,
 	packages_index_dir: &Path,
-	tasks: &mut JoinSet<std::io::Result<()>>,
+	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
 	used_paths: &Arc<HashSet<PathBuf>>,
+	patched_packages: &Arc<HashSet<PathBuf>>,
 ) {
+	fn get_package_name_from_container(container: &Path) -> (bool, String) {
+		let Component::Normal(first_component) = container.components().next().unwrap() else {
+			panic!("invalid container path: `{}`", container.display());
+		};
+
+		let first_component = first_component.to_string_lossy();
+		let Some((name, _)) = first_component.split_once('@') else {
+			return (
+				false,
+				first_component.split_once('+').unwrap().1.to_string(),
+			);
+		};
+
+		(true, name.split_once('_').unwrap().1.to_string())
+	}
+
 	let path = entry.path();
 	let path_relative = path.strip_prefix(packages_index_dir).unwrap().to_path_buf();
 
-	let is_wally = entry
-		.file_name()
-		.to_str()
-		.expect("non UTF-8 folder name in packages index")
-		.contains("@");
+	let (is_wally, package_name) = get_package_name_from_container(&path_relative);
 
 	let used_paths = used_paths.clone();
+	let patched_packages = patched_packages.clone();
 	tasks.spawn(async move {
 		if is_wally {
 			#[cfg(not(feature = "wally-compat"))]
@@ -40,13 +55,15 @@ fn index_entry(
 			{
 				if !used_paths.contains(&path_relative) {
 					fs::remove_dir_all(path).await?;
+				} else if !patched_packages.contains(&path_relative) {
+					remove_patch(path.join(package_name)).await?;
 				}
 
 				return Ok(());
 			}
 		}
 
-		let mut tasks = JoinSet::new();
+		let mut tasks = JoinSet::<Result<_, errors::RemoveUnusedError>>::new();
 
 		let mut entries = fs::read_dir(&path).await?;
 		while let Some(entry) = entries.next_entry().await? {
@@ -54,24 +71,28 @@ fn index_entry(
 			let path_relative = path_relative.join(&version);
 
 			if used_paths.contains(&path_relative) {
+				if !patched_packages.contains(&path_relative) {
+					let path = entry.path().join(&package_name);
+					tasks.spawn(async { remove_patch(path).await.map_err(Into::into) });
+				}
 				continue;
 			}
 
 			let path = entry.path();
-			tasks.spawn(async { fs::remove_dir_all(path).await });
+			tasks.spawn(async { fs::remove_dir_all(path).await.map_err(Into::into) });
 		}
 
 		while let Some(task) = tasks.join_next().await {
 			task.unwrap()?;
 		}
 
-		remove_empty_dir(&path).await
+		remove_empty_dir(&path).await.map_err(Into::into)
 	});
 }
 
 fn packages_entry(
 	entry: fs::DirEntry,
-	tasks: &mut JoinSet<std::io::Result<()>>,
+	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
 	expected_aliases: &Arc<HashSet<Alias>>,
 ) {
 	let expected_aliases = expected_aliases.clone();
@@ -105,7 +126,7 @@ fn packages_entry(
 
 fn scripts_entry(
 	entry: fs::DirEntry,
-	tasks: &mut JoinSet<std::io::Result<()>>,
+	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
 	expected_aliases: &Arc<HashSet<Alias>>,
 ) {
 	let expected_aliases = expected_aliases.clone();
@@ -154,6 +175,24 @@ impl Project {
 			})
 			.collect::<HashSet<_>>();
 		let used_paths = Arc::new(used_paths);
+		let patched_packages = manifest
+			.patches
+			.iter()
+			.flat_map(|(name, versions)| {
+				versions
+					.iter()
+					.map(|(v_id, _)| PackageId::new(name.clone(), v_id.clone()))
+			})
+			.filter_map(|id| graph.get(&id).map(|node| (id, node)))
+			.map(|(id, node)| {
+				node.node
+					.container_folder(&id)
+					.parent()
+					.unwrap()
+					.to_path_buf()
+			})
+			.collect::<HashSet<_>>();
+		let patched_packages = Arc::new(dbg!(patched_packages));
 
 		let mut tasks = all_packages_dirs()
 			.into_iter()
@@ -161,6 +200,7 @@ impl Project {
 				let packages_dir = self.package_dir().join(&folder);
 				let packages_index_dir = packages_dir.join(PACKAGES_CONTAINER_NAME);
 				let used_paths = used_paths.clone();
+				let patched_packages = patched_packages.clone();
 
 				let expected_aliases = graph
 					.iter()
@@ -181,7 +221,7 @@ impl Project {
 					let mut index_entries = match fs::read_dir(&packages_index_dir).await {
 						Ok(entries) => entries,
 						Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-						Err(e) => return Err(e),
+						Err(e) => return Err(e.into()),
 					};
 					// we don't handle NotFound here because the upper level will handle it
 					let mut packages_entries = fs::read_dir(&packages_dir).await?;
@@ -195,6 +235,7 @@ impl Project {
 									&packages_index_dir,
 									&mut tasks,
 									&used_paths,
+									&patched_packages,
 								);
 							}
 							Some(entry) = packages_entries.next_entry().map(Result::transpose) => {
@@ -215,7 +256,7 @@ impl Project {
 					remove_empty_dir(&packages_index_dir).await?;
 					remove_empty_dir(&packages_dir).await?;
 
-					Ok::<_, std::io::Error>(())
+					Ok::<_, errors::RemoveUnusedError>(())
 				}
 			})
 			.collect::<JoinSet<_>>();
@@ -267,5 +308,10 @@ pub mod errors {
 		/// IO error
 		#[error("IO error")]
 		Io(#[from] std::io::Error),
+
+		/// Removing a patch failed
+		#[cfg(feature = "patches")]
+		#[error("error removing patch")]
+		PatchRemove(#[from] crate::patches::errors::ApplyPatchError),
 	}
 }

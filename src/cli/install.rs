@@ -300,12 +300,7 @@ pub async fn install(
 					.download_and_link(
 						&graph,
 						DownloadAndLinkOptions::<CliReporter, InstallHooks>::new(reqwest.clone())
-							.reporter(
-								#[cfg(feature = "patches")]
-								reporter.clone(),
-								#[cfg(not(feature = "patches"))]
-								reporter,
-							)
+							.reporter(reporter)
 							.hooks(hooks)
 							.refreshed_sources(refreshed_sources.clone())
 							.prod(options.prod)
@@ -314,18 +309,6 @@ pub async fn install(
 					)
 					.await
 					.context("failed to download and link dependencies")?;
-
-				#[cfg(feature = "patches")]
-				{
-					use pesde::graph::ConvertableGraph;
-					root_progress.reset();
-					root_progress.set_length(0);
-					root_progress.set_message("patch");
-
-					project
-						.apply_patches(&downloaded_graph.clone().convert(), reporter)
-						.await?;
-				}
 
 				#[cfg(feature = "version-management")]
 				{

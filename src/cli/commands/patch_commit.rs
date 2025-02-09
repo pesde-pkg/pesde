@@ -59,9 +59,6 @@ impl PatchCommitCommand {
 		.context("failed to parse manifest")?;
 
 		let patch = create_patch(&self.directory).context("failed to create patch")?;
-		fs::remove_dir_all(self.directory)
-			.await
-			.context("failed to remove patch directory")?;
 
 		let patches_dir = project.package_dir().join("patches");
 		fs::create_dir_all(&patches_dir)
@@ -75,9 +72,6 @@ impl PatchCommitCommand {
 		);
 
 		let patch_file = patches_dir.join(&patch_file_name);
-		if patch_file.exists() {
-			anyhow::bail!("patch file already exists: {}", patch_file.display());
-		}
 
 		fs::write(&patch_file, patch)
 			.await
@@ -91,6 +85,10 @@ impl PatchCommitCommand {
 			.write_manifest(manifest.to_string())
 			.await
 			.context("failed to write manifest")?;
+
+		fs::remove_dir_all(self.directory)
+			.await
+			.context("failed to remove patch directory")?;
 
 		println!(concat!(
 			"done! run `",

@@ -6,7 +6,7 @@ use crate::{
 		DependencyGraphWithTarget,
 	},
 	manifest::{target::TargetKind, DependencyType},
-	reporters::DownloadsReporter,
+	reporters::{DownloadsReporter, PatchesReporter},
 	source::{
 		ids::PackageId,
 		traits::{GetTargetOptions, PackageRef, PackageSource},
@@ -85,7 +85,7 @@ pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
 
 impl<Reporter, Hooks> DownloadAndLinkOptions<Reporter, Hooks>
 where
-	Reporter: DownloadsReporter + Send + Sync + 'static,
+	Reporter: DownloadsReporter + PatchesReporter + Send + Sync + 'static,
 	Hooks: DownloadAndLinkHooks + Send + Sync + 'static,
 {
 	/// Creates a new download options with the given reqwest client and reporter.
@@ -161,7 +161,7 @@ impl Project {
 		options: DownloadAndLinkOptions<Reporter, Hooks>,
 	) -> Result<DependencyGraphWithTarget, errors::DownloadAndLinkError<Hooks::Error>>
 	where
-		Reporter: DownloadsReporter + 'static,
+		Reporter: DownloadsReporter + PatchesReporter + 'static,
 		Hooks: DownloadAndLinkHooks + 'static,
 	{
 		let DownloadAndLinkOptions {
@@ -203,13 +203,13 @@ impl Project {
 		}
 
 		// step 1. download dependencies
-		let downloaded_graph = {
+		let graph_to_download = {
 			let mut download_graph_options = DownloadGraphOptions::<Reporter>::new(reqwest.clone())
 				.refreshed_sources(refreshed_sources.clone())
 				.network_concurrency(network_concurrency);
 
-			if let Some(reporter) = reporter {
-				download_graph_options = download_graph_options.reporter(reporter.clone());
+			if let Some(reporter) = reporter.clone() {
+				download_graph_options = download_graph_options.reporter(reporter);
 			}
 
 			let mut downloaded_graph = DependencyGraph::new();
@@ -273,9 +273,10 @@ impl Project {
 			downloaded_graph
 		};
 
-		let (downloaded_wally_graph, downloaded_other_graph) = downloaded_graph
-			.into_iter()
-			.partition::<HashMap<_, _>, _>(|(_, node)| node.pkg_ref.is_wally_package());
+		let (wally_graph_to_download, other_graph_to_download) =
+			graph_to_download
+				.into_iter()
+				.partition::<HashMap<_, _>, _>(|(_, node)| node.pkg_ref.is_wally_package());
 
 		let mut graph = Arc::new(DependencyGraphWithTarget::new());
 
@@ -329,7 +330,7 @@ impl Project {
 			&mut graph,
 			self,
 			manifest.target.kind(),
-			downloaded_other_graph,
+			other_graph_to_download,
 		)
 		.instrument(tracing::debug_span!("get targets (non-wally)"))
 		.await?;
@@ -355,10 +356,48 @@ impl Project {
 			&mut graph,
 			self,
 			manifest.target.kind(),
-			downloaded_wally_graph,
+			wally_graph_to_download,
 		)
 		.instrument(tracing::debug_span!("get targets (wally)"))
 		.await?;
+
+		#[cfg(feature = "patches")]
+		{
+			use crate::patches::apply_patch;
+			let mut tasks = manifest
+				.patches
+				.iter()
+				.flat_map(|(name, versions)| {
+					versions
+						.iter()
+						.map(|(v_id, path)| (PackageId::new(name.clone(), v_id.clone()), path))
+				})
+				.filter_map(|(id, patch_path)| graph.get(&id).map(|node| (id, node, patch_path)))
+				.map(|(id, node, patch_path)| {
+					let patch_path = patch_path.to_path(self.package_dir());
+					let container_folder =
+						node.node
+							.container_folder_from_project(&id, self, manifest.target.kind());
+					let reporter = reporter.clone();
+
+					async move {
+						match reporter {
+							Some(reporter) => {
+								apply_patch(&id, container_folder, &patch_path, reporter.clone())
+									.await
+							}
+							None => {
+								apply_patch(&id, container_folder, &patch_path, Arc::new(())).await
+							}
+						}
+					}
+				})
+				.collect::<JoinSet<_>>();
+
+			while let Some(task) = tasks.join_next().await {
+				task.unwrap()?;
+			}
+		}
 
 		// step 4. link ALL dependencies. do so with types
 		self.link_dependencies(graph.clone(), true)
@@ -421,5 +460,10 @@ pub mod errors {
 		/// Removing unused dependencies failed
 		#[error("error removing unused dependencies")]
 		RemoveUnused(#[from] crate::linking::incremental::errors::RemoveUnusedError),
+
+		/// Patching a package failed
+		#[cfg(feature = "patches")]
+		#[error("error applying patch")]
+		Patch(#[from] crate::patches::errors::ApplyPatchError),
 	}
 }

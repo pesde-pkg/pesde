@@ -1,16 +1,17 @@
 use crate::{
-	graph::DependencyGraph,
 	reporters::{PatchProgressReporter, PatchesReporter},
 	source::ids::PackageId,
-	Project, MANIFEST_FILE_NAME,
+	MANIFEST_FILE_NAME,
 };
 use fs_err::tokio as fs;
 use futures::TryFutureExt;
 use git2::{ApplyLocation, Diff, DiffFormat, DiffLineType, Repository, Signature};
-use relative_path::RelativePathBuf;
-use std::{path::Path, sync::Arc};
-use tokio::task::JoinSet;
-use tracing::{instrument, Instrument};
+use std::{
+	path::{Path, PathBuf},
+	sync::Arc,
+};
+use tokio::task::{spawn_blocking, JoinSet};
+use tracing::instrument;
 
 /// Set up a git repository for patches
 pub fn setup_patches_repo<P: AsRef<Path>>(dir: P) -> Result<Repository, git2::Error> {
@@ -43,7 +44,7 @@ pub fn setup_patches_repo<P: AsRef<Path>>(dir: P) -> Result<Repository, git2::Er
 
 /// Create a patch from the current state of the repository
 pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
-	let mut patches = vec![];
+	let mut patch = vec![];
 	let repo = Repository::open(dir.as_ref())?;
 
 	let original = repo.head()?.peel_to_tree()?;
@@ -54,7 +55,12 @@ pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
 	checkout_builder.path(MANIFEST_FILE_NAME);
 	repo.checkout_tree(original.as_object(), Some(&mut checkout_builder))?;
 
-	let diff = repo.diff_tree_to_workdir(Some(&original), None)?;
+	// TODO: despite all the options, this still doesn't include untracked files
+	let mut diff_options = git2::DiffOptions::default();
+	diff_options.include_untracked(true);
+	diff_options.recurse_untracked_dirs(true);
+
+	let diff = repo.diff_tree_to_workdir(Some(&original), Some(&mut diff_options))?;
 
 	diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
 		if matches!(
@@ -64,119 +70,127 @@ pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
 			let origin = line.origin();
 			let mut buffer = vec![0; origin.len_utf8()];
 			origin.encode_utf8(&mut buffer);
-			patches.extend(buffer);
+			patch.extend(buffer);
 		}
 
-		patches.extend(line.content());
+		patch.extend(line.content());
 
 		true
 	})?;
 
-	Ok(patches)
+	Ok(patch)
 }
 
-impl Project {
-	/// Apply patches to the project's dependencies
-	#[instrument(skip(self, graph, reporter), level = "debug")]
-	pub async fn apply_patches<Reporter>(
-		&self,
-		graph: &DependencyGraph,
-		reporter: Arc<Reporter>,
-	) -> Result<(), errors::ApplyPatchesError>
-	where
-		Reporter: PatchesReporter + Send + Sync + 'static,
-	{
-		let manifest = self.deser_manifest().await?;
+// unlike a simple hard reset, this will also remove untracked files
+fn reset_repo(repo: &Repository) -> Result<(), git2::Error> {
+	let mut checkout_builder = git2::build::CheckoutBuilder::new();
+	checkout_builder.force();
+	checkout_builder.remove_untracked(true);
+	repo.checkout_head(Some(&mut checkout_builder))?;
 
-		let mut tasks = manifest
-			.patches
-			.into_iter()
-			.flat_map(|(name, versions)| {
-				versions.into_iter().map(move |(version_id, patch_path)| {
-					(PackageId::new(name.clone(), version_id), patch_path)
-				})
-			})
-			.filter_map(|(package_id, patch_path)| match graph.get(&package_id) {
-				Some(node) => Some((package_id, patch_path, node)),
-				None => {
-					tracing::warn!(
-						"patch for {package_id} not applied because it is not in the graph"
-					);
-					None
-				}
-			})
-			.map(|(package_id, patch_path, node)| {
-				let patch_path = patch_path.to_path(self.package_dir());
-				let span = tracing::info_span!("apply patch", package_id = package_id.to_string());
-				let container_folder =
-					node.container_folder_from_project(&package_id, self, manifest.target.kind());
-				let reporter = reporter.clone();
+	Ok(())
+}
 
-				async move {
-					tracing::debug!("applying patch");
+/// Apply a patch to a dependency
+#[instrument(skip(container_folder, patch_path, reporter), level = "debug")]
+pub async fn apply_patch<Reporter>(
+	package_id: &PackageId,
+	container_folder: PathBuf,
+	patch_path: &Path,
+	reporter: Arc<Reporter>,
+) -> Result<(), errors::ApplyPatchError>
+where
+	Reporter: PatchesReporter + Send + Sync + 'static,
+{
+	let dot_git = container_folder.join(".git");
 
-					let progress_reporter = reporter.report_patch(package_id.to_string());
+	tracing::debug!("applying patch");
 
-					let patch = fs::read(&patch_path)
-						.await
-						.map_err(errors::ApplyPatchesError::PatchRead)?;
-					let patch = Diff::from_buffer(&patch)?;
+	let progress_reporter = reporter.report_patch(package_id.to_string());
 
-					{
-						let repo = setup_patches_repo(&container_folder)?;
+	let patch = fs::read(&patch_path)
+		.await
+		.map_err(errors::ApplyPatchError::PatchRead)?;
+	let patch = spawn_blocking(move || Diff::from_buffer(&patch))
+		.await
+		.unwrap()?;
 
-						let mut apply_delta_tasks = patch
-							.deltas()
-							.filter(|delta| matches!(delta.status(), git2::Delta::Modified))
-							.filter_map(|delta| delta.new_file().path())
-							.map(|path| {
-								RelativePathBuf::from_path(path)
-									.unwrap()
-									.to_path(&container_folder)
-							})
-							.map(|path| {
-								async {
-									if !fs::metadata(&path).await?.is_file() {
-										return Ok(());
-									}
+	let mut apply_delta_tasks = patch
+		.deltas()
+		.filter(|delta| matches!(delta.status(), git2::Delta::Modified))
+		.filter_map(|delta| delta.new_file().path())
+		.map(|path| {
+			let path = container_folder.join(path);
 
-									// prevent CAS corruption by the file being modified
-									let content = fs::read(&path).await?;
-									fs::remove_file(&path).await?;
-									fs::write(path, content).await?;
-									Ok(())
-								}
-								.map_err(errors::ApplyPatchesError::File)
-							})
-							.collect::<JoinSet<_>>();
+			async {
+				// prevent CAS corruption by the file being modified
+				let content = match fs::read(&path).await {
+					Ok(content) => content,
+					Err(e) if e.kind() == std::io::ErrorKind::IsADirectory => return Ok(()),
+					Err(e) => return Err(e),
+				};
+				fs::remove_file(&path).await?;
+				fs::write(path, content).await?;
+				Ok(())
+			}
+			.map_err(errors::ApplyPatchError::File)
+		})
+		.collect::<JoinSet<_>>();
 
-						while let Some(res) = apply_delta_tasks.join_next().await {
-							res.unwrap()?;
-						}
-
-						repo.apply(&patch, ApplyLocation::WorkDir, None)?;
-					}
-
-					tracing::debug!("patch applied");
-
-					fs::remove_dir_all(container_folder.join(".git"))
-						.await
-						.map_err(errors::ApplyPatchesError::DotGitRemove)?;
-
-					progress_reporter.report_done();
-
-					Ok::<_, errors::ApplyPatchesError>(())
-				}
-				.instrument(span)
-			})
-			.collect::<JoinSet<_>>();
-
-		while let Some(res) = tasks.join_next().await {
-			res.unwrap()?
-		}
-
-		Ok(())
+	while let Some(res) = apply_delta_tasks.join_next().await {
+		res.unwrap()?;
 	}
+
+	spawn_blocking(move || {
+		let repo = if dot_git.exists() {
+			let repo = Repository::open(&container_folder)?;
+			reset_repo(&repo)?;
+			repo
+		} else {
+			setup_patches_repo(&container_folder)?
+		};
+
+		repo.apply(&patch, ApplyLocation::WorkDir, None)
+	})
+	.await
+	.unwrap()?;
+
+	tracing::debug!("patch applied");
+
+	progress_reporter.report_done();
+
+	Ok::<_, errors::ApplyPatchError>(())
+}
+
+/// Remove a patch from a dependency
+#[instrument(level = "debug")]
+pub async fn remove_patch(container_folder: PathBuf) -> Result<(), errors::ApplyPatchError> {
+	let dot_git = container_folder.join(".git");
+
+	tracing::debug!("removing patch");
+
+	if dbg!(fs::metadata(&dot_git).await).is_err() {
+		return Ok(());
+	}
+
+	spawn_blocking(move || {
+		let repo = Repository::open(&container_folder)?;
+		reset_repo(&repo)?;
+
+		Ok::<_, git2::Error>(())
+	})
+	.await
+	.unwrap()?;
+
+	match fs::remove_dir_all(&dot_git).await {
+		Ok(()) => (),
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+		Err(e) => return Err(errors::ApplyPatchError::File(e)),
+	}
+
+	tracing::debug!("patch removed");
+
+	Ok::<_, errors::ApplyPatchError>(())
 }
 
 /// Errors that can occur when using patches
@@ -186,11 +200,7 @@ pub mod errors {
 	/// Errors that can occur when applying patches
 	#[derive(Debug, Error)]
 	#[non_exhaustive]
-	pub enum ApplyPatchesError {
-		/// Error deserializing the project manifest
-		#[error("error deserializing project manifest")]
-		ManifestDeserializationFailed(#[from] crate::errors::ManifestReadError),
-
+	pub enum ApplyPatchError {
 		/// Error interacting with git
 		#[error("error interacting with git")]
 		Git(#[from] git2::Error),
