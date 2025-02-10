@@ -166,6 +166,8 @@ impl Project {
 		package_types: &Arc<PackageTypes>,
 		is_complete: bool,
 	) -> Result<(), errors::LinkingError> {
+		let package_dir_canonical = fs::canonicalize(self.package_dir()).await?;
+
 		let mut tasks = JoinSet::<Result<_, errors::LinkingError>>::new();
 		let mut link_files = |base_folder: &Path,
 		                      container_folder: &Path,
@@ -224,8 +226,7 @@ impl Project {
 				.scripts()
 				.filter(|s| !s.is_empty() && node.node.direct.is_some() && is_root)
 			{
-				let scripts_base = self
-					.package_dir()
+				let scripts_base = package_dir_canonical
 					.join(SCRIPTS_LINK_FOLDER)
 					.join(alias.as_str());
 
