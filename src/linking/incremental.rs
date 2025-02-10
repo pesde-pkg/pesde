@@ -1,7 +1,6 @@
 use crate::{
-	all_packages_dirs, graph::DependencyGraphWithTarget, manifest::Alias, patches::remove_patch,
-	source::ids::PackageId, util::remove_empty_dir, Project, PACKAGES_CONTAINER_NAME,
-	SCRIPTS_LINK_FOLDER,
+	all_packages_dirs, graph::DependencyGraphWithTarget, manifest::Alias, source::ids::PackageId,
+	util::remove_empty_dir, Project, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
 use futures::FutureExt;
@@ -17,7 +16,7 @@ fn index_entry(
 	packages_index_dir: &Path,
 	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
 	used_paths: &Arc<HashSet<PathBuf>>,
-	patched_packages: &Arc<HashSet<PathBuf>>,
+	#[cfg(feature = "patches")] patched_packages: &Arc<HashSet<PathBuf>>,
 ) {
 	fn get_package_name_from_container(container: &Path) -> (bool, String) {
 		let Component::Normal(first_component) = container.components().next().unwrap() else {
@@ -55,8 +54,11 @@ fn index_entry(
 			{
 				if !used_paths.contains(&path_relative) {
 					fs::remove_dir_all(path).await?;
-				} else if !patched_packages.contains(&path_relative) {
-					remove_patch(path.join(package_name)).await?;
+				} else {
+					#[cfg(feature = "patches")]
+					if !patched_packages.contains(&path_relative) {
+						crate::patches::remove_patch(path.join(package_name)).await?;
+					}
 				}
 
 				return Ok(());
@@ -71,9 +73,12 @@ fn index_entry(
 			let path_relative = path_relative.join(&version);
 
 			if used_paths.contains(&path_relative) {
+				#[cfg(feature = "patches")]
 				if !patched_packages.contains(&path_relative) {
 					let path = entry.path().join(&package_name);
-					tasks.spawn(async { remove_patch(path).await.map_err(Into::into) });
+					tasks.spawn(async {
+						crate::patches::remove_patch(path).await.map_err(Into::into)
+					});
 				}
 				continue;
 			}
@@ -175,6 +180,7 @@ impl Project {
 			})
 			.collect::<HashSet<_>>();
 		let used_paths = Arc::new(used_paths);
+		#[cfg(feature = "patches")]
 		let patched_packages = manifest
 			.patches
 			.iter()
@@ -192,6 +198,7 @@ impl Project {
 					.to_path_buf()
 			})
 			.collect::<HashSet<_>>();
+		#[cfg(feature = "patches")]
 		let patched_packages = Arc::new(patched_packages);
 
 		let mut tasks = all_packages_dirs()
@@ -200,6 +207,7 @@ impl Project {
 				let packages_dir = self.package_dir().join(&folder);
 				let packages_index_dir = packages_dir.join(PACKAGES_CONTAINER_NAME);
 				let used_paths = used_paths.clone();
+				#[cfg(feature = "patches")]
 				let patched_packages = patched_packages.clone();
 
 				let expected_aliases = graph
@@ -235,6 +243,7 @@ impl Project {
 									&packages_index_dir,
 									&mut tasks,
 									&used_paths,
+									#[cfg(feature = "patches")]
 									&patched_packages,
 								);
 							}
