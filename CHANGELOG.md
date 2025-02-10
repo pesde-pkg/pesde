@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Correct script linker require paths on Windows by @daimond113
 - Improve patches in incremental installs by @daimond113
+- Patches now include newly created files by @daimond113
 
 ### Changed
 - Patches are now applied before type extraction to allow patches to modify types by @daimond113

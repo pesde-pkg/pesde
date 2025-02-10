@@ -192,7 +192,7 @@ impl Project {
 					.to_path_buf()
 			})
 			.collect::<HashSet<_>>();
-		let patched_packages = Arc::new(dbg!(patched_packages));
+		let patched_packages = Arc::new(patched_packages);
 
 		let mut tasks = all_packages_dirs()
 			.into_iter()

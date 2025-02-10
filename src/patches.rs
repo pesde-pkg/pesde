@@ -55,10 +55,10 @@ pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
 	checkout_builder.path(MANIFEST_FILE_NAME);
 	repo.checkout_tree(original.as_object(), Some(&mut checkout_builder))?;
 
-	// TODO: despite all the options, this still doesn't include untracked files
 	let mut diff_options = git2::DiffOptions::default();
 	diff_options.include_untracked(true);
 	diff_options.recurse_untracked_dirs(true);
+	diff_options.show_untracked_content(true);
 
 	let diff = repo.diff_tree_to_workdir(Some(&original), Some(&mut diff_options))?;
 
@@ -169,7 +169,7 @@ pub async fn remove_patch(container_folder: PathBuf) -> Result<(), errors::Apply
 
 	tracing::debug!("removing patch");
 
-	if dbg!(fs::metadata(&dot_git).await).is_err() {
+	if fs::metadata(&dot_git).await.is_err() {
 		return Ok(());
 	}
 
