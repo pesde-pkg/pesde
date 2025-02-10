@@ -1,6 +1,6 @@
 use crate::{
-	all_packages_dirs, graph::DependencyGraphWithTarget, manifest::Alias, source::ids::PackageId,
-	util::remove_empty_dir, Project, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
+	all_packages_dirs, graph::DependencyGraphWithTarget, manifest::Alias, util::remove_empty_dir,
+	Project, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
 use futures::FutureExt;
@@ -37,9 +37,11 @@ fn index_entry(
 	let path = entry.path();
 	let path_relative = path.strip_prefix(packages_index_dir).unwrap().to_path_buf();
 
+	#[cfg_attr(not(feature = "patches"), allow(unused_variables))]
 	let (is_wally, package_name) = get_package_name_from_container(&path_relative);
 
 	let used_paths = used_paths.clone();
+	#[cfg(feature = "patches")]
 	let patched_packages = patched_packages.clone();
 	tasks.spawn(async move {
 		if is_wally {
@@ -187,7 +189,7 @@ impl Project {
 			.flat_map(|(name, versions)| {
 				versions
 					.iter()
-					.map(|(v_id, _)| PackageId::new(name.clone(), v_id.clone()))
+					.map(|(v_id, _)| crate::source::ids::PackageId::new(name.clone(), v_id.clone()))
 			})
 			.filter_map(|id| graph.get(&id).map(|node| (id, node)))
 			.map(|(id, node)| {
