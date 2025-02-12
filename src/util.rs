@@ -2,10 +2,14 @@ use crate::AuthConfig;
 use fs_err::tokio as fs;
 use gix::bstr::BStr;
 use semver::Version;
-use serde::{Deserialize, Deserializer, Serializer};
+use serde::{
+	de::{MapAccess, Visitor},
+	Deserialize, Deserializer, Serializer,
+};
 use sha2::{Digest, Sha256};
 use std::{
 	collections::{BTreeMap, HashSet},
+	fmt::{Display, Formatter},
 	path::Path,
 };
 
@@ -132,8 +136,54 @@ macro_rules! ser_display_deser_fromstr {
 				D: serde::de::Deserializer<'de>,
 			{
 				let s = String::deserialize(deserializer)?;
-				Self::from_str(&s).map_err(serde::de::Error::custom)
+				s.parse().map_err(serde::de::Error::custom)
 			}
 		}
 	};
+}
+
+pub fn deserialize_no_dup_keys<'de, D, K, V>(deserializer: D) -> Result<BTreeMap<K, V>, D::Error>
+where
+	K: Display + Ord + Deserialize<'de>,
+	V: Deserialize<'de>,
+	D: Deserializer<'de>,
+{
+	struct NoDupKeysVisitor<K, V> {
+		map: BTreeMap<K, V>,
+	}
+
+	impl<'de, K, V> Visitor<'de> for NoDupKeysVisitor<K, V>
+	where
+		K: Display + Ord + Deserialize<'de>,
+		V: Deserialize<'de>,
+	{
+		type Value = BTreeMap<K, V>;
+
+		fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+			formatter.write_str("a map with no duplicate keys")
+		}
+
+		fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+		where
+			A: MapAccess<'de>,
+		{
+			let mut map = self.map;
+
+			while let Some((key, value)) = access.next_entry()? {
+				if map.contains_key(&key) {
+					return Err(serde::de::Error::custom(format!(
+						"duplicate key `{key}` at line"
+					)));
+				}
+
+				map.insert(key, value);
+			}
+
+			Ok(map)
+		}
+	}
+
+	deserializer.deserialize_map(NoDupKeysVisitor {
+		map: BTreeMap::new(),
+	})
 }

@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::{
 	collections::{BTreeMap, HashMap},
 	fmt::Display,
+	hash::Hash,
 	str::FromStr,
 };
 use tracing::instrument;
@@ -100,13 +101,25 @@ pub struct Manifest {
 	pub engines: BTreeMap<EngineKind, VersionReq>,
 
 	/// The standard dependencies of the package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	#[serde(
+		default,
+		skip_serializing_if = "BTreeMap::is_empty",
+		deserialize_with = "crate::util::deserialize_no_dup_keys"
+	)]
 	pub dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The peer dependencies of the package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	#[serde(
+		default,
+		skip_serializing_if = "BTreeMap::is_empty",
+		deserialize_with = "crate::util::deserialize_no_dup_keys"
+	)]
 	pub peer_dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The dev dependencies of the package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	#[serde(
+		default,
+		skip_serializing_if = "BTreeMap::is_empty",
+		deserialize_with = "crate::util::deserialize_no_dup_keys"
+	)]
 	pub dev_dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The user-defined fields of the package
 	#[cfg_attr(test, schemars(skip))]
@@ -115,9 +128,36 @@ pub struct Manifest {
 }
 
 /// An alias of a dependency
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// Equality checks (Ord, PartialOrd, PartialEq, Eq, Hash) are case-insensitive
+#[derive(Debug, Clone)]
 pub struct Alias(String);
 ser_display_deser_fromstr!(Alias);
+
+impl Ord for Alias {
+	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+		self.0.to_lowercase().cmp(&other.0.to_lowercase())
+	}
+}
+
+impl PartialOrd for Alias {
+	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl PartialEq for Alias {
+	fn eq(&self, other: &Self) -> bool {
+		self.0.to_lowercase() == other.0.to_lowercase()
+	}
+}
+
+impl Eq for Alias {}
+
+impl Hash for Alias {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.0.to_lowercase().hash(state)
+	}
+}
 
 impl Display for Alias {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
