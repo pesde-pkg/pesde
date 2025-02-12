@@ -47,6 +47,7 @@ pub enum Subcommand {
 	Remove(remove::RemoveCommand),
 
 	/// Installs all dependencies for the project
+	#[clap(name = "install", visible_alias = "i")]
 	Install(install::InstallCommand),
 
 	/// Updates the project's lockfile. Run install to apply changes
