@@ -13,7 +13,7 @@ use crate::{
 		IGNORED_FILES,
 	},
 	util::hash,
-	Project, DEFAULT_INDEX_NAME, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
+	Project, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use fs_err::tokio as fs;
 use gix::{bstr::BStr, traverse::tree::Recorder, ObjectId, Url};
@@ -72,43 +72,29 @@ fn transform_pesde_dependencies(
 		.map(|(alias, (mut spec, ty))| {
 			match &mut spec {
 				DependencySpecifiers::Pesde(specifier) => {
-					let index_name = specifier
-						.index
-						.as_deref()
-						.unwrap_or(DEFAULT_INDEX_NAME)
+					specifier.index = manifest
+						.indices
+						.get(&specifier.index)
+						.ok_or_else(|| {
+							errors::ResolveError::PesdeIndexNotFound(
+								specifier.index.to_string(),
+								Box::new(repo_url.clone()),
+							)
+						})?
 						.to_string();
-					specifier.index = Some(
-						manifest
-							.indices
-							.get(&index_name)
-							.ok_or_else(|| {
-								errors::ResolveError::PesdeIndexNotFound(
-									index_name.clone(),
-									Box::new(repo_url.clone()),
-								)
-							})?
-							.to_string(),
-					);
 				}
 				#[cfg(feature = "wally-compat")]
 				DependencySpecifiers::Wally(specifier) => {
-					let index_name = specifier
-						.index
-						.as_deref()
-						.unwrap_or(DEFAULT_INDEX_NAME)
+					specifier.index = manifest
+						.wally_indices
+						.get(&specifier.index)
+						.ok_or_else(|| {
+							errors::ResolveError::WallyIndexNotFound(
+								specifier.index.to_string(),
+								Box::new(repo_url.clone()),
+							)
+						})?
 						.to_string();
-					specifier.index = Some(
-						manifest
-							.wally_indices
-							.get(&index_name)
-							.ok_or_else(|| {
-								errors::ResolveError::WallyIndexNotFound(
-									index_name.clone(),
-									Box::new(repo_url.clone()),
-								)
-							})?
-							.to_string(),
-					);
 				}
 				DependencySpecifiers::Git(_) => {}
 				DependencySpecifiers::Workspace(specifier) => {

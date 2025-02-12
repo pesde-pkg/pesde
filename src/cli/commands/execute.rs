@@ -21,7 +21,7 @@ use pesde::{
 		},
 		PackageSources,
 	},
-	Project, RefreshedSources,
+	Project, RefreshedSources, DEFAULT_INDEX_NAME,
 };
 use semver::VersionReq;
 use std::{
@@ -86,7 +86,7 @@ impl ExecuteCommand {
 					let specifier = PesdeDependencySpecifier {
 						name: self.package.0.clone(),
 						version: version_req.clone(),
-						index: None,
+						index: DEFAULT_INDEX_NAME.into(),
 						target: None,
 					};
 

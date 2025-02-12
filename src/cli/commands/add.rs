@@ -77,7 +77,7 @@ impl AddCommand {
 					let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
 						name: name.clone(),
 						version: version.clone().unwrap_or(VersionReq::STAR),
-						index: self.index,
+						index: self.index.unwrap_or_else(|| DEFAULT_INDEX_NAME.to_string()),
 						target: self.target,
 					});
 
@@ -102,7 +102,7 @@ impl AddCommand {
 						pesde::source::wally::specifier::WallyDependencySpecifier {
 							name: name.clone(),
 							version: version.clone().unwrap_or(VersionReq::STAR),
-							index: self.index,
+							index: self.index.unwrap_or_else(|| DEFAULT_INDEX_NAME.to_string()),
 						},
 					);
 
@@ -210,8 +210,8 @@ impl AddCommand {
 					field["target"] = toml_edit::value(version_id.target().to_string());
 				}
 
-				if let Some(index) = spec.index.filter(|i| i != DEFAULT_INDEX_NAME) {
-					field["index"] = toml_edit::value(index);
+				if spec.index != DEFAULT_INDEX_NAME {
+					field["index"] = toml_edit::value(spec.index);
 				}
 
 				println!(
@@ -228,8 +228,8 @@ impl AddCommand {
 				field["wally"] = toml_edit::value(name_str);
 				field["version"] = toml_edit::value(format!("^{}", version_id.version()));
 
-				if let Some(index) = spec.index.filter(|i| i != DEFAULT_INDEX_NAME) {
-					field["index"] = toml_edit::value(index);
+				if spec.index != DEFAULT_INDEX_NAME {
+					field["index"] = toml_edit::value(spec.index);
 				}
 
 				println!(

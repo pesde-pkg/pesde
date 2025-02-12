@@ -429,37 +429,23 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 		{
 			match specifier {
 				DependencySpecifiers::Pesde(specifier) => {
-					let index_name = specifier
-						.index
-						.as_deref()
-						.unwrap_or(DEFAULT_INDEX_NAME)
+					specifier.index = manifest
+						.indices
+						.get(&specifier.index)
+						.with_context(|| {
+							format!("index {} not found in indices field", specifier.index)
+						})?
 						.to_string();
-					specifier.index = Some(
-						manifest
-							.indices
-							.get(&index_name)
-							.with_context(|| {
-								format!("index {index_name} not found in indices field")
-							})?
-							.to_string(),
-					);
 				}
 				#[cfg(feature = "wally-compat")]
 				DependencySpecifiers::Wally(specifier) => {
-					let index_name = specifier
-						.index
-						.as_deref()
-						.unwrap_or(DEFAULT_INDEX_NAME)
+					specifier.index = manifest
+						.wally_indices
+						.get(&specifier.index)
+						.with_context(|| {
+							format!("index {} not found in wally_indices field", specifier.index)
+						})?
 						.to_string();
-					specifier.index = Some(
-						manifest
-							.wally_indices
-							.get(&index_name)
-							.with_context(|| {
-								format!("index {index_name} not found in wally_indices field")
-							})?
-							.to_string(),
-					);
 				}
 				DependencySpecifiers::Git(_) => {}
 				DependencySpecifiers::Workspace(spec) => {
@@ -503,13 +489,11 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 							v => VersionReq::parse(&format!("{v}{}", manifest.version))
 								.with_context(|| format!("failed to parse version for {v}"))?,
 						},
-						index: Some(
-							manifest
-								.indices
-								.get(DEFAULT_INDEX_NAME)
-								.context("missing default index in workspace package manifest")?
-								.to_string(),
-						),
+						index: manifest
+							.indices
+							.get(DEFAULT_INDEX_NAME)
+							.context("missing default index in workspace package manifest")?
+							.to_string(),
 						target: Some(spec.target.unwrap_or(manifest.target.kind())),
 					});
 				}

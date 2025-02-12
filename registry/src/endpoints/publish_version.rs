@@ -289,32 +289,26 @@ pub async fn publish_package(
 
 			match specifier {
 				DependencySpecifiers::Pesde(specifier) => {
-					if specifier
-						.index
-						.as_deref()
-						.filter(|index| match gix::Url::try_from(*index) {
-							Ok(url) => config
-								.other_registries_allowed
-								.is_allowed_or_same(source.repo_url().clone(), url),
-							Err(_) => false,
-						})
-						.is_none()
-					{
+					let allowed = match gix::Url::try_from(&*specifier.index) {
+						Ok(url) => config
+							.other_registries_allowed
+							.is_allowed_or_same(source.repo_url().clone(), url),
+						Err(_) => false,
+					};
+
+					if !allowed {
 						return Err(RegistryError::InvalidArchive(format!(
 							"invalid index in pesde dependency {specifier}"
 						)));
 					}
 				}
 				DependencySpecifiers::Wally(specifier) => {
-					if specifier
-						.index
-						.as_deref()
-						.filter(|index| match gix::Url::try_from(*index) {
-							Ok(url) => config.wally_allowed.is_allowed(url),
-							Err(_) => false,
-						})
-						.is_none()
-					{
+					let allowed = match gix::Url::try_from(&*specifier.index) {
+						Ok(url) => config.wally_allowed.is_allowed(url),
+						Err(_) => false,
+					};
+
+					if !allowed {
 						return Err(RegistryError::InvalidArchive(format!(
 							"invalid index in wally dependency {specifier}"
 						)));

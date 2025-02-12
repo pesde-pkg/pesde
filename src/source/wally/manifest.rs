@@ -42,7 +42,8 @@ pub fn deserialize_specifiers<'de, D: Deserializer<'de>>(
 				WallyDependencySpecifier {
 					name: name.parse().map_err(serde::de::Error::custom)?,
 					version: VersionReq::parse(version).map_err(serde::de::Error::custom)?,
-					index: None,
+					// doesn't matter, will be replaced later
+					index: "".to_string(),
 				},
 			))
 		})
@@ -54,11 +55,11 @@ pub fn deserialize_specifiers<'de, D: Deserializer<'de>>(
 pub struct WallyManifest {
 	pub package: WallyPackage,
 	#[serde(default, deserialize_with = "deserialize_specifiers")]
-	pub dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
+	dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
 	#[serde(default, deserialize_with = "deserialize_specifiers")]
-	pub server_dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
+	server_dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
 	#[serde(default, deserialize_with = "deserialize_specifiers")]
-	pub dev_dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
+	dev_dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
 }
 
 impl WallyManifest {
@@ -77,7 +78,7 @@ impl WallyManifest {
 		] {
 			for (alias, spec) in deps {
 				let mut spec = spec.clone();
-				spec.index = Some(self.package.registry.to_string());
+				spec.index = self.package.registry.to_string();
 
 				if all_deps
 					.insert(alias.clone(), (DependencySpecifiers::Wally(spec), ty))

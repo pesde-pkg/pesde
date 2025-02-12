@@ -11,7 +11,6 @@ use crate::{
 		traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
 		ResolveResult,
 	},
-	DEFAULT_INDEX_NAME,
 };
 use std::collections::BTreeMap;
 use tracing::instrument;
@@ -49,37 +48,29 @@ impl PackageSource for PathPackageSource {
 				.map(|(alias, (mut spec, ty))| {
 					match &mut spec {
 						DependencySpecifiers::Pesde(spec) => {
-							let index_name = spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
-
-							spec.index = Some(
-								manifest
-									.indices
-									.get(index_name)
-									.ok_or_else(|| {
-										errors::ResolveError::IndexNotFound(
-											index_name.to_string(),
-											specifier.path.clone(),
-										)
-									})?
-									.to_string(),
-							)
+							spec.index = manifest
+								.indices
+								.get(&spec.index)
+								.ok_or_else(|| {
+									errors::ResolveError::IndexNotFound(
+										spec.index.to_string(),
+										specifier.path.clone(),
+									)
+								})?
+								.to_string();
 						}
 						#[cfg(feature = "wally-compat")]
 						DependencySpecifiers::Wally(spec) => {
-							let index_name = spec.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
-
-							spec.index = Some(
-								manifest
-									.wally_indices
-									.get(index_name)
-									.ok_or_else(|| {
-										errors::ResolveError::IndexNotFound(
-											index_name.to_string(),
-											specifier.path.clone(),
-										)
-									})?
-									.to_string(),
-							)
+							spec.index = manifest
+								.wally_indices
+								.get(&spec.index)
+								.ok_or_else(|| {
+									errors::ResolveError::IndexNotFound(
+										spec.index.to_string(),
+										specifier.path.clone(),
+									)
+								})?
+								.to_string();
 						}
 						DependencySpecifiers::Git(_) => {}
 						DependencySpecifiers::Workspace(_) => {}

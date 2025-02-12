@@ -8,7 +8,7 @@ use crate::{
 		traits::{PackageRef, PackageSource, RefreshOptions, ResolveOptions},
 		PackageSources,
 	},
-	Project, RefreshedSources, DEFAULT_INDEX_NAME,
+	Project, RefreshedSources,
 };
 use std::collections::{btree_map::Entry, HashMap, VecDeque};
 use tracing::{instrument, Instrument};
@@ -172,178 +172,176 @@ impl Project {
 
 		while let Some((specifier, ty, dependant, path, overridden, target)) = queue.pop_front() {
 			async {
-                let alias = path.last().unwrap();
-                let depth = path.len() - 1;
+				let alias = path.last().unwrap();
+				let depth = path.len() - 1;
 
-                tracing::debug!("resolving {specifier} ({ty:?})");
-                let source = match &specifier {
-                    DependencySpecifiers::Pesde(specifier) => {
-                        let index_url = if !is_published_package && (depth == 0 || overridden) {
-                            let index_name = specifier.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
+				tracing::debug!("resolving {specifier} ({ty:?})");
+				let source = match &specifier {
+					DependencySpecifiers::Pesde(specifier) => {
+						let index_url = if !is_published_package && (depth == 0 || overridden) {
+							manifest
+								.indices
+								.get(&specifier.index)
+								.ok_or(errors::DependencyGraphError::IndexNotFound(
+									specifier.index.to_string(),
+								))?
+								.clone()
+						} else {
+							specifier.index
+								.as_str()
+								.try_into()
+								// specifiers in indices store the index url in this field
+								.unwrap()
+						};
 
-                            manifest
-                                .indices
-                                .get(index_name)
-                                .ok_or(errors::DependencyGraphError::IndexNotFound(
-                                    index_name.to_string(),
-                                ))?
-                                .clone()
-                        } else {
-                            specifier.index.as_deref().unwrap()
-                                .try_into()
-                                // specifiers in indices store the index url in this field
-                                .unwrap()
-                        };
+						PackageSources::Pesde(PesdePackageSource::new(index_url))
+					}
+					#[cfg(feature = "wally-compat")]
+					DependencySpecifiers::Wally(specifier) => {
+						let index_url = if !is_published_package && (depth == 0 || overridden) {
+							manifest
+								.wally_indices
+								.get(&specifier.index)
+								.ok_or(errors::DependencyGraphError::WallyIndexNotFound(
+									specifier.index.to_string(),
+								))?
+								.clone()
+						} else {
+							specifier.index
+								.as_str()
+								.try_into()
+								// specifiers in indices store the index url in this field
+								.unwrap()
+						};
 
-                        PackageSources::Pesde(PesdePackageSource::new(index_url))
-                    }
-                    #[cfg(feature = "wally-compat")]
-                    DependencySpecifiers::Wally(specifier) => {
-                        let index_url = if !is_published_package && (depth == 0 || overridden) {
-                            let index_name = specifier.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
+						PackageSources::Wally(crate::source::wally::WallyPackageSource::new(index_url))
+					}
+					DependencySpecifiers::Git(specifier) => PackageSources::Git(
+						crate::source::git::GitPackageSource::new(specifier.repo.clone()),
+					),
+					DependencySpecifiers::Workspace(_) => {
+						PackageSources::Workspace(crate::source::workspace::WorkspacePackageSource)
+					}
+					DependencySpecifiers::Path(_) => {
+						PackageSources::Path(crate::source::path::PathPackageSource)
+					}
+				};
 
-                            manifest
-                                .wally_indices
-                                .get(index_name)
-                                .ok_or(errors::DependencyGraphError::WallyIndexNotFound(
-                                    index_name.to_string(),
-                                ))?
-                                .clone()
-                        } else {
-                            specifier.index.as_deref().unwrap()
-                                .try_into()
-                                // specifiers in indices store the index url in this field
-                                .unwrap()
-                        };
+				refreshed_sources.refresh(
+					&source,
+					&refresh_options,
+				)
+					.await
+					.map_err(|e| Box::new(e.into()))?;
 
-                        PackageSources::Wally(crate::source::wally::WallyPackageSource::new(index_url))
-                    }
-                    DependencySpecifiers::Git(specifier) => PackageSources::Git(
-                        crate::source::git::GitPackageSource::new(specifier.repo.clone()),
-                    ),
-                    DependencySpecifiers::Workspace(_) => {
-                        PackageSources::Workspace(crate::source::workspace::WorkspacePackageSource)
-                    }
-                    DependencySpecifiers::Path(_) => {
-                        PackageSources::Path(crate::source::path::PathPackageSource)
-                    }
-                };
+				let (name, resolved) = source
+					.resolve(&specifier, &ResolveOptions {
+						project: self.clone(),
+						target,
+						refreshed_sources: refreshed_sources.clone(),
+					})
+					.await
+					.map_err(|e| Box::new(e.into()))?;
 
-                refreshed_sources.refresh(
-                    &source,
-                    &refresh_options,
-                )
-                .await
-                .map_err(|e| Box::new(e.into()))?;
+				let Some(package_id) = graph
+					.keys()
+					.filter(|id| *id.name() == name && resolved.contains_key(id.version_id()))
+					.max()
+					.cloned()
+					.or_else(|| resolved.last_key_value().map(|(ver, _)| PackageId::new(name, ver.clone())))
+				else {
+					return Err(Box::new(errors::DependencyGraphError::NoMatchingVersion(
+						format!("{specifier} ({target})"),
+					)));
+				};
 
-                let (name, resolved) = source
-                    .resolve(&specifier, &ResolveOptions {
-                        project: self.clone(),
-                        target,
-                        refreshed_sources: refreshed_sources.clone(),
-                    })
-                    .await
-                    .map_err(|e| Box::new(e.into()))?;
+				let resolved_ty = if (is_published_package || depth == 0) && ty == DependencyType::Peer
+				{
+					DependencyType::Standard
+				} else {
+					ty
+				};
 
-                let Some(package_id) = graph
-                    .keys()
-                    .filter(|id| *id.name() == name && resolved.contains_key(id.version_id()))
-                    .max()
-                    .cloned()
-                    .or_else(|| resolved.last_key_value().map(|(ver, _)| PackageId::new(name, ver.clone())))
-                else {
-                    return Err(Box::new(errors::DependencyGraphError::NoMatchingVersion(
-                        format!("{specifier} ({target})"),
-                    )));
-                };
+				if let Some(dependant_id) = dependant {
+					graph
+						.get_mut(&dependant_id)
+						.expect("dependant package not found in graph")
+						.dependencies
+						.insert(package_id.clone(), alias.clone());
+				}
 
-                let resolved_ty = if (is_published_package || depth == 0) && ty == DependencyType::Peer
-                {
-                    DependencyType::Standard
-                } else {
-                    ty
-                };
+				let pkg_ref = &resolved[package_id.version_id()];
 
-                if let Some(dependant_id) = dependant {
-                    graph
-                        .get_mut(&dependant_id)
-                        .expect("dependant package not found in graph")
-                        .dependencies
-                        .insert(package_id.clone(), alias.clone());
-                }
+				if let Some(already_resolved) = graph.get_mut(&package_id) {
+					tracing::debug!("{package_id} already resolved");
 
-                let pkg_ref = &resolved[package_id.version_id()];
-
-                if let Some(already_resolved) = graph.get_mut(&package_id) {
-                    tracing::debug!("{package_id} already resolved");
-
-                    if std::mem::discriminant(&already_resolved.pkg_ref) != std::mem::discriminant(pkg_ref) {
-                        tracing::warn!(
+					if std::mem::discriminant(&already_resolved.pkg_ref) != std::mem::discriminant(pkg_ref) {
+						tracing::warn!(
                             "resolved package {package_id} has a different source than previously resolved one, this may cause issues",
                         );
-                    }
+					}
 
-                    if already_resolved.resolved_ty == DependencyType::Peer {
-                        already_resolved.resolved_ty = resolved_ty;
-                    }
+					if already_resolved.resolved_ty == DependencyType::Peer {
+						already_resolved.resolved_ty = resolved_ty;
+					}
 
-                    if ty == DependencyType::Peer && depth == 0 {
-                        already_resolved.is_peer = true;
-                    }
+					if ty == DependencyType::Peer && depth == 0 {
+						already_resolved.is_peer = true;
+					}
 
-                    if already_resolved.direct.is_none() && depth == 0 {
-                        already_resolved.direct = Some((alias.clone(), specifier.clone(), ty));
-                    }
+					if already_resolved.direct.is_none() && depth == 0 {
+						already_resolved.direct = Some((alias.clone(), specifier.clone(), ty));
+					}
 
-                    return Ok(());
-                }
+					return Ok(());
+				}
 
-                let node = DependencyGraphNode {
-                    direct: if depth == 0 {
-                        Some((alias.clone(), specifier.clone(), ty))
-                    } else {
-                        None
-                    },
-                    pkg_ref: pkg_ref.clone(),
-                    dependencies: Default::default(),
-                    resolved_ty,
-                    is_peer: if depth == 0 {
-                        false
-                    } else {
-                        ty == DependencyType::Peer
-                    },
-                };
-                insert_node(
-                    &mut graph,
-                    &package_id,
-                    node,
-                    depth == 0,
-                );
+				let node = DependencyGraphNode {
+					direct: if depth == 0 {
+						Some((alias.clone(), specifier.clone(), ty))
+					} else {
+						None
+					},
+					pkg_ref: pkg_ref.clone(),
+					dependencies: Default::default(),
+					resolved_ty,
+					is_peer: if depth == 0 {
+						false
+					} else {
+						ty == DependencyType::Peer
+					},
+				};
+				insert_node(
+					&mut graph,
+					&package_id,
+					node,
+					depth == 0,
+				);
 
-                tracing::debug!("resolved {package_id} from new dependency graph");
+				tracing::debug!("resolved {package_id} from new dependency graph");
 
-                for (dependency_alias, (dependency_spec, dependency_ty)) in
-                    pkg_ref.dependencies().clone()
-                {
-                    if dependency_ty == DependencyType::Dev {
-                        // dev dependencies of dependencies are to be ignored
-                        continue;
-                    }
+				for (dependency_alias, (dependency_spec, dependency_ty)) in
+					pkg_ref.dependencies().clone()
+				{
+					if dependency_ty == DependencyType::Dev {
+						// dev dependencies of dependencies are to be ignored
+						continue;
+					}
 
-                    let overridden = manifest.overrides.iter().find_map(|(key, spec)| {
-                        key.0.iter().find_map(|override_path| {
-                            // if the path up until the last element is the same as the current path,
-                            // and the last element in the path is the dependency alias,
-                            // then the specifier is to be overridden
-                            (path.len() == override_path.len() - 1
-                                && path == override_path[..override_path.len() - 1]
-                                && override_path.last() == Some(&dependency_alias))
-                                .then_some(spec)
-                        })
-                    });
+					let overridden = manifest.overrides.iter().find_map(|(key, spec)| {
+						key.0.iter().find_map(|override_path| {
+							// if the path up until the last element is the same as the current path,
+							// and the last element in the path is the dependency alias,
+							// then the specifier is to be overridden
+							(path.len() == override_path.len() - 1
+								&& path == override_path[..override_path.len() - 1]
+								&& override_path.last() == Some(&dependency_alias))
+								.then_some(spec)
+						})
+					});
 
-                    if overridden.is_some() {
-                        tracing::debug!(
+					if overridden.is_some() {
+						tracing::debug!(
                             "overridden specifier found for {} ({dependency_spec})",
                             path.iter()
                                 .map(Alias::as_str)
@@ -351,32 +349,32 @@ impl Project {
                                 .collect::<Vec<_>>()
                                 .join(">"),
                         );
-                    }
+					}
 
-                    queue.push_back((
-                        match overridden {
-                            Some(OverrideSpecifier::Specifier(spec)) => spec.clone(),
-                            Some(OverrideSpecifier::Alias(alias)) => all_current_dependencies.get(alias)
-                                .map(|(spec, _)| spec)
-                                .ok_or_else(|| errors::DependencyGraphError::AliasNotFound(alias.clone()))?
-                                .clone(),
-                            None => dependency_spec,
-                        },
-                        dependency_ty,
-                        Some(package_id.clone()),
-                        path.iter()
-                            .cloned()
-                            .chain(std::iter::once(dependency_alias))
-                            .collect(),
-                        overridden.is_some(),
-                        package_id.version_id().target(),
-                    ));
-                }
+					queue.push_back((
+						match overridden {
+							Some(OverrideSpecifier::Specifier(spec)) => spec.clone(),
+							Some(OverrideSpecifier::Alias(alias)) => all_current_dependencies.get(alias)
+								.map(|(spec, _)| spec)
+								.ok_or_else(|| errors::DependencyGraphError::AliasNotFound(alias.clone()))?
+								.clone(),
+							None => dependency_spec,
+						},
+						dependency_ty,
+						Some(package_id.clone()),
+						path.iter()
+							.cloned()
+							.chain(std::iter::once(dependency_alias))
+							.collect(),
+						overridden.is_some(),
+						package_id.version_id().target(),
+					));
+				}
 
-                Ok(())
-            }
-                .instrument(tracing::info_span!("resolve new/changed", path = path.iter().map(Alias::as_str).collect::<Vec<_>>().join(">")))
-                .await?;
+				Ok(())
+			}
+				.instrument(tracing::info_span!("resolve new/changed", path = path.iter().map(Alias::as_str).collect::<Vec<_>>().join(">")))
+				.await?;
 		}
 
 		for (id, node) in &mut graph {

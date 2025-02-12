@@ -199,7 +199,7 @@ impl InitCommand {
 						&PesdeDependencySpecifier {
 							name: scripts_pkg_name.clone(),
 							version: VersionReq::STAR,
-							index: None,
+							index: DEFAULT_INDEX_NAME.into(),
 							target: None,
 						},
 						&ResolveOptions {

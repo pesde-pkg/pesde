@@ -13,8 +13,8 @@ pub struct PesdeDependencySpecifier {
 	#[cfg_attr(test, schemars(with = "String"))]
 	pub version: VersionReq,
 	/// The index to use for the package
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub index: Option<String>,
+	#[serde(default = "crate::default_index_name")]
+	pub index: String,
 	/// The target to use for the package
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub target: Option<TargetKind>,

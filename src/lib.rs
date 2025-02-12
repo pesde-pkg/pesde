@@ -66,6 +66,10 @@ pub(crate) const LINK_LIB_NO_FILE_FOUND: &str = "____pesde_no_export_file_found"
 /// The folder in which scripts are linked
 pub const SCRIPTS_LINK_FOLDER: &str = ".pesde";
 
+pub(crate) fn default_index_name() -> String {
+	DEFAULT_INDEX_NAME.into()
+}
+
 #[derive(Debug, Default)]
 struct AuthConfigShared {
 	tokens: HashMap<gix::Url, String>,
