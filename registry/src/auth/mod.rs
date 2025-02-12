@@ -93,10 +93,10 @@ impl AuthImpl for Auth {
 impl Display for Auth {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Auth::GitHub(github) => write!(f, "{}", github),
-			Auth::None(none) => write!(f, "{}", none),
-			Auth::Token(token) => write!(f, "{}", token),
-			Auth::RwToken(rw_token) => write!(f, "{}", rw_token),
+			Auth::GitHub(github) => write!(f, "{github}"),
+			Auth::None(none) => write!(f, "{none}"),
+			Auth::Token(token) => write!(f, "{token}"),
+			Auth::RwToken(rw_token) => write!(f, "{rw_token}"),
 		}
 	}
 }

@@ -107,8 +107,8 @@ impl StorageImpl for Storage {
 impl Display for Storage {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Storage::S3(s3) => write!(f, "{}", s3),
-			Storage::FS(fs) => write!(f, "{}", fs),
+			Storage::S3(s3) => write!(f, "{s3}"),
+			Storage::FS(fs) => write!(f, "{fs}"),
 		}
 	}
 }

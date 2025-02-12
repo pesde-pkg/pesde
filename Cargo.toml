@@ -41,8 +41,11 @@ name = "pesde"
 path = "src/main.rs"
 required-features = ["bin"]
 
-[lints.clippy]
+[workspace.lints.clippy]
 uninlined_format_args = "warn"
+
+[lints]
+workspace = true
 
 [dependencies]
 serde = { version = "1.0.217", features = ["derive"] }
