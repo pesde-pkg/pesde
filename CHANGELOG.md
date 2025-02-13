@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Make aliases case-insensitive by @daimond113
 - Print "update available" message to stderr by @daimond113
+- Improve output of the `outdated` command by @daimond113
 
 ## [0.6.0-rc.6] - 2025-02-10
 ### Fixed

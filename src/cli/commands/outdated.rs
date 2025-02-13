@@ -1,4 +1,7 @@
-use crate::cli::up_to_date_lockfile;
+use crate::cli::{
+	style::{ADDED_STYLE, INFO_STYLE, REMOVED_STYLE, SUCCESS_STYLE},
+	up_to_date_lockfile,
+};
 use anyhow::Context;
 use clap::Args;
 use pesde::{
@@ -45,7 +48,7 @@ impl OutdatedCommand {
 				let refreshed_sources = refreshed_sources.clone();
 				async move {
 					let Some((alias, mut specifier, _)) = node.direct else {
-						return Ok::<bool, anyhow::Error>(true);
+						return Ok::<_, anyhow::Error>(None);
 					};
 
 					if matches!(
@@ -54,7 +57,7 @@ impl OutdatedCommand {
 							| DependencySpecifiers::Workspace(_)
 							| DependencySpecifiers::Path(_)
 					) {
-						return Ok(true);
+						return Ok(None);
 					}
 
 					let source = node.pkg_ref.source();
@@ -82,7 +85,7 @@ impl OutdatedCommand {
 						};
 					}
 
-					let version_id = source
+					let new_id = source
 						.resolve(
 							&specifier,
 							&ResolveOptions {
@@ -98,17 +101,8 @@ impl OutdatedCommand {
 						.map(|(v_id, _)| v_id)
 						.with_context(|| format!("no versions of {specifier} found"))?;
 
-					if version_id != *current_id.version_id() {
-						println!(
-							"{} ({alias}) {} -> {version_id}",
-							current_id.name(),
-							current_id.version_id(),
-						);
-
-						return Ok(false);
-					}
-
-					Ok(true)
+					Ok(Some((alias, current_id, new_id))
+						.filter(|(_, current_id, new_id)| current_id.version_id() != new_id))
 				}
 			})
 			.collect::<JoinSet<_>>();
@@ -116,13 +110,23 @@ impl OutdatedCommand {
 		let mut all_up_to_date = true;
 
 		while let Some(task) = tasks.join_next().await {
-			if !task.unwrap()? {
-				all_up_to_date = false;
-			}
+			let Some((alias, current_id, new_id)) = task.unwrap()? else {
+				continue;
+			};
+
+			all_up_to_date = false;
+
+			println!(
+				"{} ({}) {} → {}",
+				current_id.name(),
+				INFO_STYLE.apply_to(alias),
+				REMOVED_STYLE.apply_to(current_id.version_id()),
+				ADDED_STYLE.apply_to(new_id),
+			);
 		}
 
 		if all_up_to_date {
-			println!("all packages are up to date");
+			println!("{}", SUCCESS_STYLE.apply_to("all packages are up to date"));
 		}
 
 		Ok(())
