@@ -111,7 +111,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 		.collect::<Vec<_>>()
 		.join("\n");
 
-	println!("\n{message}\n");
+	eprintln!("\n{message}\n");
 
 	Ok(())
 }
