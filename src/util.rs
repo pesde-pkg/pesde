@@ -171,9 +171,7 @@ where
 
 			while let Some((key, value)) = access.next_entry()? {
 				if map.contains_key(&key) {
-					return Err(serde::de::Error::custom(format!(
-						"duplicate key `{key}`"
-					)));
+					return Err(serde::de::Error::custom(format!("duplicate key `{key}`")));
 				}
 
 				map.insert(key, value);
