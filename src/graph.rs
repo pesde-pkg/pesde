@@ -96,15 +96,3 @@ pub struct DependencyGraphNodeWithTarget {
 
 /// A graph of `DownloadedDependencyGraphNode`s
 pub type DependencyGraphWithTarget = Graph<DependencyGraphNodeWithTarget>;
-
-/// A trait for converting a graph to a different type of graph
-pub trait ConvertableGraph<Node> {
-	/// Converts the graph to a different type of graph
-	fn convert(self) -> Graph<Node>;
-}
-
-impl ConvertableGraph<DependencyGraphNode> for DependencyGraphWithTarget {
-	fn convert(self) -> Graph<DependencyGraphNode> {
-		self.into_iter().map(|(id, node)| (id, node.node)).collect()
-	}
-}
