@@ -232,7 +232,7 @@ async fn run() -> anyhow::Result<()> {
 		project_root_dir.display(),
 		project_workspace_dir
 			.as_ref()
-			.map_or("none".to_string(), |p| p.display().to_string())
+			.map_or_else(|| "none".to_string(), |p| p.display().to_string())
 	);
 
 	let home_dir = home_dir()?;

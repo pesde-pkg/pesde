@@ -182,7 +182,7 @@ impl Project {
 							manifest
 								.indices
 								.get(&specifier.index)
-								.ok_or(errors::DependencyGraphError::IndexNotFound(
+								.ok_or_else(|| errors::DependencyGraphError::IndexNotFound(
 									specifier.index.to_string(),
 								))?
 								.clone()
@@ -202,7 +202,7 @@ impl Project {
 							manifest
 								.wally_indices
 								.get(&specifier.index)
-								.ok_or(errors::DependencyGraphError::WallyIndexNotFound(
+								.ok_or_else(|| errors::DependencyGraphError::WallyIndexNotFound(
 									specifier.index.to_string(),
 								))?
 								.clone()

@@ -543,7 +543,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 				manifest
 					.target
 					.lib_path()
-					.map_or("(none)".to_string(), |p| p.to_string())
+					.map_or_else(|| "(none)".to_string(), |p| p.to_string())
 			);
 
 			if roblox_target {
@@ -554,7 +554,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 					manifest
 						.target
 						.bin_path()
-						.map_or("(none)".to_string(), |p| p.to_string())
+						.map_or_else(|| "(none)".to_string(), |p| p.to_string())
 				);
 				println!(
 					"\tscripts: {}",
@@ -562,9 +562,10 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 						.target
 						.scripts()
 						.filter(|s| !s.is_empty())
-						.map_or("(none)".to_string(), |s| {
-							s.keys().cloned().collect::<Vec<_>>().join(", ")
-						})
+						.map_or_else(
+							|| "(none)".to_string(),
+							|s| { s.keys().cloned().collect::<Vec<_>>().join(", ") }
+						)
 				);
 			}
 

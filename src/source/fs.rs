@@ -178,14 +178,9 @@ async fn package_fs_copy(
 		let path = entry.path();
 		let relative_path = path.strip_prefix(src).unwrap();
 		let dest_path = destination.join(relative_path);
-		let file_name = relative_path
-			.file_name()
-			.unwrap()
-			.to_str()
-			.ok_or(std::io::Error::new(
-				std::io::ErrorKind::InvalidData,
-				"invalid file name",
-			))?;
+		let file_name = relative_path.file_name().unwrap().to_str().ok_or_else(|| {
+			std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid file name")
+		})?;
 
 		if entry.file_type().await?.is_dir() {
 			if IGNORED_DIRS.contains(&file_name) {

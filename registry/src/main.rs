@@ -63,7 +63,7 @@ macro_rules! benv {
         std::env::var($name)
     };
     ($name:expr => $default:expr) => {
-        benv!($name).unwrap_or($default.to_string())
+        benv!($name).unwrap_or_else(|_| $default.to_string())
     };
     (required $name:expr) => {
         benv!($name).expect(concat!("Environment variable `", $name, "` must be set"))

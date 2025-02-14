@@ -31,7 +31,7 @@ impl FromStr for PackageName {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (scope, name) = s
 			.split_once('/')
-			.ok_or(Self::Err::InvalidFormat(s.to_string()))?;
+			.ok_or_else(|| Self::Err::InvalidFormat(s.to_string()))?;
 
 		for (reason, part) in [(ErrorReason::Scope, scope), (ErrorReason::Name, name)] {
 			let min_len = match reason {
@@ -218,7 +218,7 @@ pub mod wally {
 				.strip_prefix("wally#")
 				.unwrap_or(s)
 				.split_once('/')
-				.ok_or(Self::Err::InvalidFormat(s.to_string()))?;
+				.ok_or_else(|| Self::Err::InvalidFormat(s.to_string()))?;
 
 			for (reason, part) in [(ErrorReason::Scope, scope), (ErrorReason::Name, name)] {
 				if part.is_empty() || part.len() > 64 {

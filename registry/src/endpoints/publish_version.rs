@@ -176,7 +176,10 @@ pub async fn publish_package(
 							})?;
 
 						set.insert(DocEntry {
-							label: info.label.or(h1).unwrap_or(file_name.to_case(Case::Title)),
+							label: info
+								.label
+								.or(h1)
+								.unwrap_or_else(|| file_name.to_case(Case::Title)),
 							position: info.sidebar_position,
 							kind: DocEntryKind::Page {
 								name: entry

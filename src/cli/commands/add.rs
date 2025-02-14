@@ -187,7 +187,7 @@ impl AddCommand {
 					.split('/')
 					.next_back()
 					.map(|s| s.to_string())
-					.unwrap_or(url.path.to_string()),
+					.unwrap_or_else(|| url.path.to_string()),
 				AnyPackageIdentifier::Workspace(versioned) => versioned.0.name().to_string(),
 				AnyPackageIdentifier::Path(path) => path
 					.file_name()
