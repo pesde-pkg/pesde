@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from "$app/stores"
 	import GitHub from "$lib/components/GitHub.svelte"
-	import type { TargetInfo } from "$lib/registry-api"
+	import { makeRegistryUrl, type TargetInfo } from "$lib/registry-api"
 	import { BinaryIcon, Globe, Icon, LibraryIcon, Mail, ScrollIcon } from "lucide-svelte"
 	import type { ComponentType } from "svelte"
 	import TargetSelector from "../../TargetSelector.svelte"
@@ -48,6 +48,12 @@
 	const exportEntries = $derived(
 		Object.entries(exportNames).filter(([key]) => !!currentTarget?.[key as keyof TargetInfo]),
 	)
+
+	const downloadUrl = $derived(
+		makeRegistryUrl(
+			`packages/${encodeURIComponent(data.pkg.name)}/${encodeURIComponent(data.pkg.version)}/${encodeURIComponent(currentTarget?.kind ?? defaultTarget)}/archive`,
+		).toString(),
+	)
 </script>
 
 <div class="flex flex-col lg:flex-row">
@@ -58,7 +64,10 @@
 		class="w-full flex-shrink-0 border-t pt-16 lg:ml-auto lg:max-w-[22rem] lg:border-l lg:border-t-0 lg:pl-4 lg:pt-6"
 	>
 		<h2 class="text-heading mb-1 text-lg font-semibold">Install</h2>
-		<Command command={installCommand} class="mb-4" />
+		<Command command={installCommand} class="mb-2" />
+		<p class="mb-4 text-sm">
+			Or, download the archive <a class="text-primary underline" href={downloadUrl}> here </a>.
+		</p>
 
 		<div class="hidden lg:block">
 			<TargetSelector />

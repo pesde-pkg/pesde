@@ -121,8 +121,10 @@ export async function fetchRegistryJson<T>(
 	return response.json()
 }
 
+export const makeRegistryUrl = (path: string) => new URL(path, PUBLIC_REGISTRY_URL)
+
 export async function fetchRegistry(path: string, fetcher: typeof fetch, options?: RequestInit) {
-	const response = await fetcher(new URL(path, PUBLIC_REGISTRY_URL), options)
+	const response = await fetcher(makeRegistryUrl(path), options)
 	if (!response.ok) {
 		throw new RegistryHttpError(`Failed to fetch ${response.url}: ${response.statusText}`, response)
 	}
