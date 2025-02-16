@@ -230,3 +230,19 @@ Whereas with pesde, it looks like this:
           - dependency (roblox_packages/dependency.luau)
 
 </FileTree>
+
+### The `roblox_server` target
+
+Although optimizing your server-only dependency using the `roblox_server` target
+might sound like a good idea it is not recommended, since it complicates
+linking and makes your package unnecessarily harder to use. On a public registry
+it is also redundant, since the package can be downloaded by anyone. Syncing
+the scripts to the client may also come up as a reason, but it is a
+micro-optimization which is very hard to observe, so it is unnecessary.
+
+The target exists for a reason, that is
+[private registries](/guides/self-hosting-registries). You might want to have
+internal packages, such as configs or otherwise sensitive code which you do not
+want clients to see. This is where the `roblox_server` target comes in handy.
+If you're not using a private registry you should use the standard `roblox`
+target instead.
