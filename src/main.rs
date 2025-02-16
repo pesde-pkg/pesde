@@ -191,7 +191,7 @@ async fn run() -> anyhow::Result<()> {
 			.status()
 			.expect("failed to run lune");
 
-		std::process::exit(status.code().unwrap());
+		std::process::exit(status.code().unwrap_or(1));
 	}
 
 	let tracing_env_filter = EnvFilter::builder()
@@ -315,7 +315,7 @@ async fn run() -> anyhow::Result<()> {
 			.status()
 			.expect("failed to run new version");
 
-		std::process::exit(status.code().unwrap());
+		std::process::exit(status.code().unwrap_or(1));
 	}
 
 	#[cfg(feature = "version-management")]
