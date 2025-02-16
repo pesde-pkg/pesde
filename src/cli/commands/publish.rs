@@ -77,7 +77,6 @@ impl PublishCommand {
 		self,
 		project: &Project,
 		reqwest: reqwest::Client,
-		is_root: bool,
 		refreshed_sources: &RefreshedSources,
 	) -> anyhow::Result<()> {
 		let mut manifest = project
@@ -96,12 +95,10 @@ impl PublishCommand {
 		);
 
 		if manifest.private {
-			if !is_root {
-				println!(
-					"{}",
-					ERROR_STYLE.apply_to("package is private, cannot publish")
-				);
-			}
+			println!(
+				"{}",
+				ERROR_STYLE.apply_to("package is private, refusing to publish")
+			);
 
 			return Ok(());
 		}
@@ -705,7 +702,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 
 		let result = self
 			.clone()
-			.run_impl(&project, reqwest.clone(), true, &refreshed_sources)
+			.run_impl(&project, reqwest.clone(), &refreshed_sources)
 			.await;
 		if project.workspace_dir().is_some() {
 			return result;
@@ -718,8 +715,9 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 			let this = self.clone();
 			let refreshed_sources = refreshed_sources.clone();
 			async move {
-				this.run_impl(&project, reqwest, false, &refreshed_sources)
-					.await
+				let res = this.run_impl(&project, reqwest, &refreshed_sources).await;
+				display_err(res, " occurred publishing workspace member");
+				Ok(())
 			}
 		})
 		.await
