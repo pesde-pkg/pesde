@@ -1,6 +1,6 @@
 [package]
 name = "pesde-registry"
-version = "0.2.0-rc.3"
+version = "0.2.0"
 edition = "2021"
 repository = "https://github.com/pesde-pkg/index"
 publish = false

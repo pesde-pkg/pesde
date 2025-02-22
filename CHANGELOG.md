@@ -5,47 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0-rc.8] - 2025-02-17
-### Fixed
-- Fix panic when using SIGINT by @daimond113
-
-### Changed
-- Allow publishing other packages even if an error occurred by @daimond113
-
-## [0.6.0-rc.7] - 2025-02-14
-### Changed
-- Make aliases case-insensitive by @daimond113
-- Print "update available" message to stderr by @daimond113
-- Improve output of the `outdated` command by @daimond113
-
-## [0.6.0-rc.6] - 2025-02-10
-### Fixed
-- Fix double path long prefix issues on Windows by @daimond113
-
-## [0.6.0-rc.5] - 2025-02-10
-### Fixed
-- Correct script linker require paths on Windows by @daimond113
-- Improve patches in incremental installs by @daimond113
-- Patches now include newly created files by @daimond113
-
-### Changed
-- Patches are now applied before type extraction to allow patches to modify types by @daimond113
-
-## [0.6.0-rc.4] - 2025-02-08
-### Fixed
-- Refresh sources before reading package data to ensure the index is even cloned (remote changes to lockfile) by @daimond113
-
-## [0.6.0-rc.3] - 2025-02-08
-### Fixed
-- Fix `self-upgrade` using the wrong path when doing a fresh download by @daimond113
-- Fix types not being re-exported by @daimond113
-
-## [0.6.0-rc.2] - 2025-02-07
-### Fixed
-- Colour deprecate output to match yank output by @daimond113
-- Fix zbus panic on Linux by @daimond113
-
-## [0.6.0-rc.1] - 2025-02-06
+## [0.6.0] - 2025-02-22
 ### Added
 - Improve installation experience by @lukadev-0
 - Support using aliases of own dependencies for overrides by @daimond113
@@ -65,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Do Git operations inside spawn_blocking to avoid performance issues by @daimond113
 - Scope CAS package indices to the source by @daimond113
 - Do not copy `default.project.json` in workspace dependencies by @daimond113
+- Colour deprecate output to match yank output by @daimond113
+- Fix zbus panic on Linux by @daimond113
+- Fix `self-upgrade` using the wrong path when doing a fresh download by @daimond113
+- Fix types not being re-exported by @daimond113
+- Refresh sources before reading package data to ensure the index is even cloned (remote changes to lockfile) by @daimond113
+- Correct script linker require paths on Windows by @daimond113
+- Improve patches in incremental installs by @daimond113
+- Patches now include newly created files by @daimond113
+- Fix double path long prefix issues on Windows by @daimond113
+- Fix panic when using SIGINT by @daimond113
 
 ### Changed
 - Change handling of graphs to a flat structure by @daimond113
@@ -76,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reorder the `help` command by @daimond113
 - Ignore submodules instead of failing when using Git dependencies with submodules by @daimond113
 - Exit with code 1 from invalid directory binary linkers by @daimond113
+- Patches are now applied before type extraction to allow patches to modify types by @daimond113
+- Make aliases case-insensitive by @daimond113
+- Print "update available" message to stderr by @daimond113
+- Improve output of the `outdated` command by @daimond113
+- Allow publishing other packages even if an error occurred by @daimond113
 
 ### Removed
 - Remove old includes format compatibility by @daimond113
@@ -195,14 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Asyncify dependency linking by @daimond113
 - Use `exec` in Unix bin linking to reduce the number of processes by @daimond113
 
-[0.6.0-rc.8]: https://github.com/daimond113/pesde/compare/v0.6.0-rc.7%2Bregistry.0.2.0-rc.3..v0.6.0-rc.8%2Bregistry.0.2.0-rc.3
-[0.6.0-rc.7]: https://github.com/daimond113/pesde/compare/v0.6.0-rc.6%2Bregistry.0.2.0-rc.2..v0.6.0-rc.7%2Bregistry.0.2.0-rc.3
-[0.6.0-rc.6]: https://github.com/daimond113/pesde/compare/v0.6.0-rc.5%2Bregistry.0.2.0-rc.2..v0.6.0-rc.6%2Bregistry.0.2.0-rc.2
-[0.6.0-rc.5]: https://github.com/daimond113/pesde/compare/v0.6.0-rc.4%2Bregistry.0.2.0-rc.1..v0.6.0-rc.5%2Bregistry.0.2.0-rc.2
-[0.6.0-rc.4]: https://github.com/daimond113/pesde/compare/v0.6.0-rc.3%2Bregistry.0.2.0-rc.1..v0.6.0-rc.4%2Bregistry.0.2.0-rc.1
-[0.6.0-rc.3]: https://github.com/daimond113/pesde/compare/v0.6.0-rc.2%2Bregistry.0.2.0-rc.1..v0.6.0-rc.3%2Bregistry.0.2.0-rc.1
-[0.6.0-rc.2]: https://github.com/daimond113/pesde/compare/v0.6.0-rc.1%2Bregistry.0.2.0-rc.1..v0.6.0-rc.2%2Bregistry.0.2.0-rc.1
-[0.6.0-rc.1]: https://github.com/daimond113/pesde/compare/v0.5.3%2Bregistry.0.1.2..v0.6.0-rc.1%2Bregistry.0.2.0-rc.1
+[0.6.0]: https://github.com/daimond113/pesde/compare/v0.5.3%2Bregistry.0.1.2..v0.6.0%2Bregistry.0.2.0
 [0.5.3]: https://github.com/daimond113/pesde/compare/v0.5.2%2Bregistry.0.1.1..v0.5.3%2Bregistry.0.1.2
 [0.5.2]: https://github.com/daimond113/pesde/compare/v0.5.1%2Bregistry.0.1.0..v0.5.2%2Bregistry.0.1.1
 [0.5.1]: https://github.com/daimond113/pesde/compare/v0.5.0%2Bregistry.0.1.0..v0.5.1%2Bregistry.0.1.0
