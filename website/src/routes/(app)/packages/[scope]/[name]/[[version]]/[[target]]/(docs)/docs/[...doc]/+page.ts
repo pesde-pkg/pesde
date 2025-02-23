@@ -18,7 +18,7 @@ const findDocTitle = (docs: DocEntry[], name: string): string | undefined => {
 export const load: PageLoad = async ({ params, parent, fetch }) => {
 	try {
 		const page = await fetchRegistry(
-			`packages/${encodeURIComponent(`${params.scope}/${params.name}`)}/${encodeURIComponent(params.version ?? "latest")}/${encodeURIComponent(params.target ?? "any")}?doc=${encodeURIComponent(params.doc)}`,
+			`packages/${encodeURIComponent(`${params.scope}/${params.name}`)}/${encodeURIComponent(params.version ?? "latest")}/${encodeURIComponent(params.target ?? "any")}/doc?doc=${encodeURIComponent(params.doc)}`,
 			fetch,
 		).then((r) => r.text())
 
