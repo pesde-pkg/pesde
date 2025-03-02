@@ -1,6 +1,6 @@
 use crate::{
 	auth::{get_token_from_req, AuthImpl, UserId},
-	error::ReqwestErrorExt,
+	error::{display_error, ReqwestErrorExt},
 };
 use actix_web::{dev::ServiceRequest, Error as ActixError};
 use reqwest::StatusCode;
@@ -46,14 +46,14 @@ impl AuthImpl for GitHubAuth {
 				}
 				Err(_) => {
 					tracing::error!(
-						"failed to get user: {}",
-						response.into_error().await.unwrap_err()
+						"failed to get user info: {}",
+						display_error(response.into_error().await.unwrap_err())
 					);
 					return Ok(None);
 				}
 			},
 			Err(e) => {
-				tracing::error!("failed to get user: {e}");
+				tracing::error!("failed to send user info request: {}", display_error(e));
 				return Ok(None);
 			}
 		};
@@ -61,7 +61,7 @@ impl AuthImpl for GitHubAuth {
 		let user_id = match response.json::<UserResponse>().await {
 			Ok(resp) => resp.user.id,
 			Err(e) => {
-				tracing::error!("failed to get user: {e}");
+				tracing::error!("failed to parse user info response: {}", display_error(e));
 				return Ok(None);
 			}
 		};

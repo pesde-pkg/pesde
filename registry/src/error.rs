@@ -1,6 +1,7 @@
 use actix_web::{body::BoxBody, HttpResponse, ResponseError};
 use pesde::source::git_index::errors::{ReadFile, RefreshError, TreeError};
 use serde::Serialize;
+use std::error::Error;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -66,7 +67,7 @@ impl ResponseError for RegistryError {
 				error: format!("archive is invalid: {e}"),
 			}),
 			e => {
-				tracing::error!("unhandled error: {e:?}");
+				tracing::error!("unhandled error: {}", display_error(e));
 				HttpResponse::InternalServerError().finish()
 			}
 		}
@@ -86,4 +87,21 @@ impl ReqwestErrorExt for reqwest::Response {
 			Err(e) => Err(RegistryError::ReqwestResponse(self.text().await?, e)),
 		}
 	}
+}
+
+pub fn display_error<E: Error>(err: E) -> String {
+	let mut causes = vec![];
+	let mut source = err.source();
+	while let Some(src) = source {
+		causes.push(format!("\t- {src}"));
+		source = src.source();
+	}
+	format!(
+		"{err}{}",
+		if causes.is_empty() {
+			"".into()
+		} else {
+			format!("\n{}", causes.join("\n"))
+		}
+	)
 }
