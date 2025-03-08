@@ -1,18 +1,20 @@
 use crate::{
-	deser_manifest,
+	deser_manifest, find_roots,
 	manifest::target::Target,
 	names::PackageNames,
 	reporters::DownloadProgressReporter,
 	source::{
 		fs::PackageFs,
 		ids::VersionId,
-		path::pkg_ref::PathPackageRef,
+		path::{pkg_ref::PathPackageRef, specifier::PathDependencySpecifier},
 		specifiers::DependencySpecifiers,
 		traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
 		ResolveResult,
 	},
+	Project,
 };
-use std::collections::BTreeMap;
+use futures::TryStreamExt as _;
+use std::collections::{BTreeMap, HashMap};
 use tracing::instrument;
 
 /// The path package reference
@@ -36,9 +38,28 @@ impl PackageSource for PathPackageSource {
 	async fn resolve(
 		&self,
 		specifier: &Self::Specifier,
-		_options: &ResolveOptions,
+		options: &ResolveOptions,
 	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+		let ResolveOptions { project, .. } = options;
+
 		let manifest = deser_manifest(&specifier.path).await?;
+
+		let (path_package_dir, path_workspace_dir) = find_roots(specifier.path.clone()).await?;
+		let path_project = Project::new(
+			path_package_dir,
+			path_workspace_dir,
+			// these don't matter, we're not using any functionality which uses them
+			project.data_dir(),
+			project.cas_dir(),
+			project.auth_config().clone(),
+		);
+
+		let workspace_members = path_project
+			.workspace_members(true)
+			.await?
+			.map_ok(|(path, manifest)| ((manifest.name, manifest.target.kind()), path))
+			.try_collect::<HashMap<_, _>>()
+			.await?;
 
 		let pkg_ref = PathPackageRef {
 			path: specifier.path.clone(),
@@ -73,7 +94,20 @@ impl PackageSource for PathPackageSource {
 								.to_string();
 						}
 						DependencySpecifiers::Git(_) => {}
-						DependencySpecifiers::Workspace(_) => {}
+						DependencySpecifiers::Workspace(specifier) => {
+							let member = (
+								specifier.name.clone(),
+								specifier.target.unwrap_or(manifest.target.kind()),
+							);
+
+							spec = DependencySpecifiers::Path(PathDependencySpecifier {
+								path: workspace_members.get(&member).cloned().ok_or(
+									errors::ResolveError::WorkspacePackageNotFound(
+										member.0, member.1,
+									),
+								)?,
+							});
+						}
 						DependencySpecifiers::Path(_) => {}
 					}
 
@@ -122,6 +156,7 @@ impl PackageSource for PathPackageSource {
 
 /// Errors that can occur when using a path package source
 pub mod errors {
+	use crate::{manifest::target::TargetKind, names::PackageName};
 	use std::path::PathBuf;
 	use thiserror::Error;
 
@@ -145,6 +180,18 @@ pub mod errors {
 		/// An index of the package was not found
 		#[error("index {0} not found in package {1}")]
 		IndexNotFound(String, PathBuf),
+
+		/// Finding the package roots failed
+		#[error("failed to find package roots")]
+		FindRoots(#[from] crate::errors::FindRootsError),
+
+		/// Finding workspace members failed
+		#[error("failed to find workspace members")]
+		WorkspaceMembers(#[from] crate::errors::WorkspaceMembersError),
+
+		/// Workspace package not found
+		#[error("workspace package {0} {1} not found in package")]
+		WorkspacePackageNotFound(PackageName, TargetKind),
 	}
 
 	/// Errors that can occur when downloading a path package
