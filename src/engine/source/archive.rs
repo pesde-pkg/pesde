@@ -86,7 +86,7 @@ impl AsyncRead for TarReader {
 enum ArchiveEntryInner {
 	Tar(Box<tokio_tar::Entry<tokio_tar::Archive<TarReader>>>),
 	Zip {
-		archive: ArchivePointer,
+		archive: *mut async_zip::tokio::read::seek::ZipFileReader<std::io::Cursor<Vec<u8>>>,
 		reader: ManuallyDrop<
 			Compat<
 				async_zip::tokio::read::ZipEntryReader<
@@ -105,7 +105,7 @@ impl Drop for ArchiveEntryInner {
 			Self::Tar(_) => {}
 			Self::Zip { archive, reader } => unsafe {
 				ManuallyDrop::drop(reader);
-				drop(Box::from_raw(archive.0));
+				drop(Box::from_raw(*archive));
 			},
 		}
 	}
@@ -130,10 +130,6 @@ impl AsyncRead for ArchiveEntry {
 		}
 	}
 }
-
-struct ArchivePointer(*mut async_zip::tokio::read::seek::ZipFileReader<std::io::Cursor<Vec<u8>>>);
-
-unsafe impl Send for ArchivePointer {}
 
 impl Archive {
 	/// Finds the executable in the archive and returns it as an [`ArchiveEntry`]
@@ -273,8 +269,8 @@ impl Archive {
 
 					let path: &Path = entry.filename().as_str()?.as_ref();
 					if candidate.path == path {
-						let ptr = ArchivePointer(Box::into_raw(Box::new(archive)));
-						let reader = (unsafe { &mut *ptr.0 }).reader_without_entry(i).await?;
+						let ptr = Box::into_raw(Box::new(archive));
+						let reader = (unsafe { &mut *ptr }).reader_without_entry(i).await?;
 						return Ok(ArchiveEntry(ArchiveEntryInner::Zip {
 							archive: ptr,
 							reader: ManuallyDrop::new(reader.compat()),
