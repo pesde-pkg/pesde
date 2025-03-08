@@ -1,5 +1,4 @@
 #![warn(missing_docs)]
-#![deny(clippy::future_not_send)]
 //! A package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune.
 //! pesde has its own registry, however it can also use Wally, and Git repositories as package sources.
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.

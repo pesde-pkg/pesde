@@ -3,9 +3,9 @@ use std::path::Path;
 pub async fn make_executable<P: AsRef<Path>>(_path: P) -> anyhow::Result<()> {
 	#[cfg(unix)]
 	{
-		use anyhow::Context;
+		use anyhow::Context as _;
 		use fs_err::tokio as fs;
-		use std::os::unix::fs::PermissionsExt;
+		use std::os::unix::fs::PermissionsExt as _;
 
 		let mut perms = fs::metadata(&_path)
 			.await

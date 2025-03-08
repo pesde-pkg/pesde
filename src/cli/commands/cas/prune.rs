@@ -40,7 +40,7 @@ async fn read_dir_stream(
 async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 	#[cfg(unix)]
 	{
-		use std::os::unix::fs::MetadataExt;
+		use std::os::unix::fs::MetadataExt as _;
 		let metadata = fs::metadata(path).await?;
 		return Ok(metadata.nlink());
 	}

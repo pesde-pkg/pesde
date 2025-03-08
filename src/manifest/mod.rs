@@ -197,7 +197,7 @@ impl schemars::JsonSchema for Alias {
 	fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
 		schemars::json_schema!({
 			"type": "string",
-			"pattern": r#"^[a-zA-Z0-9_-]+$"#,
+			"pattern": r"^[a-zA-Z0-9_-]+$",
 		})
 	}
 }

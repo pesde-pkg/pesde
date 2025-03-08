@@ -59,12 +59,12 @@ impl SelfInstallCommand {
 		#[cfg(unix)]
 		{
 			println!(
-				r#"installed {} {}! add the following line to your shell profile in order to get the binary and binary exports as executables usable from anywhere:
+				r"installed {} {}! add the following line to your shell profile in order to get the binary and binary exports as executables usable from anywhere:
 
 {}
 
 and then restart your shell.
-"#,
+",
 				CLI_STYLE.apply_to(env!("CARGO_BIN_NAME")),
 				ADDED_STYLE.apply_to(env!("CARGO_PKG_VERSION")),
 				style(format!(r#"export PATH="$PATH:$HOME/{HOME_DIR}/bin""#)).green(),

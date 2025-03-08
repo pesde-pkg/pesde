@@ -60,7 +60,7 @@ async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
 
 		#[cfg(unix)]
 		{
-			use std::os::unix::fs::PermissionsExt;
+			use std::os::unix::fs::PermissionsExt as _;
 			permissions.set_mode(permissions.mode() | 0o644);
 		}
 	}

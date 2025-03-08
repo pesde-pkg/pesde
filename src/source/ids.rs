@@ -89,7 +89,7 @@ impl schemars::JsonSchema for VersionId {
 
 		schemars::json_schema!({
 			"type": "string",
-			"pattern": format!(r#"^({version_pattern}) ({target_pattern})$"#),
+			"pattern": format!(r"^({version_pattern}) ({target_pattern})$"),
 		})
 	}
 }

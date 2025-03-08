@@ -81,7 +81,7 @@ impl schemars::JsonSchema for PackageName {
 	fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
 		schemars::json_schema!({
 			"type": "string",
-			"pattern": r#"^(?!_)(?![0-9]+\/)[a-z0-9_]{3,32}(?<!_)\/(?!_)(?![0-9]+\/)[a-z0-9_]{1,32}(?<!_)$"#
+			"pattern": r"^(?!_)(?![0-9]+\/)[a-z0-9_]{3,32}(?<!_)\/(?!_)(?![0-9]+\/)[a-z0-9_]{1,32}(?<!_)$"
 		})
 	}
 }
@@ -260,7 +260,7 @@ pub mod wally {
 		fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
 			schemars::json_schema!({
 				"type": "string",
-				"pattern": r#"^(wally#)?[a-z0-9-]{1,64}\/[a-z0-9-]{1,64}$"#
+				"pattern": r"^(wally#)?[a-z0-9-]{1,64}\/[a-z0-9-]{1,64}$"
 			})
 		}
 	}
