@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 
 use crate::cli::{
@@ -14,7 +14,7 @@ use pesde::{
 };
 
 #[derive(Debug, Args)]
-pub struct ListCommand {}
+pub struct ListCommand;
 
 impl ListCommand {
 	pub async fn run(self, project: Project) -> anyhow::Result<()> {

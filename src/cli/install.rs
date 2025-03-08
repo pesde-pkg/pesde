@@ -6,7 +6,7 @@ use crate::cli::{
 	style::{ADDED_STYLE, REMOVED_STYLE, WARN_PREFIX},
 	up_to_date_lockfile,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use console::style;
 use fs_err::tokio as fs;
 use pesde::{
@@ -19,7 +19,7 @@ use pesde::{
 	source::{
 		pesde::PesdePackageSource,
 		refs::PackageRefs,
-		traits::{PackageRef, RefreshOptions},
+		traits::{PackageRef as _, RefreshOptions},
 		PackageSources,
 	},
 	version_matches, Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
@@ -452,8 +452,8 @@ pub async fn install(
 
 	print_package_diff(
 		&format!("{} {}:", manifest.name, manifest.target),
-		old_graph,
-		new_lockfile.graph,
+		&old_graph,
+		&new_lockfile.graph,
 	);
 
 	println!("done in {:.2}s", elapsed.as_secs_f64());
@@ -463,20 +463,20 @@ pub async fn install(
 }
 
 /// Prints the difference between two graphs.
-pub fn print_package_diff(prefix: &str, old_graph: DependencyGraph, new_graph: DependencyGraph) {
+pub fn print_package_diff(prefix: &str, old_graph: &DependencyGraph, new_graph: &DependencyGraph) {
 	let mut old_pkg_map = BTreeMap::new();
 	let mut old_direct_pkg_map = BTreeMap::new();
 	let mut new_pkg_map = BTreeMap::new();
 	let mut new_direct_pkg_map = BTreeMap::new();
 
-	for (id, node) in &old_graph {
+	for (id, node) in old_graph {
 		old_pkg_map.insert(id, node);
 		if node.direct.is_some() {
 			old_direct_pkg_map.insert(id, node);
 		}
 	}
 
-	for (id, node) in &new_graph {
+	for (id, node) in new_graph {
 		new_pkg_map.insert(id, node);
 		if node.direct.is_some() {
 			new_direct_pkg_map.insert(id, node);

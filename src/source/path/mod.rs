@@ -53,7 +53,7 @@ impl PackageSource for PathPackageSource {
 								.get(&spec.index)
 								.ok_or_else(|| {
 									errors::ResolveError::IndexNotFound(
-										spec.index.to_string(),
+										spec.index.clone(),
 										specifier.path.clone(),
 									)
 								})?
@@ -66,7 +66,7 @@ impl PackageSource for PathPackageSource {
 								.get(&spec.index)
 								.ok_or_else(|| {
 									errors::ResolveError::IndexNotFound(
-										spec.index.to_string(),
+										spec.index.clone(),
 										specifier.path.clone(),
 									)
 								})?

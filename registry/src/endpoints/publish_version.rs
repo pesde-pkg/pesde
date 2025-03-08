@@ -4,17 +4,17 @@ use crate::{
 	git::push_changes,
 	package::{read_package, read_scope_info},
 	search::update_search_version,
-	storage::StorageImpl,
+	storage::StorageImpl as _,
 	AppState,
 };
 use actix_web::{web, web::Bytes, HttpResponse};
 use async_compression::Level;
-use convert_case::{Case, Casing};
+use convert_case::{Case, Casing as _};
 use fs_err::tokio as fs;
 use pesde::{
 	manifest::{DependencyType, Manifest},
 	source::{
-		git_index::GitBasedSource,
+		git_index::GitBasedSource as _,
 		ids::VersionId,
 		pesde::{DocEntry, DocEntryKind, IndexFileEntry, ScopeInfo, SCOPE_INFO_FILE},
 		specifiers::DependencySpecifiers,
@@ -25,13 +25,13 @@ use pesde::{
 };
 use sentry::add_breadcrumb;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
 use std::{
 	collections::{BTreeSet, HashMap},
 	io::Cursor,
 };
 use tokio::{
-	io::{AsyncReadExt, AsyncWriteExt},
+	io::{AsyncReadExt as _, AsyncWriteExt as _},
 	task::JoinSet,
 };
 
@@ -144,7 +144,7 @@ pub async fn publish_package(
 						);
 						let mut bytes = vec![];
 						gz.read_to_end(&mut bytes).await?;
-						docs_pages.insert(hash.to_string(), bytes);
+						docs_pages.insert(hash.clone(), bytes);
 
 						let mut lines = content.lines().peekable();
 						let front_matter = if lines.peek().filter(|l| **l == "---").is_some() {
@@ -166,10 +166,10 @@ pub async fn publish_package(
 						let h1 = lines
 							.find(|l| !l.trim().is_empty())
 							.and_then(|l| l.strip_prefix("# "))
-							.map(|s| s.to_string());
+							.map(ToString::to_string);
 
 						let info: DocEntryInfo =
-							serde_yaml::from_str(&front_matter).map_err(|_| {
+							serde_yaml::from_str(&front_matter).map_err(|_e| {
 								RegistryError::InvalidArchive(format!(
 									"doc {file_name}'s frontmatter isn't valid YAML"
 								))
@@ -194,7 +194,7 @@ pub async fn publish_package(
 										)
 									})?
 									// ensure that the path is always using forward slashes
-									.replace("\\", "/"),
+									.replace('\\', "/"),
 								hash,
 							},
 						});
@@ -341,19 +341,16 @@ pub async fn publish_package(
 		let mut files = HashMap::new();
 
 		let scope = read_scope_info(&app_state, manifest.name.scope(), &source).await?;
-		match scope {
-			Some(info) => {
-				if !info.owners.contains(&user_id.0) {
-					return Ok(HttpResponse::Forbidden().finish());
-				}
+		if let Some(info) = scope {
+			if !info.owners.contains(&user_id.0) {
+				return Ok(HttpResponse::Forbidden().finish());
 			}
-			None => {
-				let scope_info = toml::to_string(&ScopeInfo {
-					owners: BTreeSet::from([user_id.0]),
-				})?;
+		} else {
+			let scope_info = toml::to_string(&ScopeInfo {
+				owners: BTreeSet::from([user_id.0]),
+			})?;
 
-				files.insert(SCOPE_INFO_FILE.to_string(), scope_info.into_bytes());
-			}
+			files.insert(SCOPE_INFO_FILE.to_string(), scope_info.into_bytes());
 		}
 
 		let mut file = read_package(&app_state, &manifest.name, &source)
@@ -414,6 +411,7 @@ pub async fn publish_package(
 			),
 		)
 		.await?;
+		drop(source);
 
 		update_search_version(&app_state, &manifest.name, &new_entry);
 	}

@@ -5,13 +5,13 @@ use crate::{
 		ids::PackageId,
 		pesde::PesdePackageSource,
 		specifiers::DependencySpecifiers,
-		traits::{PackageRef, PackageSource, RefreshOptions, ResolveOptions},
+		traits::{PackageRef as _, PackageSource as _, RefreshOptions, ResolveOptions},
 		PackageSources,
 	},
 	Project, RefreshedSources,
 };
 use std::collections::{btree_map::Entry, HashMap, VecDeque};
-use tracing::{instrument, Instrument};
+use tracing::{instrument, Instrument as _};
 
 fn insert_node(
 	graph: &mut DependencyGraph,
@@ -183,7 +183,7 @@ impl Project {
 								.indices
 								.get(&specifier.index)
 								.ok_or_else(|| errors::DependencyGraphError::IndexNotFound(
-									specifier.index.to_string(),
+									specifier.index.clone(),
 								))?
 								.clone()
 						} else {
@@ -203,7 +203,7 @@ impl Project {
 								.wally_indices
 								.get(&specifier.index)
 								.ok_or_else(|| errors::DependencyGraphError::WallyIndexNotFound(
-									specifier.index.to_string(),
+									specifier.index.clone(),
 								))?
 								.clone()
 						} else {
@@ -297,11 +297,7 @@ impl Project {
 				}
 
 				let node = DependencyGraphNode {
-					direct: if depth == 0 {
-						Some((alias.clone(), specifier.clone(), ty))
-					} else {
-						None
-					},
+					direct: (depth == 0).then(|| (alias.clone(), specifier.clone(), ty)),
 					pkg_ref: pkg_ref.clone(),
 					dependencies: Default::default(),
 					resolved_ty,

@@ -59,6 +59,7 @@ impl TargetKind {
 
 	/// The folder to store packages in for this target
 	/// self is the project's target, dependency is the target of the dependency
+	#[must_use]
 	pub fn packages_folder(self, dependency: Self) -> String {
 		// the code below might seem better, but it's just going to create issues with users trying
 		// to use a build script, since imports would break between targets
@@ -71,7 +72,8 @@ impl TargetKind {
 	}
 
 	/// Returns whether this target is a Roblox target
-	pub fn is_roblox(&self) -> bool {
+	#[must_use]
+	pub fn is_roblox(self) -> bool {
 		matches!(self, TargetKind::Roblox | TargetKind::RobloxServer)
 	}
 }
@@ -135,6 +137,7 @@ pub enum Target {
 
 impl Target {
 	/// Returns the kind of this target
+	#[must_use]
 	pub fn kind(&self) -> TargetKind {
 		match self {
 			Target::Roblox { .. } => TargetKind::Roblox,
@@ -145,6 +148,7 @@ impl Target {
 	}
 
 	/// Returns the path to the lib export file
+	#[must_use]
 	pub fn lib_path(&self) -> Option<&RelativePath> {
 		match self {
 			Target::Roblox { lib, .. } => lib.as_deref(),
@@ -155,6 +159,7 @@ impl Target {
 	}
 
 	/// Returns the path to the bin export file
+	#[must_use]
 	pub fn bin_path(&self) -> Option<&RelativePath> {
 		match self {
 			Target::Roblox { .. } => None,
@@ -165,6 +170,7 @@ impl Target {
 	}
 
 	/// Returns the Roblox build files
+	#[must_use]
 	pub fn build_files(&self) -> Option<&BTreeSet<String>> {
 		match self {
 			Target::Roblox { build_files, .. } => Some(build_files),
@@ -174,6 +180,7 @@ impl Target {
 	}
 
 	/// Returns the scripts exported by this target
+	#[must_use]
 	pub fn scripts(&self) -> Option<&BTreeMap<String, RelativePathBuf>> {
 		match self {
 			Target::Lune { scripts, .. } => Some(scripts),

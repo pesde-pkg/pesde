@@ -6,7 +6,7 @@ use crate::{
 	source::{
 		fs::{cas_path, store_in_cas},
 		ids::PackageId,
-		traits::PackageRef,
+		traits::PackageRef as _,
 	},
 	Project, LINK_LIB_NO_FILE_FOUND, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
 };
@@ -18,7 +18,7 @@ use std::{
 	sync::Arc,
 };
 use tokio::task::{spawn_blocking, JoinSet};
-use tracing::{instrument, Instrument};
+use tracing::{instrument, Instrument as _};
 
 /// Generates linking modules for a project
 pub mod generator;
@@ -41,7 +41,7 @@ async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std:
 		#[cfg(windows)]
 		Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {}
 		Err(e) => return Err(e),
-	};
+	}
 
 	fs::hard_link(cas_path(&hash, cas_dir), destination).await
 }
@@ -102,7 +102,9 @@ impl Project {
 						manifest_target_kind,
 					);
 
-					let types = if lib_file.as_str() != LINK_LIB_NO_FILE_FOUND {
+					let types = if lib_file.as_str() == LINK_LIB_NO_FILE_FOUND {
+						vec![]
+					} else {
 						let lib_file = lib_file.to_path(&container_folder);
 
 						let contents = match fs::read_to_string(&lib_file).await {
@@ -122,8 +124,6 @@ impl Project {
 						tracing::debug!("contains {} exported types", types.len());
 
 						types
-					} else {
-						vec![]
 					};
 
 					if let Some(build_files) = Some(&node.target)

@@ -2,12 +2,12 @@ use crate::cli::{
 	style::{ADDED_STYLE, INFO_STYLE, REMOVED_STYLE, SUCCESS_STYLE},
 	up_to_date_lockfile,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 use pesde::{
 	source::{
 		specifiers::DependencySpecifiers,
-		traits::{PackageRef, PackageSource, RefreshOptions, ResolveOptions},
+		traits::{PackageRef as _, PackageSource as _, RefreshOptions, ResolveOptions},
 	},
 	Project, RefreshedSources,
 };
@@ -82,7 +82,7 @@ impl OutdatedCommand {
 							DependencySpecifiers::Git(_) => {}
 							DependencySpecifiers::Workspace(_) => {}
 							DependencySpecifiers::Path(_) => {}
-						};
+						}
 					}
 
 					let new_id = source

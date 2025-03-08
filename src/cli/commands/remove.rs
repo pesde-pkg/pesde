@@ -1,6 +1,6 @@
-use std::str::FromStr;
+use std::str::FromStr as _;
 
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 
 use crate::cli::{

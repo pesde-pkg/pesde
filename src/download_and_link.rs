@@ -9,12 +9,12 @@ use crate::{
 	reporters::{DownloadsReporter, PatchesReporter},
 	source::{
 		ids::PackageId,
-		traits::{GetTargetOptions, PackageRef, PackageSource},
+		traits::{GetTargetOptions, PackageRef as _, PackageSource as _},
 	},
 	Project, RefreshedSources, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
-use futures::TryStreamExt;
+use futures::TryStreamExt as _;
 use std::{
 	collections::HashMap,
 	convert::Infallible,
@@ -24,11 +24,11 @@ use std::{
 	sync::Arc,
 };
 use tokio::{pin, task::JoinSet};
-use tracing::{instrument, Instrument};
+use tracing::{instrument, Instrument as _};
 
 /// Hooks to perform actions after certain events during download and linking.
 #[allow(unused_variables)]
-pub trait DownloadAndLinkHooks {
+pub trait DownloadAndLinkHooks: Send + Sync {
 	/// The error type for the hooks.
 	type Error: std::error::Error + Send + Sync + 'static;
 
@@ -89,6 +89,7 @@ where
 	Hooks: DownloadAndLinkHooks + Send + Sync + 'static,
 {
 	/// Creates a new download options with the given reqwest client and reporter.
+	#[must_use]
 	pub fn new(reqwest: reqwest::Client) -> Self {
 		Self {
 			reqwest,
@@ -102,36 +103,42 @@ where
 	}
 
 	/// Sets the downloads reporter.
+	#[must_use]
 	pub fn reporter(mut self, reporter: impl Into<Arc<Reporter>>) -> Self {
 		self.reporter.replace(reporter.into());
 		self
 	}
 
 	/// Sets the download and link hooks.
+	#[must_use]
 	pub fn hooks(mut self, hooks: impl Into<Arc<Hooks>>) -> Self {
 		self.hooks.replace(hooks.into());
 		self
 	}
 
 	/// Sets the refreshed sources.
+	#[must_use]
 	pub fn refreshed_sources(mut self, refreshed_sources: RefreshedSources) -> Self {
 		self.refreshed_sources = refreshed_sources;
 		self
 	}
 
 	/// Sets whether to skip dev dependencies.
+	#[must_use]
 	pub fn prod(mut self, prod: bool) -> Self {
 		self.prod = prod;
 		self
 	}
 
 	/// Sets the max number of concurrent network requests.
+	#[must_use]
 	pub fn network_concurrency(mut self, network_concurrency: NonZeroUsize) -> Self {
 		self.network_concurrency = network_concurrency;
 		self
 	}
 
 	/// Sets whether to re-install all dependencies even if they are already installed
+	#[must_use]
 	pub fn force(mut self, force: bool) -> Self {
 		self.force = force;
 		self
@@ -294,7 +301,7 @@ impl Project {
 						node.container_folder_from_project(&id, project, manifest_target_kind)
 							.as_path(),
 					);
-					let id = Arc::new(id.clone());
+					let id = Arc::new(id);
 					let project = project.clone();
 
 					async move {
@@ -311,7 +318,7 @@ impl Project {
 
 						Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
 							Arc::into_inner(id).unwrap(),
-							DependencyGraphNodeWithTarget { node, target },
+							DependencyGraphNodeWithTarget { target, node },
 						))
 					}
 				})

@@ -5,11 +5,11 @@ use crate::{
 	},
 	util::remove_empty_dir,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use async_stream::try_stream;
 use clap::Args;
 use fs_err::tokio as fs;
-use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
+use futures::{future::BoxFuture, FutureExt as _, Stream, StreamExt as _};
 use pesde::{
 	source::fs::{FsEntry, PackageFs},
 	Project,
@@ -22,7 +22,7 @@ use std::{
 use tokio::task::JoinSet;
 
 #[derive(Debug, Args)]
-pub struct PruneCommand {}
+pub struct PruneCommand;
 
 async fn read_dir_stream(
 	dir: &Path,
@@ -47,7 +47,7 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 	// life if rust stabilized the nightly feature from 2019
 	#[cfg(windows)]
 	{
-		use std::os::windows::ffi::OsStrExt;
+		use std::os::windows::ffi::OsStrExt as _;
 		use windows::{
 			core::PWSTR,
 			Win32::{
@@ -139,7 +139,7 @@ async fn discover_cas_packages(cas_dir: &Path) -> anyhow::Result<HashMap<PathBuf
 				}
 
 				return Ok(res);
-			};
+			}
 
 			let contents = fs::read_to_string(entry.path()).await?;
 			let fs = toml::from_str(&contents).context("failed to deserialize PackageFs")?;

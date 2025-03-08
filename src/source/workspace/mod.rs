@@ -12,7 +12,7 @@ use crate::{
 		ResolveResult,
 	},
 };
-use futures::StreamExt;
+use futures::StreamExt as _;
 use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
 use tokio::pin;
@@ -86,7 +86,7 @@ impl PackageSource for WorkspacePackageSource {
 								.get(&spec.index)
 								.ok_or_else(|| {
 									errors::ResolveError::IndexNotFound(
-										spec.index.to_string(),
+										spec.index.clone(),
 										manifest.name.to_string(),
 									)
 								})?
@@ -99,7 +99,7 @@ impl PackageSource for WorkspacePackageSource {
 								.get(&spec.index)
 								.ok_or_else(|| {
 									errors::ResolveError::IndexNotFound(
-										spec.index.to_string(),
+										spec.index.clone(),
 										manifest.name.to_string(),
 									)
 								})?

@@ -3,7 +3,7 @@ use crate::cli::{
 	version::replace_pesde_bin_exe,
 	HOME_DIR,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 use console::style;
 use std::env::current_exe;
@@ -22,15 +22,16 @@ impl SelfInstallCommand {
 		{
 			if !self.skip_add_to_path {
 				use crate::cli::style::WARN_STYLE;
-				use anyhow::Context;
+				use anyhow::Context as _;
 				use windows_registry::CURRENT_USER;
+
+				let bin_dir = crate::cli::bin_dir().await?;
 
 				let env = CURRENT_USER
 					.create("Environment")
 					.context("failed to open Environment key")?;
 				let path = env.get_string("Path").context("failed to get Path value")?;
 
-				let bin_dir = crate::cli::bin_dir().await?;
 				let bin_dir = bin_dir.to_string_lossy();
 
 				let exists = path.split(';').any(|part| *part == bin_dir);
@@ -53,7 +54,7 @@ impl SelfInstallCommand {
 				CLI_STYLE.apply_to(env!("CARGO_BIN_NAME")),
 				ADDED_STYLE.apply_to(env!("CARGO_PKG_VERSION")),
 			);
-		}
+		};
 
 		#[cfg(unix)]
 		{
@@ -68,7 +69,7 @@ and then restart your shell.
 				ADDED_STYLE.apply_to(env!("CARGO_PKG_VERSION")),
 				style(format!(r#"export PATH="$PATH:$HOME/{HOME_DIR}/bin""#)).green(),
 			);
-		}
+		};
 
 		replace_pesde_bin_exe(&current_exe().context("failed to get current exe path")?).await?;
 

@@ -1,5 +1,5 @@
 use crate::cli::{auth::Tokens, home_dir};
-use anyhow::Context;
+use anyhow::Context as _;
 use fs_err::tokio as fs;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;

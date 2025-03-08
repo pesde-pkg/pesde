@@ -6,7 +6,7 @@ use serde::{
 	de::{MapAccess, Visitor},
 	Deserialize, Deserializer, Serializer,
 };
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
 use std::{
 	collections::{BTreeMap, HashSet},
 	fmt::{Display, Formatter},
@@ -29,8 +29,8 @@ pub fn authenticate_conn(
 					next: gix::credentials::helper::NextAction::from(ctx),
 				}))
 			}
-			gix::credentials::helper::Action::Store(_) => Ok(None),
-			gix::credentials::helper::Action::Erase(_) => Ok(None),
+			gix::credentials::helper::Action::Store(_)
+			| gix::credentials::helper::Action::Erase(_) => Ok(None),
 		});
 	}
 }
@@ -98,6 +98,7 @@ pub fn is_default<T: Default + Eq>(t: &T) -> bool {
 	t == &T::default()
 }
 
+#[must_use]
 pub fn no_build_metadata(version: &Version) -> Version {
 	let mut version = version.clone();
 	version.build = semver::BuildMetadata::EMPTY;
@@ -163,21 +164,21 @@ where
 			formatter.write_str("a map with no duplicate keys")
 		}
 
-		fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+		fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
 		where
 			A: MapAccess<'de>,
 		{
-			let mut map = self.map;
+			let mut res = self.map;
 
-			while let Some((key, value)) = access.next_entry()? {
-				if map.contains_key(&key) {
+			while let Some((key, value)) = map.next_entry()? {
+				if res.contains_key(&key) {
 					return Err(serde::de::Error::custom(format!("duplicate key `{key}`")));
 				}
 
-				map.insert(key, value);
+				res.insert(key, value);
 			}
 
-			Ok(map)
+			Ok(res)
 		}
 	}
 

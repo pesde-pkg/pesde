@@ -49,16 +49,18 @@ impl<'de> Deserialize<'de> for AnyOrSpecificTarget {
 	}
 }
 
-pub fn resolve_version_and_target(
-	file: &IndexFile,
+pub fn resolve_version_and_target<'a>(
+	file: &'a IndexFile,
 	version: LatestOrSpecificVersion,
-	target: AnyOrSpecificTarget,
-) -> Option<&VersionId> {
+	target: &AnyOrSpecificTarget,
+) -> Option<&'a VersionId> {
 	let version = match version {
-		LatestOrSpecificVersion::Latest => match file.entries.keys().map(|k| k.version()).max() {
-			Some(latest) => latest.clone(),
-			None => return None,
-		},
+		LatestOrSpecificVersion::Latest => {
+			match file.entries.keys().map(VersionId::version).max() {
+				Some(latest) => latest.clone(),
+				None => return None,
+			}
+		}
 		LatestOrSpecificVersion::Specific(version) => version,
 	};
 
@@ -70,7 +72,7 @@ pub fn resolve_version_and_target(
 	match target {
 		AnyOrSpecificTarget::Any => versions.min_by_key(|(v_id, _)| v_id.target()),
 		AnyOrSpecificTarget::Specific(kind) => {
-			versions.find(|(_, entry)| entry.target.kind() == kind)
+			versions.find(|(_, entry)| entry.target.kind() == *kind)
 		}
 	}
 	.map(|(v_id, _)| v_id)

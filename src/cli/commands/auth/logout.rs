@@ -2,7 +2,7 @@ use crate::cli::auth::set_token;
 use clap::Args;
 
 #[derive(Debug, Args)]
-pub struct LogoutCommand {}
+pub struct LogoutCommand;
 
 impl LogoutCommand {
 	pub async fn run(self, index_url: gix::Url) -> anyhow::Result<()> {

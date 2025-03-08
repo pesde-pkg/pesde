@@ -1,4 +1,4 @@
-use futures::StreamExt;
+use futures::StreamExt as _;
 use std::{
 	collections::BTreeSet,
 	mem::ManuallyDrop,
@@ -8,10 +8,10 @@ use std::{
 	task::{Context, Poll},
 };
 use tokio::{
-	io::{AsyncBufRead, AsyncRead, AsyncReadExt, ReadBuf},
+	io::{AsyncBufRead, AsyncRead, AsyncReadExt as _, ReadBuf},
 	pin,
 };
-use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
+use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt as _};
 
 /// The kind of encoding used for the archive
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -53,7 +53,7 @@ impl FromStr for ArchiveInfo {
 	}
 }
 
-pub(crate) type ArchiveReader = Pin<Box<dyn AsyncBufRead>>;
+pub(crate) type ArchiveReader = Pin<Box<dyn AsyncBufRead + Send>>;
 
 /// An archive
 pub struct Archive {
@@ -84,9 +84,9 @@ impl AsyncRead for TarReader {
 }
 
 enum ArchiveEntryInner {
-	Tar(tokio_tar::Entry<tokio_tar::Archive<TarReader>>),
+	Tar(Box<tokio_tar::Entry<tokio_tar::Archive<TarReader>>>),
 	Zip {
-		archive: *mut async_zip::tokio::read::seek::ZipFileReader<std::io::Cursor<Vec<u8>>>,
+		archive: ArchivePointer,
 		reader: ManuallyDrop<
 			Compat<
 				async_zip::tokio::read::ZipEntryReader<
@@ -105,7 +105,7 @@ impl Drop for ArchiveEntryInner {
 			Self::Tar(_) => {}
 			Self::Zip { archive, reader } => unsafe {
 				ManuallyDrop::drop(reader);
-				drop(Box::from_raw(*archive));
+				drop(Box::from_raw(archive.0));
 			},
 		}
 	}
@@ -130,6 +130,10 @@ impl AsyncRead for ArchiveEntry {
 		}
 	}
 }
+
+struct ArchivePointer(*mut async_zip::tokio::read::seek::ZipFileReader<std::io::Cursor<Vec<u8>>>);
+
+unsafe impl Send for ArchivePointer {}
 
 impl Archive {
 	/// Finds the executable in the archive and returns it as an [`ArchiveEntry`]
@@ -226,7 +230,7 @@ impl Archive {
 
 					let path = entry.path()?;
 					if path == candidate.path {
-						return Ok(ArchiveEntry(ArchiveEntryInner::Tar(entry)));
+						return Ok(ArchiveEntry(ArchiveEntryInner::Tar(Box::new(entry))));
 					}
 				}
 			}
@@ -269,8 +273,8 @@ impl Archive {
 
 					let path: &Path = entry.filename().as_str()?.as_ref();
 					if candidate.path == path {
-						let ptr = Box::into_raw(Box::new(archive));
-						let reader = (unsafe { &mut *ptr }).reader_without_entry(i).await?;
+						let ptr = ArchivePointer(Box::into_raw(Box::new(archive)));
+						let reader = (unsafe { &mut *ptr.0 }).reader_without_entry(i).await?;
 						return Ok(ArchiveEntry(ArchiveEntryInner::Zip {
 							archive: ptr,
 							reader: ManuallyDrop::new(reader.compat()),

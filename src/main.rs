@@ -1,7 +1,7 @@
 #[cfg(feature = "version-management")]
 use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
 use crate::cli::{auth::get_tokens, display_err, home_dir, HOME_DIR};
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::{builder::styling::AnsiColor, Parser};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
@@ -10,13 +10,14 @@ use semver::VersionReq;
 use std::{
 	io,
 	path::{Path, PathBuf},
-	str::FromStr,
+	str::FromStr as _,
 	sync::Mutex,
 };
 use tempfile::NamedTempFile;
 use tracing::instrument;
 use tracing_subscriber::{
-	filter::LevelFilter, fmt::MakeWriter, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+	filter::LevelFilter, fmt::MakeWriter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
+	EnvFilter,
 };
 
 mod cli;
@@ -98,8 +99,8 @@ pub struct IndicatifWriter;
 
 impl IndicatifWriter {
 	fn suspend<F: FnOnce() -> R, R>(f: F) -> R {
-		match *PROGRESS_BARS.lock().unwrap() {
-			Some(ref progress_bars) => progress_bars.suspend(f),
+		match &*PROGRESS_BARS.lock().unwrap() {
+			Some(progress_bars) => progress_bars.suspend(f),
 			None => f(),
 		}
 	}
@@ -191,8 +192,8 @@ async fn run() -> anyhow::Result<()> {
 			.status()
 			.expect("failed to run lune");
 
-		std::process::exit(status.code().unwrap_or(1));
-	}
+		std::process::exit(status.code().unwrap_or(1i32));
+	};
 
 	let tracing_env_filter = EnvFilter::builder()
 		.with_default_directive(LevelFilter::INFO.into())
@@ -315,8 +316,8 @@ async fn run() -> anyhow::Result<()> {
 			.status()
 			.expect("failed to run new version");
 
-		std::process::exit(status.code().unwrap_or(1));
-	}
+		std::process::exit(status.code().unwrap_or(1i32));
+	};
 
 	#[cfg(feature = "version-management")]
 	display_err(

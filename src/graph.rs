@@ -7,7 +7,7 @@ use crate::{
 		ids::{PackageId, VersionId},
 		refs::PackageRefs,
 		specifiers::DependencySpecifiers,
-		traits::PackageRef,
+		traits::PackageRef as _,
 	},
 	Project, PACKAGES_CONTAINER_NAME,
 };
@@ -49,6 +49,7 @@ impl DependencyGraphNode {
 	}
 
 	/// Returns the folder to store the contents of the package in
+	#[must_use]
 	pub fn container_folder(&self, package_id: &PackageId) -> PathBuf {
 		let (name, v_id) = package_id.parts();
 
@@ -68,6 +69,7 @@ impl DependencyGraphNode {
 	}
 
 	/// Returns the folder to store the contents of the package in starting from the project's package directory
+	#[must_use]
 	pub fn container_folder_from_project(
 		&self,
 		package_id: &PackageId,

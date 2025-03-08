@@ -1,5 +1,5 @@
 use crate::{
-	error::{RegistryError, ReqwestErrorExt},
+	error::{RegistryError, ReqwestErrorExt as _},
 	storage::StorageImpl,
 };
 use actix_web::{http::header::LOCATION, HttpResponse};
@@ -7,7 +7,7 @@ use pesde::{names::PackageName, source::ids::VersionId};
 use reqwest::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use rusty_s3::{
 	actions::{GetObject, PutObject},
-	Bucket, Credentials, S3Action,
+	Bucket, Credentials, S3Action as _,
 };
 use std::{fmt::Display, time::Duration};
 

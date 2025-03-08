@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 use console::style;
 use serde::Deserialize;
@@ -13,7 +13,7 @@ use crate::cli::{
 use pesde::{
 	source::{
 		pesde::PesdePackageSource,
-		traits::{PackageSource, RefreshOptions},
+		traits::{PackageSource as _, RefreshOptions},
 	},
 	Project,
 };
@@ -145,12 +145,11 @@ impl LoginCommand {
 					return Ok(access_token);
 				}
 				AccessTokenResponse::Error(e) => match e {
-					AccessTokenError::AuthorizationPending => continue,
+					AccessTokenError::AuthorizationPending => {}
 					AccessTokenError::SlowDown {
 						interval: new_interval,
 					} => {
 						interval = std::time::Duration::from_secs(new_interval);
-						continue;
 					}
 					AccessTokenError::ExpiredToken => {
 						break;

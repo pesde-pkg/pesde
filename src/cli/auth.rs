@@ -1,9 +1,9 @@
 use crate::cli::config::{read_config, write_config};
-use anyhow::Context;
+use anyhow::Context as _;
 use gix::bstr::BStr;
 use keyring::Entry;
 use reqwest::header::AUTHORIZATION;
-use serde::{ser::SerializeMap, Deserialize, Serialize};
+use serde::{ser::SerializeMap as _, Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tokio::task::spawn_blocking;
 use tracing::instrument;

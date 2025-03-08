@@ -1,4 +1,5 @@
-#![warn(missing_docs, clippy::redundant_closure_for_method_calls)]
+#![warn(missing_docs)]
+#![deny(clippy::future_not_send)]
 //! A package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune.
 //! pesde has its own registry, however it can also use Wally, and Git repositories as package sources.
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
@@ -7,7 +8,7 @@ use crate::{
 	lockfile::Lockfile,
 	manifest::{target::TargetKind, Manifest},
 	source::{
-		traits::{PackageSource, RefreshOptions},
+		traits::{PackageSource as _, RefreshOptions},
 		PackageSources,
 	},
 };
@@ -19,12 +20,12 @@ use semver::{Version, VersionReq};
 use std::{
 	collections::{HashMap, HashSet},
 	fmt::Debug,
-	hash::{Hash, Hasher},
+	hash::{Hash as _, Hasher as _},
 	path::{Path, PathBuf},
 	sync::Arc,
 };
 use tracing::instrument;
-use wax::Pattern;
+use wax::Pattern as _;
 
 /// Downloading packages
 pub mod download;
@@ -84,12 +85,14 @@ pub struct AuthConfig {
 
 impl AuthConfig {
 	/// Create a new `AuthConfig`
+	#[must_use]
 	pub fn new() -> Self {
 		AuthConfig::default()
 	}
 
 	/// Set the tokens
 	/// Panics if the `AuthConfig` is shared
+	#[must_use]
 	pub fn with_tokens<I: IntoIterator<Item = (gix::Url, S)>, S: AsRef<str>>(
 		mut self,
 		tokens: I,
@@ -103,17 +106,20 @@ impl AuthConfig {
 
 	/// Set the git credentials
 	/// Panics if the `AuthConfig` is shared
+	#[must_use]
 	pub fn with_git_credentials(mut self, git_credentials: Option<Account>) -> Self {
 		Arc::get_mut(&mut self.shared).unwrap().git_credentials = git_credentials;
 		self
 	}
 
 	/// Get the tokens
+	#[must_use]
 	pub fn tokens(&self) -> &HashMap<gix::Url, String> {
 		&self.shared.tokens
 	}
 
 	/// Get the git credentials
+	#[must_use]
 	pub fn git_credentials(&self) -> Option<&Account> {
 		self.shared.git_credentials.as_ref()
 	}
@@ -137,6 +143,7 @@ pub struct Project {
 
 impl Project {
 	/// Create a new `Project`
+	#[must_use]
 	pub fn new(
 		package_dir: impl AsRef<Path>,
 		workspace_dir: Option<impl AsRef<Path>>,
@@ -156,26 +163,31 @@ impl Project {
 	}
 
 	/// The directory of the package
+	#[must_use]
 	pub fn package_dir(&self) -> &Path {
 		&self.shared.package_dir
 	}
 
 	/// The directory of the workspace this package belongs to, if any
+	#[must_use]
 	pub fn workspace_dir(&self) -> Option<&Path> {
 		self.shared.workspace_dir.as_deref()
 	}
 
 	/// The directory to store general-purpose data
+	#[must_use]
 	pub fn data_dir(&self) -> &Path {
 		&self.shared.data_dir
 	}
 
 	/// The CAS (content-addressable storage) directory
+	#[must_use]
 	pub fn cas_dir(&self) -> &Path {
 		&self.shared.cas_dir
 	}
 
 	/// The authentication configuration
+	#[must_use]
 	pub fn auth_config(&self) -> &AuthConfig {
 		&self.shared.auth_config
 	}
@@ -324,7 +336,7 @@ pub async fn matching_globs<'a, P: AsRef<Path> + Debug, I: IntoIterator<Item = &
 				paths.insert(if relative {
 					relative_path.to_path_buf()
 				} else {
-					path.to_path_buf()
+					path.clone()
 				});
 			}
 		}
@@ -339,6 +351,7 @@ pub struct RefreshedSources(Arc<tokio::sync::Mutex<HashSet<u64>>>);
 
 impl RefreshedSources {
 	/// Create a new empty `RefreshedSources`
+	#[must_use]
 	pub fn new() -> Self {
 		RefreshedSources::default()
 	}
@@ -418,9 +431,9 @@ pub async fn find_roots(
 				if get_workspace_members(&path).await?.contains(&cwd) {
 					// initializing a new member of a workspace
 					return Ok((cwd, Some(path)));
-				} else {
-					project_root = Some(path);
 				}
+
+				project_root = Some(path);
 			}
 
 			(None, Some(_)) => unreachable!(),
@@ -434,6 +447,7 @@ pub async fn find_roots(
 
 /// Returns whether a version matches a version requirement
 /// Differs from `VersionReq::matches` in that EVERY version matches `*`
+#[must_use]
 pub fn version_matches(req: &VersionReq, version: &Version) -> bool {
 	*req == VersionReq::STAR || req.matches(version)
 }

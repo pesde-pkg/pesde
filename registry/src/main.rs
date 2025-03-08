@@ -16,14 +16,14 @@ use fs_err::tokio as fs;
 use pesde::{
 	source::{
 		pesde::PesdePackageSource,
-		traits::{PackageSource, RefreshOptions},
+		traits::{PackageSource as _, RefreshOptions},
 	},
 	AuthConfig, Project,
 };
 use std::{env::current_dir, path::PathBuf, sync::Arc};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{
-	fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+	fmt::format::FmtSpan, layer::SubscriberExt as _, util::SubscriberInitExt as _, EnvFilter,
 };
 
 mod auth;
@@ -35,6 +35,7 @@ mod request_path;
 mod search;
 mod storage;
 
+#[must_use]
 pub fn make_reqwest() -> reqwest::Client {
 	reqwest::ClientBuilder::new()
 		.user_agent(concat!(

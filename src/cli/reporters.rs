@@ -187,7 +187,7 @@ impl<W: Write + Send + Sync + 'static> PatchesReporter for CliReporter<W> {
 
 		CliPatchProgressReporter {
 			root_reporter: self,
-			name: name.to_string(),
+			name,
 			progress,
 		}
 	}

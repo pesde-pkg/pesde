@@ -3,7 +3,7 @@ use crate::{
 	Project, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
-use futures::FutureExt;
+use futures::FutureExt as _;
 use std::{
 	collections::HashSet,
 	path::{Component, Path, PathBuf},
@@ -12,7 +12,7 @@ use std::{
 use tokio::task::JoinSet;
 
 fn index_entry(
-	entry: fs::DirEntry,
+	entry: &fs::DirEntry,
 	packages_index_dir: &Path,
 	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
 	used_paths: &Arc<HashSet<PathBuf>>,
@@ -54,13 +54,13 @@ fn index_entry(
 			}
 			#[cfg(feature = "wally-compat")]
 			{
-				if !used_paths.contains(&path_relative) {
-					fs::remove_dir_all(path).await?;
-				} else {
+				if used_paths.contains(&path_relative) {
 					#[cfg(feature = "patches")]
 					if !patched_packages.contains(&path_relative) {
 						crate::patches::remove_patch(path.join(package_name)).await?;
 					}
+				} else {
+					fs::remove_dir_all(path).await?;
 				}
 
 				return Ok(());
@@ -104,7 +104,7 @@ fn packages_entry(
 ) {
 	let expected_aliases = expected_aliases.clone();
 	tasks.spawn(async move {
-		if !entry.file_type().await?.is_file() {
+		if entry.file_type().await?.is_dir() {
 			return Ok(());
 		}
 
@@ -241,7 +241,7 @@ impl Project {
 						tokio::select! {
 							Some(entry) = index_entries.next_entry().map(Result::transpose) => {
 								index_entry(
-									entry?,
+									&entry?,
 									&packages_index_dir,
 									&mut tasks,
 									&used_paths,

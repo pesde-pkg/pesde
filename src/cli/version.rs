@@ -9,19 +9,19 @@ use crate::{
 	},
 	util::no_build_metadata,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use console::Style;
 use fs_err::tokio as fs;
 use jiff::SignedDuration;
 use pesde::{
 	engine::{
 		source::{
-			traits::{DownloadOptions, EngineSource, ResolveOptions},
+			traits::{DownloadOptions, EngineSource as _, ResolveOptions},
 			EngineSources,
 		},
 		EngineKind,
 	},
-	reporters::DownloadsReporter,
+	reporters::DownloadsReporter as _,
 	version_matches,
 };
 use semver::{Version, VersionReq};
@@ -167,7 +167,7 @@ pub async fn get_or_download_engine(
 			.with_extension(std::env::consts::EXE_EXTENSION));
 	}
 
-	let path = run_with_reporter(|_, root_progress, reporter| async {
+	run_with_reporter(|_, root_progress, reporter| async {
 		let root_progress = root_progress;
 		let reporter = reporter;
 
@@ -221,19 +221,17 @@ pub async fn get_or_download_engine(
 		.await
 		.context("failed to write to file")?;
 
+		make_executable(&path)
+			.await
+			.context("failed to make downloaded version executable")?;
+
+		if engine != EngineKind::Pesde {
+			make_linker_if_needed(engine).await?;
+		}
+
 		Ok::<_, anyhow::Error>(path)
 	})
-	.await?;
-
-	make_executable(&path)
-		.await
-		.context("failed to make downloaded version executable")?;
-
-	if engine != EngineKind::Pesde {
-		make_linker_if_needed(engine).await?;
-	}
-
-	Ok(path)
+	.await
 }
 
 #[instrument(level = "trace")]
@@ -243,7 +241,7 @@ pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
 		.join(EngineKind::Pesde.to_string())
 		.with_extension(std::env::consts::EXE_EXTENSION);
 
-	let exists = bin_exe_path.exists();
+	let exists = fs::metadata(&bin_exe_path).await.is_ok();
 
 	if cfg!(target_os = "linux") && exists {
 		fs::remove_file(&bin_exe_path)
@@ -277,9 +275,8 @@ pub async fn make_linker_if_needed(engine: EngineKind) -> anyhow::Result<()> {
 	let linker = bin_dir
 		.join(engine.to_string())
 		.with_extension(std::env::consts::EXE_EXTENSION);
-	let exists = linker.exists();
 
-	if !exists {
+	if fs::metadata(&linker).await.is_err() {
 		let exe = current_exe().context("failed to get current exe path")?;
 
 		#[cfg(windows)]

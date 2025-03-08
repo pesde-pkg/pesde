@@ -3,17 +3,14 @@ use clap::Args;
 use console::style;
 
 #[derive(Debug, Args)]
-pub struct WhoAmICommand {}
+pub struct WhoAmICommand;
 
 impl WhoAmICommand {
 	pub async fn run(self, index_url: gix::Url, reqwest: reqwest::Client) -> anyhow::Result<()> {
 		let tokens = get_tokens().await?;
-		let token = match tokens.0.get(&index_url) {
-			Some(token) => token,
-			None => {
-				println!("not logged in into {index_url}");
-				return Ok(());
-			}
+		let Some(token) = tokens.0.get(&index_url) else {
+			println!("not logged in into {index_url}");
+			return Ok(());
 		};
 
 		println!(

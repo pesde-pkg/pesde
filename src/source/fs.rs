@@ -5,7 +5,7 @@ use crate::{
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
 use std::{
 	collections::BTreeMap,
 	fmt::Debug,
@@ -13,7 +13,7 @@ use std::{
 };
 use tempfile::Builder;
 use tokio::{
-	io::{AsyncReadExt, AsyncWriteExt},
+	io::{AsyncReadExt as _, AsyncWriteExt as _},
 	pin,
 	task::JoinSet,
 };
@@ -112,7 +112,7 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin, P: AsRef<Path>
 		}
 		Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => {}
 		Err(e) => return Err(e.error),
-	};
+	}
 
 	Ok(hash)
 }

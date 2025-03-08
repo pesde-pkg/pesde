@@ -138,9 +138,8 @@ pub fn root_tree(repo: &gix::Repository) -> Result<gix::Tree, errors::TreeError>
 		}
 	};
 
-	let refspec = match remote.refspecs(Direction::Fetch).first() {
-		Some(head) => head,
-		None => return Err(errors::TreeError::NoRefSpecs(path)),
+	let Some(refspec) = remote.refspecs(Direction::Fetch).first() else {
+		return Err(errors::TreeError::NoRefSpecs(path));
 	};
 
 	let spec_ref = refspec.to_ref();
@@ -153,7 +152,7 @@ pub fn root_tree(repo: &gix::Repository) -> Result<gix::Tree, errors::TreeError>
 
 	let reference = match repo.find_reference(&local_ref) {
 		Ok(reference) => reference,
-		Err(e) => return Err(errors::TreeError::NoReference(local_ref.to_string(), e)),
+		Err(e) => return Err(errors::TreeError::NoReference(local_ref.clone(), e)),
 	};
 
 	let reference_name = reference.name().as_bstr().to_string();

@@ -83,6 +83,7 @@ impl EngineSource for EngineSources {
 
 impl EngineSources {
 	/// Returns the source for the pesde engine
+	#[must_use]
 	pub fn pesde() -> Self {
 		let mut parts = env!("CARGO_PKG_REPOSITORY").split('/').skip(3);
 		let (owner, repo) = (
@@ -102,6 +103,7 @@ impl EngineSources {
 	}
 
 	/// Returns the source for the lune engine
+	#[must_use]
 	pub fn lune() -> Self {
 		EngineSources::GitHub(github::GitHubEngineSource {
 			owner: "lune-org".into(),

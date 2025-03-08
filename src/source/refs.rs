@@ -24,6 +24,7 @@ pub enum PackageRefs {
 
 impl PackageRefs {
 	/// Returns whether this package reference should be treated as a Wally package
+	#[must_use]
 	pub fn is_wally_package(&self) -> bool {
 		match self {
 			#[cfg(feature = "wally-compat")]

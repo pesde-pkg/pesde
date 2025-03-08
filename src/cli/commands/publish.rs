@@ -3,7 +3,7 @@ use crate::cli::{
 	style::{ERROR_PREFIX, ERROR_STYLE, SUCCESS_STYLE, WARN_PREFIX},
 	up_to_date_lockfile,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use async_compression::Level;
 use clap::Args;
 use console::style;
@@ -15,7 +15,9 @@ use pesde::{
 	source::{
 		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
 		specifiers::DependencySpecifiers,
-		traits::{GetTargetOptions, PackageRef, PackageSource, RefreshOptions, ResolveOptions},
+		traits::{
+			GetTargetOptions, PackageRef as _, PackageSource as _, RefreshOptions, ResolveOptions,
+		},
 		workspace::{
 			specifier::{VersionType, VersionTypeOrReq},
 			WorkspacePackageSource,
@@ -24,12 +26,17 @@ use pesde::{
 	},
 	Project, RefreshedSources, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
+use relative_path::RelativePath;
 use reqwest::{header::AUTHORIZATION, StatusCode};
 use semver::VersionReq;
-use std::{path::PathBuf, sync::Arc};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	path::PathBuf,
+	sync::Arc,
+};
 use tempfile::Builder;
 use tokio::{
-	io::{AsyncSeekExt, AsyncWriteExt},
+	io::{AsyncSeekExt as _, AsyncWriteExt as _},
 	task::JoinSet,
 };
 
@@ -105,7 +112,7 @@ impl PublishCommand {
 
 		if manifest.target.lib_path().is_none()
 			&& manifest.target.bin_path().is_none()
-			&& manifest.target.scripts().is_none_or(|s| s.is_empty())
+			&& manifest.target.scripts().is_none_or(BTreeMap::is_empty)
 		{
 			anyhow::bail!("no exports found in target");
 		}
@@ -114,7 +121,7 @@ impl PublishCommand {
 			manifest.target,
 			Target::Roblox { .. } | Target::RobloxServer { .. }
 		) {
-			if manifest.target.build_files().is_none_or(|f| f.is_empty()) {
+			if manifest.target.build_files().is_none_or(BTreeSet::is_empty) {
 				anyhow::bail!("no build files found in target");
 			}
 
@@ -193,8 +200,14 @@ impl PublishCommand {
 		let mut display_build_files: Vec<String> = vec![];
 
 		let (lib_path, bin_path, scripts, target_kind) = (
-			manifest.target.lib_path().map(|p| p.to_relative_path_buf()),
-			manifest.target.bin_path().map(|p| p.to_relative_path_buf()),
+			manifest
+				.target
+				.lib_path()
+				.map(RelativePath::to_relative_path_buf),
+			manifest
+				.target
+				.bin_path()
+				.map(RelativePath::to_relative_path_buf),
 			manifest.target.scripts().cloned(),
 			manifest.target.kind(),
 		);
@@ -207,7 +220,7 @@ impl PublishCommand {
 
 		let mut paths = matching_globs(
 			project.package_dir(),
-			manifest.includes.iter().map(|s| s.as_str()),
+			manifest.includes.iter().map(String::as_str),
 			true,
 			false,
 		)
@@ -247,13 +260,13 @@ impl PublishCommand {
 						path.display(),
 						ScriptName::RobloxSyncConfigGenerator
 					);
-				} else {
-					anyhow::bail!(
-						"forbidden file {} was included at `{}`",
-						file_name.to_string_lossy(),
-						path.display()
-					);
 				}
+
+				anyhow::bail!(
+					"forbidden file {} was included at `{}`",
+					file_name.to_string_lossy(),
+					path.display()
+				);
 			}
 		}
 
@@ -263,9 +276,9 @@ impl PublishCommand {
 					.any(|ct| ct == std::path::Component::Normal(ignored_path.as_ref()))
 			}) {
 				anyhow::bail!(
-					r#"forbidden file {ignored_path} was included.
+					r"forbidden file {ignored_path} was included.
 info: if this was a toolchain manager's manifest file, do not include it due to it possibly messing with user scripts
-info: otherwise, the file was deemed unnecessary, if you don't understand why, please contact the maintainers"#,
+info: otherwise, the file was deemed unnecessary, if you don't understand why, please contact the maintainers",
 				);
 			}
 		}
@@ -301,9 +314,8 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 				.next()
 				.with_context(|| format!("{name} must contain at least one part"))?;
 
-			let first_part = match first_part {
-				relative_path::Component::Normal(part) => part,
-				_ => anyhow::bail!("{name} must be within project directory"),
+			let relative_path::Component::Normal(first_part) = first_part else {
+				anyhow::bail!("{name} must be within project directory");
 			};
 
 			if paths.insert(
@@ -483,8 +495,10 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 								VersionReq::STAR
 							}
 							VersionTypeOrReq::Req(r) => r,
-							v => VersionReq::parse(&format!("{v}{}", manifest.version))
-								.with_context(|| format!("failed to parse version for {v}"))?,
+							VersionTypeOrReq::VersionType(v) => {
+								VersionReq::parse(&format!("{v}{}", manifest.version))
+									.with_context(|| format!("failed to parse version for {v}"))?
+							}
 						},
 						index: manifest
 							.indices
@@ -528,8 +542,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 				manifest
 					.repository
 					.as_ref()
-					.map(|r| r.as_str())
-					.unwrap_or("(none)")
+					.map_or("(none)", url::Url::as_str)
 			);
 
 			let roblox_target = roblox_target.is_some_and(|_| true);
@@ -540,7 +553,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 				manifest
 					.target
 					.lib_path()
-					.map_or_else(|| "(none)".to_string(), |p| p.to_string())
+					.map_or_else(|| "(none)".to_string(), ToString::to_string)
 			);
 
 			if roblox_target {
@@ -551,7 +564,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 					manifest
 						.target
 						.bin_path()
-						.map_or_else(|| "(none)".to_string(), |p| p.to_string())
+						.map_or_else(|| "(none)".to_string(), ToString::to_string)
 				);
 				println!(
 					"\tscripts: {}",
@@ -706,9 +719,9 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 			.await;
 		if project.workspace_dir().is_some() {
 			return result;
-		} else {
-			display_err(result, " occurred publishing workspace root");
 		}
+
+		display_err(result, " occurred publishing workspace root");
 
 		run_on_workspace_members(&project, |project| {
 			let reqwest = reqwest.clone();

@@ -2,9 +2,9 @@ use crate::cli::{
 	config::read_config,
 	style::{ERROR_STYLE, INFO_STYLE, WARN_STYLE},
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use fs_err::tokio as fs;
-use futures::StreamExt;
+use futures::StreamExt as _;
 use pesde::{
 	errors::ManifestReadError,
 	lockfile::Lockfile,
@@ -135,11 +135,7 @@ pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Loc
 
 	tracing::debug!("dependencies are the same: {same_dependencies}");
 
-	Ok(if same_dependencies {
-		Some(lockfile)
-	} else {
-		None
-	})
+	Ok(same_dependencies.then_some(lockfile))
 }
 
 #[derive(Debug, Clone)]
@@ -172,26 +168,25 @@ impl VersionedPackageName {
 		self,
 		graph: &pesde::graph::DependencyGraph,
 	) -> anyhow::Result<pesde::source::ids::PackageId> {
-		let version_id = match self.1 {
-			Some(version) => version,
-			None => {
-				let versions = graph
-					.keys()
-					.filter(|id| *id.name() == self.0)
-					.collect::<Vec<_>>();
+		let version_id = if let Some(version) = self.1 {
+			version
+		} else {
+			let versions = graph
+				.keys()
+				.filter(|id| *id.name() == self.0)
+				.collect::<Vec<_>>();
 
-				match versions.len() {
-					0 => anyhow::bail!("package not found"),
-					1 => versions[0].version_id().clone(),
-					_ => anyhow::bail!(
-						"multiple versions found, please specify one of: {}",
-						versions
-							.iter()
-							.map(|v| v.to_string())
-							.collect::<Vec<_>>()
-							.join(", ")
-					),
-				}
+			match versions.len() {
+				0 => anyhow::bail!("package not found"),
+				1 => versions[0].version_id().clone(),
+				_ => anyhow::bail!(
+					"multiple versions found, please specify one of: {}",
+					versions
+						.iter()
+						.map(ToString::to_string)
+						.collect::<Vec<_>>()
+						.join(", ")
+				),
 			}
 		};
 
@@ -336,18 +331,17 @@ pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result
 		},
 	};
 
-	match index_url {
-		Some(url) => Ok(url),
-		None => {
-			let index_name = index.unwrap_or(DEFAULT_INDEX_NAME);
-
-			manifest
-				.unwrap()
-				.indices
-				.remove(index_name)
-				.with_context(|| format!("index {index_name} not found in manifest"))
-		}
+	if let Some(url) = index_url {
+		return Ok(url);
 	}
+
+	let index_name = index.unwrap_or(DEFAULT_INDEX_NAME);
+
+	manifest
+		.unwrap()
+		.indices
+		.remove(index_name)
+		.with_context(|| format!("index {index_name} not found in manifest"))
 }
 
 pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {

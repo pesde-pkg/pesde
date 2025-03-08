@@ -1,15 +1,14 @@
 use crate::AppState;
-use async_stream::stream;
-use futures::{Stream, StreamExt};
 use pesde::{
 	names::PackageName,
 	source::{
-		git_index::{root_tree, GitBasedSource},
+		git_index::{root_tree, GitBasedSource as _},
 		ids::VersionId,
 		pesde::{IndexFile, IndexFileEntry, PesdePackageSource, SCOPE_INFO_FILE},
 	},
 	Project,
 };
+use std::collections::BTreeMap;
 use tantivy::{
 	doc,
 	query::QueryParser,
@@ -17,54 +16,78 @@ use tantivy::{
 	tokenizer::TextAnalyzer,
 	DateTime, IndexReader, IndexWriter, Term,
 };
-use tokio::pin;
 
-async fn all_packages(
-	source: &PesdePackageSource,
-	project: &Project,
-) -> impl Stream<Item = (PackageName, IndexFile)> {
-	let path = source.path(project);
+type Entries = BTreeMap<String, gix::ObjectId>;
 
-	stream! {
-		let repo = gix::open(&path).expect("failed to open index");
-		let tree = root_tree(&repo).expect("failed to get root tree");
+struct TreeIterator<'repo> {
+	repo: &'repo gix::Repository,
+	entries: Entries,
+	current: Option<(String, Entries)>,
+}
 
-		for entry in tree.iter() {
-			let entry = entry.expect("failed to read entry");
-			let object = entry.object().expect("failed to get object");
+fn collect_entries(tree: &gix::Tree) -> Result<Entries, gix::objs::decode::Error> {
+	tree.iter()
+		.map(|res| res.map(|r| (r.filename().to_string(), r.object_id())))
+		.collect()
+}
 
-			// directories will be trees, and files will be blobs
-			if !matches!(object.kind, gix::object::Kind::Tree) {
-				continue;
-			}
+impl Iterator for TreeIterator<'_> {
+	type Item = (PackageName, IndexFile);
 
-			let package_scope = entry.filename().to_string();
+	fn next(&mut self) -> Option<Self::Item> {
+		if self
+			.current
+			.as_ref()
+			.is_none_or(|(_, entries)| entries.is_empty())
+		{
+			loop {
+				let (scope_name, scope_oid) = self.entries.pop_last()?;
 
-			for inner_entry in object.into_tree().iter() {
-				let inner_entry = inner_entry.expect("failed to read inner entry");
-				let object = inner_entry.object().expect("failed to get object");
+				let object = self
+					.repo
+					.find_object(scope_oid)
+					.expect("failed to get scope object");
 
-				if !matches!(object.kind, gix::object::Kind::Blob) {
+				if object.kind != gix::objs::Kind::Tree {
 					continue;
 				}
 
-				let package_name = inner_entry.filename().to_string();
+				let tree = object.into_tree();
+				let mut entries = collect_entries(&tree).expect("failed to read scope entries");
 
-				if package_name == SCOPE_INFO_FILE {
+				entries.remove(SCOPE_INFO_FILE);
+
+				if entries.is_empty() {
 					continue;
 				}
 
-				let blob = object.into_blob();
-				let string = String::from_utf8(blob.data.clone()).expect("failed to parse utf8");
-
-				let file: IndexFile = toml::from_str(&string).expect("failed to parse index file");
-
-				// if this panics, it's an issue with the index.
-				let name = format!("{package_scope}/{package_name}").parse().unwrap();
-
-				yield (name, file);
+				self.current = Some((scope_name, entries));
+				break;
 			}
 		}
+
+		let (scope_name, entries) = self.current.as_mut()?;
+		let (file_name, file_oid) = entries.pop_last()?;
+
+		let object = self
+			.repo
+			.find_object(file_oid)
+			.expect("failed to get scope entry object");
+
+		if object.kind != gix::objs::Kind::Blob {
+			return None;
+		}
+
+		let mut blob = object.into_blob();
+		let string = String::from_utf8(blob.take_data()).expect("failed to parse utf8");
+
+		let file = toml::from_str(&string).expect("failed to parse index file");
+
+		Some((
+			// if this panics, it's an issue with the index.
+			format!("{scope_name}/{file_name}").parse().unwrap(),
+			file,
+		))
 	}
 }
 
@@ -114,10 +137,17 @@ pub async fn make_search(
 		.unwrap();
 	let mut search_writer = search_index.writer(50_000_000).unwrap();
 
-	let stream = all_packages(source, project).await;
-	pin!(stream);
+	let path = source.path(project);
+	let repo = gix::open(path).expect("failed to open index");
+	let tree = root_tree(&repo).expect("failed to get root tree");
 
-	while let Some((pkg_name, file)) = stream.next().await {
+	let iter = TreeIterator {
+		entries: collect_entries(&tree).expect("failed to read entries"),
+		repo: &repo,
+		current: None,
+	};
+
+	for (pkg_name, file) in iter {
 		if !file.meta.deprecated.is_empty() {
 			continue;
 		}
@@ -163,6 +193,7 @@ pub fn update_search_version(app_state: &AppState, name: &PackageName, entry: &I
     )).unwrap();
 
 	search_writer.commit().unwrap();
+	drop(search_writer);
 	app_state.search_reader.reload().unwrap();
 }
 
@@ -180,6 +211,7 @@ pub fn search_version_changed(app_state: &AppState, name: &PackageName, file: &I
 
 		search_writer.delete_term(Term::from_field_text(id_field, &name.to_string()));
 		search_writer.commit().unwrap();
+		drop(search_writer);
 		app_state.search_reader.reload().unwrap();
 
 		return;

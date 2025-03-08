@@ -10,7 +10,7 @@
 #![allow(unused_variables)]
 
 use async_stream::stream;
-use futures::StreamExt;
+use futures::StreamExt as _;
 use std::sync::Arc;
 use tokio::io::AsyncBufRead;
 
@@ -81,7 +81,7 @@ pub(crate) fn response_to_async_read<R: DownloadProgressReporter>(
 			let chunk = match chunk {
 				Ok(chunk) => chunk,
 				Err(err) => {
-					yield Err(std::io::Error::new(std::io::ErrorKind::Other, err));
+					yield Err(std::io::Error::other(err));
 					continue;
 				}
 			};

@@ -27,7 +27,7 @@ use crate::{
 	version_matches, Project,
 };
 use fs_err::tokio as fs;
-use futures::StreamExt;
+use futures::StreamExt as _;
 use semver::VersionReq;
 use tokio::{pin, task::spawn_blocking};
 use tracing::instrument;
@@ -68,6 +68,7 @@ impl GitBasedSource for PesdePackageSource {
 
 impl PesdePackageSource {
 	/// Creates a new pesde package source
+	#[must_use]
 	pub fn new(repo_url: Url) -> Self {
 		Self { repo_url }
 	}
@@ -353,11 +354,13 @@ impl AllowedRegistries {
 	}
 
 	/// Whether the given URL is allowed
+	#[must_use]
 	pub fn is_allowed(&self, url: Url) -> bool {
 		self._is_allowed(&simplify_url(url))
 	}
 
 	/// Whether the given URL is allowed, or is the same as the given URL
+	#[must_use]
 	pub fn is_allowed_or_same(&self, this: Url, external: Url) -> bool {
 		let this = simplify_url(this);
 		let external = simplify_url(external);
@@ -394,11 +397,13 @@ pub struct IndexConfig {
 
 impl IndexConfig {
 	/// The URL of the API
+	#[must_use]
 	pub fn api(&self) -> &str {
 		self.api.as_str().trim_end_matches('/')
 	}
 
 	/// The URL to download packages from
+	#[must_use]
 	pub fn download(&self) -> String {
 		self.download
 			.as_deref()

@@ -1,11 +1,11 @@
 use crate::cli::{get_index, style::SUCCESS_STYLE};
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 use pesde::{
 	names::PackageName,
 	source::{
 		pesde::PesdePackageSource,
-		traits::{PackageSource, RefreshOptions},
+		traits::{PackageSource as _, RefreshOptions},
 	},
 	Project,
 };

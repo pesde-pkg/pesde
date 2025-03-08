@@ -6,7 +6,7 @@ use pesde::{
 	},
 	names::PackageName,
 	source::{
-		git_index::{read_file, root_tree, GitBasedSource},
+		git_index::{read_file, root_tree, GitBasedSource as _},
 		ids::VersionId,
 		pesde::{IndexFile, IndexFileEntry, PesdePackageSource, ScopeInfo, SCOPE_INFO_FILE},
 		specifiers::DependencySpecifiers,
@@ -155,7 +155,7 @@ pub struct PackageResponse {
 
 impl PackageResponse {
 	pub fn new(name: &PackageName, version_id: &VersionId, file: &IndexFile) -> Self {
-		let entry = file.entries.get(version_id).unwrap();
+		let entry = &file.entries[version_id];
 
 		PackageResponse {
 			name: name.to_string(),
@@ -201,7 +201,7 @@ impl PackageVersionsResponse {
 	pub fn new(name: &PackageName, file: &IndexFile) -> Self {
 		let mut versions = BTreeMap::<Version, PackageVersionsResponseVersion>::new();
 
-		for (v_id, entry) in file.entries.iter() {
+		for (v_id, entry) in &file.entries {
 			let versions_resp = versions.entry(v_id.version().clone()).or_default();
 
 			versions_resp.description = entry.description.clone().unwrap_or_default();

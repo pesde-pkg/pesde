@@ -155,7 +155,7 @@ impl Eq for Alias {}
 
 impl Hash for Alias {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.0.to_lowercase().hash(state)
+		self.0.to_lowercase().hash(state);
 	}
 }
 
@@ -204,6 +204,7 @@ impl schemars::JsonSchema for Alias {
 
 impl Alias {
 	/// Get the alias as a string
+	#[must_use]
 	pub fn as_str(&self) -> &str {
 		&self.0
 	}

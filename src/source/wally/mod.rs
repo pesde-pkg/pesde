@@ -25,8 +25,8 @@ use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf};
-use tokio::{io::AsyncReadExt, pin, task::spawn_blocking};
-use tokio_util::compat::FuturesAsyncReadCompatExt;
+use tokio::{io::AsyncReadExt as _, pin, task::spawn_blocking};
+use tokio_util::compat::FuturesAsyncReadCompatExt as _;
 use tracing::instrument;
 
 pub(crate) mod compat_util;
@@ -57,6 +57,7 @@ impl GitBasedSource for WallyPackageSource {
 
 impl WallyPackageSource {
 	/// Creates a new Wally package source
+	#[must_use]
 	pub fn new(repo_url: Url) -> Self {
 		Self { repo_url }
 	}
@@ -168,12 +169,11 @@ impl PackageSource for WallyPackageSource {
 					}
 					Ok(None) => {
 						tracing::debug!("{} not found in {}", specifier.name, source.repo_url);
-						continue;
 					}
 					Err(e) => return Err(e),
 				}
 			}
-		};
+		}
 
 		let Some(string) = string else {
 			return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
@@ -202,7 +202,7 @@ impl PackageSource for WallyPackageSource {
 							manifest.package.version,
 							match manifest.package.realm {
 								Realm::Server => TargetKind::RobloxServer,
-								_ => TargetKind::Roblox,
+								Realm::Shared => TargetKind::Roblox,
 							},
 						),
 						WallyPackageRef {
@@ -247,7 +247,7 @@ impl PackageSource for WallyPackageSource {
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
 			Err(e) => return Err(errors::DownloadError::ReadIndex(e)),
-		};
+		}
 
 		let (scope, name) = id.name().as_str();
 

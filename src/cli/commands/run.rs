@@ -1,18 +1,18 @@
 use crate::cli::up_to_date_lockfile;
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
-use futures::{StreamExt, TryStreamExt};
+use futures::{StreamExt as _, TryStreamExt as _};
 use pesde::{
 	errors::{ManifestReadError, WorkspaceMembersError},
 	linking::generator::generate_bin_linking_module,
 	names::{PackageName, PackageNames},
-	source::traits::{GetTargetOptions, PackageRef, PackageSource, RefreshOptions},
+	source::traits::{GetTargetOptions, PackageRef as _, PackageSource as _, RefreshOptions},
 	Project, MANIFEST_FILE_NAME,
 };
 use relative_path::RelativePathBuf;
 use std::{
-	collections::HashSet, env::current_dir, ffi::OsString, io::Write, path::Path, process::Command,
-	sync::Arc,
+	collections::HashSet, env::current_dir, ffi::OsString, io::Write as _, path::Path,
+	process::Command, sync::Arc,
 };
 
 #[derive(Debug, Args)]
@@ -51,7 +51,7 @@ impl RunCommand {
 
 			drop(caller);
 
-			std::process::exit(status.code().unwrap_or(1))
+			std::process::exit(status.code().unwrap_or(1i32))
 		};
 
 		let Some(package_or_script) = self.package_or_script else {
@@ -133,7 +133,7 @@ impl RunCommand {
 				);
 				return Ok(());
 			}
-		};
+		}
 
 		let relative_path = RelativePathBuf::from(package_or_script);
 		let path = relative_path.to_path(project.package_dir());
@@ -158,8 +158,10 @@ impl RunCommand {
 
 		let members = members
 			.map(|res| {
-				res.map_err(anyhow::Error::from)
-					.and_then(|(path, _)| path.canonicalize().map_err(Into::into))
+				res.map_err(anyhow::Error::from)?
+					.0
+					.canonicalize()
+					.map_err(anyhow::Error::from)
 			})
 			.chain(futures::stream::once(async {
 				workspace_dir.canonicalize().map_err(Into::into)
@@ -169,7 +171,7 @@ impl RunCommand {
 			.context("failed to collect workspace members")?;
 
 		let root = 'finder: {
-			let mut current_path = path.to_path_buf();
+			let mut current_path = path.clone();
 			loop {
 				let canonical_path = current_path
 					.canonicalize()

@@ -3,7 +3,7 @@ use crate::cli::{
 	reporters::{self, CliReporter},
 	VersionedPackageName,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 use console::style;
 use fs_err::tokio as fs;
@@ -17,7 +17,7 @@ use pesde::{
 		ids::PackageId,
 		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
 		traits::{
-			DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
+			DownloadOptions, GetTargetOptions, PackageSource as _, RefreshOptions, ResolveOptions,
 		},
 		PackageSources,
 	},
@@ -27,7 +27,7 @@ use semver::VersionReq;
 use std::{
 	env::current_dir,
 	ffi::OsString,
-	io::{Stderr, Write},
+	io::{Stderr, Write as _},
 	process::Command,
 	sync::Arc,
 };
@@ -237,6 +237,6 @@ impl ExecuteCommand {
 		drop(caller);
 		drop(tempdir);
 
-		std::process::exit(status.code().unwrap_or(1))
+		std::process::exit(status.code().unwrap_or(1i32))
 	}
 }

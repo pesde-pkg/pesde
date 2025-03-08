@@ -1,5 +1,5 @@
 use crate::Project;
-use futures::FutureExt;
+use futures::FutureExt as _;
 use std::{
 	ffi::OsStr,
 	fmt::{Debug, Display, Formatter},
@@ -7,7 +7,7 @@ use std::{
 	process::Stdio,
 };
 use tokio::{
-	io::{AsyncBufReadExt, BufReader},
+	io::{AsyncBufReadExt as _, BufReader},
 	process::Command,
 };
 use tracing::instrument;

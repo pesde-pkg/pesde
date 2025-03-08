@@ -18,13 +18,13 @@ impl Visitor for TypeVisitor {
 				let mut declaration_generics = vec![];
 				let mut generics = vec![];
 
-				for generic in declaration.generics().iter() {
+				for generic in declaration.generics() {
 					declaration_generics.push(generic.to_string());
 
 					if generic.default_type().is_some() {
-						generics.push(generic.parameter().to_string())
+						generics.push(generic.parameter().to_string());
 					} else {
-						generics.push(generic.to_string())
+						generics.push(generic.to_string());
 					}
 				}
 
@@ -64,6 +64,7 @@ pub(crate) fn get_file_types(file: &str) -> Vec<String> {
 }
 
 /// Generate a linking module for a library
+#[must_use]
 pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
 	path: &str,
 	types: I,
@@ -119,6 +120,7 @@ fn luau_style_path(path: &Path) -> String {
 /// Get the require path for a library
 #[instrument(skip(project_manifest), level = "trace")]
 #[allow(clippy::too_many_arguments)]
+#[must_use]
 pub fn get_lib_require_path(
 	target: TargetKind,
 	base_dir: &Path,
@@ -182,26 +184,27 @@ pub fn get_lib_require_path(
 				}
 				_ => None,
 			})
-			.collect::<Vec<_>>()
-			.join("");
+			.collect::<String>();
 
 		return Ok(format!("{prefix}{path}"));
-	};
+	}
 
 	Ok(luau_style_path(&path))
 }
 
 /// Generate a linking module for a binary
+#[must_use]
 pub fn generate_bin_linking_module<P: AsRef<Path>>(package_root: P, require_path: &str) -> String {
 	format!(
-		r#"_G.PESDE_ROOT = {:?}
-return require({require_path})"#,
+		r"_G.PESDE_ROOT = {:?}
+return require({require_path})",
 		package_root.as_ref().to_string_lossy()
 	)
 }
 
 /// Get the require path for a binary
 #[instrument(level = "trace")]
+#[must_use]
 pub fn get_bin_require_path(
 	base_dir: &Path,
 	bin_file: &RelativePath,
@@ -215,12 +218,14 @@ pub fn get_bin_require_path(
 }
 
 /// Generate a linking module for a script
+#[must_use]
 pub fn generate_script_linking_module(require_path: &str) -> String {
-	format!(r#"return require({require_path})"#)
+	format!(r"return require({require_path})")
 }
 
 /// Get the require path for a script
 #[instrument(level = "trace")]
+#[must_use]
 pub fn get_script_require_path(
 	base_dir: &Path,
 	script_file: &RelativePath,

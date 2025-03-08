@@ -4,7 +4,7 @@ use crate::cli::{
 	style::{CLI_STYLE, INFO_STYLE, WARN_PREFIX},
 	up_to_date_lockfile, VersionedPackageName,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 use console::style;
 use fs_err::tokio as fs;
@@ -12,7 +12,7 @@ use pesde::{
 	patches::setup_patches_repo,
 	source::{
 		refs::PackageRefs,
-		traits::{DownloadOptions, PackageRef, PackageSource},
+		traits::{DownloadOptions, PackageRef as _, PackageSource as _},
 	},
 	Project, MANIFEST_FILE_NAME,
 };
@@ -71,9 +71,9 @@ impl PatchCommand {
 		setup_patches_repo(&directory)?;
 
 		println!(
-			r#"done! modify the files in the directory, then run {} {}{} to apply.
+			r"done! modify the files in the directory, then run {} {}{} to apply.
 {WARN_PREFIX}: do not commit these changes
-{}: the {MANIFEST_FILE_NAME} file will be ignored when patching"#,
+{}: the {MANIFEST_FILE_NAME} file will be ignored when patching",
 			CLI_STYLE.apply_to(concat!("`", env!("CARGO_BIN_NAME"), " patch-commit")),
 			style(format!("'{}'", directory.display())).cyan().bold(),
 			CLI_STYLE.apply_to("`"),

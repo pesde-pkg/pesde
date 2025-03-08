@@ -6,7 +6,7 @@ use crate::{
 	error::RegistryError,
 	package::{read_package, PackageResponse},
 	request_path::{resolve_version_and_target, AnyOrSpecificTarget, LatestOrSpecificVersion},
-	storage::StorageImpl,
+	storage::StorageImpl as _,
 	AppState,
 };
 use pesde::names::PackageName;
@@ -28,7 +28,7 @@ pub async fn get_package_version_v0(
 		return Ok(HttpResponse::NotFound().finish());
 	};
 
-	let Some(v_id) = resolve_version_and_target(&file, version, target) else {
+	let Some(v_id) = resolve_version_and_target(&file, version, &target) else {
 		return Ok(HttpResponse::NotFound().finish());
 	};
 
@@ -71,7 +71,7 @@ pub async fn get_package_version(
 		return Ok(HttpResponse::NotFound().finish());
 	};
 
-	let Some(v_id) = resolve_version_and_target(&file, version, target) else {
+	let Some(v_id) = resolve_version_and_target(&file, version, &target) else {
 		return Ok(HttpResponse::NotFound().finish());
 	};
 

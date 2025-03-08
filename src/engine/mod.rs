@@ -39,7 +39,8 @@ impl FromStr for EngineKind {
 
 impl EngineKind {
 	/// Returns the source to get this engine from
-	pub fn source(&self) -> EngineSources {
+	#[must_use]
+	pub fn source(self) -> EngineSources {
 		match self {
 			EngineKind::Pesde => EngineSources::pesde(),
 			EngineKind::Lune => EngineSources::lune(),

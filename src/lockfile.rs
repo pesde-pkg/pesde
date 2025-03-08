@@ -107,6 +107,8 @@ pub mod old {
 
 	impl LockfileOld {
 		/// Converts this lockfile to a new lockfile
+		#[must_use]
+		#[allow(clippy::wrong_self_convention)]
 		pub fn to_new(self) -> super::Lockfile {
 			super::Lockfile {
 				name: self.name,

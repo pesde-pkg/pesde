@@ -2,7 +2,7 @@ use crate::cli::{
 	config::read_config,
 	style::{ERROR_PREFIX, INFO_STYLE, SUCCESS_STYLE},
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 use inquire::validator::Validation;
 use pesde::{
@@ -10,20 +10,20 @@ use pesde::{
 	manifest::{target::TargetKind, DependencyType},
 	names::{PackageName, PackageNames},
 	source::{
-		git_index::GitBasedSource,
+		git_index::GitBasedSource as _,
 		ids::PackageId,
 		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
 		specifiers::DependencySpecifiers,
-		traits::{GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions},
+		traits::{GetTargetOptions, PackageSource as _, RefreshOptions, ResolveOptions},
 		PackageSources,
 	},
 	Project, RefreshedSources, DEFAULT_INDEX_NAME, SCRIPTS_LINK_FOLDER,
 };
 use semver::VersionReq;
-use std::{fmt::Display, path::Path, str::FromStr, sync::Arc};
+use std::{fmt::Display, path::Path, str::FromStr as _, sync::Arc};
 
 #[derive(Debug, Args)]
-pub struct InitCommand {}
+pub struct InitCommand;
 
 #[derive(Debug)]
 enum PackageNameOrCustom {
@@ -48,7 +48,7 @@ impl InitCommand {
 			}
 			Err(ManifestReadError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {}
 			Err(e) => return Err(e.into()),
-		};
+		}
 
 		let mut manifest = toml_edit::DocumentMut::new();
 
@@ -232,8 +232,8 @@ impl InitCommand {
 					anyhow::bail!("scripts package has no scripts.")
 				};
 
-				let scripts_field = &mut manifest["scripts"]
-					.or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
+				let scripts_field =
+					manifest["scripts"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
 
 				for script_name in scripts.keys() {
 					scripts_field[script_name] = toml_edit::value(format!(
@@ -241,7 +241,7 @@ impl InitCommand {
 					));
 				}
 
-				let dev_deps = &mut manifest["dev_dependencies"]
+				let dev_deps = manifest["dev_dependencies"]
 					.or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
 
 				let field = &mut dev_deps["scripts"];

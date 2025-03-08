@@ -1,6 +1,6 @@
 use crate::{benv, error::RegistryError, AppState};
 use git2::{Remote, Repository, Signature};
-use pesde::source::{git_index::GitBasedSource, pesde::PesdePackageSource};
+use pesde::source::{git_index::GitBasedSource as _, pesde::PesdePackageSource};
 use std::collections::HashMap;
 use tokio::task::spawn_blocking;
 
@@ -26,8 +26,8 @@ fn get_refspec(repo: &Repository, remote: &mut Remote) -> Result<String, git2::E
 	Ok(refspec.to_string())
 }
 
-const FILE_FILEMODE: i32 = 0o100644;
-const DIR_FILEMODE: i32 = 0o040000;
+const FILE_FILEMODE: i32 = 0o100_644;
+const DIR_FILEMODE: i32 = 0o040_000;
 
 pub async fn push_changes(
 	app_state: &AppState,

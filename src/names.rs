@@ -88,21 +88,25 @@ impl schemars::JsonSchema for PackageName {
 
 impl PackageName {
 	/// Returns the parts of the package name
+	#[must_use]
 	pub fn as_str(&self) -> (&str, &str) {
 		(&self.0, &self.1)
 	}
 
 	/// Returns the package name as a string suitable for use in the filesystem
+	#[must_use]
 	pub fn escaped(&self) -> String {
 		format!("{}+{}", self.0, self.1)
 	}
 
 	/// Returns the scope of the package name
+	#[must_use]
 	pub fn scope(&self) -> &str {
 		&self.0
 	}
 
 	/// Returns the name of the package name
+	#[must_use]
 	pub fn name(&self) -> &str {
 		&self.1
 	}
@@ -123,6 +127,7 @@ ser_display_deser_fromstr!(PackageNames);
 
 impl PackageNames {
 	/// Returns the parts of the package name
+	#[must_use]
 	pub fn as_str(&self) -> (&str, &str) {
 		match self {
 			PackageNames::Pesde(name) => name.as_str(),
@@ -132,6 +137,7 @@ impl PackageNames {
 	}
 
 	/// Returns the package name as a string suitable for use in the filesystem
+	#[must_use]
 	pub fn escaped(&self) -> String {
 		match self {
 			PackageNames::Pesde(name) => name.escaped(),
@@ -146,6 +152,7 @@ impl PackageNames {
 	}
 
 	/// Returns the scope of the package name
+	#[must_use]
 	pub fn scope(&self) -> &str {
 		match self {
 			PackageNames::Pesde(name) => name.scope(),
@@ -155,6 +162,7 @@ impl PackageNames {
 	}
 
 	/// Returns the name of the package name
+	#[must_use]
 	pub fn name(&self) -> &str {
 		match self {
 			PackageNames::Pesde(name) => name.name(),
@@ -181,7 +189,7 @@ impl FromStr for PackageNames {
 		#[cfg(feature = "wally-compat")]
 		if let Some(wally_name) = s
 			.strip_prefix("wally#")
-			.or_else(|| if s.contains('-') { Some(s) } else { None })
+			.or_else(|| s.contains('-').then_some(s))
 			.and_then(|s| wally::WallyPackageName::from_str(s).ok())
 		{
 			return Ok(PackageNames::Wally(wally_name));
@@ -259,21 +267,25 @@ pub mod wally {
 
 	impl WallyPackageName {
 		/// Returns the parts of the package name
+		#[must_use]
 		pub fn as_str(&self) -> (&str, &str) {
 			(&self.0, &self.1)
 		}
 
 		/// Returns the package name as a string suitable for use in the filesystem
+		#[must_use]
 		pub fn escaped(&self) -> String {
 			format!("wally#{}+{}", self.0, self.1)
 		}
 
 		/// Returns the scope of the package name
+		#[must_use]
 		pub fn scope(&self) -> &str {
 			&self.0
 		}
 
 		/// Returns the name of the package name
+		#[must_use]
 		pub fn name(&self) -> &str {
 			&self.1
 		}
@@ -316,6 +328,7 @@ pub mod errors {
 
 	/// Errors that can occur when working with Wally package names
 	#[cfg(feature = "wally-compat")]
+	#[allow(clippy::enum_variant_names)]
 	#[derive(Debug, Error)]
 	pub enum WallyPackageNameError {
 		/// The package name is not in the format `scope/name`

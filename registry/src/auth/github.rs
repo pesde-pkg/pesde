@@ -1,6 +1,6 @@
 use crate::{
 	auth::{get_token_from_req, AuthImpl, UserId},
-	error::{display_error, ReqwestErrorExt},
+	error::{display_error, ReqwestErrorExt as _},
 };
 use actix_web::{dev::ServiceRequest, Error as ActixError};
 use reqwest::StatusCode;
@@ -21,9 +21,8 @@ struct TokenRequestBody {
 
 impl AuthImpl for GitHubAuth {
 	async fn for_write_request(&self, req: &ServiceRequest) -> Result<Option<UserId>, ActixError> {
-		let token = match get_token_from_req(req) {
-			Some(token) => token,
-			None => return Ok(None),
+		let Some(token) = get_token_from_req(req) else {
+			return Ok(None);
 		};
 
 		let response = match self

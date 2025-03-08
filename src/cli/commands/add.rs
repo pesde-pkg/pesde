@@ -1,6 +1,6 @@
-use std::str::FromStr;
+use std::str::FromStr as _;
 
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 use semver::VersionReq;
 
@@ -15,7 +15,7 @@ use pesde::{
 		path::{specifier::PathDependencySpecifier, PathPackageSource},
 		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
 		specifiers::DependencySpecifiers,
-		traits::{PackageSource, RefreshOptions, ResolveOptions},
+		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
 		workspace::{specifier::WorkspaceDependencySpecifier, WorkspacePackageSource},
 		PackageSources,
 	},
@@ -186,8 +186,7 @@ impl AddCommand {
 					.to_string()
 					.split('/')
 					.next_back()
-					.map(|s| s.to_string())
-					.unwrap_or_else(|| url.path.to_string()),
+					.map_or_else(|| url.path.to_string(), ToString::to_string),
 				AnyPackageIdentifier::Workspace(versioned) => versioned.0.name().to_string(),
 				AnyPackageIdentifier::Path(path) => path
 					.file_name()
@@ -203,7 +202,7 @@ impl AddCommand {
 
 		match specifier {
 			DependencySpecifiers::Pesde(spec) => {
-				field["name"] = toml_edit::value(spec.name.clone().to_string());
+				field["name"] = toml_edit::value(spec.name.to_string());
 				field["version"] = toml_edit::value(format!("^{}", version_id.version()));
 
 				if version_id.target() != project_target {
@@ -244,7 +243,7 @@ impl AddCommand {
 				println!("added git {}#{} to {dependency_key}", spec.repo, spec.rev);
 			}
 			DependencySpecifiers::Workspace(spec) => {
-				field["workspace"] = toml_edit::value(spec.name.clone().to_string());
+				field["workspace"] = toml_edit::value(spec.name.to_string());
 				if let AnyPackageIdentifier::Workspace(versioned) = self.name {
 					if let Some(version) = versioned.1 {
 						field["version"] = toml_edit::value(version.to_string());

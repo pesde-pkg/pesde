@@ -8,7 +8,9 @@ use crate::{
 		git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
 		git_index::{read_file, GitBasedSource},
 		specifiers::DependencySpecifiers,
-		traits::{DownloadOptions, GetTargetOptions, PackageRef, RefreshOptions, ResolveOptions},
+		traits::{
+			DownloadOptions, GetTargetOptions, PackageRef as _, RefreshOptions, ResolveOptions,
+		},
 		PackageSource, ResolveResult, VersionId, ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS,
 		IGNORED_FILES,
 	},
@@ -48,6 +50,7 @@ impl GitBasedSource for GitPackageSource {
 
 impl GitPackageSource {
 	/// Creates a new Git package source
+	#[must_use]
 	pub fn new(repo_url: Url) -> Self {
 		Self { repo_url }
 	}
@@ -59,7 +62,7 @@ impl GitPackageSource {
 
 fn transform_pesde_dependencies(
 	manifest: &Manifest,
-	repo_url: Url,
+	repo_url: &Url,
 	rev: &str,
 	root_tree: &gix::Tree,
 ) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
@@ -77,7 +80,7 @@ fn transform_pesde_dependencies(
 						.get(&specifier.index)
 						.ok_or_else(|| {
 							errors::ResolveError::PesdeIndexNotFound(
-								specifier.index.to_string(),
+								specifier.index.clone(),
 								Box::new(repo_url.clone()),
 							)
 						})?
@@ -90,7 +93,7 @@ fn transform_pesde_dependencies(
 						.get(&specifier.index)
 						.ok_or_else(|| {
 							errors::ResolveError::WallyIndexNotFound(
-								specifier.index.to_string(),
+								specifier.index.clone(),
 								Box::new(repo_url.clone()),
 							)
 						})?
@@ -138,10 +141,10 @@ fn transform_pesde_dependencies(
 						repo: repo_url.clone(),
 						rev: rev.to_string(),
 						path: Some(path),
-					})
+					});
 				}
 				DependencySpecifiers::Path(_) => {
-					return Err(errors::ResolveError::Path(Box::new(repo_url.clone())))
+					return Err(errors::ResolveError::Path(Box::new(repo_url.clone())));
 				}
 			}
 
@@ -293,12 +296,8 @@ impl PackageSource for GitPackageSource {
 				return Err(errors::ResolveError::NoManifest(Box::new(repo_url.clone())));
 			};
 
-			let dependencies = transform_pesde_dependencies(
-				&manifest,
-				repo_url.clone(),
-				&specifier.rev,
-				&root_tree,
-			)?;
+			let dependencies =
+				transform_pesde_dependencies(&manifest, &repo_url, &specifier.rev, &root_tree)?;
 
 			Ok((
 				PackageNames::Pesde(manifest.name),

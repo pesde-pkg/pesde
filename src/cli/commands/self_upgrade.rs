@@ -8,7 +8,7 @@ use crate::{
 	},
 	util::no_build_metadata,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use clap::Args;
 use pesde::engine::EngineKind;
 use semver::VersionReq;

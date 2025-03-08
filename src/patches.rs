@@ -1,10 +1,10 @@
 use crate::{
-	reporters::{PatchProgressReporter, PatchesReporter},
+	reporters::{PatchProgressReporter as _, PatchesReporter},
 	source::ids::PackageId,
 	MANIFEST_FILE_NAME,
 };
 use fs_err::tokio as fs;
-use futures::TryFutureExt;
+use futures::TryFutureExt as _;
 use git2::{ApplyLocation, Diff, DiffFormat, DiffLineType, Repository, Signature};
 use std::{
 	path::{Path, PathBuf},
@@ -37,7 +37,7 @@ pub fn setup_patches_repo<P: AsRef<Path>>(dir: P) -> Result<Repository, git2::Er
 			&tree,
 			&[],
 		)?;
-	}
+	};
 
 	Ok(repo)
 }

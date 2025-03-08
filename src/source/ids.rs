@@ -9,21 +9,25 @@ ser_display_deser_fromstr!(VersionId);
 
 impl VersionId {
 	/// Creates a new version ID
+	#[must_use]
 	pub fn new(version: Version, target: TargetKind) -> Self {
 		VersionId(version, target)
 	}
 
 	/// Access the version
+	#[must_use]
 	pub fn version(&self) -> &Version {
 		&self.0
 	}
 
 	/// Access the target
+	#[must_use]
 	pub fn target(&self) -> TargetKind {
 		self.1
 	}
 
 	/// Returns this version ID as a string that can be used in the filesystem
+	#[must_use]
 	pub fn escaped(&self) -> String {
 		format!("{}+{}", self.0, self.1)
 	}
@@ -34,6 +38,7 @@ impl VersionId {
 	}
 
 	/// Access the parts of the version ID
+	#[must_use]
 	pub fn parts(&self) -> (&Version, TargetKind) {
 		(&self.0, self.1)
 	}
@@ -96,21 +101,25 @@ ser_display_deser_fromstr!(PackageId);
 
 impl PackageId {
 	/// Creates a new package ID
+	#[must_use]
 	pub fn new(names: PackageNames, version_id: VersionId) -> Self {
 		PackageId(names, version_id)
 	}
 
 	/// Access the name
+	#[must_use]
 	pub fn name(&self) -> &PackageNames {
 		&self.0
 	}
 
 	/// Access the version ID
+	#[must_use]
 	pub fn version_id(&self) -> &VersionId {
 		&self.1
 	}
 
 	/// Access the parts of the package ID
+	#[must_use]
 	pub fn parts(&self) -> (&PackageNames, &VersionId) {
 		(&self.0, &self.1)
 	}

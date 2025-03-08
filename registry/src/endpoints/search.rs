@@ -8,7 +8,7 @@ use actix_web::{web, HttpResponse};
 use pesde::names::PackageName;
 use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc};
-use tantivy::{collector::Count, query::AllQuery, schema::Value, DateTime, Order};
+use tantivy::{collector::Count, query::AllQuery, schema::Value as _, DateTime, Order};
 use tokio::task::JoinSet;
 
 #[derive(Deserialize)]
@@ -64,9 +64,7 @@ pub async fn search_packages(
 			let source = source.clone();
 
 			async move {
-				let id = doc
-					.get(&id)
-					.unwrap()
+				let id = (&doc[&id])
 					.as_str()
 					.unwrap()
 					.parse::<PackageName>()

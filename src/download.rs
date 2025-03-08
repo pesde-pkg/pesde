@@ -1,10 +1,10 @@
 use crate::{
 	graph::{DependencyGraph, DependencyGraphNode},
-	reporters::{DownloadProgressReporter, DownloadsReporter},
+	reporters::{DownloadProgressReporter as _, DownloadsReporter},
 	source::{
 		fs::PackageFs,
 		ids::PackageId,
-		traits::{DownloadOptions, PackageRef, PackageSource, RefreshOptions},
+		traits::{DownloadOptions, PackageRef as _, PackageSource as _, RefreshOptions},
 	},
 	Project, RefreshedSources,
 };
@@ -12,7 +12,7 @@ use async_stream::try_stream;
 use futures::Stream;
 use std::{num::NonZeroUsize, sync::Arc};
 use tokio::{sync::Semaphore, task::JoinSet};
-use tracing::{instrument, Instrument};
+use tracing::{instrument, Instrument as _};
 
 /// Options for downloading.
 #[derive(Debug)]
@@ -116,7 +116,7 @@ impl Project {
 
 					let _permit = semaphore.acquire().await;
 
-					if let Some(ref progress_reporter) = progress_reporter {
+					if let Some(progress_reporter) = &progress_reporter {
 						progress_reporter.report_start();
 					}
 

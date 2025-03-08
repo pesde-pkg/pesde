@@ -11,11 +11,11 @@ use actix_web::{
 	error::Error as ActixError,
 	http::header::AUTHORIZATION,
 	middleware::Next,
-	web, HttpMessage, HttpResponse,
+	web, HttpMessage as _, HttpResponse,
 };
 use pesde::source::pesde::IndexConfig;
 use sentry::add_breadcrumb;
-use sha2::{Digest, Sha256};
+use sha2::{Digest as _, Sha256};
 use std::fmt::Display;
 
 #[derive(Debug, Copy, Clone, Hash, PartialOrd, PartialEq, Eq, Ord)]
@@ -106,13 +106,10 @@ pub async fn write_mw(
 	req: ServiceRequest,
 	next: Next<impl MessageBody + 'static>,
 ) -> Result<ServiceResponse<impl MessageBody>, ActixError> {
-	let user_id = match app_state.auth.for_write_request(&req).await? {
-		Some(user_id) => user_id,
-		None => {
-			return Ok(req
-				.into_response(HttpResponse::Unauthorized().finish())
-				.map_into_right_body())
-		}
+	let Some(user_id) = app_state.auth.for_write_request(&req).await? else {
+		return Ok(req
+			.into_response(HttpResponse::Unauthorized().finish())
+			.map_into_right_body());
 	};
 
 	add_breadcrumb(sentry::Breadcrumb {
@@ -124,7 +121,9 @@ pub async fn write_mw(
 
 	req.extensions_mut().insert(user_id);
 
-	next.call(req).await.map(|res| res.map_into_left_body())
+	next.call(req)
+		.await
+		.map(ServiceResponse::map_into_left_body)
 }
 
 pub async fn read_mw(
@@ -133,13 +132,10 @@ pub async fn read_mw(
 	next: Next<impl MessageBody + 'static>,
 ) -> Result<ServiceResponse<impl MessageBody>, ActixError> {
 	if app_state.auth.read_needs_auth() {
-		let user_id = match app_state.auth.for_read_request(&req).await? {
-			Some(user_id) => user_id,
-			None => {
-				return Ok(req
-					.into_response(HttpResponse::Unauthorized().finish())
-					.map_into_right_body())
-			}
+		let Some(user_id) = app_state.auth.for_read_request(&req).await? else {
+			return Ok(req
+				.into_response(HttpResponse::Unauthorized().finish())
+				.map_into_right_body());
 		};
 
 		add_breadcrumb(sentry::Breadcrumb {
@@ -154,7 +150,9 @@ pub async fn read_mw(
 		req.extensions_mut().insert(None::<UserId>);
 	}
 
-	next.call(req).await.map(|res| res.map_into_left_body())
+	next.call(req)
+		.await
+		.map(ServiceResponse::map_into_left_body)
 }
 
 pub fn get_auth_from_env(config: &IndexConfig) -> Auth {
