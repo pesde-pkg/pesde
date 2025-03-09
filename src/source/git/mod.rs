@@ -111,10 +111,10 @@ fn transform_pesde_dependencies(
 					})?;
 
 					let lockfile = match lockfile {
-						Some(l) => match toml::from_str::<crate::Lockfile>(&l) {
+						Some(l) => match crate::lockfile::parse_lockfile(&l) {
 							Ok(l) => l,
 							Err(e) => {
-								return Err(errors::ResolveError::DeserLockfile(
+								return Err(errors::ResolveError::ParseLockfile(
 									Box::new(repo_url.clone()),
 									e,
 								))
@@ -603,9 +603,12 @@ pub mod errors {
 			#[source] crate::source::git_index::errors::ReadFile,
 		),
 
-		/// An error occurred while deserializing the lockfile
-		#[error("error deserializing lockfile for repository {0}")]
-		DeserLockfile(Box<gix::Url>, #[source] toml::de::Error),
+		/// An error occurred while parsing the lockfile
+		#[error("error parsing lockfile for repository {0}")]
+		ParseLockfile(
+			Box<gix::Url>,
+			#[source] crate::lockfile::errors::ParseLockfileError,
+		),
 
 		/// The repository is missing a lockfile
 		#[error("no lockfile found in repository {0}")]
