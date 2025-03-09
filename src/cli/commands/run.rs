@@ -1,10 +1,11 @@
-use crate::cli::up_to_date_lockfile;
+use crate::cli::{style::WARN_STYLE, up_to_date_lockfile};
 use anyhow::Context as _;
 use clap::Args;
 use futures::{StreamExt as _, TryStreamExt as _};
 use pesde::{
 	errors::{ManifestReadError, WorkspaceMembersError},
 	linking::generator::generate_bin_linking_module,
+	manifest::Alias,
 	names::{PackageName, PackageNames},
 	source::traits::{GetTargetOptions, PackageRef as _, PackageSource as _, RefreshOptions},
 	Project, MANIFEST_FILE_NAME,
@@ -28,7 +29,7 @@ pub struct RunCommand {
 
 impl RunCommand {
 	pub async fn run(self, project: Project) -> anyhow::Result<()> {
-		let run = |root: &Path, file_path: &Path| {
+		let run = |root: &Path, file_path: &Path| -> ! {
 			let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
 			caller
 				.write_all(
@@ -60,11 +61,12 @@ impl RunCommand {
 					project.package_dir(),
 					&script_path.to_path(project.package_dir()),
 				);
-				return Ok(());
 			}
 
 			anyhow::bail!("no package or script specified, and no bin path found in manifest")
 		};
+
+		let mut package_info = None;
 
 		if let Ok(pkg_name) = package_or_script.parse::<PackageName>() {
 			let graph = if let Some(lockfile) = up_to_date_lockfile(&project).await? {
@@ -80,12 +82,28 @@ impl RunCommand {
 				.filter(|(id, node)| *id.name() == pkg_name && node.direct.is_some())
 				.collect::<Vec<_>>();
 
-			let (id, node) = match versions.len() {
+			package_info = Some(match versions.len() {
 				0 => anyhow::bail!("package not found"),
 				1 => versions.pop().unwrap(),
 				_ => anyhow::bail!("multiple versions found. use the package's alias instead."),
+			});
+		} else if let Ok(alias) = package_or_script.parse::<Alias>() {
+			if let Some(lockfile) = up_to_date_lockfile(&project).await? {
+				package_info = lockfile
+					.graph
+					.into_iter()
+					.find(|(_, node)| node.direct.as_ref().is_some_and(|(a, _, _)| alias == *a));
+			} else {
+				eprintln!(
+					"{}",
+					WARN_STYLE.apply_to(
+						"outdated lockfile, please run the install command first to use an alias"
+					)
+				);
 			};
+		}
 
+		if let Some((id, node)) = package_info {
 			let container_folder = node.container_folder_from_project(
 				&id,
 				&project,
@@ -122,7 +140,6 @@ impl RunCommand {
 			let path = bin_path.to_path(&container_folder);
 
 			run(&path, &path);
-			return Ok(());
 		}
 
 		if let Ok(manifest) = project.deser_manifest().await {
@@ -131,7 +148,6 @@ impl RunCommand {
 					project.package_dir(),
 					&script_path.to_path(project.package_dir()),
 				);
-				return Ok(());
 			}
 		}
 
@@ -194,7 +210,5 @@ impl RunCommand {
 		};
 
 		run(&root, &path);
-
-		Ok(())
 	}
 }
