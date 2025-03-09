@@ -56,7 +56,13 @@ impl DownloadAndLinkHooks for InstallHooks {
 		let aliases = graph
 			.iter()
 			.flat_map(|(_, node)| node.node.dependencies.iter())
-			.filter_map(|(id, alias)| binary_packages.contains(id).then_some(alias))
+			.filter_map(|(id, alias)| binary_packages.contains(id).then_some(alias.as_str()))
+			.chain(
+				graph
+					.iter()
+					.filter_map(|(_, node)| node.node.direct.as_ref())
+					.map(|(alias, _, _)| alias.as_str()),
+			)
 			.collect::<HashSet<_>>();
 
 		let curr_exe: Arc<Path> = std::env::current_exe()
@@ -69,7 +75,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 			.map(|alias| {
 				let bin_exec_file = self
 					.bin_folder
-					.join(alias.as_str())
+					.join(alias)
 					.with_extension(std::env::consts::EXE_EXTENSION);
 				let curr_exe = curr_exe.clone();
 
