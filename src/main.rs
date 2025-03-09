@@ -1,19 +1,24 @@
 #[cfg(feature = "version-management")]
 use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
-use crate::cli::{auth::get_tokens, display_err, home_dir, HOME_DIR};
+use crate::cli::{auth::get_tokens, display_err, home_dir, style::ERROR_STYLE, HOME_DIR};
 use anyhow::Context as _;
 use clap::{builder::styling::AnsiColor, Parser};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
-use pesde::{engine::EngineKind, find_roots, version_matches, AuthConfig, Project};
+use pesde::{
+	engine::EngineKind, find_roots, manifest::target::TargetKind, version_matches, AuthConfig,
+	Project,
+};
 use semver::VersionReq;
 use std::{
+	collections::HashSet,
 	io,
 	path::{Path, PathBuf},
 	str::FromStr as _,
 	sync::Mutex,
 };
 use tempfile::NamedTempFile;
+use tokio::task::JoinSet;
 use tracing::instrument;
 use tracing_subscriber::{
 	filter::LevelFilter, fmt::MakeWriter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
@@ -150,51 +155,6 @@ async fn run() -> anyhow::Result<()> {
 		.expect("exe name is not valid utf-8");
 	let exe_name_engine = EngineKind::from_str(exe_name);
 
-	#[cfg(windows)]
-	'scripts: {
-		// if we're an engine, we don't want to run any scripts
-		if exe_name_engine.is_ok() {
-			break 'scripts;
-		}
-
-		if let Some(bin_folder) = current_exe.parent() {
-			// we're not in {path}/bin/{exe}
-			if bin_folder.file_name().is_some_and(|parent| parent != "bin") {
-				break 'scripts;
-			}
-
-			// we're not in {path}/.pesde/bin/{exe}
-			if bin_folder
-				.parent()
-				.and_then(|home_folder| home_folder.file_name())
-				.is_some_and(|home_folder| home_folder != HOME_DIR)
-			{
-				break 'scripts;
-			}
-		}
-
-		// the bin script will search for the project root itself, so we do that to ensure
-		// consistency across platforms, since the script is executed using a shebang
-		// on unix systems
-		let status = std::process::Command::new("lune")
-			.arg("run")
-			.arg(
-				current_exe
-					.parent()
-					.unwrap_or(&current_exe)
-					.join(".impl")
-					.join(current_exe.file_name().unwrap())
-					.with_extension("luau"),
-			)
-			.arg("--")
-			.args(std::env::args_os().skip(1))
-			.current_dir(cwd)
-			.status()
-			.expect("failed to run lune");
-
-		std::process::exit(status.code().unwrap_or(1i32));
-	};
-
 	let tracing_env_filter = EnvFilter::builder()
 		.with_default_directive(LevelFilter::INFO.into())
 		.from_env_lossy()
@@ -235,6 +195,97 @@ async fn run() -> anyhow::Result<()> {
 			.as_ref()
 			.map_or_else(|| "none".to_string(), |p| p.display().to_string())
 	);
+
+	'scripts: {
+		// if we're an engine, we don't want to run any scripts
+		if exe_name_engine.is_ok() {
+			break 'scripts;
+		}
+
+		if let Some(bin_folder) = current_exe.parent() {
+			// we're not in {path}/bin/{exe}
+			if bin_folder.file_name().is_some_and(|parent| parent != "bin") {
+				break 'scripts;
+			}
+
+			// we're not in {path}/.pesde/bin/{exe}
+			if bin_folder
+				.parent()
+				.and_then(|home_folder| home_folder.file_name())
+				.is_some_and(|home_folder| home_folder != HOME_DIR)
+			{
+				break 'scripts;
+			}
+		}
+
+		let linker_file_name = format!("{exe_name}.bin.luau");
+
+		let path = 'finder: {
+			let all_folders = TargetKind::VARIANTS
+				.iter()
+				.flat_map(|a| TargetKind::VARIANTS.iter().map(|b| a.packages_folder(*b)))
+				.collect::<HashSet<_>>();
+
+			let mut tasks = all_folders
+				.into_iter()
+				.map(|folder| {
+					let package_path = project_root_dir.join(&folder).join(&linker_file_name);
+					let workspace_path = project_workspace_dir
+						.as_deref()
+						.map(|path| path.join(&folder).join(&linker_file_name));
+
+					async move {
+						if fs::metadata(&package_path).await.is_ok() {
+							return Some((true, package_path));
+						}
+
+						if let Some(workspace_path) = workspace_path {
+							if fs::metadata(&workspace_path).await.is_ok() {
+								return Some((false, workspace_path));
+							}
+						}
+
+						None
+					}
+				})
+				.collect::<JoinSet<_>>();
+
+			let mut workspace_path = None;
+
+			while let Some(res) = tasks.join_next().await {
+				if let Some((primary, path)) = res.unwrap() {
+					if primary {
+						break 'finder path;
+					}
+
+					workspace_path = Some(path);
+				}
+			}
+
+			if let Some(path) = workspace_path {
+				break 'finder path;
+			}
+
+			eprintln!(
+				"{}",
+				ERROR_STYLE.apply_to(format!(
+					"binary `{exe_name}` not found. are you in the right directory?"
+				))
+			);
+			std::process::exit(1i32);
+		};
+
+		let status = std::process::Command::new("lune")
+			.arg("run")
+			.arg(path)
+			.arg("--")
+			.args(std::env::args_os().skip(1))
+			.current_dir(cwd)
+			.status()
+			.expect("failed to run lune");
+
+		std::process::exit(status.code().unwrap_or(1i32));
+	};
 
 	let home_dir = home_dir()?;
 	let data_dir = home_dir.join("data");

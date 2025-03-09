@@ -14,7 +14,7 @@ use pesde::{
 	engine::EngineKind,
 	graph::{DependencyGraph, DependencyGraphWithTarget},
 	lockfile::Lockfile,
-	manifest::{target::TargetKind, Alias, DependencyType, Manifest},
+	manifest::{DependencyType, Manifest},
 	names::PackageNames,
 	source::{
 		pesde::PesdePackageSource,
@@ -22,7 +22,7 @@ use pesde::{
 		traits::{PackageRef as _, RefreshOptions},
 		PackageSources,
 	},
-	version_matches, Project, RefreshedSources, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
+	version_matches, Project, RefreshedSources, MANIFEST_FILE_NAME,
 };
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap},
@@ -31,32 +31,6 @@ use std::{
 	time::Instant,
 };
 use tokio::task::JoinSet;
-
-fn bin_link_file(alias: &Alias) -> String {
-	let mut all_combinations = BTreeSet::new();
-
-	for a in TargetKind::VARIANTS {
-		for b in TargetKind::VARIANTS {
-			all_combinations.insert((*a, *b));
-		}
-	}
-
-	let all_folders = all_combinations
-		.into_iter()
-		.map(|(a, b)| format!("{:?}", a.packages_folder(b)))
-		.collect::<BTreeSet<_>>()
-		.into_iter()
-		.collect::<Vec<_>>()
-		.join(", ");
-
-	format!(
-		include_str!("bin_link.luau"),
-		alias = alias,
-		all_folders = all_folders,
-		MANIFEST_FILE_NAME = MANIFEST_FILE_NAME,
-		LOCKFILE_FILE_NAME = LOCKFILE_FILE_NAME
-	)
-}
 
 pub struct InstallHooks {
 	pub bin_folder: std::path::PathBuf,
@@ -85,39 +59,30 @@ impl DownloadAndLinkHooks for InstallHooks {
 					let bin_exec_file = bin_folder
 						.join(alias.as_str())
 						.with_extension(std::env::consts::EXE_EXTENSION);
+					let curr_exe =
+						std::env::current_exe().context("failed to get current executable path")?;
 
-					let impl_folder = bin_folder.join(".impl");
-					fs::create_dir_all(&impl_folder)
+					// TODO: remove this in a major release
+					#[cfg(unix)]
+					if fs::metadata(&bin_exec_file)
 						.await
-						.context("failed to create bin link folder")?;
-
-					let bin_file = impl_folder.join(alias.as_str()).with_extension("luau");
-					fs::write(&bin_file, bin_link_file(&alias))
-						.await
-						.context("failed to write bin link file")?;
-
-					#[cfg(windows)]
-					match fs::symlink_file(
-						std::env::current_exe().context("failed to get current executable path")?,
-						&bin_exec_file,
-					)
-					.await
+						.is_ok_and(|m| !m.is_symlink())
 					{
-						Ok(_) => {}
-						Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-						e => e.context("failed to copy bin link file")?,
+						fs::remove_file(&bin_exec_file)
+							.await
+							.context("failed to remove outdated bin linker")?;
 					}
 
-					#[cfg(not(windows))]
-					fs::write(
-						&bin_exec_file,
-						format!(
-							r#"#!/bin/sh
-exec lune run "$(dirname "$0")/.impl/{alias}.luau" -- "$@""#
-						),
-					)
-					.await
-					.context("failed to link bin link file")?;
+					#[cfg(windows)]
+					let res = fs::symlink_file(curr_exe, &bin_exec_file).await;
+					#[cfg(unix)]
+					let res = fs::symlink(curr_exe, &bin_exec_file).await;
+
+					match res {
+						Ok(_) => {}
+						Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+						e => e.context("failed to symlink bin link file")?,
+					}
 
 					make_executable(&bin_exec_file)
 						.await

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fix path dependencies using project's workspace dependencies by @daimond113
 
+### Changed
+- Binary linkers are now done in Rust to simplify their implementation and cross-runtime portability by @daimond113
+
 ## [0.6.0] - 2025-02-22
 ### Added
 - Improve installation experience by @lukadev-0
