@@ -122,7 +122,7 @@ async fn run() -> std::io::Result<()> {
 		.await
 		.expect("failed to get index config");
 
-	let (search_reader, search_writer, query_parser) = make_search(&project, &source).await;
+	let (search_reader, search_writer, query_parser) = make_search(&project, &source);
 
 	let app_data = web::Data::new(AppState {
 		storage: {

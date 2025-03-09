@@ -103,7 +103,7 @@ pub fn find_max_searchable(file: &IndexFile) -> Option<(&VersionId, &IndexFileEn
 		})
 }
 
-pub async fn make_search(
+pub fn make_search(
 	project: &Project,
 	source: &PesdePackageSource,
 ) -> (IndexReader, IndexWriter, QueryParser) {
