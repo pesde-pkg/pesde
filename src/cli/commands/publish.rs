@@ -347,7 +347,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 
 				let build_file_path = project.package_dir().join(build_file);
 
-				if !build_file_path.exists() {
+				if fs::metadata(&build_file_path).await.is_err() {
 					anyhow::bail!("build file {build_file} does not exist");
 				}
 
@@ -400,7 +400,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 		for relative_path in &paths {
 			let path = project.package_dir().join(relative_path);
 
-			if !path.exists() {
+			if fs::metadata(&path).await.is_err() {
 				anyhow::bail!("included file `{}` does not exist", path.display());
 			}
 

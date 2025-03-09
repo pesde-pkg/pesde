@@ -23,6 +23,7 @@ use std::{
 	path::{Path, PathBuf},
 	sync::Arc,
 };
+use tokio::io::AsyncReadExt as _;
 use tracing::instrument;
 use wax::Pattern as _;
 
@@ -396,9 +397,16 @@ pub async fn find_roots(
 	let mut workspace_dir = None::<PathBuf>;
 
 	async fn get_workspace_members(
+		manifest_file: &mut fs::File,
 		path: &Path,
 	) -> Result<HashSet<PathBuf>, errors::FindRootsError> {
-		let manifest = deser_manifest(path).await?;
+		let mut manifest = String::new();
+		manifest_file
+			.read_to_string(&mut manifest)
+			.await
+			.map_err(errors::ManifestReadError::Io)?;
+		let manifest: Manifest = toml::from_str(&manifest)
+			.map_err(|e| errors::ManifestReadError::Serde(path.to_path_buf(), e))?;
 
 		if manifest.workspace_members.is_empty() {
 			return Ok(HashSet::new());
@@ -417,23 +425,33 @@ pub async fn find_roots(
 	while let Some(path) = current_path {
 		current_path = path.parent().map(Path::to_path_buf);
 
-		if !path.join(MANIFEST_FILE_NAME).exists() {
-			continue;
+		if workspace_dir.is_some() {
+			if let Some(project_root) = project_root {
+				return Ok((project_root, workspace_dir));
+			}
 		}
 
-		match (project_root.as_ref(), workspace_dir.as_ref()) {
-			(Some(project_root), Some(workspace_dir)) => {
-				return Ok((project_root.clone(), Some(workspace_dir.clone())));
-			}
+		let mut manifest = match fs::File::open(path.join(MANIFEST_FILE_NAME)).await {
+			Ok(manifest) => manifest,
+			Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+			Err(e) => return Err(errors::ManifestReadError::Io(e).into()),
+		};
 
+		match (project_root.as_ref(), workspace_dir.as_ref()) {
 			(Some(project_root), None) => {
-				if get_workspace_members(&path).await?.contains(project_root) {
+				if get_workspace_members(&mut manifest, &path)
+					.await?
+					.contains(project_root)
+				{
 					workspace_dir = Some(path);
 				}
 			}
 
 			(None, None) => {
-				if get_workspace_members(&path).await?.contains(&cwd) {
+				if get_workspace_members(&mut manifest, &path)
+					.await?
+					.contains(&cwd)
+				{
 					// initializing a new member of a workspace
 					return Ok((cwd, Some(path)));
 				}
@@ -441,7 +459,7 @@ pub async fn find_roots(
 				project_root = Some(path);
 			}
 
-			(None, Some(_)) => unreachable!(),
+			(_, _) => unreachable!(),
 		}
 	}
 

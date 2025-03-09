@@ -1,6 +1,7 @@
 use crate::cli::{style::WARN_STYLE, up_to_date_lockfile};
 use anyhow::Context as _;
 use clap::Args;
+use fs_err::tokio as fs;
 use futures::{StreamExt as _, TryStreamExt as _};
 use pesde::{
 	errors::{ManifestReadError, WorkspaceMembersError},
@@ -154,7 +155,7 @@ impl RunCommand {
 		let relative_path = RelativePathBuf::from(package_or_script);
 		let path = relative_path.to_path(project.package_dir());
 
-		if !path.exists() {
+		if fs::metadata(&path).await.is_err() {
 			anyhow::bail!("path `{}` does not exist", path.display());
 		}
 
@@ -194,7 +195,9 @@ impl RunCommand {
 					.context("failed to canonicalize parent")?;
 
 				if members.contains(&canonical_path)
-					&& canonical_path.join(MANIFEST_FILE_NAME).exists()
+					&& fs::metadata(canonical_path.join(MANIFEST_FILE_NAME))
+						.await
+						.is_ok()
 				{
 					break 'finder canonical_path;
 				}
