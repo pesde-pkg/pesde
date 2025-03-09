@@ -143,22 +143,35 @@ impl AddCommand {
 			.await
 			.context("failed to refresh package source")?;
 
-		let Some(version_id) = source
+		let (_, mut versions, suggestions) = source
 			.resolve(
 				&specifier,
 				&ResolveOptions {
 					project: project.clone(),
 					target: manifest.target.kind(),
 					refreshed_sources,
+					loose_target: false,
 				},
 			)
 			.await
-			.context("failed to resolve package")?
-			.1
-			.pop_last()
-			.map(|(v_id, _)| v_id)
-		else {
-			anyhow::bail!("no versions found for package");
+			.context("failed to resolve package")?;
+
+		let Some((version_id, _)) = versions.pop_last() else {
+			anyhow::bail!(
+				"no matching versions found for package{}",
+				if suggestions.is_empty() {
+					"".into()
+				} else {
+					format!(
+						". available targets: {}",
+						suggestions
+							.into_iter()
+							.map(|t| t.to_string())
+							.collect::<Vec<_>>()
+							.join(", ")
+					)
+				}
+			);
 		};
 
 		let project_target = manifest.target.kind();

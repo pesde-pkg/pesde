@@ -204,8 +204,9 @@ impl InitCommand {
 						},
 						&ResolveOptions {
 							project: project.clone(),
-							target: TargetKind::Lune,
+							target: TargetKind::Luau,
 							refreshed_sources,
+							loose_target: true,
 						},
 					)
 					.await

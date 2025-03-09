@@ -465,6 +465,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 								project: project.clone(),
 								target: target_kind,
 								refreshed_sources: refreshed_sources.clone(),
+								loose_target: false,
 							},
 						)
 						.await

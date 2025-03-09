@@ -14,7 +14,10 @@ use specifier::PesdeDependencySpecifier;
 
 use crate::{
 	engine::EngineKind,
-	manifest::{target::Target, Alias, DependencyType},
+	manifest::{
+		target::{Target, TargetKind},
+		Alias, DependencyType,
+	},
 	names::{PackageName, PackageNames},
 	reporters::{response_to_async_read, DownloadProgressReporter},
 	source::{
@@ -147,6 +150,7 @@ impl PackageSource for PesdePackageSource {
 		let ResolveOptions {
 			project,
 			target: project_target,
+			loose_target,
 			..
 		} = options;
 
@@ -158,14 +162,28 @@ impl PackageSource for PesdePackageSource {
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
+		let suggestions = entries
+			.iter()
+			.filter(|(_, entry)| !entry.yanked)
+			.filter(|(v_id, _)| version_matches(&specifier.version, v_id.version()))
+			.map(|(v_id, _)| v_id.target())
+			.collect();
+
+		let specifier_target = specifier.target.unwrap_or(*project_target);
+
 		Ok((
 			PackageNames::Pesde(specifier.name.clone()),
 			entries
 				.into_iter()
 				.filter(|(_, entry)| !entry.yanked)
-				.filter(|(VersionId(version, target), _)| {
-					version_matches(&specifier.version, version)
-						&& specifier.target.unwrap_or(*project_target) == *target
+				.filter(|(v_id, _)| version_matches(&specifier.version, v_id.version()))
+				.filter(|(v_id, _)| {
+					// we want anything which might contain bins, scripts (so not Roblox)
+					if *loose_target && specifier_target == TargetKind::Luau {
+						!matches!(v_id.target(), TargetKind::Roblox | TargetKind::RobloxServer)
+					} else {
+						specifier_target == v_id.target()
+					}
 				})
 				.map(|(id, entry)| {
 					(
@@ -177,6 +195,7 @@ impl PackageSource for PesdePackageSource {
 					)
 				})
 				.collect(),
+			suggestions,
 		))
 	}
 

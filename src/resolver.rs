@@ -234,11 +234,12 @@ impl Project {
 					.await
 					.map_err(|e| Box::new(e.into()))?;
 
-				let (name, resolved) = source
+				let (name, resolved, suggestions) = source
 					.resolve(&specifier, &ResolveOptions {
 						project: self.clone(),
 						target,
 						refreshed_sources: refreshed_sources.clone(),
+						loose_target: false,
 					})
 					.await
 					.map_err(|e| Box::new(e.into()))?;
@@ -251,7 +252,21 @@ impl Project {
 					.or_else(|| resolved.last_key_value().map(|(ver, _)| PackageId::new(name, ver.clone())))
 				else {
 					return Err(Box::new(errors::DependencyGraphError::NoMatchingVersion(
-						format!("{specifier} ({target})"),
+						format!(
+							"{specifier} {target}{}",
+							if suggestions.is_empty() {
+								"".into()
+							} else {
+								format!(
+									" available targets: {}",
+									suggestions
+										.into_iter()
+										.map(|t| t.to_string())
+										.collect::<Vec<_>>()
+										.join(", ")
+								)
+							}
+						),
 					)));
 				};
 

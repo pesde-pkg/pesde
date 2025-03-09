@@ -14,7 +14,7 @@ use crate::{
 };
 use futures::StreamExt as _;
 use relative_path::RelativePathBuf;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use tokio::pin;
 use tracing::instrument;
 
@@ -47,6 +47,8 @@ impl PackageSource for WorkspacePackageSource {
 			..
 		} = options;
 
+		let mut suggestions = BTreeSet::new();
+
 		let (path, manifest) = 'finder: {
 			let target = specifier.target.unwrap_or(*project_target);
 
@@ -54,8 +56,13 @@ impl PackageSource for WorkspacePackageSource {
 			pin!(members);
 
 			while let Some((path, manifest)) = members.next().await.transpose()? {
-				if manifest.name == specifier.name && manifest.target.kind() == target {
-					break 'finder (path, manifest);
+				let member_target = manifest.target.kind();
+				if manifest.name == specifier.name {
+					suggestions.insert(member_target);
+
+					if member_target == target {
+						break 'finder (path, manifest);
+					}
 				}
 			}
 
@@ -121,6 +128,7 @@ impl PackageSource for WorkspacePackageSource {
 				VersionId::new(manifest.version, manifest_target_kind),
 				pkg_ref,
 			)]),
+			suggestions,
 		))
 	}
 

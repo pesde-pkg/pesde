@@ -1,5 +1,5 @@
 use crate::{
-	manifest::target::Target,
+	manifest::target::{Target, TargetKind},
 	names::PackageNames,
 	reporters::DownloadProgressReporter,
 	source::{
@@ -7,7 +7,10 @@ use crate::{
 		traits::*,
 	},
 };
-use std::{collections::BTreeMap, fmt::Debug};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	fmt::Debug,
+};
 
 /// Packages' filesystems
 pub mod fs;
@@ -43,7 +46,7 @@ pub const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 pub const IGNORED_DIRS: &[&str] = &[".git"];
 
 /// The result of resolving a package
-pub type ResolveResult<Ref> = (PackageNames, BTreeMap<VersionId, Ref>);
+pub type ResolveResult<Ref> = (PackageNames, BTreeMap<VersionId, Ref>, BTreeSet<TargetKind>);
 
 /// All possible package sources
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -98,13 +101,14 @@ impl PackageSource for PackageSources {
 			(PackageSources::Pesde(source), DependencySpecifiers::Pesde(specifier)) => source
 				.resolve(specifier, options)
 				.await
-				.map(|(name, results)| {
+				.map(|(name, results, suggestions)| {
 					(
 						name,
 						results
 							.into_iter()
 							.map(|(version, pkg_ref)| (version, PackageRefs::Pesde(pkg_ref)))
 							.collect(),
+						suggestions,
 					)
 				})
 				.map_err(Into::into),
@@ -113,13 +117,14 @@ impl PackageSource for PackageSources {
 			(PackageSources::Wally(source), DependencySpecifiers::Wally(specifier)) => source
 				.resolve(specifier, options)
 				.await
-				.map(|(name, results)| {
+				.map(|(name, results, suggestions)| {
 					(
 						name,
 						results
 							.into_iter()
 							.map(|(version, pkg_ref)| (version, PackageRefs::Wally(pkg_ref)))
 							.collect(),
+						suggestions,
 					)
 				})
 				.map_err(Into::into),
@@ -127,13 +132,14 @@ impl PackageSource for PackageSources {
 			(PackageSources::Git(source), DependencySpecifiers::Git(specifier)) => source
 				.resolve(specifier, options)
 				.await
-				.map(|(name, results)| {
+				.map(|(name, results, suggestions)| {
 					(
 						name,
 						results
 							.into_iter()
 							.map(|(version, pkg_ref)| (version, PackageRefs::Git(pkg_ref)))
 							.collect(),
+						suggestions,
 					)
 				})
 				.map_err(Into::into),
@@ -142,7 +148,7 @@ impl PackageSource for PackageSources {
 				source
 					.resolve(specifier, options)
 					.await
-					.map(|(name, results)| {
+					.map(|(name, results, suggestions)| {
 						(
 							name,
 							results
@@ -151,6 +157,7 @@ impl PackageSource for PackageSources {
 									(version, PackageRefs::Workspace(pkg_ref))
 								})
 								.collect(),
+							suggestions,
 						)
 					})
 					.map_err(Into::into)
@@ -159,13 +166,14 @@ impl PackageSource for PackageSources {
 			(PackageSources::Path(source), DependencySpecifiers::Path(specifier)) => source
 				.resolve(specifier, options)
 				.await
-				.map(|(name, results)| {
+				.map(|(name, results, suggestions)| {
 					(
 						name,
 						results
 							.into_iter()
 							.map(|(version, pkg_ref)| (version, PackageRefs::Path(pkg_ref)))
 							.collect(),
+						suggestions,
 					)
 				})
 				.map_err(Into::into),

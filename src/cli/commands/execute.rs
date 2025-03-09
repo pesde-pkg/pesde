@@ -82,56 +82,28 @@ impl ExecuteCommand {
 					.context("failed to refresh source")?;
 
 				let version_req = self.package.1.unwrap_or(VersionReq::STAR);
-				let Some((id, pkg_ref)) = ('finder: {
-					let specifier = PesdeDependencySpecifier {
-						name: self.package.0.clone(),
-						version: version_req.clone(),
-						index: DEFAULT_INDEX_NAME.into(),
-						target: None,
-					};
-
-					if let Some((v_id, pkg_ref)) = source
-						.resolve(
-							&specifier,
-							&ResolveOptions {
-								project: project.clone(),
-								target: TargetKind::Lune,
-								refreshed_sources: refreshed_sources.clone(),
-							},
-						)
-						.await
-						.context("failed to resolve package")?
-						.1
-						.pop_last()
-					{
-						break 'finder Some((
-							PackageId::new(PackageNames::Pesde(self.package.0.clone()), v_id),
-							pkg_ref,
-						));
-					}
-
-					source
-						.resolve(
-							&specifier,
-							&ResolveOptions {
-								project: project.clone(),
-								target: TargetKind::Luau,
-								refreshed_sources: refreshed_sources.clone(),
-							},
-						)
-						.await
-						.context("failed to resolve package")?
-						.1
-						.pop_last()
-						.map(|(v_id, pkg_ref)| {
-							(
-								PackageId::new(PackageNames::Pesde(self.package.0.clone()), v_id),
-								pkg_ref,
-							)
-						})
-				}) else {
+				let Some((v_id, pkg_ref)) = source
+					.resolve(
+						&PesdeDependencySpecifier {
+							name: self.package.0.clone(),
+							version: version_req.clone(),
+							index: DEFAULT_INDEX_NAME.into(),
+							target: None,
+						},
+						&ResolveOptions {
+							project: project.clone(),
+							target: TargetKind::Luau,
+							refreshed_sources: refreshed_sources.clone(),
+							loose_target: true,
+						},
+					)
+					.await
+					.context("failed to resolve package")?
+					.1
+					.pop_last()
+				else {
 					anyhow::bail!(
-						"no Lune or Luau package could be found for {}@{version_req}",
+						"no compatible package could be found for {}@{version_req}",
 						self.package.0,
 					);
 				};
@@ -151,7 +123,10 @@ impl ExecuteCommand {
 					project.auth_config().clone(),
 				);
 
-				let id = Arc::new(id);
+				let id = Arc::new(PackageId::new(
+					PackageNames::Pesde(self.package.0.clone()),
+					v_id,
+				));
 
 				let fs = source
 					.download(

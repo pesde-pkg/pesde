@@ -44,6 +44,9 @@ pub struct ResolveOptions {
 	pub target: TargetKind,
 	/// The sources that have been refreshed
 	pub refreshed_sources: RefreshedSources,
+	/// Whether to find any compatible target instead of a strict equal. Each source defines its
+	/// own loose rules.
+	pub loose_target: bool,
 }
 
 /// Options for downloading a package

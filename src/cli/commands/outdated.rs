@@ -92,6 +92,7 @@ impl OutdatedCommand {
 								project: project.clone(),
 								target: manifest_target_kind,
 								refreshed_sources: refreshed_sources.clone(),
+								loose_target: false,
 							},
 						)
 						.await

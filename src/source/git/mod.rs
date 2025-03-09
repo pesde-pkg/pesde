@@ -20,7 +20,12 @@ use crate::{
 use fs_err::tokio as fs;
 use gix::{bstr::BStr, traverse::tree::Recorder, ObjectId, Url};
 use relative_path::RelativePathBuf;
-use std::{collections::BTreeMap, fmt::Debug, hash::Hash, path::PathBuf};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	fmt::Debug,
+	hash::Hash,
+	path::PathBuf,
+};
 use tokio::task::{spawn_blocking, JoinSet};
 use tracing::instrument;
 
@@ -322,6 +327,7 @@ impl PackageSource for GitPackageSource {
 					dependencies,
 				},
 			)]),
+			BTreeSet::new(),
 		))
 	}
 

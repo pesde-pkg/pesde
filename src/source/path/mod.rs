@@ -14,7 +14,7 @@ use crate::{
 	Project,
 };
 use futures::TryStreamExt as _;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use tracing::instrument;
 
 /// The path package reference
@@ -122,6 +122,7 @@ impl PackageSource for PathPackageSource {
 				VersionId::new(manifest.version, manifest.target.kind()),
 				pkg_ref,
 			)]),
+			BTreeSet::new(),
 		))
 	}
 

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-	manifest::{errors, Alias, DependencyType},
+	manifest::{errors, target::TargetKind, Alias, DependencyType},
 	names::wally::WallyPackageName,
 	source::{specifiers::DependencySpecifiers, wally::specifier::WallyDependencySpecifier},
 };
@@ -9,12 +9,21 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Deserializer};
 use tracing::instrument;
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Copy, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum Realm {
 	#[serde(alias = "dev")]
 	Shared,
 	Server,
+}
+
+impl Realm {
+	pub fn to_target(self) -> TargetKind {
+		match self {
+			Realm::Shared => TargetKind::Roblox,
+			Realm::Server => TargetKind::RobloxServer,
+		}
+	}
 }
 
 #[derive(Deserialize, Clone, Debug)]

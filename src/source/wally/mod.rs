@@ -1,5 +1,5 @@
 use crate::{
-	manifest::target::{Target, TargetKind},
+	manifest::target::Target,
 	names::{wally::WallyPackageName, PackageNames},
 	reporters::{response_to_async_read, DownloadProgressReporter},
 	source::{
@@ -9,11 +9,7 @@ use crate::{
 		traits::{
 			DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
 		},
-		wally::{
-			compat_util::get_target,
-			manifest::{Realm, WallyManifest},
-			pkg_ref::WallyPackageRef,
-		},
+		wally::{compat_util::get_target, manifest::WallyManifest, pkg_ref::WallyPackageRef},
 		PackageSources, ResolveResult, IGNORED_DIRS, IGNORED_FILES,
 	},
 	util::hash,
@@ -24,7 +20,10 @@ use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	path::PathBuf,
+};
 use tokio::{io::AsyncReadExt as _, pin, task::spawn_blocking};
 use tokio_util::compat::FuturesAsyncReadCompatExt as _;
 use tracing::instrument;
@@ -198,13 +197,7 @@ impl PackageSource for WallyPackageSource {
 					})?;
 
 					Ok((
-						VersionId(
-							manifest.package.version,
-							match manifest.package.realm {
-								Realm::Server => TargetKind::RobloxServer,
-								Realm::Shared => TargetKind::Roblox,
-							},
-						),
+						VersionId(manifest.package.version, manifest.package.realm.to_target()),
 						WallyPackageRef {
 							index_url: index_url.clone(),
 							dependencies,
@@ -212,6 +205,7 @@ impl PackageSource for WallyPackageSource {
 					))
 				})
 				.collect::<Result<_, errors::ResolveError>>()?,
+			BTreeSet::new(),
 		))
 	}
 

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Binary linkers are now done in Rust to simplify their implementation and cross-runtime portability by @daimond113
+- Show available targets in add and install commands if the specifier hasn't matched any by @daimond113
 
 ## [0.6.0] - 2025-02-22
 ### Added
