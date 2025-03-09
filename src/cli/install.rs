@@ -25,8 +25,9 @@ use pesde::{
 	version_matches, Project, RefreshedSources, MANIFEST_FILE_NAME,
 };
 use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
+	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	num::NonZeroUsize,
+	path::Path,
 	sync::Arc,
 	time::Instant,
 };
@@ -47,21 +48,32 @@ impl DownloadAndLinkHooks for InstallHooks {
 		&self,
 		graph: &DependencyGraphWithTarget,
 	) -> Result<(), Self::Error> {
-		let mut tasks = graph
-			.values()
-			.filter(|node| node.target.bin_path().is_some())
-			.filter_map(|node| node.node.direct.as_ref())
-			.map(|(alias, _, _)| {
-				let bin_folder = self.bin_folder.clone();
-				let alias = alias.clone();
+		let binary_packages = graph
+			.iter()
+			.filter_map(|(id, node)| node.target.bin_path().is_some().then_some(id))
+			.collect::<HashSet<_>>();
+
+		let aliases = graph
+			.iter()
+			.flat_map(|(_, node)| node.node.dependencies.iter())
+			.filter_map(|(id, alias)| binary_packages.contains(id).then_some(alias))
+			.collect::<HashSet<_>>();
+
+		let curr_exe: Arc<Path> = std::env::current_exe()
+			.context("failed to get current executable path")?
+			.as_path()
+			.into();
+
+		let mut tasks = aliases
+			.into_iter()
+			.map(|alias| {
+				let bin_exec_file = self
+					.bin_folder
+					.join(alias.as_str())
+					.with_extension(std::env::consts::EXE_EXTENSION);
+				let curr_exe = curr_exe.clone();
 
 				async move {
-					let bin_exec_file = bin_folder
-						.join(alias.as_str())
-						.with_extension(std::env::consts::EXE_EXTENSION);
-					let curr_exe =
-						std::env::current_exe().context("failed to get current executable path")?;
-
 					// TODO: remove this in a major release
 					#[cfg(unix)]
 					if fs::metadata(&bin_exec_file)
