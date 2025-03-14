@@ -60,6 +60,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 			.chain(
 				graph
 					.iter()
+					.filter(|(_, node)| node.target.bin_path().is_some())
 					.filter_map(|(_, node)| node.node.direct.as_ref())
 					.map(|(alias, _, _)| alias.as_str()),
 			)
