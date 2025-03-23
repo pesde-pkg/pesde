@@ -1,0 +1,46 @@
+---
+title: Engines
+description: Learn what engines are and how to use them
+---
+
+import { Aside } from "@astrojs/starlight/components"
+
+Since pesde runs binary packages using a Luau runtime, we need a way to get one.
+pesde 0.6 has introduced a mechanism for this: engines.
+
+An engine is either a Luau runtime or pesde itself. Engines allow your
+package to specify what versions it's compatible with.
+
+To specify that your package is compatible with Lune ^0.8.9 and pesde ^0.6.0:
+
+```toml
+[engines]
+pesde = "^0.6.0"
+lune = "^0.8.9"
+```
+
+After you add the engines to your manifest run `pesde install` to set up the
+necessary files in pesde's bin directory. Then, you should execute the engine to
+ensure it is properly downloaded & setup.
+
+```sh
+lune
+```
+
+This is only required if you're installing the version for the first time, or if
+this is a requirement which none of your local installations of the engine
+fulfill. After doing so you can start using the engine as normal.
+
+<Aside type="note">
+	You can also use engines outside projects. They will run the latest version installed locally when
+	executed.
+</Aside>
+
+The benefit of engines is that users will be immediately warned if they install
+a package which uses an incompatible version of a runtime. For example, if we
+publish a package with the engines we've written before and a user with
+`lune = "=0.9.0"` installs our package they'll get the following message:
+
+```
+warn: package acme/bar@0.1.0 lune requires lune ^0.8.9, but 0.9.0 is installed
+```
