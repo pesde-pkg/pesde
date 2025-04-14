@@ -150,3 +150,32 @@ jobs:
           draft: true
           prerelease: ${{ startsWith(env.VERSION, '0') }}
           files: artifacts/*
+
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    needs: [ prepare ]
+    if: ${{ needs.prepare.outputs.found == 'false' }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: https://ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/stefanuk12/registry:latest
+            ghcr.io/stefanuk12/registry:v${{ env.VERSION }}
+            ghcr.io/stefanuk12/registry:${{ github.sha }}
