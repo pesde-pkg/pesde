@@ -176,6 +176,6 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/stefanuk12/registry:latest
-            ghcr.io/stefanuk12/registry:v${{ env.VERSION }}
-            ghcr.io/stefanuk12/registry:${{ github.sha }}
+            ghcr.io/pesde-pkg/registry:latest
+            ghcr.io/pesde-pkg/registry:v${{ env.VERSION }}
+            ghcr.io/pesde-pkg/registry:${{ github.sha }}
