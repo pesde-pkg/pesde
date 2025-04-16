@@ -156,7 +156,6 @@ jobs:
     permissions:
       packages: write
     needs: [ prepare ]
-    if: ${{ needs.prepare.outputs.found == 'false' }}
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
