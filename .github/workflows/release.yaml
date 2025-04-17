@@ -151,7 +151,7 @@ jobs:
           prerelease: ${{ startsWith(env.VERSION, '0') }}
           files: artifacts/*
 
-  build-and-push-image:
+  publish-registry-image:
     runs-on: ubuntu-latest
     permissions:
       packages: write
