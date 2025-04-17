@@ -1,0 +1,141 @@
+name: Release Registry
+
+permissions:
+  packages: write
+
+on:
+  workflow_dispatch:
+
+jobs:
+  prepare:
+    name: Extract relevant information
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@master
+
+      - name: Read Cargo TOML
+        uses: SebRollen/toml-action@v1.0.2
+        id: read_toml
+        with:
+          file: "./registry/Cargo.toml"
+          field: "package.version"
+
+      - name: Lowercase repository owner
+        uses: ASzc/change-string-case-action@v6
+        id: repository_owner
+        with:
+          string: ${{ github.repository_owner }}
+
+    outputs:
+      version: ${{ steps.read_toml.outputs.value }}
+      registry_image: "ghcr.io/${{ steps.repository_owner.outputs.lowercase }}/registry"
+
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    needs:
+      - prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux /amd64
+          - linux/arm64
+    steps:
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.prepare.outputs.registry_image }}
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: https://ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+    
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ needs.prepare.outputs.registry_image }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    needs:
+      - prepare
+      - build
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: https://ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set Tags
+        id: set_tags
+        shell: bash
+        run: |
+          TAGS=$( {
+            echo "-t ${{ needs.prepare.outputs.registry_image }}:${{ github.sha }}";
+            echo "-t ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.version }}";
+            if [[ "${{ needs.prepare.outputs.version }}" != *"-"* ]]; then
+              echo "-t ${{ needs.prepare.outputs.registry_image }}:latest";
+            fi;
+          } | paste -sd " " -)
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+  
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create ${{ steps.set_tags.outputs.tags }} $(printf '${{ needs.prepare.outputs.registry_image }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.version }}
