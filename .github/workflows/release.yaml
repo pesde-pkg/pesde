@@ -150,32 +150,3 @@ jobs:
           draft: true
           prerelease: ${{ startsWith(env.VERSION, '0') }}
           files: artifacts/*
-
-  publish-registry-image:
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-    needs: [ prepare ]
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: https://ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/pesde-pkg/registry:latest
-            ghcr.io/pesde-pkg/registry:v${{ env.VERSION }}
-            ghcr.io/pesde-pkg/registry:${{ github.sha }}
