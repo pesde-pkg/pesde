@@ -1,8 +1,5 @@
 name: Release Registry
 
-permissions:
-  packages: write
-
 on:
   workflow_dispatch:
 
@@ -36,9 +33,10 @@ jobs:
   publish-registry-image:
     name: Build and publish Docker package
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
     needs: [ prepare ]
+    permissions:
+      contents: read
+      packages: write
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
