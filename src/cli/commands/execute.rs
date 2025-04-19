@@ -9,7 +9,7 @@ use console::style;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
-	download_and_link::DownloadAndLinkOptions,
+	download_and_link::{DownloadAndLinkOptions, InstallDependenciesMode},
 	linking::generator::generate_bin_linking_module,
 	manifest::target::TargetKind,
 	names::{PackageName, PackageNames},
@@ -178,7 +178,7 @@ impl ExecuteCommand {
 						DownloadAndLinkOptions::<CliReporter<Stderr>, ()>::new(reqwest)
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources)
-							.prod(true),
+							.install_dependencies_mode(InstallDependenciesMode::Prod),
 					)
 					.await
 					.context("failed to download and link dependencies")?;
