@@ -14,6 +14,7 @@ jobs:
       version: ${{ steps.extract_version.outputs.VERSION }}
       version_registry: ${{ steps.extract_version_registry.outputs.value }}
       registry_image: "ghcr.io/${{ steps.repository_owner.outputs.lowercase }}/registry"
+      registry_published: ${{ steps.registry_published.outputs.tag }}
       found: ${{ steps.ensure_not_published.outputs.FOUND }}
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +38,14 @@ jobs:
         with:
           string: ${{ github.repository_owner }}
 
+      - name: Check docker image published
+        uses: tyriis/docker-image-tag-exists@v2.1.0
+        id: registry_published
+        with:
+          registry: ghcr.io
+          repository: "${{ steps.repository_owner.outputs.lowercase }}/registry"
+          tag: ${{ steps.extract_version_registry.outputs.value }}
+  
       - name: Ensure not published
         id: ensure_not_published
         shell: bash
@@ -170,6 +179,7 @@ jobs:
     name: Build and publish Docker package
     runs-on: ubuntu-latest
     needs: [ prepare ]
+    if: ${{ needs.prepare.outputs.registry_published == 'not found' }}
     permissions:
       contents: read
       packages: write
