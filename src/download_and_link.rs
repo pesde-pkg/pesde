@@ -64,6 +64,18 @@ impl DownloadAndLinkHooks for () {
 	type Error = Infallible;
 }
 
+/// Options for which dependencies to install.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+pub enum InstallDependenciesMode {
+	/// Install all dependencies.
+	#[default]
+	All,
+	/// Install only dependencies, not dev_dependencies.
+	Prod,
+	/// Install only dev_dependencies.
+	Dev,
+}
+
 /// Options for downloading and linking.
 #[derive(Debug)]
 pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
@@ -75,8 +87,8 @@ pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
 	pub hooks: Option<Arc<Hooks>>,
 	/// The refreshed sources.
 	pub refreshed_sources: RefreshedSources,
-	/// Whether to skip dev dependencies.
-	pub prod: bool,
+	/// Which dependencies to install.
+	pub install_dependencies_mode: InstallDependenciesMode,
 	/// The max number of concurrent network requests.
 	pub network_concurrency: NonZeroUsize,
 	/// Whether to re-install all dependencies even if they are already installed
@@ -96,7 +108,7 @@ where
 			reporter: None,
 			hooks: None,
 			refreshed_sources: Default::default(),
-			prod: false,
+			install_dependencies_mode: InstallDependenciesMode::All,
 			network_concurrency: NonZeroUsize::new(16).unwrap(),
 			force: false,
 		}
@@ -123,10 +135,13 @@ where
 		self
 	}
 
-	/// Sets whether to skip dev dependencies.
+	/// Sets which dependencies to install
 	#[must_use]
-	pub fn prod(mut self, prod: bool) -> Self {
-		self.prod = prod;
+	pub fn install_dependencies_mode(
+		mut self,
+		install_dependencies: InstallDependenciesMode,
+	) -> Self {
+		self.install_dependencies_mode = install_dependencies;
 		self
 	}
 
@@ -152,7 +167,7 @@ impl Clone for DownloadAndLinkOptions {
 			reporter: self.reporter.clone(),
 			hooks: self.hooks.clone(),
 			refreshed_sources: self.refreshed_sources.clone(),
-			prod: self.prod,
+			install_dependencies_mode: self.install_dependencies_mode,
 			network_concurrency: self.network_concurrency,
 			force: self.force,
 		}
@@ -161,7 +176,7 @@ impl Clone for DownloadAndLinkOptions {
 
 impl Project {
 	/// Downloads a graph of dependencies and links them in the correct order
-	#[instrument(skip_all, fields(prod = options.prod), level = "debug")]
+	#[instrument(skip_all, fields(install_dependencies = debug(options.install_dependencies_mode)), level = "debug")]
 	pub async fn download_and_link<Reporter, Hooks>(
 		&self,
 		graph: &Arc<DependencyGraph>,
@@ -176,7 +191,7 @@ impl Project {
 			reporter,
 			hooks,
 			refreshed_sources,
-			prod,
+			install_dependencies_mode,
 			network_concurrency,
 			force,
 		} = options;
@@ -420,11 +435,17 @@ impl Project {
 
 		let mut graph = Arc::into_inner(graph).unwrap();
 
-		if prod {
-			graph.retain(|_, node| node.node.resolved_ty != DependencyType::Dev);
+		match install_dependencies_mode {
+			InstallDependenciesMode::All => {}
+			InstallDependenciesMode::Prod => {
+				graph.retain(|_, node| node.node.resolved_ty != DependencyType::Dev);
+			}
+			InstallDependenciesMode::Dev => {
+				graph.retain(|_, node| node.node.resolved_ty == DependencyType::Dev);
+			}
 		}
 
-		if prod || !force {
+		if install_dependencies_mode != InstallDependenciesMode::All || !force {
 			self.remove_unused(&graph).await?;
 		}
 

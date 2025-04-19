@@ -3,7 +3,7 @@ use crate::cli::{
 	run_on_workspace_members,
 };
 use clap::Args;
-use pesde::Project;
+use pesde::{download_and_link::InstallDependenciesMode, Project};
 use std::num::NonZeroUsize;
 
 #[derive(Debug, Args, Copy, Clone)]
@@ -15,6 +15,10 @@ pub struct InstallCommand {
 	/// Whether to not install dev dependencies
 	#[arg(long)]
 	prod: bool,
+
+	/// Whether to only install dev dependencies
+	#[arg(long)]
+	dev: bool,
 
 	/// The maximum number of concurrent network requests
 	#[arg(long, default_value = "16")]
@@ -30,9 +34,16 @@ pub struct InstallCommand {
 struct CallbackError(#[from] anyhow::Error);
 impl InstallCommand {
 	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+		let install_dependencies_mode = match (self.prod, self.dev) {
+			(true, true) => anyhow::bail!("cannot have both prod and dev flags enabled"),
+			(true, false) => InstallDependenciesMode::Prod,
+			(false, true) => InstallDependenciesMode::Dev,
+			(false, false) => InstallDependenciesMode::All,
+		};
+
 		let options = InstallOptions {
 			locked: self.locked,
-			prod: self.prod,
+			install_dependencies_mode,
 			write: true,
 			network_concurrency: self.network_concurrency,
 			use_lockfile: true,
