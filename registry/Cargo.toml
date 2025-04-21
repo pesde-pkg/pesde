@@ -9,46 +9,46 @@ publish = false
 workspace = true
 
 [dependencies]
-actix-web = "4.9.0"
-actix-cors = "0.7.0"
+actix-web = "4.10.2"
+actix-cors = "0.7.1"
 actix-governor = "0.8.0"
 dotenvy = "0.15.7"
-thiserror = "2.0.11"
-tantivy = "0.22.0"
-semver = "1.0.25"
-jiff = { version = "0.1.29", features = ["serde"] }
+thiserror = "2.0.12"
+tantivy = "0.24.0"
+semver = "1.0.26"
+jiff = { version = "0.2.9", features = ["serde"] }
 futures = "0.3.31"
-tokio = "1.43.0"
-tokio-util = "0.7.13"
-tempfile = "3.16.0"
+tokio = "1.44.2"
+tokio-util = "0.7.14"
+tempfile = "3.19.1"
 fs-err = { version = "3.1.0", features = ["tokio"] }
 async-stream = "0.3.6"
 
-git2 = "0.20.0"
-gix = { version = "0.70.0", default-features = false, features = [
+git2 = "0.20.1"
+gix = { version = "0.71.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
     "credentials",
 ] }
 
-serde = "1.0.217"
-serde_json = "1.0.138"
+serde = "1.0.219"
+serde_json = "1.0.140"
 serde_yaml = "0.9.34"
 toml = "0.8.20"
-convert_case = "0.7.1"
+convert_case = "0.8.0"
 sha2 = "0.10.8"
 
 rusty-s3 = "0.7.0"
-reqwest = { version = "0.12.12", default-features = false, features = ["json", "rustls-tls"] }
-constant_time_eq = "0.3.1"
+reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls"] }
+constant_time_eq = "0.4.2"
 
 tokio-tar = "0.3.1"
-async-compression = { version = "0.4.18", features = ["tokio", "gzip"] }
+async-compression = { version = "0.4.22", features = ["tokio", "gzip"] }
 
 tracing = { version = "0.1.41", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-tracing-actix-web = "0.7.15"
+tracing-actix-web = "0.7.18"
 
-sentry = { version = "0.36.0", default-features = false, features = ["backtrace", "contexts", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
-sentry-actix = "0.36.0"
+sentry = { version = "0.37.0", default-features = false, features = ["backtrace", "contexts", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
+sentry-actix = "0.37.0"
 
 pesde = { path = "..", default-features = false, features = ["wally-compat"] }
