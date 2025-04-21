@@ -135,7 +135,7 @@ async fn run() -> std::io::Result<()> {
 			tracing::info!("auth: {auth}");
 			auth
 		},
-		source: Arc::new(tokio::sync::RwLock::new(source)),
+		source: tokio::sync::RwLock::new(source).into(),
 		project,
 
 		search_reader,

@@ -141,7 +141,7 @@ impl Project {
 										project: project.clone(),
 										reqwest,
 										id: package_id.clone(),
-										reporter: Arc::new(progress_reporter),
+										reporter: progress_reporter.into(),
 									},
 								)
 								.await
@@ -154,7 +154,7 @@ impl Project {
 										project: project.clone(),
 										reqwest,
 										id: package_id.clone(),
-										reporter: Arc::new(()),
+										reporter: ().into(),
 									},
 								)
 								.await

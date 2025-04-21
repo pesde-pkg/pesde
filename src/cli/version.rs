@@ -29,7 +29,6 @@ use std::{
 	collections::BTreeSet,
 	env::current_exe,
 	path::{Path, PathBuf},
-	sync::Arc,
 };
 use tracing::instrument;
 
@@ -192,7 +191,7 @@ pub async fn get_or_download_engine(
 				&engine_ref,
 				&DownloadOptions {
 					reqwest: reqwest.clone(),
-					reporter: Arc::new(reporter),
+					reporter: reporter.into(),
 					version: version.clone(),
 				},
 			)

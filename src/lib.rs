@@ -152,13 +152,14 @@ impl Project {
 		auth_config: AuthConfig,
 	) -> Self {
 		Project {
-			shared: Arc::new(ProjectShared {
+			shared: ProjectShared {
 				package_dir: package_dir.as_ref().to_path_buf(),
 				workspace_dir: workspace_dir.map(|d| d.as_ref().to_path_buf()),
 				data_dir: data_dir.as_ref().to_path_buf(),
 				cas_dir: cas_dir.as_ref().to_path_buf(),
 				auth_config,
-			}),
+			}
+			.into(),
 		}
 	}
 
