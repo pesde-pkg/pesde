@@ -38,7 +38,7 @@ jobs:
         with:
           string: ${{ github.repository_owner }}
 
-      - name: Check docker image published
+      - name: Get Docker image publish status
         uses: tyriis/docker-image-tag-exists@v2.1.0
         id: registry_published
         with:
