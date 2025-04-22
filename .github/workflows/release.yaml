@@ -163,7 +163,7 @@ jobs:
         id: is_prerelease
         shell: bash
         run: |
-          if [[ "${{ needs.prepare.outputs.registry_version }}" == *"-"* ]]; then
+          if [[ "${{ needs.prepare.outputs.version }}" == *"-"* ]]; then
             echo "value=true" >> $GITHUB_OUTPUT
           else
             echo "value=false" >> $GITHUB_OUTPUT
