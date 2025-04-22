@@ -209,6 +209,7 @@ jobs:
         run: |
           TAGS=$({
             echo "${{ needs.prepare.outputs.registry_image }}:${{ github.sha }}"
+            echo "${{ needs.prepare.outputs.registry_image }}:${${{ github.sha }}:0:7}"
             echo "${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.registry_version }}"
             if [[ "${{ needs.prepare.outputs.registry_version }}" != *"-"* ]]; then
               echo "${{ needs.prepare.outputs.registry_image }}:latest"
