@@ -11,19 +11,20 @@ jobs:
     name: Prepare
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.extract_version.outputs.VERSION }}
+      version: ${{ steps.extract_version.outputs.value }}
       registry_version: ${{ steps.extract_registry_version.outputs.value }}
       registry_image: "ghcr.io/${{ steps.repository_owner.outputs.lowercase }}/registry"
       registry_published: ${{ steps.registry_published.outputs.tag }}
       found: ${{ steps.ensure_not_published.outputs.FOUND }}
     steps:
       - uses: actions/checkout@v4
+
       - name: Extract version
+        uses: SebRollen/toml-action@v1.0.2
         id: extract_version
-        shell: bash
-        run: |
-          VERSION=$(echo ${{ github.ref_name }} | cut -d'+' -f1 | cut -c 2-)
-          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+        with:
+          file: "./Cargo.toml"
+          field: "package.version" 
 
       - name: Extract registry version
         uses: SebRollen/toml-action@v1.0.2
@@ -153,8 +154,6 @@ jobs:
       contents: write
       pull-requests: read
     needs: [ prepare, publish ]
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -164,15 +163,25 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Check if CLI version is prerelease
+        id: is_prerelease
+        shell: bash
+        run: |
+          if [[ "${{ needs.prepare.outputs.registry_version }}" == *"-"* ]]; then
+            echo "value=true" >> $GITHUB_OUTPUT
+          else
+            echo "value=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.ref_name }}
-          name: v${{ env.VERSION }}
+          name: v${{ needs.prepare.outputs.version }}
           draft: true
-          prerelease: ${{ startsWith(env.VERSION, '0') }}
+          prerelease: ${{ steps.is_prerelease.outputs.value }}
           files: artifacts/*
 
   publish-registry-image:
