@@ -241,15 +241,21 @@ impl Project {
 			} else {
 				let mut tasks = graph
 					.iter()
-					.map(|(id, node)| {
+					.filter_map(|(id, node)| {
 						let id = id.clone();
 						let node = node.clone();
 						let container_folder =
 							node.container_folder_from_project(&id, self, manifest.target.kind());
 
-						async move {
+						match install_dependencies_mode {
+							InstallDependenciesMode::Prod if node.resolved_ty == DependencyType::Dev => return None,
+							InstallDependenciesMode::Dev if node.resolved_ty != DependencyType::Dev => return None,
+							_ => {},
+						};
+
+						Some(async move {
 							return (id, node, fs::metadata(&container_folder).await.is_ok());
-						}
+						})
 					})
 					.collect::<JoinSet<_>>();
 
@@ -433,17 +439,7 @@ impl Project {
 				.map_err(errors::DownloadAndLinkError::Hook)?;
 		}
 
-		let mut graph = Arc::into_inner(graph).unwrap();
-
-		match install_dependencies_mode {
-			InstallDependenciesMode::All => {}
-			InstallDependenciesMode::Prod => {
-				graph.retain(|_, node| node.node.resolved_ty != DependencyType::Dev);
-			}
-			InstallDependenciesMode::Dev => {
-				graph.retain(|_, node| node.node.resolved_ty == DependencyType::Dev);
-			}
-		}
+		let graph = Arc::into_inner(graph).unwrap();
 
 		if install_dependencies_mode != InstallDependenciesMode::All || !force {
 			self.remove_unused(&graph).await?;
