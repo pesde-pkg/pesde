@@ -50,8 +50,6 @@ jobs:
       - name: Ensure not published
         id: ensure_not_published
         shell: bash
-        env:
-          VERSION: ${{ steps.extract_version.outputs.VERSION }}
         run: |          
           CRATE_NAME="${{ env.CRATE_NAME }}"
           if [ ${#CRATE_NAME} -eq 1 ]; then
@@ -64,7 +62,7 @@ jobs:
             DIR="${CRATE_NAME:0:2}/${CRATE_NAME:2:2}"
           fi
 
-          FOUND=$(curl -sSL --fail-with-body "https://index.crates.io/$DIR/${{ env.CRATE_NAME }}" | jq -s 'any(.[]; .vers == "${{ env.VERSION }}")')
+          FOUND=$(curl -sSL --fail-with-body "https://index.crates.io/$DIR/${{ env.CRATE_NAME }}" | jq -s 'any(.[]; .vers == "${{ steps.extract_version.outputs.value }}")')
           echo "FOUND=$FOUND" >> "$GITHUB_OUTPUT"
 
   build:
@@ -99,15 +97,13 @@ jobs:
     name: Build for ${{ matrix.host }}-${{ matrix.arch }}
     needs: [ prepare ]
     if: ${{ needs.prepare.outputs.found == 'false' }}
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Set env
         shell: bash
         run: |
-          ARCHIVE_NAME=${{ env.BIN_NAME }}-${{ env.VERSION }}-${{ matrix.host }}-${{ matrix.arch }}
+          ARCHIVE_NAME=${{ env.BIN_NAME }}-${{ needs.prepare.outputs.version }}-${{ matrix.host }}-${{ matrix.arch }}
 
           echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
 
