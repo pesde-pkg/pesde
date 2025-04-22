@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.extract_version.outputs.VERSION }}
-      version_registry: ${{ steps.extract_version_registry.outputs.value }}
+      registry_version: ${{ steps.extract_registry_version.outputs.value }}
       registry_image: "ghcr.io/${{ steps.repository_owner.outputs.lowercase }}/registry"
       registry_published: ${{ steps.registry_published.outputs.tag }}
       found: ${{ steps.ensure_not_published.outputs.FOUND }}
@@ -27,7 +27,7 @@ jobs:
 
       - name: Extract registry version
         uses: SebRollen/toml-action@v1.0.2
-        id: extract_version_registry
+        id: extract_registry_version
         with:
           file: "./registry/Cargo.toml"
           field: "package.version"
@@ -44,7 +44,7 @@ jobs:
         with:
           registry: ghcr.io
           repository: "${{ steps.repository_owner.outputs.lowercase }}/registry"
-          tag: ${{ steps.extract_version_registry.outputs.value }}
+          tag: ${{ steps.extract_registry_version.outputs.value }}
   
       - name: Ensure not published
         id: ensure_not_published
