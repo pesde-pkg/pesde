@@ -176,7 +176,7 @@ jobs:
           files: artifacts/*
 
   publish-registry-image:
-    name: Build and publish Docker package
+    name: Build and publish Docker image
     runs-on: ubuntu-latest
     needs: [ prepare ]
     if: ${{ needs.prepare.outputs.registry_published == 'not found' }}
