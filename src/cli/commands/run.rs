@@ -14,7 +14,7 @@ use pesde::{
 use relative_path::RelativePathBuf;
 use std::{
 	collections::HashSet, env::current_dir, ffi::OsString, io::Write as _, path::Path,
-	process::Command, sync::Arc,
+	process::Command,
 };
 
 #[derive(Debug, Args)]
@@ -128,8 +128,8 @@ impl RunCommand {
 					&node.pkg_ref,
 					&GetTargetOptions {
 						project,
-						path: Arc::from(container_folder.as_path()),
-						id: Arc::new(id),
+						path: container_folder.as_path().into(),
+						id: id.into(),
 					},
 				)
 				.await?;

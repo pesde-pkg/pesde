@@ -134,7 +134,7 @@ impl ExecuteCommand {
 						&DownloadOptions {
 							project: project.clone(),
 							reqwest: reqwest.clone(),
-							reporter: Arc::new(()),
+							reporter: ().into(),
 							id: id.clone(),
 						},
 					)
@@ -150,7 +150,7 @@ impl ExecuteCommand {
 						&pkg_ref,
 						&GetTargetOptions {
 							project: project.clone(),
-							path: Arc::from(tempdir.path()),
+							path: tempdir.path().into(),
 							id: id.clone(),
 						},
 					)
@@ -174,7 +174,7 @@ impl ExecuteCommand {
 
 				project
 					.download_and_link(
-						&Arc::new(graph),
+						&graph,
 						DownloadAndLinkOptions::<CliReporter<Stderr>, ()>::new(reqwest)
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources)

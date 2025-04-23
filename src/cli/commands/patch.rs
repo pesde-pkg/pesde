@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::cli::{
 	style::{CLI_STYLE, INFO_STYLE, WARN_PREFIX},
 	up_to_date_lockfile, VersionedPackageName,
@@ -59,8 +57,8 @@ impl PatchCommand {
 				&DownloadOptions {
 					project: project.clone(),
 					reqwest,
-					reporter: Arc::new(()),
-					id: Arc::new(id),
+					reporter: ().into(),
+					id: id.into(),
 				},
 			)
 			.await?

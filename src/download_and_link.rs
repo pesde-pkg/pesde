@@ -16,6 +16,7 @@ use crate::{
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
 use std::{
+	borrow::Cow,
 	collections::HashMap,
 	convert::Infallible,
 	future::{self, Future},
@@ -164,7 +165,7 @@ impl Project {
 	#[instrument(skip_all, fields(prod = options.prod), level = "debug")]
 	pub async fn download_and_link<Reporter, Hooks>(
 		&self,
-		graph: &Arc<DependencyGraph>,
+		graph: &DependencyGraph,
 		options: DownloadAndLinkOptions<Reporter, Hooks>,
 	) -> Result<DependencyGraphWithTarget, errors::DownloadAndLinkError<Hooks::Error>>
 	where
@@ -181,7 +182,6 @@ impl Project {
 			force,
 		} = options;
 
-		let graph = graph.clone();
 		let reqwest = reqwest.clone();
 		let manifest = self.deser_manifest().await?;
 
@@ -222,7 +222,7 @@ impl Project {
 			let mut downloaded_graph = DependencyGraph::new();
 
 			let graph_to_download = if force {
-				graph.clone()
+				Cow::Borrowed(graph)
 			} else {
 				let mut tasks = graph
 					.iter()
@@ -249,7 +249,7 @@ impl Project {
 					graph_to_download.insert(id, node);
 				}
 
-				Arc::new(graph_to_download)
+				Cow::Owned(graph_to_download)
 			};
 
 			let downloaded = self
@@ -285,10 +285,10 @@ impl Project {
 				.into_iter()
 				.partition::<HashMap<_, _>, _>(|(_, node)| node.pkg_ref.is_wally_package());
 
-		let mut graph = Arc::new(DependencyGraphWithTarget::new());
+		let mut graph = DependencyGraphWithTarget::new();
 
 		async fn get_graph_targets<Hooks: DownloadAndLinkHooks>(
-			graph: &mut Arc<DependencyGraphWithTarget>,
+			graph: &mut DependencyGraphWithTarget,
 			project: &Project,
 			manifest_target_kind: TargetKind,
 			downloaded_graph: HashMap<PackageId, DependencyGraphNode>,
@@ -297,10 +297,10 @@ impl Project {
 				.into_iter()
 				.map(|(id, node)| {
 					let source = node.pkg_ref.source();
-					let path = Arc::from(
-						node.container_folder_from_project(&id, project, manifest_target_kind)
-							.as_path(),
-					);
+					let path = node
+						.container_folder_from_project(&id, project, manifest_target_kind)
+						.as_path()
+						.into();
 					let id = Arc::new(id);
 					let project = project.clone();
 
@@ -326,7 +326,7 @@ impl Project {
 
 			while let Some(task) = tasks.join_next().await {
 				let (id, node) = task.unwrap()?;
-				Arc::get_mut(graph).unwrap().insert(id, node);
+				graph.insert(id, node);
 			}
 
 			Ok(())
@@ -342,7 +342,7 @@ impl Project {
 		.instrument(tracing::debug_span!("get targets (non-wally)"))
 		.await?;
 
-		self.link_dependencies(graph.clone(), false)
+		self.link_dependencies(&graph, false)
 			.instrument(tracing::debug_span!("link (non-wally)"))
 			.await?;
 
@@ -394,7 +394,7 @@ impl Project {
 									.await
 							}
 							None => {
-								apply_patch(&id, container_folder, &patch_path, Arc::new(())).await
+								apply_patch(&id, container_folder, &patch_path, ().into()).await
 							}
 						}
 					}
@@ -407,7 +407,7 @@ impl Project {
 		}
 
 		// step 4. link ALL dependencies. do so with types
-		self.link_dependencies(graph.clone(), true)
+		self.link_dependencies(&graph, true)
 			.instrument(tracing::debug_span!("link (all)"))
 			.await?;
 
@@ -417,8 +417,6 @@ impl Project {
 				.await
 				.map_err(errors::DownloadAndLinkError::Hook)?;
 		}
-
-		let mut graph = Arc::into_inner(graph).unwrap();
 
 		if prod {
 			graph.retain(|_, node| node.node.resolved_ty != DependencyType::Dev);

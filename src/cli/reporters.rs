@@ -44,12 +44,13 @@ where
 	root_progress.set_style(root_progress_style());
 	root_progress.enable_steady_tick(Duration::from_millis(100));
 
-	let reporter = Arc::new(CliReporter::with_writer(
-		writer,
+	let reporter = CliReporter::with_writer(writer, multi_progress.clone(), root_progress.clone());
+	let result = f(
 		multi_progress.clone(),
 		root_progress.clone(),
-	));
-	let result = f(multi_progress.clone(), root_progress.clone(), reporter).await;
+		reporter.into(),
+	)
+	.await;
 
 	root_progress.finish();
 	multi_progress.clear().unwrap();

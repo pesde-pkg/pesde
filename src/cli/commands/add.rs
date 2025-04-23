@@ -113,7 +113,7 @@ impl AddCommand {
 				PackageSources::Git(GitPackageSource::new(url.clone())),
 				DependencySpecifiers::Git(GitDependencySpecifier {
 					repo: url.clone(),
-					rev: rev.to_string(),
+					rev: rev.clone(),
 					path: None,
 				}),
 			),
