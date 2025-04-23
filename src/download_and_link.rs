@@ -248,9 +248,18 @@ impl Project {
 							node.container_folder_from_project(&id, self, manifest.target.kind());
 
 						match install_dependencies_mode {
-							InstallDependenciesMode::Prod if node.resolved_ty == DependencyType::Dev => return None,
-							InstallDependenciesMode::Dev if node.resolved_ty != DependencyType::Dev && node.direct.is_some() => return None,
-							_ => {},
+							InstallDependenciesMode::Prod
+								if node.resolved_ty == DependencyType::Dev =>
+							{
+								return None
+							}
+							InstallDependenciesMode::Dev
+								if node.resolved_ty != DependencyType::Dev
+									&& node.direct.is_some() =>
+							{
+								return None
+							}
+							_ => {}
 						};
 
 						Some(async move {
