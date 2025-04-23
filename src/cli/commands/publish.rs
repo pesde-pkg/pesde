@@ -159,7 +159,7 @@ impl PublishCommand {
 										&node.pkg_ref,
 										&GetTargetOptions {
 											project,
-											path: Arc::from(container_folder),
+											path: container_folder.into(),
 											id,
 										},
 									)
