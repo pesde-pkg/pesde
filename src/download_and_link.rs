@@ -249,7 +249,7 @@ impl Project {
 
 						match install_dependencies_mode {
 							InstallDependenciesMode::Prod if node.resolved_ty == DependencyType::Dev => return None,
-							InstallDependenciesMode::Dev if node.resolved_ty != DependencyType::Dev => return None,
+							InstallDependenciesMode::Dev if node.resolved_ty != DependencyType::Dev && node.direct.is_some() => return None,
 							_ => {},
 						};
 
