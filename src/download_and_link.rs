@@ -66,10 +66,9 @@ impl DownloadAndLinkHooks for () {
 }
 
 /// Options for which dependencies to install.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallDependenciesMode {
 	/// Install all dependencies.
-	#[default]
 	All,
 	/// Install only dependencies, not dev_dependencies.
 	Prod,
@@ -279,8 +278,8 @@ impl Project {
 							return Some(make_fut(id, node, container_folder));
 						}
 
-						// not a direct dependency, check if it's parent is and matches the install mode
-						// todo: optimise this maybe. many iterations through graph can add up if graph big
+						// not a direct dependency, check if its parent is and matches the install mode
+						// TODO: optimise this maybe. many iterations through the graph can add up if the graph's big
 
 						let mut current_parent = &id;
 						while let Some((parent_id, parent_node)) =
@@ -479,7 +478,6 @@ impl Project {
 				.map_err(errors::DownloadAndLinkError::Hook)?;
 		}
 
-		let graph = Arc::into_inner(graph).unwrap();
 
 		if install_dependencies_mode != InstallDependenciesMode::All || !force {
 			self.remove_unused(&graph).await?;
