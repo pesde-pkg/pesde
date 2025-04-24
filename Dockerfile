@@ -1,13 +1,13 @@
-FROM rust:1.82-bookworm AS builder
+FROM rust:1.86-alpine3.21 AS builder
 
 COPY . .
 
+RUN apk update && apk add musl-dev libressl-dev
+
 RUN cargo build --release -p pesde-registry
 
-FROM debian:bookworm-slim
+FROM alpine:3.21
 
 COPY --from=builder /target/release/pesde-registry /usr/local/bin/
-
-RUN apt-get update && apt-get install -y ca-certificates
 
 CMD ["/usr/local/bin/pesde-registry"]
