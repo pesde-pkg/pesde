@@ -76,9 +76,9 @@ pub enum InstallDependenciesMode {
 	/// Install only dev_dependencies.
 	Dev,
 }
-impl PartialEq<DependencyType> for InstallDependenciesMode {
-	fn eq(&self, other: &DependencyType) -> bool {
-		match (self, other) {
+impl InstallDependenciesMode {
+	fn fits(&self, dep_ty: &DependencyType) -> bool {
+		match (self, dep_ty) {
 			(InstallDependenciesMode::All, _) => true,
 			(InstallDependenciesMode::Prod, DependencyType::Standard) => true,
 			(InstallDependenciesMode::Prod, DependencyType::Peer) => true,
@@ -275,7 +275,7 @@ impl Project {
 							(id, node, fs::metadata(&container_folder).await.is_ok())
 						}
 
-						if node.direct.is_some() && install_dependencies_mode == node.resolved_ty {
+						if node.direct.is_some() && install_dependencies_mode.fits(&node.resolved_ty) {
 							return Some(make_fut(id, node, container_folder));
 						}
 
@@ -287,7 +287,7 @@ impl Project {
 							get_parent(&graph, current_parent)
 						{
 							if parent_node.direct.is_some()
-								&& install_dependencies_mode == parent_node.resolved_ty
+								&& install_dependencies_mode.fits(&parent_node.resolved_ty)
 							{
 								return Some(make_fut(id, node, container_folder));
 							}
