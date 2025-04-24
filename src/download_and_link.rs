@@ -279,8 +279,8 @@ impl Project {
 							return Some(make_fut(id, node, container_folder));
 						}
 
-						// not a direct dependency, check if it's parent is and matches the install mode
-						// todo: optimise this maybe. many iterations through graph can add up if graph big
+						// not a direct dependency, check if its parent is and matches the install mode
+						// TODO: optimise this maybe. many iterations through the graph can add up if the graph's big
 
 						let mut current_parent = &id;
 						while let Some((parent_id, parent_node)) =
