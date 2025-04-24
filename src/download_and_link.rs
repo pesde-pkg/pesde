@@ -75,6 +75,19 @@ pub enum InstallDependenciesMode {
 	/// Install only dev_dependencies.
 	Dev,
 }
+impl PartialEq<DependencyType> for InstallDependenciesMode {
+	fn eq(&self, other: &DependencyType) -> bool {
+		match (self, other) {
+			(InstallDependenciesMode::All, _) => true,
+			(InstallDependenciesMode::Prod, DependencyType::Standard) => true,
+			(InstallDependenciesMode::Prod, DependencyType::Peer) => true,
+			(InstallDependenciesMode::Prod, DependencyType::Dev) => false,
+			(InstallDependenciesMode::Dev, DependencyType::Standard) => false,
+			(InstallDependenciesMode::Dev, DependencyType::Peer) => false,
+			(InstallDependenciesMode::Dev, DependencyType::Dev) => true,
+		}
+	}
+}
 
 /// Options for downloading and linking.
 #[derive(Debug)]
@@ -174,6 +187,13 @@ impl Clone for DownloadAndLinkOptions {
 	}
 }
 
+fn get_parent<'a>(
+	graph: &'a std::collections::BTreeMap<PackageId, DependencyGraphNode>,
+	key: &PackageId,
+) -> Option<(&'a PackageId, &'a DependencyGraphNode)> {
+	graph.iter().find(|(_, v)| v.dependencies.contains_key(key))
+}
+
 impl Project {
 	/// Downloads a graph of dependencies and links them in the correct order
 	#[instrument(skip_all, fields(install_dependencies = debug(options.install_dependencies_mode)), level = "debug")]
@@ -247,24 +267,35 @@ impl Project {
 						let container_folder =
 							node.container_folder_from_project(&id, self, manifest.target.kind());
 
-						match install_dependencies_mode {
-							InstallDependenciesMode::Prod
-								if node.resolved_ty == DependencyType::Dev =>
-							{
-								return None
-							}
-							InstallDependenciesMode::Dev
-								if node.resolved_ty != DependencyType::Dev
-									&& node.direct.is_some() =>
-							{
-								return None
-							}
-							_ => {}
-						};
+						async fn make_fut(
+							id: PackageId,
+							node: DependencyGraphNode,
+							container_folder: PathBuf,
+						) -> (PackageId, DependencyGraphNode, bool) {
+							(id, node, fs::metadata(&container_folder).await.is_ok())
+						}
 
-						Some(async move {
-							return (id, node, fs::metadata(&container_folder).await.is_ok());
-						})
+						if node.direct.is_some() && install_dependencies_mode == node.resolved_ty {
+							return Some(make_fut(id, node, container_folder));
+						}
+
+						// not a direct dependency, check if it's parent is and matches the install mode
+						// todo: optimise this maybe. many iterations through graph can add up if graph big
+
+						let mut current_parent = &id;
+						while let Some((parent_id, parent_node)) =
+							get_parent(&graph, current_parent)
+						{
+							if parent_node.direct.is_some()
+								&& install_dependencies_mode == parent_node.resolved_ty
+							{
+								return Some(make_fut(id, node, container_folder));
+							}
+
+							current_parent = parent_id;
+						}
+
+						None
 					})
 					.collect::<JoinSet<_>>();
 
