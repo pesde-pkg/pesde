@@ -479,7 +479,6 @@ impl Project {
 				.map_err(errors::DownloadAndLinkError::Hook)?;
 		}
 
-		let graph = Arc::into_inner(graph).unwrap();
 
 		if install_dependencies_mode != InstallDependenciesMode::All || !force {
 			self.remove_unused(&graph).await?;
