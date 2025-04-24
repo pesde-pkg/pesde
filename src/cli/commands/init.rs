@@ -223,7 +223,7 @@ impl InitCommand {
 						&GetTargetOptions {
 							project: project.clone(),
 							// HACK: the pesde package source doesn't use the path, so we can just use an empty one
-							path: Arc::from(Path::new("")),
+							path: Path::new("").into(),
 							id: id.clone(),
 						},
 					)

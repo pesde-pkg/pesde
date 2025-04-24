@@ -15,8 +15,8 @@ fn index_entry(
 	entry: &fs::DirEntry,
 	packages_index_dir: &Path,
 	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
-	used_paths: &Arc<HashSet<PathBuf>>,
-	#[cfg(feature = "patches")] patched_packages: &Arc<HashSet<PathBuf>>,
+	used_paths: Arc<HashSet<PathBuf>>,
+	#[cfg(feature = "patches")] patched_packages: Arc<HashSet<PathBuf>>,
 ) {
 	fn get_package_name_from_container(container: &Path) -> (bool, String) {
 		let Component::Normal(first_component) = container.components().next().unwrap() else {
@@ -40,9 +40,6 @@ fn index_entry(
 	#[cfg_attr(not(feature = "patches"), allow(unused_variables))]
 	let (is_wally, package_name) = get_package_name_from_container(&path_relative);
 
-	let used_paths = used_paths.clone();
-	#[cfg(feature = "patches")]
-	let patched_packages = patched_packages.clone();
 	tasks.spawn(async move {
 		if is_wally {
 			#[cfg(not(feature = "wally-compat"))]
@@ -100,9 +97,8 @@ fn index_entry(
 fn packages_entry(
 	entry: fs::DirEntry,
 	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
-	expected_aliases: &Arc<HashSet<Alias>>,
+	expected_aliases: Arc<HashSet<Alias>>,
 ) {
-	let expected_aliases = expected_aliases.clone();
 	tasks.spawn(async move {
 		if entry.file_type().await?.is_dir() {
 			return Ok(());
@@ -134,9 +130,8 @@ fn packages_entry(
 fn scripts_entry(
 	entry: fs::DirEntry,
 	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
-	expected_aliases: &Arc<HashSet<Alias>>,
+	expected_aliases: Arc<HashSet<Alias>>,
 ) {
-	let expected_aliases = expected_aliases.clone();
 	tasks.spawn(async move {
 		if !entry.file_type().await?.is_dir() {
 			return Ok(());
@@ -244,16 +239,16 @@ impl Project {
 									&entry?,
 									&packages_index_dir,
 									&mut tasks,
-									&used_paths,
+									used_paths.clone(),
 									#[cfg(feature = "patches")]
-									&patched_packages,
+									patched_packages.clone(),
 								);
 							}
 							Some(entry) = packages_entries.next_entry().map(Result::transpose) => {
 								packages_entry(
 									entry?,
 									&mut tasks,
-									&expected_aliases,
+									expected_aliases.clone(),
 								);
 							}
 							else => break,
@@ -288,7 +283,7 @@ impl Project {
 				let expected_aliases = Arc::new(expected_aliases);
 
 				while let Some(entry) = entries.next_entry().await? {
-					scripts_entry(entry, &mut tasks, &expected_aliases);
+					scripts_entry(entry, &mut tasks, expected_aliases.clone());
 				}
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

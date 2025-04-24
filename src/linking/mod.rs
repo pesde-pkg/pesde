@@ -15,7 +15,6 @@ use std::{
 	collections::HashMap,
 	ffi::OsStr,
 	path::{Path, PathBuf},
-	sync::Arc,
 };
 use tokio::task::{spawn_blocking, JoinSet};
 use tracing::{instrument, Instrument as _};
@@ -64,16 +63,15 @@ impl Project {
 	#[instrument(skip(self, graph), level = "debug")]
 	pub(crate) async fn link_dependencies(
 		&self,
-		graph: Arc<DependencyGraphWithTarget>,
+		graph: &DependencyGraphWithTarget,
 		with_types: bool,
 	) -> Result<(), errors::LinkingError> {
 		let manifest = self.deser_manifest().await?;
 		let manifest_target_kind = manifest.target.kind();
-		let manifest = Arc::new(manifest);
 
 		// step 1. link all non-wally packages (and their dependencies) temporarily without types
 		// we do this separately to allow the required tools for the scripts to be installed
-		self.link(&graph, &manifest, &Arc::new(PackageTypes::default()), false)
+		self.link(graph, &manifest, &PackageTypes::default(), false)
 			.await?;
 
 		if !with_types {
@@ -155,15 +153,14 @@ impl Project {
 		}
 
 		// step 3. link all packages (and their dependencies), this time with types
-		self.link(&graph, &manifest, &Arc::new(package_types), true)
-			.await
+		self.link(graph, &manifest, &package_types, true).await
 	}
 
 	async fn link(
 		&self,
-		graph: &Arc<DependencyGraphWithTarget>,
-		manifest: &Arc<Manifest>,
-		package_types: &Arc<PackageTypes>,
+		graph: &DependencyGraphWithTarget,
+		manifest: &Manifest,
+		package_types: &PackageTypes,
 		is_complete: bool,
 	) -> Result<(), errors::LinkingError> {
 		let package_dir_canonical = fs::canonicalize(self.package_dir()).await?;
@@ -308,7 +305,7 @@ impl Project {
 					for (dep_id, dep_alias) in &node.node.dependencies {
 						let dep_id = dep_id.clone();
 						let dep_alias = dep_alias.clone();
-						let graph = graph.clone();
+						let dep_node = graph.get(&dep_id).cloned();
 						let node = node.clone();
 						let package_id = package_id.clone();
 						let node_container_folder = node_container_folder.clone();
@@ -316,7 +313,7 @@ impl Project {
 						let package_dir = self.package_dir().to_path_buf();
 
 						dependency_tasks.spawn(async move {
-							let Some(dep_node) = graph.get(&dep_id) else {
+							let Some(dep_node) = dep_node else {
 								return if is_complete {
 									Err(errors::LinkingError::DependencyNotFound(
 										dep_id.to_string(),

@@ -267,8 +267,6 @@ pub async fn install(
 				});
 			}
 
-			let graph = Arc::new(graph);
-
 			if options.write {
 				root_progress.reset();
 				root_progress.set_length(0);
@@ -414,7 +412,7 @@ pub async fn install(
 				target: manifest.target.kind(),
 				overrides,
 
-				graph: Arc::into_inner(graph).unwrap(),
+				graph,
 
 				workspace: run_on_workspace_members(project, |_| async { Ok(()) }).await?,
 			};
