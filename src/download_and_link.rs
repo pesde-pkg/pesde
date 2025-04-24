@@ -66,10 +66,9 @@ impl DownloadAndLinkHooks for () {
 }
 
 /// Options for which dependencies to install.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallDependenciesMode {
 	/// Install all dependencies.
-	#[default]
 	All,
 	/// Install only dependencies, not dev_dependencies.
 	Prod,
