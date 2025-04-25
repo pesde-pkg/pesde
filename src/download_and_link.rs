@@ -261,7 +261,7 @@ impl Project {
 				correct_deps.insert(id.clone(), node.clone());
 				node.dependencies
 					.iter()
-					.filter_map(|(id, _alias)| graph.get(&id).map(|node| (id, node)))
+					.filter_map(|(id, _alias)| graph.get(id).map(|node| (id, node)))
 					.for_each(|x| queue.push_back(x));
 			}
 
