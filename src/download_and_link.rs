@@ -250,25 +250,25 @@ impl Project {
 
 			let mut downloaded_graph = DependencyGraph::new();
 
-			let graph_to_download = if force {
-				Cow::Borrowed(graph)
-			} else {
-				let mut queue = graph
+			let mut queue = graph
+				.iter()
+				.filter(|(_id, node)| {
+					node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty)
+				})
+				.collect::<VecDeque<_>>();
+
+			let mut correct_deps = DependencyGraph::new();
+			while let Some((id, node)) = queue.pop_front() {
+				correct_deps.insert(id.clone(), node.clone());
+				node.dependencies
 					.iter()
-					.filter(|(_id, node)| {
-						node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty)
-					})
-					.collect::<VecDeque<_>>();
+					.filter_map(|(id, _alias)| graph.get(&id).map(|node| (id, node)))
+					.for_each(|x| queue.push_back(x));
+			}
 
-				let mut correct_deps = DependencyGraph::new();
-				while let Some((id, node)) = queue.pop_front() {
-					correct_deps.insert(id.clone(), node.clone());
-					node.dependencies
-						.iter()
-						.filter_map(|(id, _alias)| graph.get(&id).map(|node| (id, node)))
-						.for_each(|x| queue.push_back(x));
-				}
-
+			let graph_to_download = if force {
+				Cow::Borrowed(&correct_deps)
+			} else {
 				let mut tasks = correct_deps
 					.into_iter()
 					.map(|(id, node)| {
