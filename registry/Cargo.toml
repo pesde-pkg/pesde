@@ -16,10 +16,10 @@ dotenvy = "0.15.7"
 thiserror = "2.0.12"
 tantivy = "0.24.0"
 semver = "1.0.26"
-jiff = { version = "0.2.9", features = ["serde"] }
+jiff = { version = "0.2.10", features = ["serde"] }
 futures = "0.3.31"
 tokio = "1.44.2"
-tokio-util = "0.7.14"
+tokio-util = "0.7.15"
 tempfile = "3.19.1"
 fs-err = { version = "3.1.0", features = ["tokio"] }
 async-stream = "0.3.6"
@@ -42,7 +42,7 @@ reqwest = { version = "0.12.15", default-features = false, features = ["json", "
 constant_time_eq = "0.4.2"
 
 tokio-tar = "0.3.1"
-async-compression = { version = "0.4.22", features = ["tokio", "gzip"] }
+async-compression = { version = "0.4.23", features = ["tokio", "gzip"] }
 
 tracing = { version = "0.1.41", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

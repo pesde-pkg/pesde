@@ -51,18 +51,18 @@ gix = { version = "0.71.0", default-features = false, features = ["blocking-http
 semver = { version = "1.0.26", features = ["serde"] }
 reqwest = { version = "0.12.15", default-features = false, features = ["rustls-tls", "stream", "json"] }
 tokio-tar = "0.3.1"
-async-compression = { version = "0.4.22", features = ["tokio", "gzip"] }
+async-compression = { version = "0.4.23", features = ["tokio", "gzip"] }
 pathdiff = "0.2.3"
 relative-path = { version = "1.9.3", features = ["serde"] }
 tracing = { version = "0.1.41", features = ["attributes"] }
 thiserror = "2.0.12"
 tokio = { version = "1.44.2", features = ["process", "macros"] }
-tokio-util = "0.7.14"
+tokio-util = "0.7.15"
 async-stream = "0.3.6"
 futures = "0.3.31"
-full_moon = { version = "1.2.0", features = ["luau"] }
+full_moon = { version = "2.0.0", features = ["luau"] }
 url = { version = "2.5.4", features = ["serde"] }
-jiff = { version = "0.2.9", default-features = false, features = ["serde", "std"] }
+jiff = { version = "0.2.10", default-features = false, features = ["serde", "std"] }
 sha2 = "0.10.8"
 tempfile = "3.19.1"
 wax = { version = "0.6.0", default-features = false }
