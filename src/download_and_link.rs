@@ -255,7 +255,9 @@ impl Project {
 			} else {
 				let mut queue = graph
 					.iter()
-					.filter(|(_id, node)| node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty))
+					.filter(|(_id, node)| {
+						node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty)
+					})
 					.collect::<VecDeque<_>>();
 
 				let mut correct_deps = DependencyGraph::new();
