@@ -15,9 +15,10 @@ use crate::{
 };
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
+
 use std::{
 	borrow::Cow,
-	collections::HashMap,
+	collections::{HashMap, VecDeque},
 	convert::Infallible,
 	future::{self, Future},
 	num::NonZeroUsize,
@@ -188,13 +189,6 @@ impl Clone for DownloadAndLinkOptions {
 	}
 }
 
-fn get_parent<'a>(
-	graph: &'a std::collections::BTreeMap<PackageId, DependencyGraphNode>,
-	key: &PackageId,
-) -> Option<(&'a PackageId, &'a DependencyGraphNode)> {
-	graph.iter().find(|(_, v)| v.dependencies.contains_key(key))
-}
-
 impl Project {
 	/// Downloads a graph of dependencies and links them in the correct order
 	#[instrument(skip_all, fields(install_dependencies = debug(options.install_dependencies_mode)), level = "debug")]
@@ -259,43 +253,29 @@ impl Project {
 			let graph_to_download = if force {
 				Cow::Borrowed(graph)
 			} else {
-				let mut tasks = graph
+				let mut queue = graph
 					.iter()
-					.filter_map(|(id, node)| {
-						let id = id.clone();
-						let node = node.clone();
+					.filter(|(_id, node)| node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty))
+					.collect::<VecDeque<_>>();
+
+				let mut correct_deps = DependencyGraph::new();
+				while let Some((id, node)) = queue.pop_front() {
+					correct_deps.insert(id.clone(), node.clone());
+					node.dependencies
+						.iter()
+						.filter_map(|(id, _alias)| graph.get(&id).map(|node| (id, node)))
+						.for_each(|x| queue.push_back(x));
+				}
+
+				let mut tasks = correct_deps
+					.into_iter()
+					.map(|(id, node)| {
 						let container_folder =
 							node.container_folder_from_project(&id, self, manifest.target.kind());
 
-						async fn make_fut(
-							id: PackageId,
-							node: DependencyGraphNode,
-							container_folder: PathBuf,
-						) -> (PackageId, DependencyGraphNode, bool) {
-							(id, node, fs::metadata(&container_folder).await.is_ok())
+						async move {
+							return (id, node, fs::metadata(&container_folder).await.is_ok());
 						}
-
-						if node.direct.is_some() && install_dependencies_mode.fits(&node.resolved_ty) {
-							return Some(make_fut(id, node, container_folder));
-						}
-
-						// not a direct dependency, check if its parent is and matches the install mode
-						// TODO: optimise this maybe. many iterations through the graph can add up if the graph's big
-
-						let mut current_parent = &id;
-						while let Some((parent_id, parent_node)) =
-							get_parent(&graph, current_parent)
-						{
-							if parent_node.direct.is_some()
-								&& install_dependencies_mode.fits(&parent_node.resolved_ty)
-							{
-								return Some(make_fut(id, node, container_folder));
-							}
-
-							current_parent = parent_id;
-						}
-
-						None
 					})
 					.collect::<JoinSet<_>>();
 
@@ -478,7 +458,6 @@ impl Project {
 				.await
 				.map_err(errors::DownloadAndLinkError::Hook)?;
 		}
-
 
 		if install_dependencies_mode != InstallDependenciesMode::All || !force {
 			self.remove_unused(&graph).await?;
