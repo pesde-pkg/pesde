@@ -17,7 +17,6 @@ use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
 
 use std::{
-	borrow::Cow,
 	collections::{HashMap, VecDeque},
 	convert::Infallible,
 	future::{self, Future},
@@ -267,7 +266,7 @@ impl Project {
 			}
 
 			let graph_to_download = if force {
-				Cow::Borrowed(&correct_deps)
+				correct_deps
 			} else {
 				let mut tasks = correct_deps
 					.into_iter()
@@ -292,7 +291,7 @@ impl Project {
 					graph_to_download.insert(id, node);
 				}
 
-				Cow::Owned(graph_to_download)
+				graph_to_download
 			};
 
 			let downloaded = self
