@@ -10,7 +10,7 @@ use anyhow::Context as _;
 use console::style;
 use fs_err::tokio as fs;
 use pesde::{
-	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions},
+	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
 	engine::EngineKind,
 	graph::{DependencyGraph, DependencyGraphWithTarget},
 	lockfile::Lockfile,
@@ -123,7 +123,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 #[derive(Debug, Clone, Copy)]
 pub struct InstallOptions {
 	pub locked: bool,
-	pub prod: bool,
+	pub install_dependencies_mode: InstallDependenciesMode,
 	pub write: bool,
 	pub use_lockfile: bool,
 	pub network_concurrency: NonZeroUsize,
@@ -285,7 +285,7 @@ pub async fn install(
 							.reporter(reporter)
 							.hooks(hooks)
 							.refreshed_sources(refreshed_sources.clone())
-							.prod(options.prod)
+							.install_dependencies_mode(options.install_dependencies_mode)
 							.network_concurrency(options.network_concurrency)
 							.force(options.force || has_irrecoverable_changes),
 					)

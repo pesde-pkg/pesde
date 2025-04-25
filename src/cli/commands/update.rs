@@ -3,7 +3,7 @@ use crate::cli::{
 	run_on_workspace_members,
 };
 use clap::Args;
-use pesde::Project;
+use pesde::{download_and_link::InstallDependenciesMode, Project};
 use std::num::NonZeroUsize;
 
 #[derive(Debug, Args, Copy, Clone)]
@@ -25,7 +25,7 @@ impl UpdateCommand {
 	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
 		let options = InstallOptions {
 			locked: false,
-			prod: false,
+			install_dependencies_mode: InstallDependenciesMode::All,
 			write: !self.no_install,
 			network_concurrency: self.network_concurrency,
 			use_lockfile: false,

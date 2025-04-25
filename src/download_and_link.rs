@@ -15,9 +15,9 @@ use crate::{
 };
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
+
 use std::{
-	borrow::Cow,
-	collections::HashMap,
+	collections::{HashMap, VecDeque},
 	convert::Infallible,
 	future::{self, Future},
 	num::NonZeroUsize,
@@ -65,6 +65,28 @@ impl DownloadAndLinkHooks for () {
 	type Error = Infallible;
 }
 
+/// Options for which dependencies to install.
+#[derive(Debug, Clone, Copy)]
+pub enum InstallDependenciesMode {
+	/// Install all dependencies
+	All,
+	/// Install all dependencies, then remove [DependencyType::Dev] dependencies
+	Prod,
+	/// Only install dependencies which are [DependencyType::Dev]
+	Dev,
+}
+
+impl InstallDependenciesMode {
+	fn fits(self, dep_ty: DependencyType) -> bool {
+		match (self, dep_ty) {
+			(InstallDependenciesMode::Prod, DependencyType::Dev) => false,
+			(InstallDependenciesMode::Dev, dep_ty) => dep_ty == DependencyType::Dev,
+
+			_ => true,
+		}
+	}
+}
+
 /// Options for downloading and linking.
 #[derive(Debug)]
 pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
@@ -76,8 +98,8 @@ pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
 	pub hooks: Option<Arc<Hooks>>,
 	/// The refreshed sources.
 	pub refreshed_sources: RefreshedSources,
-	/// Whether to skip dev dependencies.
-	pub prod: bool,
+	/// Which dependencies to install.
+	pub install_dependencies_mode: InstallDependenciesMode,
 	/// The max number of concurrent network requests.
 	pub network_concurrency: NonZeroUsize,
 	/// Whether to re-install all dependencies even if they are already installed
@@ -97,7 +119,7 @@ where
 			reporter: None,
 			hooks: None,
 			refreshed_sources: Default::default(),
-			prod: false,
+			install_dependencies_mode: InstallDependenciesMode::All,
 			network_concurrency: NonZeroUsize::new(16).unwrap(),
 			force: false,
 		}
@@ -124,10 +146,13 @@ where
 		self
 	}
 
-	/// Sets whether to skip dev dependencies.
+	/// Sets which dependencies to install
 	#[must_use]
-	pub fn prod(mut self, prod: bool) -> Self {
-		self.prod = prod;
+	pub fn install_dependencies_mode(
+		mut self,
+		install_dependencies: InstallDependenciesMode,
+	) -> Self {
+		self.install_dependencies_mode = install_dependencies;
 		self
 	}
 
@@ -153,7 +178,7 @@ impl Clone for DownloadAndLinkOptions {
 			reporter: self.reporter.clone(),
 			hooks: self.hooks.clone(),
 			refreshed_sources: self.refreshed_sources.clone(),
-			prod: self.prod,
+			install_dependencies_mode: self.install_dependencies_mode,
 			network_concurrency: self.network_concurrency,
 			force: self.force,
 		}
@@ -162,7 +187,7 @@ impl Clone for DownloadAndLinkOptions {
 
 impl Project {
 	/// Downloads a graph of dependencies and links them in the correct order
-	#[instrument(skip_all, fields(prod = options.prod), level = "debug")]
+	#[instrument(skip_all, fields(install_dependencies = debug(options.install_dependencies_mode)), level = "debug")]
 	pub async fn download_and_link<Reporter, Hooks>(
 		&self,
 		graph: &DependencyGraph,
@@ -177,7 +202,7 @@ impl Project {
 			reporter,
 			hooks,
 			refreshed_sources,
-			prod,
+			install_dependencies_mode,
 			network_concurrency,
 			force,
 		} = options;
@@ -219,16 +244,41 @@ impl Project {
 				download_graph_options = download_graph_options.reporter(reporter);
 			}
 
+			let correct_deps = if matches!(install_dependencies_mode, InstallDependenciesMode::All)
+			{
+				graph.clone()
+			} else {
+				let mut queue = graph
+					.iter()
+					.filter(|(_, node)| {
+						node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty)
+					})
+					.collect::<VecDeque<_>>();
+
+				let mut correct_deps = DependencyGraph::new();
+				while let Some((id, node)) = queue.pop_front() {
+					if correct_deps.insert(id.clone(), node.clone()).is_some() {
+						// prevent an infinite loop with recursive dependencies
+						continue;
+					}
+
+					node.dependencies
+						.keys()
+						.filter_map(|id| graph.get(id).map(|node| (id, node)))
+						.for_each(|x| queue.push_back(x));
+				}
+
+				correct_deps
+			};
+
 			let mut downloaded_graph = DependencyGraph::new();
 
 			let graph_to_download = if force {
-				Cow::Borrowed(graph)
+				correct_deps
 			} else {
-				let mut tasks = graph
-					.iter()
+				let mut tasks = correct_deps
+					.into_iter()
 					.map(|(id, node)| {
-						let id = id.clone();
-						let node = node.clone();
 						let container_folder =
 							node.container_folder_from_project(&id, self, manifest.target.kind());
 
@@ -249,7 +299,7 @@ impl Project {
 					graph_to_download.insert(id, node);
 				}
 
-				Cow::Owned(graph_to_download)
+				graph_to_download
 			};
 
 			let downloaded = self
@@ -418,11 +468,7 @@ impl Project {
 				.map_err(errors::DownloadAndLinkError::Hook)?;
 		}
 
-		if prod {
-			graph.retain(|_, node| node.node.resolved_ty != DependencyType::Dev);
-		}
-
-		if prod || !force {
+		if matches!(install_dependencies_mode, InstallDependenciesMode::Prod) || !force {
 			self.remove_unused(&graph).await?;
 		}
 
