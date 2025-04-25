@@ -66,26 +66,23 @@ impl DownloadAndLinkHooks for () {
 }
 
 /// Options for which dependencies to install.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub enum InstallDependenciesMode {
-	/// Install all dependencies.
+	/// Install all dependencies
 	All,
-	/// Install only dependencies, not dev_dependencies.
+	/// Install all dependencies, then remove [DependencyType::Dev] dependencies
 	Prod,
-	/// Install only dev_dependencies.
+	/// Only install dependencies which are [DependencyType::Dev]
 	Dev,
 }
 
 impl InstallDependenciesMode {
 	fn fits(self, dep_ty: DependencyType) -> bool {
 		match (self, dep_ty) {
-			(InstallDependenciesMode::All, _) => true,
-			(InstallDependenciesMode::Prod, DependencyType::Standard) => true,
-			(InstallDependenciesMode::Prod, DependencyType::Peer) => true,
 			(InstallDependenciesMode::Prod, DependencyType::Dev) => false,
-			(InstallDependenciesMode::Dev, DependencyType::Standard) => false,
-			(InstallDependenciesMode::Dev, DependencyType::Peer) => false,
-			(InstallDependenciesMode::Dev, DependencyType::Dev) => true,
+			(InstallDependenciesMode::Dev, dep_ty) => dep_ty == DependencyType::Dev,
+
+			_ => true,
 		}
 	}
 }
@@ -247,25 +244,32 @@ impl Project {
 				download_graph_options = download_graph_options.reporter(reporter);
 			}
 
-			let mut queue = graph
-				.iter()
-				.filter(|(_, node)| {
-					node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty)
-				})
-				.collect::<VecDeque<_>>();
+			let correct_deps = if matches!(install_dependencies_mode, InstallDependenciesMode::All)
+			{
+				graph.clone()
+			} else {
+				let mut queue = graph
+					.iter()
+					.filter(|(_, node)| {
+						node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty)
+					})
+					.collect::<VecDeque<_>>();
 
-			let mut correct_deps = DependencyGraph::new();
-			while let Some((id, node)) = queue.pop_front() {
-				if correct_deps.insert(id.clone(), node.clone()).is_some() {
-					// prevent an infinite loop with recursive dependencies
-					continue;
+				let mut correct_deps = DependencyGraph::new();
+				while let Some((id, node)) = queue.pop_front() {
+					if correct_deps.insert(id.clone(), node.clone()).is_some() {
+						// prevent an infinite loop with recursive dependencies
+						continue;
+					}
+
+					node.dependencies
+						.keys()
+						.filter_map(|id| graph.get(id).map(|node| (id, node)))
+						.for_each(|x| queue.push_back(x));
 				}
 
-				node.dependencies
-					.keys()
-					.filter_map(|id| graph.get(id).map(|node| (id, node)))
-					.for_each(|x| queue.push_back(x));
-			}
+				correct_deps
+			};
 
 			let mut downloaded_graph = DependencyGraph::new();
 
@@ -464,7 +468,7 @@ impl Project {
 				.map_err(errors::DownloadAndLinkError::Hook)?;
 		}
 
-		if install_dependencies_mode != InstallDependenciesMode::All || !force {
+		if matches!(install_dependencies_mode, InstallDependenciesMode::Prod) || !force {
 			self.remove_unused(&graph).await?;
 		}
 
