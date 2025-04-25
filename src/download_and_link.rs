@@ -77,7 +77,7 @@ pub enum InstallDependenciesMode {
 }
 
 impl InstallDependenciesMode {
-	fn fits(&self, dep_ty: DependencyType) -> bool {
+	fn fits(self, dep_ty: DependencyType) -> bool {
 		match (self, dep_ty) {
 			(InstallDependenciesMode::All, _) => true,
 			(InstallDependenciesMode::Prod, DependencyType::Standard) => true,
