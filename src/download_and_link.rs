@@ -247,23 +247,27 @@ impl Project {
 				download_graph_options = download_graph_options.reporter(reporter);
 			}
 
-			let mut downloaded_graph = DependencyGraph::new();
-
 			let mut queue = graph
 				.iter()
-				.filter(|(_id, node)| {
+				.filter(|(_, node)| {
 					node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty)
 				})
 				.collect::<VecDeque<_>>();
 
 			let mut correct_deps = DependencyGraph::new();
 			while let Some((id, node)) = queue.pop_front() {
-				correct_deps.insert(id.clone(), node.clone());
+				if correct_deps.insert(id.clone(), node.clone()).is_some() {
+					// prevent an infinite loop with recursive dependencies
+					continue;
+				}
+
 				node.dependencies
-					.iter()
-					.filter_map(|(id, _alias)| graph.get(id).map(|node| (id, node)))
+					.keys()
+					.filter_map(|id| graph.get(id).map(|node| (id, node)))
 					.for_each(|x| queue.push_back(x));
 			}
+
+			let mut downloaded_graph = DependencyGraph::new();
 
 			let graph_to_download = if force {
 				correct_deps
