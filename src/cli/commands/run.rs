@@ -188,14 +188,13 @@ impl RunCommand {
 		};
 
 		let members = members
-			.map(|res| {
-				res.map_err(anyhow::Error::from)?
-					.0
-					.canonicalize()
+			.then(|res| async {
+				fs::canonicalize(res.map_err(anyhow::Error::from)?.0)
+					.await
 					.map_err(anyhow::Error::from)
 			})
 			.chain(futures::stream::once(async {
-				workspace_dir.canonicalize().map_err(Into::into)
+				fs::canonicalize(workspace_dir).await.map_err(Into::into)
 			}))
 			.try_collect::<HashSet<_>>()
 			.await
@@ -204,8 +203,8 @@ impl RunCommand {
 		let root = 'finder: {
 			let mut current_path = path.clone();
 			loop {
-				let canonical_path = current_path
-					.canonicalize()
+				let canonical_path = fs::canonicalize(&current_path)
+					.await
 					.context("failed to canonicalize parent")?;
 
 				if members.contains(&canonical_path)

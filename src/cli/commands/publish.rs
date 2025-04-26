@@ -193,9 +193,8 @@ impl PublishCommand {
 			}
 		}
 
-		let canonical_package_dir = project
-			.package_dir()
-			.canonicalize()
+		let canonical_package_dir = fs::canonicalize(project.package_dir())
+			.await
 			.context("failed to canonicalize package directory")?;
 
 		let mut archive = tokio_tar::Builder::new(
@@ -308,8 +307,8 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 				}
 			};
 
-			let export_path = export_path
-				.canonicalize()
+			let export_path = fs::canonicalize(export_path)
+				.await
 				.with_context(|| format!("failed to canonicalize {name}"))?;
 
 			self.validate_luau_file(&format!("file at {name}"), &contents)?;
@@ -385,8 +384,8 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 					}
 				};
 
-				let script_path = script_path
-					.canonicalize()
+				let script_path = fs::canonicalize(script_path)
+					.await
 					.with_context(|| format!("failed to canonicalize script {name}"))?;
 
 				self.validate_luau_file(&format!("the `{name}` script"), &contents)?;

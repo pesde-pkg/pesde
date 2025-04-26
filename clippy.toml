@@ -1,4 +1,5 @@
 avoid-breaking-exported-api = false
 disallowed-methods = [
-    "std::path::Path::exists"
+    "std::path::Path::exists",
+    "std::path::Path::canonicalize",
 ]
