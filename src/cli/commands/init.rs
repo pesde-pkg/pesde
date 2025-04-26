@@ -270,8 +270,8 @@ impl InitCommand {
 				}
 			} else {
 				println!(
-                    "{ERROR_PREFIX}: no scripts package configured, this can cause issues with Roblox compatibility"
-                );
+					"{ERROR_PREFIX}: no scripts package configured, this can cause issues with Roblox compatibility"
+				);
 				if !inquire::prompt_confirmation("initialize regardless?").unwrap() {
 					return Ok(());
 				}

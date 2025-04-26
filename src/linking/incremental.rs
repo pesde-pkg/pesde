@@ -183,8 +183,8 @@ impl Project {
 			.iter()
 			.flat_map(|(name, versions)| {
 				versions
-					.iter()
-					.map(|(v_id, _)| crate::source::ids::PackageId::new(name.clone(), v_id.clone()))
+					.keys()
+					.map(|v_id| crate::source::ids::PackageId::new(name.clone(), v_id.clone()))
 			})
 			.filter_map(|id| graph.get(&id).map(|node| (id, node)))
 			.map(|(id, node)| {

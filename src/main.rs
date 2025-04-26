@@ -357,7 +357,9 @@ async fn run() -> anyhow::Result<()> {
 		}
 
 		let exe_path =
-			get_or_download_engine(&reqwest, engine, req.unwrap_or(VersionReq::STAR)).await?;
+			get_or_download_engine(&reqwest, engine, req.unwrap_or(VersionReq::STAR), ().into())
+				.await?
+				.0;
 		if exe_path == current_exe {
 			anyhow::bail!("engine linker executed by itself")
 		}

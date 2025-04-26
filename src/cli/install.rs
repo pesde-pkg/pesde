@@ -1,7 +1,7 @@
 use super::files::make_executable;
 use crate::cli::{
 	bin_dir, dep_type_to_key,
-	reporters::{self, CliReporter},
+	reporters::{self, run_with_reporter, CliReporter},
 	resolve_overrides, run_on_workspace_members,
 	style::{ADDED_STYLE, REMOVED_STYLE, WARN_PREFIX},
 	up_to_date_lockfile,
@@ -181,6 +181,50 @@ pub async fn install(
 		}
 	};
 
+	let progress_prefix = format!("{} {}: ", manifest.name, manifest.target);
+
+	#[cfg(feature = "version-management")]
+	let resolved_engine_versions = run_with_reporter(|_, root_progress, reporter| async {
+		let root_progress = root_progress;
+		let reporter = reporter;
+
+		root_progress.set_prefix(progress_prefix.clone());
+		root_progress.reset();
+		root_progress.set_message("update engines");
+
+		let mut tasks = manifest
+			.engines
+			.iter()
+			.map(|(engine, req)| {
+				let engine = *engine;
+				let req = req.clone();
+				let reqwest = reqwest.clone();
+				let reporter = reporter.clone();
+
+				async move {
+					let version = crate::cli::version::get_or_download_engine(
+						&reqwest, engine, req, reporter,
+					)
+					.await?
+					.1;
+					crate::cli::version::make_linker_if_needed(engine).await?;
+
+					Ok::<_, anyhow::Error>((engine, version))
+				}
+			})
+			.collect::<JoinSet<_>>();
+
+		let mut resolved_engine_versions = HashMap::new();
+
+		while let Some(task) = tasks.join_next().await {
+			let (engine, version) = task.unwrap()?;
+			resolved_engine_versions.insert(engine, version);
+		}
+
+		Ok::<_, anyhow::Error>(resolved_engine_versions)
+	})
+	.await?;
+
 	let overrides = resolve_overrides(&manifest)?;
 
 	let (new_lockfile, old_graph) =
@@ -188,23 +232,7 @@ pub async fn install(
 			let multi = multi;
 			let root_progress = root_progress;
 
-			root_progress.set_prefix(format!("{} {}: ", manifest.name, manifest.target));
-			#[cfg(feature = "version-management")]
-			{
-				root_progress.reset();
-				root_progress.set_message("update engine linkers");
-
-				let mut tasks = manifest
-					.engines
-					.keys()
-					.map(|engine| crate::cli::version::make_linker_if_needed(*engine))
-					.collect::<JoinSet<_>>();
-
-				while let Some(task) = tasks.join_next().await {
-					task.unwrap()?;
-				}
-			}
-
+			root_progress.set_prefix(progress_prefix);
 			root_progress.reset();
 			root_progress.set_message("resolve");
 
@@ -294,29 +322,6 @@ pub async fn install(
 
 				#[cfg(feature = "version-management")]
 				{
-					let mut tasks = manifest
-						.engines
-						.into_iter()
-						.map(|(engine, req)| async move {
-							Ok::<_, anyhow::Error>(
-								crate::cli::version::get_installed_versions(engine)
-									.await?
-									.into_iter()
-									.filter(|version| version_matches(&req, version))
-									.next_back()
-									.map(|version| (engine, version)),
-							)
-						})
-						.collect::<JoinSet<_>>();
-
-					let mut resolved_engine_versions = HashMap::new();
-					while let Some(task) = tasks.join_next().await {
-						let Some((engine, version)) = task.unwrap()? else {
-							continue;
-						};
-						resolved_engine_versions.insert(engine, version);
-					}
-
 					let manifest_target_kind = manifest.target.kind();
 					let mut tasks = downloaded_graph.iter()
 						.map(|(id, node)| {

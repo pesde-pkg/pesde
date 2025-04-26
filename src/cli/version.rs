@@ -4,7 +4,6 @@ use crate::{
 		config::{read_config, write_config, CliConfig},
 		files::make_executable,
 		home_dir,
-		reporters::run_with_reporter,
 		style::{ADDED_STYLE, CLI_STYLE, REMOVED_STYLE, URL_STYLE},
 	},
 	util::no_build_metadata,
@@ -21,7 +20,7 @@ use pesde::{
 		},
 		EngineKind,
 	},
-	reporters::DownloadsReporter as _,
+	reporters::DownloadsReporter,
 	version_matches,
 };
 use semver::{Version, VersionReq};
@@ -29,6 +28,7 @@ use std::{
 	collections::BTreeSet,
 	env::current_exe,
 	path::{Path, PathBuf},
+	sync::Arc,
 };
 use tracing::instrument;
 
@@ -118,7 +118,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 const ENGINES_DIR: &str = "engines";
 
 #[instrument(level = "trace")]
-pub async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeSet<Version>> {
+async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeSet<Version>> {
 	let source = engine.source();
 	let path = home_dir()?.join(ENGINES_DIR).join(source.directory());
 	let mut installed_versions = BTreeSet::new();
@@ -144,12 +144,13 @@ pub async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeS
 	Ok(installed_versions)
 }
 
-#[instrument(skip(reqwest), level = "trace")]
+#[instrument(skip(reqwest, reporter), level = "trace")]
 pub async fn get_or_download_engine(
 	reqwest: &reqwest::Client,
 	engine: EngineKind,
 	req: VersionReq,
-) -> anyhow::Result<PathBuf> {
+	reporter: Arc<impl DownloadsReporter>,
+) -> anyhow::Result<(PathBuf, Version)> {
 	let source = engine.source();
 	let path = home_dir()?.join(ENGINES_DIR).join(source.directory());
 
@@ -160,77 +161,70 @@ pub async fn get_or_download_engine(
 		.filter(|v| version_matches(&req, v))
 		.next_back();
 	if let Some(version) = max_matching {
-		return Ok(path
-			.join(version.to_string())
-			.join(source.expected_file_name())
-			.with_extension(std::env::consts::EXE_EXTENSION));
+		return Ok((
+			path.join(version.to_string())
+				.join(source.expected_file_name())
+				.with_extension(std::env::consts::EXE_EXTENSION),
+			version.clone(),
+		));
 	}
 
-	run_with_reporter(|_, root_progress, reporter| async {
-		let root_progress = root_progress;
-		let reporter = reporter;
-
-		root_progress.set_message("resolve version");
-		let mut versions = source
-			.resolve(
-				&req,
-				&ResolveOptions {
-					reqwest: reqwest.clone(),
-				},
-			)
-			.await
-			.context("failed to resolve versions")?;
-		let (version, engine_ref) = versions.pop_last().context("no matching versions found")?;
-
-		root_progress.set_message("download");
-
-		let reporter = reporter.report_download(format!("{engine} v{version}"));
-
-		let archive = source
-			.download(
-				&engine_ref,
-				&DownloadOptions {
-					reqwest: reqwest.clone(),
-					reporter: reporter.into(),
-					version: version.clone(),
-				},
-			)
-			.await
-			.context("failed to download engine")?;
-
-		let path = path.join(version.to_string());
-		fs::create_dir_all(&path)
-			.await
-			.context("failed to create engine container folder")?;
-		let path = path
-			.join(source.expected_file_name())
-			.with_extension(std::env::consts::EXE_EXTENSION);
-
-		let mut file = fs::File::create(&path)
-			.await
-			.context("failed to create new file")?;
-
-		tokio::io::copy(
-			&mut archive
-				.find_executable(source.expected_file_name())
-				.await
-				.context("failed to find executable")?,
-			&mut file,
+	let mut versions = source
+		.resolve(
+			&req,
+			&ResolveOptions {
+				reqwest: reqwest.clone(),
+			},
 		)
 		.await
-		.context("failed to write to file")?;
+		.context("failed to resolve versions")?;
+	let (version, engine_ref) = versions.pop_last().context("no matching versions found")?;
 
-		make_executable(&path)
+	let reporter = reporter.report_download(format!("{engine} v{}", no_build_metadata(&version)));
+
+	let archive = source
+		.download(
+			&engine_ref,
+			&DownloadOptions {
+				reqwest: reqwest.clone(),
+				reporter: reporter.into(),
+				version: version.clone(),
+			},
+		)
+		.await
+		.context("failed to download engine")?;
+
+	let path = path.join(version.to_string());
+	fs::create_dir_all(&path)
+		.await
+		.context("failed to create engine container folder")?;
+	let path = path
+		.join(source.expected_file_name())
+		.with_extension(std::env::consts::EXE_EXTENSION);
+
+	let mut file = fs::File::create(&path)
+		.await
+		.context("failed to create new file")?;
+
+	tokio::io::copy(
+		&mut archive
+			.find_executable(source.expected_file_name())
 			.await
-			.context("failed to make downloaded version executable")?;
-
-		if engine != EngineKind::Pesde {
-			make_linker_if_needed(engine).await?;
-		}
-
-		Ok::<_, anyhow::Error>(path)
-	})
+			.context("failed to find executable")?,
+		&mut file,
+	)
 	.await
+	.context("failed to write to file")?;
+
+	make_executable(&path)
+		.await
+		.context("failed to make downloaded version executable")?;
+
+	if engine != EngineKind::Pesde {
+		make_linker_if_needed(engine).await?;
+	}
+
+	Ok((path, version))
 }
 
 #[instrument(level = "trace")]

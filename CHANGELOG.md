@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Add dev only installs in #32 by @Stefanuk12
 
+### Fixed
+- Download engines in install step rather than lazily by @daimond113
+
 ### Performance
 - Remove unnecessary `Arc`s from codebase by @daimond113
 

@@ -1,7 +1,7 @@
 use futures::StreamExt as _;
+use ouroboros::self_referencing;
 use std::{
 	collections::BTreeSet,
-	mem::ManuallyDrop,
 	path::{Path, PathBuf},
 	pin::Pin,
 	str::FromStr,
@@ -11,7 +11,7 @@ use tokio::{
 	io::{AsyncBufRead, AsyncRead, AsyncReadExt as _, ReadBuf},
 	pin,
 };
-use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt as _};
+use tokio_util::compat::Compat;
 
 /// The kind of encoding used for the archive
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -66,49 +66,36 @@ enum TarReader {
 	Plain(ArchiveReader),
 }
 
-// TODO: try to see if we can avoid the unsafe blocks
-
 impl AsyncRead for TarReader {
 	fn poll_read(
 		self: Pin<&mut Self>,
 		cx: &mut Context<'_>,
 		buf: &mut ReadBuf<'_>,
 	) -> Poll<std::io::Result<()>> {
-		unsafe {
-			match self.get_unchecked_mut() {
-				Self::Gzip(r) => Pin::new_unchecked(r).poll_read(cx, buf),
-				Self::Plain(r) => Pin::new_unchecked(r).poll_read(cx, buf),
-			}
+		match Pin::into_inner(self) {
+			Self::Gzip(r) => Pin::new(r).poll_read(cx, buf),
+			Self::Plain(r) => Pin::new(r).poll_read(cx, buf),
 		}
 	}
+}
+
+#[self_referencing]
+struct ZipArchiveEntry {
+	archive: async_zip::tokio::read::seek::ZipFileReader<std::io::Cursor<Vec<u8>>>,
+	#[borrows(mut archive)]
+	#[not_covariant]
+	reader: Compat<
+		async_zip::tokio::read::ZipEntryReader<
+			'this,
+			std::io::Cursor<Vec<u8>>,
+			async_zip::base::read::WithoutEntry,
+		>,
+	>,
 }
 
 enum ArchiveEntryInner {
 	Tar(Box<tokio_tar::Entry<tokio_tar::Archive<TarReader>>>),
-	Zip {
-		archive: *mut async_zip::tokio::read::seek::ZipFileReader<std::io::Cursor<Vec<u8>>>,
-		reader: ManuallyDrop<
-			Compat<
-				async_zip::tokio::read::ZipEntryReader<
-					'static,
-					std::io::Cursor<Vec<u8>>,
-					async_zip::base::read::WithoutEntry,
-				>,
-			>,
-		>,
-	},
-}
-
-impl Drop for ArchiveEntryInner {
-	fn drop(&mut self) {
-		match self {
-			Self::Tar(_) => {}
-			Self::Zip { archive, reader } => unsafe {
-				ManuallyDrop::drop(reader);
-				drop(Box::from_raw(*archive));
-			},
-		}
-	}
+	Zip(ZipArchiveEntry),
 }
 
 /// An entry in an archive. Usually the executable
@@ -120,12 +107,10 @@ impl AsyncRead for ArchiveEntry {
 		cx: &mut Context<'_>,
 		buf: &mut ReadBuf<'_>,
 	) -> Poll<std::io::Result<()>> {
-		unsafe {
-			match &mut self.get_unchecked_mut().0 {
-				ArchiveEntryInner::Tar(r) => Pin::new_unchecked(r).poll_read(cx, buf),
-				ArchiveEntryInner::Zip { reader, .. } => {
-					Pin::new_unchecked(&mut **reader).poll_read(cx, buf)
-				}
+		match &mut Pin::into_inner(self).0 {
+			ArchiveEntryInner::Tar(r) => Pin::new(r).poll_read(cx, buf),
+			ArchiveEntryInner::Zip(z) => {
+				z.with_reader_mut(|reader| Pin::new(reader).poll_read(cx, buf))
 			}
 		}
 	}
@@ -269,12 +254,21 @@ impl Archive {
 
 					let path: &Path = entry.filename().as_str()?.as_ref();
 					if candidate.path == path {
-						let ptr = Box::into_raw(Box::new(archive));
-						let reader = (unsafe { &mut *ptr }).reader_without_entry(i).await?;
-						return Ok(ArchiveEntry(ArchiveEntryInner::Zip {
-							archive: ptr,
-							reader: ManuallyDrop::new(reader.compat()),
-						}));
+						let entry = ZipArchiveEntryAsyncSendTryBuilder {
+							archive,
+							reader_builder: |archive| {
+								Box::pin(async move {
+									archive
+										.reader_without_entry(i)
+										.await
+										.map(tokio_util::compat::FuturesAsyncReadCompatExt::compat)
+								})
+							},
+						}
+						.try_build()
+						.await?;
+
+						return Ok(ArchiveEntry(ArchiveEntryInner::Zip(entry)));
 					}
 				}
 			}

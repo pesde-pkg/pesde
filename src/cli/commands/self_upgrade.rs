@@ -1,6 +1,7 @@
 use crate::{
 	cli::{
 		config::read_config,
+		reporters::run_with_reporter,
 		style::{ADDED_STYLE, CLI_STYLE, REMOVED_STYLE},
 		version::{
 			current_version, find_latest_version, get_or_download_engine, replace_pesde_bin_exe,
@@ -51,12 +52,23 @@ impl SelfUpgradeCommand {
 			return Ok(());
 		}
 
-		let path = get_or_download_engine(
-			&reqwest,
-			EngineKind::Pesde,
-			VersionReq::parse(&format!("={latest_version}")).unwrap(),
-		)
-		.await?;
+		let path = run_with_reporter(|_, root_progress, reporter| async {
+			let root_progress = root_progress;
+
+			root_progress.reset();
+			root_progress.set_message("download");
+
+			get_or_download_engine(
+				&reqwest,
+				EngineKind::Pesde,
+				VersionReq::parse(&format!("={latest_version}")).unwrap(),
+				reporter,
+			)
+			.await
+		})
+		.await?
+		.0;
+
 		replace_pesde_bin_exe(&path).await?;
 
 		println!("upgraded to version {display_latest_version}!");

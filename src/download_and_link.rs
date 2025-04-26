@@ -187,7 +187,11 @@ impl Clone for DownloadAndLinkOptions {
 
 impl Project {
 	/// Downloads a graph of dependencies and links them in the correct order
-	#[instrument(skip_all, fields(install_dependencies = debug(options.install_dependencies_mode)), level = "debug")]
+	#[instrument(
+		skip_all,
+		fields(install_dependencies = debug(options.install_dependencies_mode)),
+		level = "debug"
+	)]
 	pub async fn download_and_link<Reporter, Hooks>(
 		&self,
 		graph: &DependencyGraph,
