@@ -301,8 +301,11 @@ pub async fn install(
 				root_progress.set_message("download");
 				root_progress.set_style(reporters::root_progress_style_with_progress());
 
+				let bin_dir = bin_dir()?;
+				fs::create_dir_all(&bin_dir).await.context("failed to create bin directory")?;
+
 				let hooks = InstallHooks {
-					bin_folder: bin_dir().await?,
+					bin_folder: bin_dir,
 				};
 
 				#[allow(unused_variables)]

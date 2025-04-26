@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 - Add dev only installs in #32 by @Stefanuk12
+- Add `PESDE_HOME` variable (defaults to $HOME/.pesde) to override pesde's directory's location by @daimond113
 
 ### Fixed
 - Download engines in install step rather than lazily by @daimond113

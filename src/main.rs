@@ -1,8 +1,9 @@
 #[cfg(feature = "version-management")]
 use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
-use crate::cli::{auth::get_tokens, display_err, home_dir, style::ERROR_STYLE, HOME_DIR};
+use crate::cli::{auth::get_tokens, display_err, style::ERROR_STYLE, PESDE_DIR};
 use anyhow::Context as _;
 use clap::{builder::styling::AnsiColor, Parser};
+use cli::data_dir;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
@@ -207,15 +208,6 @@ async fn run() -> anyhow::Result<()> {
 			if bin_folder.file_name().is_some_and(|parent| parent != "bin") {
 				break 'scripts;
 			}
-
-			// we're not in {path}/.pesde/bin/{exe}
-			if bin_folder
-				.parent()
-				.and_then(|home_folder| home_folder.file_name())
-				.is_some_and(|home_folder| home_folder != HOME_DIR)
-			{
-				break 'scripts;
-			}
 		}
 
 		let linker_file_name = format!("{exe_name}.bin.luau");
@@ -287,27 +279,17 @@ async fn run() -> anyhow::Result<()> {
 		std::process::exit(status.code().unwrap_or(1i32));
 	};
 
-	let home_dir = home_dir()?;
-	let data_dir = home_dir.join("data");
-	fs::create_dir_all(&data_dir)
+	let cas_dir = get_linkable_dir(&project_root_dir)
 		.await
-		.expect("failed to create data directory");
-
-	let cas_dir = get_linkable_dir(&project_root_dir).await.join(HOME_DIR);
-
-	let cas_dir = if cas_dir == home_dir {
-		&data_dir
-	} else {
-		&cas_dir
-	}
-	.join("cas");
+		.join(PESDE_DIR)
+		.join("cas");
 
 	tracing::debug!("using cas dir in {}", cas_dir.display());
 
 	let project = Project::new(
 		project_root_dir,
 		project_workspace_dir,
-		data_dir,
+		data_dir()?,
 		cas_dir,
 		AuthConfig::new().with_tokens(get_tokens().await?.0),
 	);

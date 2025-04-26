@@ -1,8 +1,10 @@
-use crate::cli::{auth::Tokens, home_dir};
+use crate::cli::auth::Tokens;
 use anyhow::Context as _;
 use fs_err::tokio as fs;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
+
+use super::config_path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -33,7 +35,7 @@ impl Default for CliConfig {
 
 #[instrument(level = "trace")]
 pub async fn read_config() -> anyhow::Result<CliConfig> {
-	let config_string = match fs::read_to_string(home_dir()?.join("config.toml")).await {
+	let config_string = match fs::read_to_string(config_path()?).await {
 		Ok(config_string) => config_string,
 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
 			return Ok(CliConfig::default());
@@ -49,7 +51,7 @@ pub async fn read_config() -> anyhow::Result<CliConfig> {
 #[instrument(level = "trace")]
 pub async fn write_config(config: &CliConfig) -> anyhow::Result<()> {
 	let config_string = toml::to_string(config).context("failed to serialize config")?;
-	fs::write(home_dir()?.join("config.toml"), config_string)
+	fs::write(config_path()?, config_string)
 		.await
 		.context("failed to write config file")?;
 

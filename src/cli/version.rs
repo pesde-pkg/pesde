@@ -3,7 +3,6 @@ use crate::{
 		bin_dir,
 		config::{read_config, write_config, CliConfig},
 		files::make_executable,
-		home_dir,
 		style::{ADDED_STYLE, CLI_STYLE, REMOVED_STYLE, URL_STYLE},
 	},
 	util::no_build_metadata,
@@ -31,6 +30,8 @@ use std::{
 	sync::Arc,
 };
 use tracing::instrument;
+
+use super::engines_dir;
 
 pub fn current_version() -> Version {
 	Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
@@ -115,12 +116,10 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 	Ok(())
 }
 
-const ENGINES_DIR: &str = "engines";
-
 #[instrument(level = "trace")]
 async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeSet<Version>> {
 	let source = engine.source();
-	let path = home_dir()?.join(ENGINES_DIR).join(source.directory());
+	let path = engines_dir()?.join(source.directory());
 	let mut installed_versions = BTreeSet::new();
 
 	let mut read_dir = match fs::read_dir(&path).await {
@@ -152,7 +151,7 @@ pub async fn get_or_download_engine(
 	reporter: Arc<impl DownloadsReporter>,
 ) -> anyhow::Result<(PathBuf, Version)> {
 	let source = engine.source();
-	let path = home_dir()?.join(ENGINES_DIR).join(source.directory());
+	let path = engines_dir()?.join(source.directory());
 
 	let installed_versions = get_installed_versions(engine).await?;
 
@@ -229,8 +228,7 @@ pub async fn get_or_download_engine(
 
 #[instrument(level = "trace")]
 pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
-	let bin_exe_path = bin_dir()
-		.await?
+	let bin_exe_path = bin_dir()?
 		.join(EngineKind::Pesde.to_string())
 		.with_extension(std::env::consts::EXE_EXTENSION);
 
@@ -255,6 +253,12 @@ pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
 		}
 	}
 
+	if let Some(parent) = bin_exe_path.parent() {
+		fs::create_dir_all(parent)
+			.await
+			.context("failed to create bin directory")?;
+	}
+
 	fs::copy(with, &bin_exe_path)
 		.await
 		.context("failed to copy executable to bin folder")?;
@@ -264,13 +268,18 @@ pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
 
 #[instrument(level = "trace")]
 pub async fn make_linker_if_needed(engine: EngineKind) -> anyhow::Result<()> {
-	let bin_dir = bin_dir().await?;
-	let linker = bin_dir
+	let linker = bin_dir()?
 		.join(engine.to_string())
 		.with_extension(std::env::consts::EXE_EXTENSION);
 
 	if fs::metadata(&linker).await.is_err() {
 		let exe = current_exe().context("failed to get current exe path")?;
+
+		if let Some(parent) = linker.parent() {
+			fs::create_dir_all(parent)
+				.await
+				.context("failed to create linker directory")?;
+		}
 
 		#[cfg(windows)]
 		let result = fs::symlink_file(exe, linker);

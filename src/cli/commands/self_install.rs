@@ -1,7 +1,6 @@
 use crate::cli::{
 	style::{ADDED_STYLE, CLI_STYLE},
 	version::replace_pesde_bin_exe,
-	HOME_DIR,
 };
 use anyhow::Context as _;
 use clap::Args;
@@ -25,16 +24,18 @@ impl SelfInstallCommand {
 				use anyhow::Context as _;
 				use windows_registry::CURRENT_USER;
 
-				let bin_dir = crate::cli::bin_dir().await?;
+				let bin_dir = crate::cli::bin_dir()?;
 
 				let env = CURRENT_USER
 					.create("Environment")
 					.context("failed to open Environment key")?;
 				let path = env.get_string("Path").context("failed to get Path value")?;
 
-				let bin_dir = bin_dir.to_string_lossy();
+				let bin_dir = bin_dir
+					.to_str()
+					.context("bin directory path contains invalid characters")?;
 
-				let exists = path.split(';').any(|part| *part == bin_dir);
+				let exists = path.split(';').any(|part| part == bin_dir);
 
 				if !exists {
 					let new_path = format!("{path};{bin_dir}");
@@ -43,7 +44,7 @@ impl SelfInstallCommand {
 
 					println!(
 						"\nin order to allow proper functionality {} was added to PATH.\n\n{}",
-						style(format!("`~/{HOME_DIR}/bin`")).green(),
+						style(format!("`{bin_dir}`")).green(),
 						WARN_STYLE.apply_to("please restart your shell for this to take effect")
 					);
 				}

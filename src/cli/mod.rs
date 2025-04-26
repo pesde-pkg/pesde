@@ -3,7 +3,6 @@ use crate::cli::{
 	style::{ERROR_STYLE, INFO_STYLE, WARN_STYLE},
 };
 use anyhow::Context as _;
-use fs_err::tokio as fs;
 use futures::StreamExt as _;
 use pesde::{
 	errors::ManifestReadError,
@@ -39,20 +38,31 @@ pub mod style;
 #[cfg(feature = "version-management")]
 pub mod version;
 
-pub const HOME_DIR: &str = concat!(".", env!("CARGO_PKG_NAME"));
+pub const PESDE_DIR: &str = concat!(".", env!("CARGO_PKG_NAME"));
 
-pub fn home_dir() -> anyhow::Result<PathBuf> {
-	Ok(dirs::home_dir()
-		.context("failed to get home directory")?
-		.join(HOME_DIR))
+fn base_dir() -> anyhow::Result<PathBuf> {
+	Ok(match std::env::var("PESDE_HOME") {
+		Ok(base) => PathBuf::from(base),
+		_ => dirs::home_dir()
+			.context("failed to get home directory")?
+			.join(PESDE_DIR),
+	})
 }
 
-pub async fn bin_dir() -> anyhow::Result<PathBuf> {
-	let bin_dir = home_dir()?.join("bin");
-	fs::create_dir_all(&bin_dir)
-		.await
-		.context("failed to create bin folder")?;
-	Ok(bin_dir)
+pub fn bin_dir() -> anyhow::Result<PathBuf> {
+	Ok(base_dir()?.join("bin"))
+}
+
+pub fn engines_dir() -> anyhow::Result<PathBuf> {
+	Ok(base_dir()?.join("engines"))
+}
+
+pub fn config_path() -> anyhow::Result<PathBuf> {
+	Ok(base_dir()?.join("config.toml"))
+}
+
+pub fn data_dir() -> anyhow::Result<PathBuf> {
+	Ok(base_dir()?.join("data"))
 }
 
 pub fn resolve_overrides(
