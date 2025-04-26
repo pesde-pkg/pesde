@@ -1,5 +1,7 @@
 use crate::cli::{
+	compatible_runtime,
 	config::read_config,
+	get_project_engines,
 	reporters::{self, CliReporter},
 	VersionedPackageName,
 };
@@ -28,7 +30,6 @@ use std::{
 	env::current_dir,
 	ffi::OsString,
 	io::{Stderr, Write as _},
-	process::Command,
 	sync::Arc,
 };
 
@@ -57,7 +58,7 @@ impl ExecuteCommand {
 
 		let refreshed_sources = RefreshedSources::new();
 
-		let (tempdir, bin_path) = reporters::run_with_reporter_and_writer(
+		let (tempdir, runtime, bin_path) = reporters::run_with_reporter_and_writer(
 			std::io::stderr(),
 			|multi_progress, root_progress, reporter| async {
 				let multi_progress = multi_progress;
@@ -152,6 +153,8 @@ impl ExecuteCommand {
 							project: project.clone(),
 							path: tempdir.path().into(),
 							id: id.clone(),
+							// HACK: the pesde package source doesn't use the engines, so we can just use an empty map
+							engines: Default::default(),
 						},
 					)
 					.await
@@ -175,7 +178,7 @@ impl ExecuteCommand {
 				project
 					.download_and_link(
 						&graph,
-						DownloadAndLinkOptions::<CliReporter<Stderr>, ()>::new(reqwest)
+						DownloadAndLinkOptions::<CliReporter<Stderr>, ()>::new(reqwest.clone())
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources)
 							.install_dependencies_mode(InstallDependenciesMode::Prod),
@@ -183,7 +186,18 @@ impl ExecuteCommand {
 					.await
 					.context("failed to download and link dependencies")?;
 
-				anyhow::Ok((tempdir, bin_path.to_relative_path_buf()))
+				let manifest = project
+					.deser_manifest()
+					.await
+					.context("failed to deserialize manifest")?;
+
+				let engines = get_project_engines(&manifest, &reqwest).await?;
+
+				anyhow::Ok((
+					tempdir,
+					compatible_runtime(target.kind(), &engines)?,
+					bin_path.to_relative_path_buf(),
+				))
 			},
 		)
 		.await?;
@@ -200,13 +214,11 @@ impl ExecuteCommand {
 			)
 			.context("failed to write to tempfile")?;
 
-		let status = Command::new("lune")
-			.arg("run")
-			.arg(caller.path())
-			.arg("--")
-			.args(&self.args)
+		let status = runtime
+			.prepare_command(caller.path().as_os_str(), self.args)
 			.current_dir(current_dir().context("failed to get current directory")?)
 			.status()
+			.await
 			.context("failed to run script")?;
 
 		drop(caller);

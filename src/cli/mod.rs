@@ -5,6 +5,10 @@ use crate::cli::{
 use anyhow::Context as _;
 use futures::StreamExt as _;
 use pesde::{
+	engine::{
+		runtime::{Runtime, RuntimeKind},
+		EngineKind,
+	},
 	errors::ManifestReadError,
 	lockfile::Lockfile,
 	manifest::{
@@ -19,8 +23,10 @@ use pesde::{
 	Project, DEFAULT_INDEX_NAME,
 };
 use relative_path::RelativePathBuf;
+use reporters::run_with_reporter;
+use semver::Version;
 use std::{
-	collections::{BTreeMap, HashSet},
+	collections::{BTreeMap, HashMap, HashSet},
 	future::Future,
 	path::PathBuf,
 	str::FromStr,
@@ -360,4 +366,89 @@ pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
 		DependencyType::Dev => "dev_dependencies",
 		DependencyType::Peer => "peer_dependencies",
 	}
+}
+
+#[cfg(feature = "version-management")]
+pub async fn get_project_engines(
+	manifest: &Manifest,
+	reqwest: &reqwest::Client,
+) -> anyhow::Result<HashMap<EngineKind, Version>> {
+	use tokio::task::JoinSet;
+
+	run_with_reporter(|_, root_progress, reporter| async {
+		let root_progress = root_progress;
+		let reporter = reporter;
+
+		root_progress.set_prefix(format!("{} {}: ", manifest.name, manifest.target));
+		root_progress.reset();
+		root_progress.set_message("update engines");
+
+		let mut tasks = manifest
+			.engines
+			.iter()
+			.map(|(engine, req)| {
+				let engine = *engine;
+				let req = req.clone();
+				let reqwest = reqwest.clone();
+				let reporter = reporter.clone();
+
+				async move {
+					let version = crate::cli::version::get_or_download_engine(
+						&reqwest, engine, req, reporter,
+					)
+					.await
+					.context("failed to install engine")?
+					.1;
+
+					crate::cli::version::make_linker_if_needed(engine)
+						.await
+						.context("failed to make engine linker")?;
+
+					Ok::<_, anyhow::Error>((engine, version))
+				}
+			})
+			.collect::<JoinSet<_>>();
+
+		let mut resolved_engine_versions = HashMap::new();
+
+		while let Some(task) = tasks.join_next().await {
+			let (engine, version) = task.unwrap()?;
+			resolved_engine_versions.insert(engine, version);
+		}
+
+		Ok::<_, anyhow::Error>(resolved_engine_versions)
+	})
+	.await
+}
+
+#[cfg(not(feature = "version-management"))]
+pub async fn get_project_engines(
+	_manifest: &Manifest,
+	_reqwest: &reqwest::Client,
+) -> anyhow::Result<HashMap<EngineKind, Version>> {
+	Ok(Default::default())
+}
+
+pub fn compatible_runtime(
+	target: TargetKind,
+	engines: &HashMap<EngineKind, Version>,
+) -> anyhow::Result<Runtime> {
+	let runtime = match target {
+		TargetKind::Lune => RuntimeKind::Lune,
+		TargetKind::Luau => engines
+			.keys()
+			.find_map(|e| e.as_runtime())
+			.context("no runtime available")?,
+		TargetKind::Roblox | TargetKind::RobloxServer => {
+			anyhow::bail!("roblox targets cannot be ran!")
+		}
+	};
+
+	Ok(Runtime::new(
+		runtime,
+		engines
+			.get(&runtime.into())
+			.with_context(|| format!("{runtime} not available!"))?
+			.clone(),
+	))
 }

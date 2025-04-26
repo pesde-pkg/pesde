@@ -1,6 +1,7 @@
 use crate::{
 	all_packages_dirs,
 	download::DownloadGraphOptions,
+	engine::runtime::Engines,
 	graph::{
 		DependencyGraph, DependencyGraphNode, DependencyGraphNodeWithTarget,
 		DependencyGraphWithTarget,
@@ -104,6 +105,8 @@ pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
 	pub network_concurrency: NonZeroUsize,
 	/// Whether to re-install all dependencies even if they are already installed
 	pub force: bool,
+	/// The engines this project is using
+	pub engines: Arc<Engines>,
 }
 
 impl<Reporter, Hooks> DownloadAndLinkOptions<Reporter, Hooks>
@@ -122,6 +125,7 @@ where
 			install_dependencies_mode: InstallDependenciesMode::All,
 			network_concurrency: NonZeroUsize::new(16).unwrap(),
 			force: false,
+			engines: Default::default(),
 		}
 	}
 
@@ -169,6 +173,13 @@ where
 		self.force = force;
 		self
 	}
+
+	/// Sets the engines this project is using
+	#[must_use]
+	pub fn engines(mut self, engines: impl Into<Arc<Engines>>) -> Self {
+		self.engines = engines.into();
+		self
+	}
 }
 
 impl Clone for DownloadAndLinkOptions {
@@ -181,6 +192,7 @@ impl Clone for DownloadAndLinkOptions {
 			install_dependencies_mode: self.install_dependencies_mode,
 			network_concurrency: self.network_concurrency,
 			force: self.force,
+			engines: self.engines.clone(),
 		}
 	}
 }
@@ -209,6 +221,7 @@ impl Project {
 			install_dependencies_mode,
 			network_concurrency,
 			force,
+			engines,
 		} = options;
 
 		let reqwest = reqwest.clone();
@@ -346,6 +359,7 @@ impl Project {
 			project: &Project,
 			manifest_target_kind: TargetKind,
 			downloaded_graph: HashMap<PackageId, DependencyGraphNode>,
+			engines: &Arc<Engines>,
 		) -> Result<(), errors::DownloadAndLinkError<Hooks::Error>> {
 			let mut tasks = downloaded_graph
 				.into_iter()
@@ -357,6 +371,7 @@ impl Project {
 						.into();
 					let id = Arc::new(id);
 					let project = project.clone();
+					let engines = engines.clone();
 
 					async move {
 						let target = source
@@ -366,6 +381,7 @@ impl Project {
 									project,
 									path,
 									id: id.clone(),
+									engines,
 								},
 							)
 							.await?;
@@ -392,11 +408,12 @@ impl Project {
 			self,
 			manifest.target.kind(),
 			other_graph_to_download,
+			&engines,
 		)
 		.instrument(tracing::debug_span!("get targets (non-wally)"))
 		.await?;
 
-		self.link_dependencies(&graph, false)
+		self.link_dependencies(&graph, &engines, false)
 			.instrument(tracing::debug_span!("link (non-wally)"))
 			.await?;
 
@@ -418,6 +435,7 @@ impl Project {
 			self,
 			manifest.target.kind(),
 			wally_graph_to_download,
+			&engines,
 		)
 		.instrument(tracing::debug_span!("get targets (wally)"))
 		.await?;
@@ -461,7 +479,7 @@ impl Project {
 		}
 
 		// step 4. link ALL dependencies. do so with types
-		self.link_dependencies(&graph, true)
+		self.link_dependencies(&graph, &engines, true)
 			.instrument(tracing::debug_span!("link (all)"))
 			.await?;
 

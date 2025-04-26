@@ -225,6 +225,8 @@ impl InitCommand {
 							// HACK: the pesde package source doesn't use the path, so we can just use an empty one
 							path: Path::new("").into(),
 							id: id.clone(),
+							// HACK: the pesde package source doesn't use the engines, so we can just use an empty map
+							engines: Default::default(),
 						},
 					)
 					.await?;
@@ -268,6 +270,8 @@ impl InitCommand {
 							.to_string(),
 					);
 				}
+
+				// TODO: add engines
 			} else {
 				println!(
 					"{ERROR_PREFIX}: no scripts package configured, this can cause issues with Roblox compatibility"

@@ -1,4 +1,5 @@
 use crate::{
+	engine::runtime::Engines,
 	manifest::{
 		target::{Target, TargetKind},
 		Alias, DependencyType,
@@ -71,6 +72,8 @@ pub struct GetTargetOptions {
 	pub path: Arc<Path>,
 	/// The package ID of the package to be downloaded
 	pub id: Arc<PackageId>,
+	/// The engines this project is using
+	pub engines: Arc<Engines>,
 }
 
 /// A source of packages

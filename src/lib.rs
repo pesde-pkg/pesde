@@ -377,7 +377,7 @@ impl RefreshedSources {
 
 async fn deser_manifest(path: &Path) -> Result<Manifest, errors::ManifestReadError> {
 	let string = fs::read_to_string(path.join(MANIFEST_FILE_NAME)).await?;
-	toml::from_str(&string).map_err(|e| errors::ManifestReadError::Serde(path.to_path_buf(), e))
+	toml::from_str(&string).map_err(|e| errors::ManifestReadError::Serde(path.into(), e))
 }
 
 /// Find the project & workspace directory roots
@@ -398,7 +398,7 @@ pub async fn find_roots(
 			.await
 			.map_err(errors::ManifestReadError::Io)?;
 		let manifest: Manifest = toml::from_str(&manifest)
-			.map_err(|e| errors::ManifestReadError::Serde(path.to_path_buf(), e))?;
+			.map_err(|e| errors::ManifestReadError::Serde(path.into(), e))?;
 
 		if manifest.workspace_members.is_empty() {
 			return Ok(HashSet::new());
@@ -479,7 +479,7 @@ pub(crate) fn all_packages_dirs() -> HashSet<String> {
 
 /// Errors that can occur when using the pesde library
 pub mod errors {
-	use std::path::PathBuf;
+	use std::path::Path;
 	use thiserror::Error;
 
 	/// Errors that can occur when reading the manifest file
@@ -492,7 +492,7 @@ pub mod errors {
 
 		/// An error occurred while deserializing the manifest file
 		#[error("error deserializing manifest file at {0}")]
-		Serde(PathBuf, #[source] toml::de::Error),
+		Serde(Box<Path>, #[source] toml::de::Error),
 	}
 
 	/// Errors that can occur when reading the lockfile

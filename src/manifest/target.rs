@@ -76,6 +76,12 @@ impl TargetKind {
 	pub fn is_roblox(self) -> bool {
 		matches!(self, TargetKind::Roblox | TargetKind::RobloxServer)
 	}
+
+	/// Returns whether this target supports bin exports
+	#[must_use]
+	pub fn has_bin(self) -> bool {
+		!self.is_roblox()
+	}
 }
 
 /// A target of a package

@@ -1,15 +1,17 @@
-use crate::Project;
+use crate::{
+	engine::runtime::{Engines, Runtime},
+	manifest::Script,
+	Project,
+};
 use futures::FutureExt as _;
+use relative_path::RelativePathBuf;
 use std::{
 	ffi::OsStr,
 	fmt::{Debug, Display, Formatter},
 	path::PathBuf,
 	process::Stdio,
 };
-use tokio::{
-	io::{AsyncBufReadExt as _, BufReader},
-	process::Command,
-};
+use tokio::io::{AsyncBufReadExt as _, BufReader};
 use tracing::instrument;
 
 /// Script names used by pesde
@@ -32,33 +34,63 @@ impl Display for ScriptName {
 	}
 }
 
+/// Extracts a script and a runtime out of a [Script]
+pub fn parse_script(
+	script: Script,
+	engines: &Engines,
+) -> Result<(Runtime, RelativePathBuf), errors::FindScriptError> {
+	Ok(match script {
+		Script::Path(path) => {
+			let runtime = engines
+				.iter()
+				.filter_map(|(engine, ver)| engine.as_runtime().map(|rt| (rt, ver)))
+				.collect::<Vec<_>>();
+			if runtime.len() != 1 {
+				return Err(errors::FindScriptError::AmbiguousRuntime);
+			}
+
+			let (runtime, version) = runtime[0];
+
+			(Runtime::new(runtime, version.clone()), path)
+		}
+		Script::RuntimePath { runtime, path } => {
+			let Some(version) = engines.get(&runtime.into()) else {
+				return Err(errors::FindScriptError::SpecifiedRuntimeUnknown(runtime));
+			};
+
+			(Runtime::new(runtime, version.clone()), path)
+		}
+	})
+}
+
 /// Finds a script in the project, whether it be in the current package or it's workspace
 pub async fn find_script(
 	project: &Project,
+	engines: &Engines,
 	script_name: ScriptName,
-) -> Result<Option<PathBuf>, errors::FindScriptError> {
+) -> Result<Option<(Runtime, PathBuf)>, errors::FindScriptError> {
 	let script_name_str = script_name.to_string();
 
-	let script_path = match project
+	let (script, base) = match project
 		.deser_manifest()
 		.await?
 		.scripts
 		.remove(&script_name_str)
 	{
-		Some(script) => script.to_path(project.package_dir()),
+		Some(script) => (script, project.package_dir()),
 		None => match project
 			.deser_workspace_manifest()
 			.await?
 			.and_then(|mut manifest| manifest.scripts.remove(&script_name_str))
 		{
-			Some(script) => script.to_path(project.workspace_dir().unwrap()),
+			Some(script) => (script, project.workspace_dir().unwrap()),
 			None => {
 				return Ok(None);
 			}
 		},
 	};
 
-	Ok(Some(script_path))
+	parse_script(script, engines).map(|(rt, path)| Some((rt, path.to_path(base))))
 }
 
 #[allow(unused_variables)]
@@ -74,20 +106,18 @@ pub(crate) async fn execute_script<
 >(
 	script_name: ScriptName,
 	project: &Project,
+	engines: &Engines,
 	hooks: H,
 	args: A,
 	return_stdout: bool,
 ) -> Result<Option<String>, errors::ExecuteScriptError> {
-	let Some(script_path) = find_script(project, script_name).await? else {
+	let Some((runtime, script_path)) = find_script(project, engines, script_name).await? else {
 		hooks.not_found(script_name);
 		return Ok(None);
 	};
 
-	match Command::new("lune")
-		.arg("run")
-		.arg(script_path.as_os_str())
-		.arg("--")
-		.args(args)
+	match runtime
+		.prepare_command(script_path.as_os_str(), args)
 		.current_dir(project.package_dir())
 		.stdin(Stdio::inherit())
 		.stdout(Stdio::piped())
@@ -146,6 +176,8 @@ pub(crate) async fn execute_script<
 pub mod errors {
 	use thiserror::Error;
 
+	use crate::engine::runtime::RuntimeKind;
+
 	/// Errors that can occur when finding a script
 	#[derive(Debug, Error)]
 	pub enum FindScriptError {
@@ -156,6 +188,14 @@ pub mod errors {
 		/// An IO error occurred
 		#[error("IO error")]
 		Io(#[from] std::io::Error),
+
+		/// Ambiguous runtime
+		#[error("don't know which runtime to use. use specific form and specify the runtime")]
+		AmbiguousRuntime,
+
+		/// Runtime specified in script not in engines
+		#[error("runtime `{0}` was specified in the script, but it is not present in engines")]
+		SpecifiedRuntimeUnknown(RuntimeKind),
 	}
 
 	/// Errors which can occur while executing a script

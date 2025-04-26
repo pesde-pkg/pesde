@@ -127,6 +127,9 @@ impl PublishCommand {
 
 			match up_to_date_lockfile(project).await? {
 				Some(lockfile) => {
+					let engines =
+						Arc::new(crate::cli::get_project_engines(&manifest, &reqwest).await?);
+
 					let mut tasks = lockfile
 						.graph
 						.iter()
@@ -142,6 +145,7 @@ impl PublishCommand {
 							let id = Arc::new(id.clone());
 							let node = node.clone();
 							let refreshed_sources = refreshed_sources.clone();
+							let engines = engines.clone();
 
 							async move {
 								let source = node.pkg_ref.source();
@@ -161,6 +165,7 @@ impl PublishCommand {
 											project,
 											path: container_folder.into(),
 											id,
+											engines,
 										},
 									)
 									.await?;

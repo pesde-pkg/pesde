@@ -17,6 +17,11 @@ pub struct SelfInstallCommand {
 
 impl SelfInstallCommand {
 	pub async fn run(self) -> anyhow::Result<()> {
+		let bin_dir = crate::cli::bin_dir()?;
+		let bin_dir = bin_dir
+			.to_str()
+			.context("bin directory path contains invalid characters")?;
+
 		#[cfg(windows)]
 		{
 			if !self.skip_add_to_path {
@@ -24,16 +29,10 @@ impl SelfInstallCommand {
 				use anyhow::Context as _;
 				use windows_registry::CURRENT_USER;
 
-				let bin_dir = crate::cli::bin_dir()?;
-
 				let env = CURRENT_USER
 					.create("Environment")
 					.context("failed to open Environment key")?;
 				let path = env.get_string("Path").context("failed to get Path value")?;
-
-				let bin_dir = bin_dir
-					.to_str()
-					.context("bin directory path contains invalid characters")?;
 
 				let exists = path.split(';').any(|part| part == bin_dir);
 
@@ -68,7 +67,7 @@ and then restart your shell.
 ",
 				CLI_STYLE.apply_to(env!("CARGO_BIN_NAME")),
 				ADDED_STYLE.apply_to(env!("CARGO_PKG_VERSION")),
-				style(format!(r#"export PATH="$PATH:$HOME/{HOME_DIR}/bin""#)).green(),
+				style(format!(r#"export PATH="$PATH:{bin_dir}""#)).green(),
 			);
 		};
 

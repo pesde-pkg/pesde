@@ -3,16 +3,16 @@ use crate::cli::version::{check_for_updates, current_version, get_or_download_en
 use crate::cli::{auth::get_tokens, display_err, style::ERROR_STYLE, PESDE_DIR};
 use anyhow::Context as _;
 use clap::{builder::styling::AnsiColor, Parser};
-use cli::data_dir;
+use cli::{compatible_runtime, data_dir, get_project_engines};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
 	engine::EngineKind, find_roots, manifest::target::TargetKind, version_matches, AuthConfig,
-	Project,
+	Project, MANIFEST_FILE_NAME,
 };
 use semver::VersionReq;
 use std::{
-	collections::HashSet,
+	collections::HashMap,
 	io,
 	path::{Path, PathBuf},
 	str::FromStr as _,
@@ -197,6 +197,14 @@ async fn run() -> anyhow::Result<()> {
 			.map_or_else(|| "none".to_string(), |p| p.display().to_string())
 	);
 
+	let reqwest = reqwest::Client::builder()
+		.user_agent(concat!(
+			env!("CARGO_PKG_NAME"),
+			"/",
+			env!("CARGO_PKG_VERSION")
+		))
+		.build()?;
+
 	'scripts: {
 		// if we're an engine, we don't want to run any scripts
 		if exe_name_engine.is_ok() {
@@ -212,15 +220,23 @@ async fn run() -> anyhow::Result<()> {
 
 		let linker_file_name = format!("{exe_name}.bin.luau");
 
-		let path = 'finder: {
+		let (path, target) = 'finder: {
 			let all_folders = TargetKind::VARIANTS
 				.iter()
-				.flat_map(|a| TargetKind::VARIANTS.iter().map(|b| a.packages_folder(*b)))
-				.collect::<HashSet<_>>();
+				.copied()
+				.filter(|t| t.has_bin())
+				.flat_map(|a| {
+					TargetKind::VARIANTS
+						.iter()
+						.copied()
+						.filter(|t| t.has_bin())
+						.map(move |b| (a.packages_folder(b), b))
+				})
+				.collect::<HashMap<_, _>>();
 
 			let mut tasks = all_folders
 				.into_iter()
-				.map(|folder| {
+				.map(|(folder, target)| {
 					let package_path = project_root_dir.join(&folder).join(&linker_file_name);
 					let workspace_path = project_workspace_dir
 						.as_deref()
@@ -228,12 +244,12 @@ async fn run() -> anyhow::Result<()> {
 
 					async move {
 						if fs::metadata(&package_path).await.is_ok() {
-							return Some((true, package_path));
+							return Some((true, package_path, target));
 						}
 
 						if let Some(workspace_path) = workspace_path {
 							if fs::metadata(&workspace_path).await.is_ok() {
-								return Some((false, workspace_path));
+								return Some((false, workspace_path, target));
 							}
 						}
 
@@ -245,12 +261,12 @@ async fn run() -> anyhow::Result<()> {
 			let mut workspace_path = None;
 
 			while let Some(res) = tasks.join_next().await {
-				if let Some((primary, path)) = res.unwrap() {
+				if let Some((primary, path, target)) = res.unwrap() {
 					if primary {
-						break 'finder path;
+						break 'finder (path, target);
 					}
 
-					workspace_path = Some(path);
+					workspace_path = Some((path, target));
 				}
 			}
 
@@ -267,13 +283,18 @@ async fn run() -> anyhow::Result<()> {
 			std::process::exit(1i32);
 		};
 
-		let status = std::process::Command::new("lune")
-			.arg("run")
-			.arg(path)
-			.arg("--")
-			.args(std::env::args_os().skip(1))
+		let manifest = fs::read_to_string(project_root_dir.join(MANIFEST_FILE_NAME))
+			.await
+			.context("failed to read manifest")?;
+		let manifest = toml::de::from_str(&manifest).context("failed to deserialize manifest")?;
+
+		let engines = get_project_engines(&manifest, &reqwest).await?;
+
+		let status = compatible_runtime(target, &engines)?
+			.prepare_command(path.as_os_str(), std::env::args_os().skip(1))
 			.current_dir(cwd)
 			.status()
+			.await
 			.expect("failed to run lune");
 
 		std::process::exit(status.code().unwrap_or(1i32));
@@ -293,26 +314,6 @@ async fn run() -> anyhow::Result<()> {
 		cas_dir,
 		AuthConfig::new().with_tokens(get_tokens().await?.0),
 	);
-
-	let reqwest = {
-		let mut headers = reqwest::header::HeaderMap::new();
-
-		headers.insert(
-			reqwest::header::ACCEPT,
-			"application/json"
-				.parse()
-				.context("failed to create accept header")?,
-		);
-
-		reqwest::Client::builder()
-			.user_agent(concat!(
-				env!("CARGO_PKG_NAME"),
-				"/",
-				env!("CARGO_PKG_VERSION")
-			))
-			.default_headers(headers)
-			.build()?
-	};
 
 	#[cfg(feature = "version-management")]
 	'engines: {

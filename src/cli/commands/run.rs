@@ -1,20 +1,21 @@
-use crate::cli::{style::WARN_STYLE, up_to_date_lockfile};
+use crate::cli::{compatible_runtime, get_project_engines, style::WARN_STYLE, up_to_date_lockfile};
 use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
 use futures::{StreamExt as _, TryStreamExt as _};
 use pesde::{
+	engine::runtime::Runtime,
 	errors::{ManifestReadError, WorkspaceMembersError},
 	linking::generator::generate_bin_linking_module,
-	manifest::Alias,
+	manifest::{Alias, Manifest},
 	names::{PackageName, PackageNames},
+	scripts::parse_script,
 	source::traits::{GetTargetOptions, PackageRef as _, PackageSource as _, RefreshOptions},
 	Project, MANIFEST_FILE_NAME,
 };
 use relative_path::RelativePathBuf;
 use std::{
-	collections::HashSet, env::current_dir, ffi::OsString, io::Write as _, path::Path,
-	process::Command,
+	collections::HashSet, env::current_dir, ffi::OsString, io::Write as _, path::Path, sync::Arc,
 };
 
 #[derive(Debug, Args)]
@@ -29,8 +30,15 @@ pub struct RunCommand {
 }
 
 impl RunCommand {
-	pub async fn run(self, project: Project) -> anyhow::Result<()> {
-		let run = |root: &Path, file_path: &Path| -> ! {
+	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+		let manifest = project
+			.deser_manifest()
+			.await
+			.context("failed to deserialize manifest")?;
+
+		let engines = Arc::new(get_project_engines(&manifest, &reqwest).await?);
+
+		let run = async |runtime: Runtime, root: &Path, file_path: &Path| -> ! {
 			let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
 			caller
 				.write_all(
@@ -42,13 +50,11 @@ impl RunCommand {
 				)
 				.expect("failed to write to tempfile");
 
-			let status = Command::new("lune")
-				.arg("run")
-				.arg(caller.path())
-				.arg("--")
-				.args(&self.args)
+			let status = runtime
+				.prepare_command(caller.path().as_os_str(), self.args)
 				.current_dir(current_dir().expect("failed to get current directory"))
 				.status()
+				.await
 				.expect("failed to run script");
 
 			drop(caller);
@@ -57,11 +63,13 @@ impl RunCommand {
 		};
 
 		let Some(package_or_script) = self.package_or_script else {
-			if let Some(script_path) = project.deser_manifest().await?.target.bin_path() {
+			if let Some(script_path) = manifest.target.bin_path() {
 				run(
+					compatible_runtime(manifest.target.kind(), &engines)?,
 					project.package_dir(),
 					&script_path.to_path(project.package_dir()),
-				);
+				)
+				.await;
 			}
 
 			anyhow::bail!("no package or script specified, and no bin path found in manifest")
@@ -130,6 +138,7 @@ impl RunCommand {
 						project,
 						path: container_folder.as_path().into(),
 						id: id.into(),
+						engines: engines.clone(),
 					},
 				)
 				.await?;
@@ -140,15 +149,20 @@ impl RunCommand {
 
 			let path = bin_path.to_path(&container_folder);
 
-			run(&path, &path);
+			run(compatible_runtime(target.kind(), &engines)?, &path, &path).await;
 		}
 
-		if let Ok(manifest) = project.deser_manifest().await {
-			if let Some(script_path) = manifest.scripts.get(&package_or_script) {
+		if let Ok(mut manifest) = project.deser_manifest().await {
+			if let Some(script) = manifest.scripts.remove(&package_or_script) {
+				let (runtime, script_path) =
+					parse_script(script, &engines).context("failed to get script info")?;
+
 				run(
+					runtime,
 					project.package_dir(),
 					&script_path.to_path(project.package_dir()),
-				);
+				)
+				.await;
 			}
 		}
 
@@ -212,6 +226,17 @@ impl RunCommand {
 			project.package_dir().to_path_buf()
 		};
 
-		run(&root, &path);
+		let manifest = fs::read_to_string(root.join(MANIFEST_FILE_NAME))
+			.await
+			.context("failed to read manifest at root")?;
+		let manifest = toml::de::from_str::<Manifest>(&manifest)
+			.context("failed to deserialize manifest at root")?;
+
+		run(
+			compatible_runtime(manifest.target.kind(), &engines)?,
+			&root,
+			&path,
+		)
+		.await;
 	}
 }

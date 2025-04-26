@@ -105,7 +105,7 @@ impl Subcommand {
 			Subcommand::Update(update) => update.run(project, reqwest).await,
 			Subcommand::Outdated(outdated) => outdated.run(project).await,
 			Subcommand::List(list) => list.run(project).await,
-			Subcommand::Run(run) => run.run(project).await,
+			Subcommand::Run(run) => run.run(project, reqwest).await,
 			Subcommand::Publish(publish) => publish.run(project, reqwest).await,
 			Subcommand::Yank(yank) => yank.run(project, reqwest).await,
 			Subcommand::Deprecate(deprecate) => deprecate.run(project, reqwest).await,

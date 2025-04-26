@@ -1,4 +1,5 @@
 use crate::{
+	engine::runtime::Engines,
 	graph::{DependencyGraphNodeWithTarget, DependencyGraphWithTarget},
 	linking::generator::get_file_types,
 	manifest::{Alias, Manifest},
@@ -15,6 +16,7 @@ use std::{
 	collections::HashMap,
 	ffi::OsStr,
 	path::{Path, PathBuf},
+	sync::Arc,
 };
 use tokio::task::{spawn_blocking, JoinSet};
 use tracing::{instrument, Instrument as _};
@@ -64,6 +66,7 @@ impl Project {
 	pub(crate) async fn link_dependencies(
 		&self,
 		graph: &DependencyGraphWithTarget,
+		engines: &Arc<Engines>,
 		with_types: bool,
 	) -> Result<(), errors::LinkingError> {
 		let manifest = self.deser_manifest().await?;
@@ -88,6 +91,7 @@ impl Project {
 				let package_id = package_id.clone();
 				let node = node.clone();
 				let project = self.clone();
+				let engines = engines.clone();
 
 				async move {
 					let Some(lib_file) = node.target.lib_path() else {
@@ -131,6 +135,7 @@ impl Project {
 						execute_script(
 							ScriptName::RobloxSyncConfigGenerator,
 							&project,
+							&engines,
 							LinkingExecuteScriptHooks,
 							std::iter::once(container_folder.as_os_str())
 								.chain(build_files.iter().map(OsStr::new)),
