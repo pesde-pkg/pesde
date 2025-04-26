@@ -117,7 +117,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 }
 
 #[instrument(level = "trace")]
-async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeSet<Version>> {
+pub async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeSet<Version>> {
 	let source = engine.source();
 	let path = engines_dir()?.join(source.directory());
 	let mut installed_versions = BTreeSet::new();

@@ -6,14 +6,14 @@ use futures::{StreamExt as _, TryStreamExt as _};
 use pesde::{
 	engine::runtime::Runtime,
 	errors::{ManifestReadError, WorkspaceMembersError},
-	linking::generator::generate_bin_linking_module,
+	linking::generator::{generate_bin_linking_module, get_bin_require_path},
 	manifest::{Alias, Manifest},
 	names::{PackageName, PackageNames},
 	scripts::parse_script,
 	source::traits::{GetTargetOptions, PackageRef as _, PackageSource as _, RefreshOptions},
 	Project, MANIFEST_FILE_NAME,
 };
-use relative_path::RelativePathBuf;
+use relative_path::{RelativePath, RelativePathBuf};
 use std::{
 	collections::HashSet, env::current_dir, ffi::OsString, io::Write as _, path::Path, sync::Arc,
 };
@@ -39,12 +39,30 @@ impl RunCommand {
 		let engines = Arc::new(get_project_engines(&manifest, &reqwest).await?);
 
 		let run = async |runtime: Runtime, root: &Path, file_path: &Path| -> ! {
-			let mut caller = tempfile::NamedTempFile::new().expect("failed to create tempfile");
+			let dir = project.cas_dir().join(".tmp");
+			fs::create_dir_all(&dir)
+				.await
+				.expect("failed to create temporary directory");
+
+			let mut caller =
+				tempfile::NamedTempFile::new_in(dir).expect("failed to create tempfile");
+
 			caller
 				.write_all(
 					generate_bin_linking_module(
 						root,
-						&format!("{:?}", file_path.to_string_lossy()),
+						&get_bin_require_path(
+							caller.path(),
+							RelativePath::from_path(
+								file_path
+									.file_name()
+									.unwrap()
+									.to_str()
+									.expect("path contains invalid characters"),
+							)
+							.unwrap(),
+							file_path.parent().unwrap(),
+						),
 					)
 					.as_bytes(),
 				)
@@ -135,7 +153,7 @@ impl RunCommand {
 				.get_target(
 					&node.pkg_ref,
 					&GetTargetOptions {
-						project,
+						project: project.clone(),
 						path: container_folder.as_path().into(),
 						id: id.into(),
 						engines: engines.clone(),

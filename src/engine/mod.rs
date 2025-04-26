@@ -40,6 +40,9 @@ impl FromStr for EngineKind {
 }
 
 impl EngineKind {
+	/// All [EngineKind]s
+	pub const VARIANTS: &'static [EngineKind] = &[EngineKind::Pesde, EngineKind::Lune];
+
 	/// Returns the source to get this engine from
 	#[must_use]
 	pub fn source(self) -> EngineSources {

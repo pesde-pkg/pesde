@@ -374,6 +374,7 @@ pub async fn get_project_engines(
 	reqwest: &reqwest::Client,
 ) -> anyhow::Result<HashMap<EngineKind, Version>> {
 	use tokio::task::JoinSet;
+	use version::get_installed_versions;
 
 	crate::cli::reporters::run_with_reporter(|_, root_progress, reporter| async {
 		let root_progress = root_progress;
@@ -383,16 +384,21 @@ pub async fn get_project_engines(
 		root_progress.reset();
 		root_progress.set_message("update engines");
 
-		let mut tasks = manifest
-			.engines
+		let mut tasks = EngineKind::VARIANTS
 			.iter()
-			.map(|(engine, req)| {
-				let engine = *engine;
-				let req = req.clone();
+			.copied()
+			.map(|engine| {
+				let req = manifest.engines.get(&engine).cloned();
 				let reqwest = reqwest.clone();
 				let reporter = reporter.clone();
 
 				async move {
+					let Some(req) = req else {
+						return get_installed_versions(engine)
+							.await
+							.map(|mut vers| vers.pop_last().map(|v| (engine, v)));
+					};
+
 					let version = crate::cli::version::get_or_download_engine(
 						&reqwest, engine, req, reporter,
 					)
@@ -404,7 +410,7 @@ pub async fn get_project_engines(
 						.await
 						.context("failed to make engine linker")?;
 
-					Ok::<_, anyhow::Error>((engine, version))
+					Ok::<_, anyhow::Error>(Some((engine, version)))
 				}
 			})
 			.collect::<JoinSet<_>>();
@@ -412,7 +418,9 @@ pub async fn get_project_engines(
 		let mut resolved_engine_versions = HashMap::new();
 
 		while let Some(task) = tasks.join_next().await {
-			let (engine, version) = task.unwrap()?;
+			let Some((engine, version)) = task.unwrap()? else {
+				continue;
+			};
 			resolved_engine_versions.insert(engine, version);
 		}
 

@@ -12,7 +12,7 @@ use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
 	download_and_link::{DownloadAndLinkOptions, InstallDependenciesMode},
-	linking::generator::generate_bin_linking_module,
+	linking::generator::{generate_bin_linking_module, get_bin_require_path},
 	manifest::target::TargetKind,
 	names::{PackageName, PackageNames},
 	source::{
@@ -35,9 +35,13 @@ use std::{
 
 #[derive(Debug, Args)]
 pub struct ExecuteCommand {
-	/// The package name, script name, or path to a script to run
+	/// The package to run
 	#[arg(index = 1)]
 	package: VersionedPackageName<VersionReq, PackageName>,
+
+	/// The target of the package to run
+	#[arg(short, long, default_value_t = TargetKind::Luau)]
+	target: TargetKind,
 
 	/// The index URL to use for the package
 	#[arg(short, long, value_parser = crate::cli::parse_gix_url)]
@@ -50,6 +54,10 @@ pub struct ExecuteCommand {
 
 impl ExecuteCommand {
 	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+		if !self.target.has_bin() {
+			anyhow::bail!("{} doesn't support bin exports!", self.target);
+		}
+
 		let multi_progress = MultiProgress::new();
 		crate::PROGRESS_BARS
 			.lock()
@@ -93,7 +101,7 @@ impl ExecuteCommand {
 						},
 						&ResolveOptions {
 							project: project.clone(),
-							target: TargetKind::Luau,
+							target: self.target,
 							refreshed_sources: refreshed_sources.clone(),
 							loose_target: true,
 						},
@@ -208,7 +216,7 @@ impl ExecuteCommand {
 			.write_all(
 				generate_bin_linking_module(
 					tempdir.path(),
-					&format!("{:?}", bin_path.to_path(tempdir.path())),
+					&get_bin_require_path(tempdir.path(), &bin_path, tempdir.path()),
 				)
 				.as_bytes(),
 			)
