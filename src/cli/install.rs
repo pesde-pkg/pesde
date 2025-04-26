@@ -11,18 +11,15 @@ use console::style;
 use fs_err::tokio as fs;
 use pesde::{
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
-	engine::EngineKind,
 	graph::{DependencyGraph, DependencyGraphWithTarget},
 	lockfile::Lockfile,
-	manifest::{DependencyType, Manifest},
+	manifest::DependencyType,
 	names::PackageNames,
 	source::{
-		pesde::PesdePackageSource,
-		refs::PackageRefs,
 		traits::{PackageRef as _, RefreshOptions},
 		PackageSources,
 	},
-	version_matches, Project, RefreshedSources, MANIFEST_FILE_NAME,
+	Project, RefreshedSources,
 };
 use std::{
 	collections::{BTreeMap, BTreeSet, HashSet},
@@ -284,6 +281,8 @@ pub async fn install(
 
 				#[cfg(feature = "version-management")]
 				{
+					use pesde::{source::{refs::PackageRefs, pesde::PesdePackageSource}, MANIFEST_FILE_NAME, version_matches, manifest::Manifest, engine::EngineKind};
+
 					let manifest_target_kind = manifest.target.kind();
 					let mut tasks = downloaded_graph.iter()
 						.map(|(id, node)| {

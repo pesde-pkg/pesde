@@ -7,10 +7,9 @@ use cli::{compatible_runtime, data_dir, get_project_engines};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
-	engine::EngineKind, find_roots, manifest::target::TargetKind, version_matches, AuthConfig,
-	Project, MANIFEST_FILE_NAME,
+	engine::EngineKind, find_roots, manifest::target::TargetKind, AuthConfig, Project,
+	MANIFEST_FILE_NAME,
 };
-use semver::VersionReq;
 use std::{
 	collections::HashMap,
 	io,
@@ -332,17 +331,21 @@ async fn run() -> anyhow::Result<()> {
 		if engine == EngineKind::Pesde {
 			match &req {
 				// we're already running a compatible version
-				Some(req) if version_matches(req, &current_version()) => break 'engines,
+				Some(req) if pesde::version_matches(req, &current_version()) => break 'engines,
 				// the user has not requested a specific version, so we'll just use the current one
 				None => break 'engines,
 				_ => (),
 			}
 		}
 
-		let exe_path =
-			get_or_download_engine(&reqwest, engine, req.unwrap_or(VersionReq::STAR), ().into())
-				.await?
-				.0;
+		let exe_path = get_or_download_engine(
+			&reqwest,
+			engine,
+			req.unwrap_or(semver::VersionReq::STAR),
+			().into(),
+		)
+		.await?
+		.0;
 		if exe_path == current_exe {
 			anyhow::bail!("engine linker executed by itself")
 		}

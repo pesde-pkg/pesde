@@ -23,7 +23,6 @@ use pesde::{
 	Project, DEFAULT_INDEX_NAME,
 };
 use relative_path::RelativePathBuf;
-use reporters::run_with_reporter;
 use semver::Version;
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
@@ -59,6 +58,7 @@ pub fn bin_dir() -> anyhow::Result<PathBuf> {
 	Ok(base_dir()?.join("bin"))
 }
 
+#[cfg(feature = "version-management")]
 pub fn engines_dir() -> anyhow::Result<PathBuf> {
 	Ok(base_dir()?.join("engines"))
 }
@@ -375,7 +375,7 @@ pub async fn get_project_engines(
 ) -> anyhow::Result<HashMap<EngineKind, Version>> {
 	use tokio::task::JoinSet;
 
-	run_with_reporter(|_, root_progress, reporter| async {
+	crate::cli::reporters::run_with_reporter(|_, root_progress, reporter| async {
 		let root_progress = root_progress;
 		let reporter = reporter;
 

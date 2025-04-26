@@ -29,7 +29,7 @@ pub mod incremental;
 async fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
 	let p = path.as_ref();
 	fs::create_dir_all(p).await?;
-	p.canonicalize()
+	fs::canonicalize(p).await
 }
 
 async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
