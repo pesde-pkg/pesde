@@ -160,7 +160,7 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Check if CLI version is prerelease
+      - name: Check if CLI version is pre-release
         id: is_prerelease
         shell: bash
         run: |
