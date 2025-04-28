@@ -18,9 +18,7 @@ use pesde::{
 	source::{
 		ids::PackageId,
 		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
-		traits::{
-			DownloadOptions, GetTargetOptions, PackageSource as _, RefreshOptions, ResolveOptions,
-		},
+		traits::{DownloadOptions, PackageSource as _, RefreshOptions, ResolveOptions},
 		PackageSources,
 	},
 	Project, RefreshedSources, DEFAULT_INDEX_NAME,
@@ -79,6 +77,7 @@ impl ExecuteCommand {
 					None => read_config().await.ok().map(|c| c.default_index),
 				}
 				.context("no index specified")?;
+
 				let source = PesdePackageSource::new(index);
 				refreshed_sources
 					.refresh(
@@ -132,10 +131,24 @@ impl ExecuteCommand {
 					project.auth_config().clone(),
 				);
 
-				let id = Arc::new(PackageId::new(
-					PackageNames::Pesde(self.package.0.clone()),
-					v_id,
-				));
+				let name = self.package.0.clone();
+				let mut file = source
+					.read_index_file(&name, &project)
+					.await
+					.context("failed to read package index file")?
+					.context("package doesn't exist on the index")?;
+
+				let entry = file
+					.entries
+					.remove(&v_id)
+					.context("version id not present in index file")?;
+
+				let bin_path = entry
+					.target
+					.bin_path()
+					.context("package has no binary export")?;
+
+				let id = Arc::new(PackageId::new(PackageNames::Pesde(name), v_id));
 
 				let fs = source
 					.download(
@@ -153,22 +166,6 @@ impl ExecuteCommand {
 				fs.write_to(tempdir.path(), project.cas_dir(), true)
 					.await
 					.context("failed to write package contents")?;
-
-				let target = source
-					.get_target(
-						&pkg_ref,
-						&GetTargetOptions {
-							project: project.clone(),
-							path: tempdir.path().into(),
-							id: id.clone(),
-							// HACK: the pesde package source doesn't use the engines, so we can just use an empty map
-							engines: Default::default(),
-						},
-					)
-					.await
-					.context("failed to get target")?;
-
-				let bin_path = target.bin_path().context("package has no binary export")?;
 
 				let graph = project
 					.dependency_graph(None, refreshed_sources.clone(), true)
@@ -203,7 +200,7 @@ impl ExecuteCommand {
 
 				anyhow::Ok((
 					tempdir,
-					compatible_runtime(target.kind(), &engines)?,
+					compatible_runtime(entry.target.kind(), &engines)?,
 					bin_path.to_relative_path_buf(),
 				))
 			},

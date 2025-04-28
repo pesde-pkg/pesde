@@ -8,19 +8,18 @@ use inquire::validator::Validation;
 use pesde::{
 	errors::ManifestReadError,
 	manifest::{target::TargetKind, DependencyType},
-	names::{PackageName, PackageNames},
+	names::PackageName,
 	source::{
 		git_index::GitBasedSource as _,
-		ids::PackageId,
 		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
 		specifiers::DependencySpecifiers,
-		traits::{GetTargetOptions, PackageSource as _, RefreshOptions, ResolveOptions},
+		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
 		PackageSources,
 	},
 	Project, RefreshedSources, DEFAULT_INDEX_NAME, SCRIPTS_LINK_FOLDER,
 };
 use semver::VersionReq;
-use std::{fmt::Display, path::Path, str::FromStr as _, sync::Arc};
+use std::{fmt::Display, str::FromStr as _};
 
 #[derive(Debug, Args)]
 pub struct InitCommand;
