@@ -215,23 +215,18 @@ impl InitCommand {
 					.pop_last()
 					.context("scripts package not found")?;
 
-				let id = Arc::new(PackageId::new(PackageNames::Pesde(scripts_pkg_name), v_id));
+				let mut file = source
+					.read_index_file(&scripts_pkg_name, &project)
+					.await
+					.context("failed to read scripts package index file")?
+					.context("scripts package not found in index")?;
 
-				let target = source
-					.get_target(
-						&pkg_ref,
-						&GetTargetOptions {
-							project: project.clone(),
-							// HACK: the pesde package source doesn't use the path, so we can just use an empty one
-							path: Path::new("").into(),
-							id: id.clone(),
-							// HACK: the pesde package source doesn't use the engines, so we can just use an empty map
-							engines: Default::default(),
-						},
-					)
-					.await?;
+				let entry = file
+					.entries
+					.remove(&v_id)
+					.context("failed to remove scripts package entry")?;
 
-				let Some(scripts) = target.scripts().filter(|s| !s.is_empty()) else {
+				let Some(scripts) = entry.target.scripts().filter(|s| !s.is_empty()) else {
 					anyhow::bail!("scripts package has no scripts.")
 				};
 
@@ -248,9 +243,9 @@ impl InitCommand {
 					.or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
 
 				let field = &mut dev_deps["scripts"];
-				field["name"] = toml_edit::value(id.name().to_string());
-				field["version"] = toml_edit::value(format!("^{}", id.version_id().version()));
-				field["target"] = toml_edit::value(id.version_id().target().to_string());
+				field["name"] = toml_edit::value(scripts_pkg_name.to_string());
+				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
+				field["target"] = toml_edit::value(v_id.target().to_string());
 
 				for (alias, (spec, ty)) in pkg_ref.dependencies {
 					if ty != DependencyType::Peer {
@@ -264,14 +259,18 @@ impl InitCommand {
 					let field = &mut dev_deps[alias.as_str()];
 					field["name"] = toml_edit::value(spec.name.to_string());
 					field["version"] = toml_edit::value(spec.version.to_string());
-					field["target"] = toml_edit::value(
-						spec.target
-							.unwrap_or_else(|| id.version_id().target())
-							.to_string(),
-					);
+					field["target"] =
+						toml_edit::value(spec.target.unwrap_or_else(|| v_id.target()).to_string());
 				}
 
-				// TODO: add engines
+				if !entry.engines.is_empty() {
+					let engines = manifest["engines"]
+						.or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
+
+					for (engine, req) in entry.engines {
+						engines[engine.to_string()] = toml_edit::value(req.to_string());
+					}
+				}
 			} else {
 				println!(
 					"{ERROR_PREFIX}: no scripts package configured, this can cause issues with Roblox compatibility"
