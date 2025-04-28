@@ -368,25 +368,26 @@ pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
 	}
 }
 
-#[cfg(feature = "version-management")]
+#[cfg_attr(not(feature = "version-management"), allow(unused_variables))]
 pub async fn get_project_engines(
 	manifest: &Manifest,
 	reqwest: &reqwest::Client,
 ) -> anyhow::Result<HashMap<EngineKind, Version>> {
 	use tokio::task::JoinSet;
-	use version::get_installed_versions;
 
 	crate::cli::reporters::run_with_reporter(|_, root_progress, reporter| async {
 		let root_progress = root_progress;
+		#[cfg(feature = "version-management")]
 		let reporter = reporter;
 
 		root_progress.set_prefix(format!("{} {}: ", manifest.name, manifest.target));
 		root_progress.reset();
 		root_progress.set_message("update engines");
 
-		let mut tasks = EngineKind::VARIANTS
-			.iter()
-			.copied()
+		let tasks = EngineKind::VARIANTS.iter().copied();
+
+		#[cfg(feature = "version-management")]
+		let mut tasks = tasks
 			.map(|engine| {
 				let req = manifest.engines.get(&engine).cloned();
 				let reqwest = reqwest.clone();
@@ -394,7 +395,7 @@ pub async fn get_project_engines(
 
 				async move {
 					let Some(req) = req else {
-						return get_installed_versions(engine)
+						return version::get_installed_versions(engine)
 							.await
 							.map(|mut vers| vers.pop_last().map(|v| (engine, v)));
 					};
@@ -415,6 +416,35 @@ pub async fn get_project_engines(
 			})
 			.collect::<JoinSet<_>>();
 
+		#[cfg(not(feature = "version-management"))]
+		let mut tasks = tasks
+			.map(|engine| async move {
+				let output = tokio::process::Command::new(engine.to_string())
+					.arg("--version")
+					.stdout(std::process::Stdio::piped())
+					.output()
+					.await;
+
+				let output = match output {
+					Ok(output) => output.stdout,
+					Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+					Err(e) => return Err(e).context(format!("failed to execute {engine}")),
+				};
+
+				let output = String::from_utf8(output)
+					.with_context(|| format!("failed to parse {engine} version output"))?;
+				let version = output
+					.split_once(' ')
+					.with_context(|| format!("failed to split {engine} version output"))?
+					.1;
+				let version = version.trim().trim_start_matches('v');
+				let version = Version::parse(version)
+					.with_context(|| format!("failed to parse {engine} version"))?;
+
+				Ok::<_, anyhow::Error>(Some((engine, version)))
+			})
+			.collect::<JoinSet<_>>();
+
 		let mut resolved_engine_versions = HashMap::new();
 
 		while let Some(task) = tasks.join_next().await {
@@ -427,14 +457,6 @@ pub async fn get_project_engines(
 		Ok::<_, anyhow::Error>(resolved_engine_versions)
 	})
 	.await
-}
-
-#[cfg(not(feature = "version-management"))]
-pub async fn get_project_engines(
-	_manifest: &Manifest,
-	_reqwest: &reqwest::Client,
-) -> anyhow::Result<HashMap<EngineKind, Version>> {
-	Ok(Default::default())
 }
 
 pub fn compatible_runtime(
