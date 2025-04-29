@@ -271,17 +271,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ needs.prepare.outputs.registry_image }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
       - name: Set Tags
         id: set_tags
         shell: bash
@@ -290,7 +279,7 @@ jobs:
           TAGS=$({
             echo "-t ${{ needs.prepare.outputs.registry_image }}:${{ github.sha }}";
             echo "-t ${{ needs.prepare.outputs.registry_image }}:${GITHUB_SHORT_SHA}";
-            echo "-t ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.version }}";
+            echo "-t ${{ needs.prepare.outputs.registry_image }}:${{ needs.prepare.outputs.registry_version }}";
             if [[ "${{ needs.prepare.outputs.version }}" != *"-"* ]]; then
               echo "-t ${{ needs.prepare.outputs.registry_image }}:latest";
             fi;
