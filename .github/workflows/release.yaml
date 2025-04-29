@@ -211,7 +211,7 @@ jobs:
         with:
           images: ${{ needs.prepare.outputs.registry_image }}
 
-      - name: Log in to the Container registry
+      - name: Log into the Container registry
         uses: docker/login-action@v3
         with:
           registry: https://ghcr.io
