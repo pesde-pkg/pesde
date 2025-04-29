@@ -250,9 +250,7 @@ jobs:
   publish-registry-image:
     name: Publish Docker image
     runs-on: ubuntu-latest
-    needs:
-      - prepare
-      - build-registry-image
+    needs: [ prepare, build-registry-image ]
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
