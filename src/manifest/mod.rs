@@ -172,6 +172,20 @@ impl FromStr for Alias {
 			return Err(errors::AliasFromStr::Empty);
 		}
 
+		if s.len() > 24 {
+			return Err(errors::AliasFromStr::TooLong(s.to_string()));
+		}
+
+		if [
+			"con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7",
+			"com8", "com9", "com¹", "com²", "com³", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6",
+			"lpt7", "lpt8", "lpt9", "lpt¹", "lpt²", "lpt³",
+		]
+		.contains(&s.to_ascii_lowercase().as_str())
+		{
+			return Err(errors::AliasFromStr::Reserved(s.to_string()));
+		}
+
 		if !s
 			.chars()
 			.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
@@ -285,6 +299,14 @@ pub mod errors {
 		/// The alias is empty
 		#[error("the alias is empty")]
 		Empty,
+
+		/// The alias has more than 24 characters
+		#[error("alias `{0}` has more than 24 characters")]
+		TooLong(String),
+
+		/// The alias is a reserved file name
+		#[error("alias `{0}` is a reserved file name")]
+		Reserved(String),
 
 		/// The alias contains characters outside a-z, A-Z, 0-9, -, and _
 		#[error("alias `{0}` contains characters outside a-z, A-Z, 0-9, -, and _")]

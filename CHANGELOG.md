@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Update `full-moon` dependency to 2.0.0 to support new Luau syntax by @daimond113
+- Limit aliases to 24 characters & forbid reserved Windows file names by @daimond113
 
 ## [0.6.2] - 2025-03-14
 ### Fixed
