@@ -307,7 +307,7 @@ impl Project {
 						(container_folder, base_folder)
 					};
 
-					for (dep_id, dep_alias) in &node.node.dependencies {
+					for (dep_id, (dep_alias, _)) in &node.node.dependencies {
 						let dep_id = dep_id.clone();
 						let dep_alias = dep_alias.clone();
 						let dep_node = graph.get(&dep_id).cloned();

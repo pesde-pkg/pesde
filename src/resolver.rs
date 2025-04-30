@@ -114,7 +114,9 @@ impl Project {
 				let mut queue = node
 					.dependencies
 					.iter()
-					.map(|(id, dep_alias)| (id, vec![alias.to_string(), dep_alias.to_string()]))
+					.map(|(id, (dep_alias, _))| {
+						(id, vec![alias.to_string(), dep_alias.to_string()])
+					})
 					.collect::<VecDeque<_>>();
 
 				while let Some((dep_id, path)) = queue.pop_front() {
@@ -135,7 +137,7 @@ impl Project {
 						dep_node
 							.dependencies
 							.iter()
-							.map(|(id, alias)| {
+							.map(|(id, (alias, _))| {
 								(
 									id,
 									path.iter()
@@ -270,19 +272,12 @@ impl Project {
 					)));
 				};
 
-				let resolved_ty = if (is_published_package || depth == 0) && ty == DependencyType::Peer
-				{
-					DependencyType::Standard
-				} else {
-					ty
-				};
-
 				if let Some(dependant_id) = dependant {
 					graph
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in graph")
 						.dependencies
-						.insert(package_id.clone(), alias.clone());
+						.insert(package_id.clone(), (alias.clone(), ty));
 				}
 
 				let pkg_ref = &resolved[package_id.version_id()];
@@ -296,14 +291,6 @@ impl Project {
                         );
 					}
 
-					if already_resolved.resolved_ty == DependencyType::Peer {
-						already_resolved.resolved_ty = resolved_ty;
-					}
-
-					if ty == DependencyType::Peer && depth == 0 {
-						already_resolved.is_peer = true;
-					}
-
 					if already_resolved.direct.is_none() && depth == 0 {
 						already_resolved.direct = Some((alias.clone(), specifier.clone(), ty));
 					}
@@ -315,12 +302,6 @@ impl Project {
 					direct: (depth == 0).then(|| (alias.clone(), specifier.clone(), ty)),
 					pkg_ref: pkg_ref.clone(),
 					dependencies: Default::default(),
-					resolved_ty,
-					is_peer: if depth == 0 {
-						false
-					} else {
-						ty == DependencyType::Peer
-					},
 				};
 				insert_node(
 					&mut graph,
@@ -386,16 +367,6 @@ impl Project {
 			}
 				.instrument(tracing::info_span!("resolve new/changed", path = path.iter().map(Alias::as_str).collect::<Vec<_>>().join(">")))
 				.await?;
-		}
-
-		for (id, node) in &mut graph {
-			if node.is_peer && node.direct.is_none() {
-				node.resolved_ty = DependencyType::Peer;
-			}
-
-			if node.resolved_ty == DependencyType::Peer {
-				tracing::warn!("peer dependency {id} was not resolved");
-			}
 		}
 
 		Ok(graph)

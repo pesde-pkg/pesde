@@ -268,7 +268,9 @@ impl Project {
 				let mut queue = graph
 					.iter()
 					.filter(|(_, node)| {
-						node.direct.is_some() && install_dependencies_mode.fits(node.resolved_ty)
+						node.direct
+							.as_ref()
+							.is_some_and(|(_, _, ty)| install_dependencies_mode.fits(*ty))
 					})
 					.collect::<VecDeque<_>>();
 

@@ -172,7 +172,10 @@ impl PublishCommand {
 
 								Ok::<_, anyhow::Error>(
 									target.build_files().is_none()
-										&& !matches!(node.resolved_ty, DependencyType::Dev),
+										&& node
+											.direct
+											.as_ref()
+											.is_some_and(|(_, _, ty)| *ty != DependencyType::Dev),
 								)
 							}
 						})

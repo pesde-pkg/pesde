@@ -53,7 +53,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 		let aliases = graph
 			.iter()
 			.flat_map(|(_, node)| node.node.dependencies.iter())
-			.filter_map(|(id, alias)| binary_packages.contains(id).then_some(alias.as_str()))
+			.filter_map(|(id, (alias, _))| binary_packages.contains(id).then_some(alias.as_str()))
 			.chain(
 				graph
 					.iter()
@@ -201,6 +201,8 @@ pub async fn install(
 				)
 				.await
 				.context("failed to build dependency graph")?;
+
+			check_peers_satisfied(&graph);
 
 			let mut tasks = graph
 				.iter()
@@ -535,5 +537,60 @@ pub fn print_package_diff(prefix: &str, old_graph: &DependencyGraph, new_graph: 
 		}
 
 		println!();
+	}
+}
+
+pub fn check_peers_satisfied(graph: &DependencyGraph) {
+	for (id, node) in graph {
+		let Some((alias, _, _)) = &node.direct else {
+			continue;
+		};
+
+		let mut queue = node
+			.dependencies
+			.iter()
+			.map(|(dep_id, (dep_alias, dep_ty))| (vec![(id, alias)], (dep_id, dep_alias), *dep_ty))
+			.collect::<Vec<_>>();
+
+		while let Some((path, (dep_id, dep_alias), dep_ty)) = queue.pop() {
+			if dep_ty == DependencyType::Peer {
+				let mut iter = path
+					.iter()
+					.map(|(id, _)| id)
+					.rev()
+					// skip our parent since we're always going to be descendants of it
+					.skip(1)
+					.take(2);
+
+				let satisfied = if iter.len() > 0 {
+					iter.any(|id| graph[id].dependencies.contains_key(dep_id))
+				} else {
+					graph.get(dep_id).is_some_and(|node| node.direct.is_some())
+				};
+
+				if !satisfied {
+					eprintln!(
+						"{WARN_PREFIX}: peer dependency {}>{dep_alias} is not satisfied",
+						path.iter()
+							.map(|(_, alias)| alias.as_str())
+							.collect::<Vec<_>>()
+							.join(">"),
+					);
+				}
+			}
+
+			queue.extend(graph[dep_id].dependencies.iter().map(
+				|(inner_dep_id, (inner_dep_alias, inner_dep_ty))| {
+					(
+						path.iter()
+							.copied()
+							.chain(std::iter::once((dep_id, dep_alias)))
+							.collect(),
+						(inner_dep_id, inner_dep_alias),
+						*inner_dep_ty,
+					)
+				},
+			));
+		}
 	}
 }

@@ -25,12 +25,7 @@ pub struct DependencyGraphNode {
 	pub direct: Option<(Alias, DependencySpecifiers, DependencyType)>,
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<PackageId, Alias>,
-	/// The resolved (transformed, for example Peer -> Standard) type of the dependency
-	pub resolved_ty: DependencyType,
-	/// Whether the resolved type should be Peer if this isn't depended on
-	#[serde(default, skip_serializing_if = "std::ops::Not::not")]
-	pub is_peer: bool,
+	pub dependencies: BTreeMap<PackageId, (Alias, DependencyType)>,
 	/// The package reference
 	pub pkg_ref: PackageRefs,
 }
