@@ -114,7 +114,7 @@ impl Project {
 				let mut queue = node
 					.dependencies
 					.iter()
-					.map(|(id, (dep_alias, _))| {
+					.map(|(dep_alias, (id, _))| {
 						(id, vec![alias.to_string(), dep_alias.to_string()])
 					})
 					.collect::<VecDeque<_>>();
@@ -137,7 +137,7 @@ impl Project {
 						dep_node
 							.dependencies
 							.iter()
-							.map(|(id, (alias, _))| {
+							.map(|(alias, (id, _))| {
 								(
 									id,
 									path.iter()
@@ -277,7 +277,7 @@ impl Project {
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in graph")
 						.dependencies
-						.insert(package_id.clone(), (alias.clone(), ty));
+						.insert(alias.clone(), (package_id.clone(), ty));
 				}
 
 				let pkg_ref = &resolved[package_id.version_id()];

@@ -53,7 +53,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 		let aliases = graph
 			.iter()
 			.flat_map(|(_, node)| node.node.dependencies.iter())
-			.filter_map(|(id, (alias, _))| binary_packages.contains(id).then_some(alias.as_str()))
+			.filter_map(|(alias, (id, _))| binary_packages.contains(id).then_some(alias.as_str()))
 			.chain(
 				graph
 					.iter()
@@ -549,7 +549,7 @@ pub fn check_peers_satisfied(graph: &DependencyGraph) {
 		let mut queue = node
 			.dependencies
 			.iter()
-			.map(|(dep_id, (dep_alias, dep_ty))| (vec![(id, alias)], (dep_id, dep_alias), *dep_ty))
+			.map(|(dep_alias, (dep_id, dep_ty))| (vec![(id, alias)], (dep_id, dep_alias), *dep_ty))
 			.collect::<Vec<_>>();
 
 		while let Some((path, (dep_id, dep_alias), dep_ty)) = queue.pop() {
@@ -563,7 +563,7 @@ pub fn check_peers_satisfied(graph: &DependencyGraph) {
 					.take(2);
 
 				let satisfied = if iter.len() > 0 {
-					iter.any(|id| graph[id].dependencies.contains_key(dep_id))
+					iter.any(|id| graph[id].dependencies.values().any(|(id, _)| id == dep_id))
 				} else {
 					graph.get(dep_id).is_some_and(|node| node.direct.is_some())
 				};
@@ -580,7 +580,7 @@ pub fn check_peers_satisfied(graph: &DependencyGraph) {
 			}
 
 			queue.extend(graph[dep_id].dependencies.iter().map(
-				|(inner_dep_id, (inner_dep_alias, inner_dep_ty))| {
+				|(inner_dep_alias, (inner_dep_id, inner_dep_ty))| {
 					(
 						path.iter()
 							.copied()

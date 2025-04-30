@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Download engines in install step rather than lazily by @daimond113
 - Rewrite dependency type system to solve multiple issues by @daimond113
+- Fix support for different aliases resolving to the same package by @daimond113
 
 ### Performance
 - Remove unnecessary `Arc`s from codebase by @daimond113

@@ -25,7 +25,7 @@ pub struct DependencyGraphNode {
 	pub direct: Option<(Alias, DependencySpecifiers, DependencyType)>,
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<PackageId, (Alias, DependencyType)>,
+	pub dependencies: BTreeMap<Alias, (PackageId, DependencyType)>,
 	/// The package reference
 	pub pkg_ref: PackageRefs,
 }

@@ -282,8 +282,8 @@ impl Project {
 					}
 
 					node.dependencies
-						.keys()
-						.filter_map(|id| graph.get(id).map(|node| (id, node)))
+						.values()
+						.filter_map(|(id, _)| graph.get(id).map(|node| (id, node)))
 						.for_each(|x| queue.push_back(x));
 				}
 
