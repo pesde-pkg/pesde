@@ -46,8 +46,8 @@ workspace = true
 
 [dependencies]
 serde = { version = "1.0.219", features = ["derive"] }
-toml = "0.8.20"
-gix = { version = "0.71.0", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials", "parallel"] }
+toml = "0.8.22"
+gix = { version = "0.72.1", default-features = false, features = ["blocking-http-transport-reqwest-rust-tls", "revparse-regex", "credentials", "parallel"] }
 semver = { version = "1.0.26", features = ["serde"] }
 reqwest = { version = "0.12.15", default-features = false, features = ["rustls-tls", "stream", "json"] }
 tokio-tar = "0.3.1"
@@ -62,8 +62,8 @@ async-stream = "0.3.6"
 futures = "0.3.31"
 full_moon = { version = "2.0.0", features = ["luau"] }
 url = { version = "2.5.4", features = ["serde"] }
-jiff = { version = "0.2.10", default-features = false, features = ["serde", "std"] }
-sha2 = "0.10.8"
+jiff = { version = "0.2.12", default-features = false, features = ["serde", "std"] }
+sha2 = "0.10.9"
 tempfile = "3.19.1"
 wax = { version = "0.6.0", default-features = false }
 fs-err = { version = "3.1.0", features = ["tokio"] }
@@ -80,7 +80,7 @@ anyhow = { version = "1.0.98", optional = true }
 open = { version = "5.3.2", optional = true }
 keyring = { version = "3.6.2", features = ["crypto-rust", "windows-native", "apple-native", "sync-secret-service"], optional = true }
 console = { version = "0.15.11", optional = true }
-toml_edit = { version = "0.22.24", optional = true }
+toml_edit = { version = "0.22.26", optional = true }
 clap = { version = "4.5.37", features = ["derive"], optional = true }
 dirs = { version = "6.0.0", optional = true }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"], optional = true }

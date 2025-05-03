@@ -16,7 +16,7 @@ dotenvy = "0.15.7"
 thiserror = "2.0.12"
 tantivy = "0.24.0"
 semver = "1.0.26"
-jiff = { version = "0.2.10", features = ["serde"] }
+jiff = { version = "0.2.12", features = ["serde"] }
 futures = "0.3.31"
 tokio = "1.44.2"
 tokio-util = "0.7.15"
@@ -25,7 +25,7 @@ fs-err = { version = "3.1.0", features = ["tokio"] }
 async-stream = "0.3.6"
 
 git2 = "0.20.1"
-gix = { version = "0.71.0", default-features = false, features = [
+gix = { version = "0.72.1", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
     "credentials",
 ] }
@@ -33,9 +33,9 @@ gix = { version = "0.71.0", default-features = false, features = [
 serde = "1.0.219"
 serde_json = "1.0.140"
 serde_yaml = "0.9.34"
-toml = "0.8.20"
+toml = "0.8.22"
 convert_case = "0.8.0"
-sha2 = "0.10.8"
+sha2 = "0.10.9"
 
 rusty-s3 = "0.7.0"
 reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls"] }
