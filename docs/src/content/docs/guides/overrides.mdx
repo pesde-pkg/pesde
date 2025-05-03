@@ -100,3 +100,15 @@ Make sure not to commit or stage the changes made in the temporary directory.
 Otherwise pesde may not be able to create the patch correctly.
 
 </Aside>
+
+<Aside type="note">
+
+If you sync your patch files to a Git repository it is advised to mark said
+files as binary so the line endings don't get changed, which can cause
+cryptic errors when applying.
+
+```txt title=".gitattributes"
+*.patch binary
+```
+
+</Aside>
