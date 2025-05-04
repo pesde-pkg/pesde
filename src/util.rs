@@ -12,7 +12,6 @@ use std::{
 	fmt::{Display, Formatter},
 	path::{Path, PathBuf},
 };
-use tokio::task::spawn_blocking;
 
 pub fn authenticate_conn(
 	conn: &mut gix::remote::Connection<
@@ -214,7 +213,7 @@ pub async fn symlink_dir(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
 			return fs::symlink_dir(src, dst).await;
 		}
 
-		spawn_blocking(move || {
+		tokio::task::spawn_blocking(move || {
 			junction::create(&src, &dst).map_err(|e| {
 				std::io::Error::new(
 					e.kind(),
