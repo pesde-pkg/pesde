@@ -1,6 +1,7 @@
 use crate::{
 	manifest::target::TargetKind,
 	source::{ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS, IGNORED_FILES},
+	util,
 };
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
@@ -193,14 +194,7 @@ async fn package_fs_copy(
 				}
 			}
 
-			tasks.spawn(async {
-				#[cfg(windows)]
-				let res = fs::symlink_dir(path, dest_path).await;
-				#[cfg(unix)]
-				let res = fs::symlink(path, dest_path).await;
-
-				res
-			});
+			tasks.spawn(async { util::symlink_dir(path, dest_path).await });
 			continue;
 		}
 
@@ -208,14 +202,7 @@ async fn package_fs_copy(
 			continue;
 		}
 
-		tasks.spawn(async {
-			#[cfg(windows)]
-			let res = fs::symlink_file(path, dest_path).await;
-			#[cfg(unix)]
-			let res = fs::symlink(path, dest_path).await;
-
-			res
-		});
+		tasks.spawn(async { util::symlink_file(path, dest_path).await });
 	}
 
 	while let Some(task) = tasks.join_next().await {

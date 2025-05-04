@@ -29,6 +29,7 @@ use std::{
 	path::{Path, PathBuf},
 	sync::Arc,
 };
+use tokio::task::JoinSet;
 use tracing::instrument;
 
 use super::engines_dir;
@@ -228,8 +229,10 @@ pub async fn get_or_download_engine(
 
 #[instrument(level = "trace")]
 pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
-	let bin_exe_path = bin_dir()?
-		.join(EngineKind::Pesde.to_string())
+	let bin_dir = bin_dir()?;
+	let bin_name = EngineKind::Pesde.to_string();
+	let bin_exe_path = bin_dir
+		.join(&bin_name)
 		.with_extension(std::env::consts::EXE_EXTENSION);
 
 	let exists = fs::metadata(&bin_exe_path).await.is_ok();
@@ -263,7 +266,56 @@ pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
 		.await
 		.context("failed to copy executable to bin folder")?;
 
-	make_executable(&bin_exe_path).await
+	make_executable(&bin_exe_path).await?;
+
+	let bin_exe_path: Arc<Path> = bin_exe_path.into();
+
+	let mut entries = fs::read_dir(bin_dir)
+		.await
+		.context("failed to read bin directory")?;
+
+	let mut tasks = JoinSet::new();
+
+	while let Some(entry) = entries
+		.next_entry()
+		.await
+		.context("failed to read bin directory entry")?
+	{
+		if entry
+			.file_type()
+			.await
+			.context("failed to get bin entry type")?
+			.is_dir()
+		{
+			continue;
+		}
+
+		let path = entry.path();
+
+		if path
+			.file_stem()
+			.is_some_and(|name| name.eq_ignore_ascii_case(&bin_name))
+		{
+			continue;
+		}
+
+		let bin_exe_path = bin_exe_path.clone();
+
+		tasks.spawn(async move {
+			fs::remove_file(&path)
+				.await
+				.context("failed to remove bin directory entry")?;
+			fs::hard_link(bin_exe_path, path)
+				.await
+				.context("failed to hard link new linker in bin directory")
+		});
+	}
+
+	while let Some(res) = tasks.join_next().await {
+		res.unwrap()?;
+	}
+
+	Ok(())
 }
 
 #[instrument(level = "trace")]
@@ -272,21 +324,18 @@ pub async fn make_linker_if_needed(engine: EngineKind) -> anyhow::Result<()> {
 		.join(engine.to_string())
 		.with_extension(std::env::consts::EXE_EXTENSION);
 
-	if fs::metadata(&linker).await.is_err() {
-		let exe = current_exe().context("failed to get current exe path")?;
+	let exe = current_exe().context("failed to get current exe path")?;
 
-		if let Some(parent) = linker.parent() {
-			fs::create_dir_all(parent)
-				.await
-				.context("failed to create linker directory")?;
-		}
+	if let Some(parent) = linker.parent() {
+		fs::create_dir_all(parent)
+			.await
+			.context("failed to create linker directory")?;
+	}
 
-		#[cfg(windows)]
-		let result = fs::symlink_file(exe, linker);
-		#[cfg(not(windows))]
-		let result = fs::symlink(exe, linker);
-
-		result.await.context("failed to create symlink")?;
+	match fs::hard_link(exe, linker).await {
+		Ok(_) => {}
+		Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+		e => e.context("failed to hard link engine executable")?,
 	}
 
 	Ok(())

@@ -10,8 +10,9 @@ use sha2::{Digest as _, Sha256};
 use std::{
 	collections::{BTreeMap, HashSet},
 	fmt::{Display, Formatter},
-	path::Path,
+	path::{Path, PathBuf},
 };
+use tokio::task::spawn_blocking;
 
 pub fn authenticate_conn(
 	conn: &mut gix::remote::Connection<
@@ -185,4 +186,43 @@ where
 	deserializer.deserialize_map(NoDupKeysVisitor {
 		map: BTreeMap::new(),
 	})
+}
+
+pub async fn symlink_file(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
+	#[cfg(unix)]
+	{
+		fs::symlink(src, dst).await
+	}
+	#[cfg(windows)]
+	{
+		if std::env::var("PESDE_FORCE_SYMLINK").is_ok() {
+			return fs::symlink_file(src, dst).await;
+		}
+
+		fs::hard_link(src, dst).await
+	}
+}
+
+pub async fn symlink_dir(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
+	#[cfg(unix)]
+	{
+		fs::symlink(src, dst).await
+	}
+	#[cfg(windows)]
+	{
+		if std::env::var("PESDE_FORCE_SYMLINK").is_ok() {
+			return fs::symlink_dir(src, dst).await;
+		}
+
+		spawn_blocking(move || {
+			junction::create(&src, &dst).map_err(|e| {
+				std::io::Error::new(
+					e.kind(),
+					format!("failed to create junction from `{src:?}` to `{dst:?}`"),
+				)
+			})
+		})
+		.await
+		.unwrap()
+	}
 }

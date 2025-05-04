@@ -1,4 +1,3 @@
-use super::files::make_executable;
 use crate::cli::{
 	bin_dir, dep_type_to_key,
 	reporters::{self, CliReporter},
@@ -78,31 +77,11 @@ impl DownloadAndLinkHooks for InstallHooks {
 				let curr_exe = curr_exe.clone();
 
 				async move {
-					// TODO: remove this in a major release
-					#[cfg(unix)]
-					if fs::metadata(&bin_exec_file)
-						.await
-						.is_ok_and(|m| !m.is_symlink())
-					{
-						fs::remove_file(&bin_exec_file)
-							.await
-							.context("failed to remove outdated bin linker")?;
-					}
-
-					#[cfg(windows)]
-					let res = fs::symlink_file(curr_exe, &bin_exec_file).await;
-					#[cfg(unix)]
-					let res = fs::symlink(curr_exe, &bin_exec_file).await;
-
-					match res {
+					match fs::hard_link(curr_exe, bin_exec_file).await {
 						Ok(_) => {}
 						Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-						e => e.context("failed to symlink bin link file")?,
+						e => e.context("failed to hard link bin link file")?,
 					}
-
-					make_executable(&bin_exec_file)
-						.await
-						.context("failed to make bin link file executable")?;
 
 					Ok::<_, anyhow::Error>(())
 				}
