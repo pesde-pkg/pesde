@@ -36,7 +36,6 @@ use tracing::instrument;
 pub mod auth;
 pub mod commands;
 pub mod config;
-pub mod files;
 pub mod install;
 pub mod reporters;
 pub mod style;
@@ -368,6 +367,32 @@ pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
 	}
 }
 
+async fn get_executable_version(engine: EngineKind) -> anyhow::Result<Option<Version>> {
+	let output = tokio::process::Command::new(engine.to_string())
+		.arg("--version")
+		.stdout(std::process::Stdio::piped())
+		.output()
+		.await;
+
+	let output = match output {
+		Ok(output) => output.stdout,
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+		Err(e) => return Err(e).context(format!("failed to execute {engine}")),
+	};
+
+	let output = String::from_utf8(output)
+		.with_context(|| format!("failed to parse {engine} version output"))?;
+	let version = output
+		.split_once(' ')
+		.with_context(|| format!("failed to split {engine} version output"))?
+		.1;
+	let version = version.trim().trim_start_matches('v');
+	let version =
+		Version::parse(version).with_context(|| format!("failed to parse {engine} version"))?;
+
+	Ok(Some(version))
+}
+
 #[cfg_attr(not(feature = "version-management"), allow(unused_variables))]
 pub async fn get_project_engines(
 	manifest: &Manifest,
@@ -395,9 +420,15 @@ pub async fn get_project_engines(
 
 				async move {
 					let Some(req) = req else {
-						return version::get_installed_versions(engine)
+						if let Some(version) =
+							version::get_installed_versions(engine).await?.pop_last()
+						{
+							return Ok(Some((engine, version)));
+						}
+
+						return get_executable_version(engine)
 							.await
-							.map(|mut vers| vers.pop_last().map(|v| (engine, v)));
+							.map(|opt| opt.map(|ver| (engine, ver)));
 					};
 
 					let version = crate::cli::version::get_or_download_engine(
@@ -419,29 +450,9 @@ pub async fn get_project_engines(
 		#[cfg(not(feature = "version-management"))]
 		let mut tasks = tasks
 			.map(|engine| async move {
-				let output = tokio::process::Command::new(engine.to_string())
-					.arg("--version")
-					.stdout(std::process::Stdio::piped())
-					.output()
-					.await;
-
-				let output = match output {
-					Ok(output) => output.stdout,
-					Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-					Err(e) => return Err(e).context(format!("failed to execute {engine}")),
-				};
-
-				let output = String::from_utf8(output)
-					.with_context(|| format!("failed to parse {engine} version output"))?;
-				let version = output
-					.split_once(' ')
-					.with_context(|| format!("failed to split {engine} version output"))?
-					.1;
-				let version = version.trim().trim_start_matches('v');
-				let version = Version::parse(version)
-					.with_context(|| format!("failed to parse {engine} version"))?;
-
-				Ok::<_, anyhow::Error>(Some((engine, version)))
+				get_executable_version(engine)
+					.await
+					.map(|opt| opt.map(|ver| (engine, ver)))
 			})
 			.collect::<JoinSet<_>>();
 
