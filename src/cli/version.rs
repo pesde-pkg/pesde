@@ -2,7 +2,6 @@ use crate::{
 	cli::{
 		bin_dir,
 		config::{read_config, write_config, CliConfig},
-		files::make_executable,
 		style::{ADDED_STYLE, CLI_STYLE, REMOVED_STYLE, URL_STYLE},
 	},
 	util::no_build_metadata,
@@ -348,6 +347,7 @@ pub async fn make_linker_if_needed(engine: EngineKind) -> anyhow::Result<()> {
 	Ok(())
 }
 
+#[cfg_attr(windows, allow(clippy::unused_async))]
 pub async fn make_executable(_path: impl AsRef<Path>) -> anyhow::Result<()> {
 	#[cfg(unix)]
 	{
