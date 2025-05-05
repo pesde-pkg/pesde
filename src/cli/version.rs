@@ -40,7 +40,12 @@ pub fn current_version() -> Version {
 
 const CHECK_INTERVAL: SignedDuration = SignedDuration::from_hours(6);
 
-pub async fn find_latest_version(reqwest: &reqwest::Client) -> anyhow::Result<Version> {
+pub async fn find_latest_version(
+	reqwest: &reqwest::Client,
+	include_pre: bool,
+) -> anyhow::Result<Version> {
+	let include_pre = include_pre || !current_version().pre.is_empty();
+
 	let version = EngineSources::pesde()
 		.resolve(
 			&VersionReq::STAR,
@@ -50,9 +55,11 @@ pub async fn find_latest_version(reqwest: &reqwest::Client) -> anyhow::Result<Ve
 		)
 		.await
 		.context("failed to resolve version")?
-		.pop_last()
-		.context("no versions found")?
-		.0;
+		.into_keys()
+		.filter(|ver| include_pre || ver.pre.is_empty())
+		// since the iterator is from a BTreeMap it is already sorted
+		.next_back()
+		.context("no versions found")?;
 
 	Ok(version)
 }
@@ -69,7 +76,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 		version
 	} else {
 		tracing::debug!("checking for updates");
-		let version = find_latest_version(reqwest).await?;
+		let version = find_latest_version(reqwest, false).await?;
 
 		write_config(&CliConfig {
 			last_checked_updates: Some((jiff::Timestamp::now(), version.clone())),

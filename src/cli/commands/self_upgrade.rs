@@ -19,6 +19,10 @@ pub struct SelfUpgradeCommand {
 	/// Whether to use the version from the "upgrades available" message
 	#[clap(long, default_value_t = false)]
 	use_cached: bool,
+
+	/// Whether to include pre-releases
+	#[clap(long, default_value_t = false)]
+	include_pre: bool,
 }
 
 impl SelfUpgradeCommand {
@@ -30,7 +34,7 @@ impl SelfUpgradeCommand {
 				.context("no cached version found")?
 				.1
 		} else {
-			find_latest_version(&reqwest).await?
+			find_latest_version(&reqwest, self.include_pre).await?
 		};
 
 		let latest_version_no_metadata = no_build_metadata(&latest_version);

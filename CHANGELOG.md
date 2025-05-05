@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Changed
 - Remove usage of symlinks by @daimond113
+- Don't show update alert for pre-releases by @daimond113
 
 ## [0.7.0-rc.1] - 2025-05-03
 ### Added
