@@ -172,7 +172,7 @@ impl FromStr for Alias {
 			return Err(errors::AliasFromStr::Empty);
 		}
 
-		if s.len() > 24 {
+		if s.len() > 48 {
 			return Err(errors::AliasFromStr::TooLong(s.to_string()));
 		}
 
@@ -300,8 +300,8 @@ pub mod errors {
 		#[error("the alias is empty")]
 		Empty,
 
-		/// The alias has more than 24 characters
-		#[error("alias `{0}` has more than 24 characters")]
+		/// The alias has more than 48 characters
+		#[error("alias `{0}` has more than 48 characters")]
 		TooLong(String),
 
 		/// The alias is a reserved file name
