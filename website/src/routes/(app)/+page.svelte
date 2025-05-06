@@ -28,7 +28,10 @@
 				class="bg-card hover:bg-card-hover relative overflow-hidden rounded px-5 py-4 transition"
 			>
 				<h3 class="truncate text-xl font-semibold">
-					<a href={`/packages/${pkg.name}`} class="after:absolute after:inset-0 after:content-['']">
+					<a
+						href={`packages/${encodeURIComponent(scope)}/${encodeURIComponent(name)}/${encodeURIComponent(pkg.version)}/any`}
+						class="after:absolute after:inset-0 after:content-['']"
+					>
 						<span class="text-heading">{scope}/</span><span class="text-light">{name}</span>
 					</a>
 				</h3>

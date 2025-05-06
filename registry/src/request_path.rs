@@ -56,8 +56,15 @@ pub fn resolve_version_and_target<'a>(
 ) -> Option<&'a VersionId> {
 	let version = match version {
 		LatestOrSpecificVersion::Latest => {
-			match file.entries.keys().map(VersionId::version).max() {
-				Some(latest) => latest.clone(),
+			match file.entries.iter().max_by(|(a, a_entry), (b, b_entry)| {
+				a.version()
+					.pre
+					.is_empty()
+					.cmp(&b.version().pre.is_empty())
+					.then(b_entry.yanked.cmp(&a_entry.yanked))
+					.then(a.version().cmp(b.version()))
+			}) {
+				Some((latest, _)) => latest.version().clone(),
 				None => return None,
 			}
 		}
