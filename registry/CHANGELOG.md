@@ -5,15 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.3-rc.2] - 2025-05-06
 ### Fixed
 - Don't resolve `latest` to yanked & pre-release versions unless necessary by @daimond113
 
-## [0.2.3-rc.1]
+## [0.2.3-rc.1] - 2025-05-03
 ### Changed
 - Update pesde library by @daimond113
 
-## [0.2.2]
+## [0.2.2] - 2025-03-09
 ### Changed
 - Make search building not async (as it didn't benefit from it) by @daimond113
 
@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Rewrite registry for pesde v0.5.0 by @daimond113
 
+[0.2.3-rc.2]: https://github.com/daimond113/pesde/compare/v0.7.0-rc.2%2Bregistry.0.2.3-rc.1..v0.7.0-rc.3%2Bregistry.0.2.3-rc.2
 [0.2.3-rc.1]: https://github.com/daimond113/pesde/compare/v0.6.2%2Bregistry.0.2.2..v0.7.0-rc.1%2Bregistry.0.2.3-rc.1
 [0.2.2]: https://github.com/daimond113/pesde/compare/v0.6.0%2Bregistry.0.2.1..v0.6.1%2Bregistry.0.2.2
 [0.2.1]: https://github.com/daimond113/pesde/compare/v0.6.0%2Bregistry.0.2.0..v0.6.0%2Bregistry.0.2.1
