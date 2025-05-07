@@ -164,7 +164,7 @@ pub(crate) async fn execute_script<
 			}
 		}
 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-			tracing::warn!("Lune could not be found in PATH: {e}");
+			tracing::warn!("`{}` could not be found in PATH: {e}", runtime.kind());
 
 			Ok(None)
 		}

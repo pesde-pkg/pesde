@@ -31,27 +31,40 @@ impl Display for RuntimeKind {
 
 /// Supported runtimes
 #[derive(Debug, Clone)]
-pub enum Runtime {
-	/// The [EngineKind::Lune] runtime
-	Lune(Version),
-}
+pub struct Runtime(RuntimeKind, Version);
 
 impl Runtime {
+	/// Creates a [Runtime] from the [RuntimeKind] and [Version]
+	#[must_use]
+	pub fn new(kind: RuntimeKind, version: Version) -> Self {
+		Runtime(kind, version)
+	}
+
+	/// Returns the [RuntimeKind] of this Runtime
+	#[must_use]
+	pub fn kind(&self) -> RuntimeKind {
+		self.0
+	}
+
+	/// Returns the [Version] of this Runtime
+	#[must_use]
+	pub fn version(&self) -> &Version {
+		&self.1
+	}
+
 	/// Prepares a [Command] to execute the given script with the given arguments
 	pub fn prepare_command<A: IntoIterator<Item = S> + Debug, S: AsRef<OsStr> + Debug>(
 		&self,
 		script_path: &OsStr,
 		args: A,
 	) -> Command {
-		let mut command = Command::new(match self {
-			Self::Lune(..) => "lune",
-		});
+		let mut command = Command::new(self.0.to_string());
 
-		match self {
-			Self::Lune(version) => {
+		match self.0 {
+			RuntimeKind::Lune => {
 				command.arg("run");
 				command.arg(script_path);
-				if *version < Version::new(0, 9, 0) {
+				if self.1 < Version::new(0, 9, 0) {
 					command.arg("--");
 				}
 				command.args(args);
@@ -59,16 +72,6 @@ impl Runtime {
 		}
 
 		command
-	}
-}
-
-impl Runtime {
-	/// Creates a [Runtime] from the [RuntimeKind] and [Version]
-	#[must_use]
-	pub fn new(kind: RuntimeKind, version: Version) -> Self {
-		match kind {
-			RuntimeKind::Lune => Runtime::Lune(version),
-		}
 	}
 }
 
