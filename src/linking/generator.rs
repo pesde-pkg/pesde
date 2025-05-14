@@ -118,7 +118,7 @@ fn luau_style_path(path: &Path) -> String {
 // This function should be simplified (especially to reduce the number of arguments),
 // but it's not clear how to do that while maintaining the current functionality.
 /// Get the require path for a library
-#[instrument(skip(project_manifest), level = "trace")]
+#[instrument(skip(project_manifest), level = "trace", ret)]
 #[allow(clippy::too_many_arguments)]
 #[must_use]
 pub fn get_lib_require_path(
@@ -203,7 +203,7 @@ return require({require_path})",
 }
 
 /// Get the require path for a binary
-#[instrument(level = "trace")]
+#[instrument(level = "trace", ret)]
 #[must_use]
 pub fn get_bin_require_path(
 	base_dir: &Path,
@@ -224,7 +224,7 @@ pub fn generate_script_linking_module(require_path: &str) -> String {
 }
 
 /// Get the require path for a script
-#[instrument(level = "trace")]
+#[instrument(level = "trace", ret)]
 #[must_use]
 pub fn get_script_require_path(
 	base_dir: &Path,
