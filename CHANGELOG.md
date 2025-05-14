@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Fixed
 - Fix engines with invalid output from preventing installations by @daimond113
+- Fix `run` command generating invalid require paths by @daimond113
 
 ## [0.7.0-rc.3] - 2025-05-06
 ### Changed

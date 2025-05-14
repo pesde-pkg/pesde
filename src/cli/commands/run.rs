@@ -39,20 +39,20 @@ impl RunCommand {
 		let engines = Arc::new(get_project_engines(&manifest, &reqwest).await?);
 
 		let run = async |runtime: Runtime, root: &Path, file_path: &Path| -> ! {
-			let dir = project.cas_dir().join(".tmp");
-			fs::create_dir_all(&dir)
+			let tempdir = project.cas_dir().join(".tmp");
+			fs::create_dir_all(&tempdir)
 				.await
 				.expect("failed to create temporary directory");
 
 			let mut caller =
-				tempfile::NamedTempFile::new_in(dir).expect("failed to create tempfile");
+				tempfile::NamedTempFile::new_in(&tempdir).expect("failed to create tempfile");
 
 			caller
 				.write_all(
 					generate_bin_linking_module(
 						root,
 						&get_bin_require_path(
-							caller.path(),
+							&tempdir,
 							RelativePath::from_path(
 								file_path
 									.file_name()
