@@ -380,17 +380,41 @@ async fn get_executable_version(engine: EngineKind) -> anyhow::Result<Option<Ver
 		Err(e) => return Err(e).context(format!("failed to execute {engine}")),
 	};
 
-	let output = String::from_utf8(output)
-		.with_context(|| format!("failed to parse {engine} version output"))?;
-	let version = output
-		.split_once(' ')
-		.with_context(|| format!("failed to split {engine} version output"))?
-		.1;
-	let version = version.trim().trim_start_matches('v');
-	let version =
-		Version::parse(version).with_context(|| format!("failed to parse {engine} version"))?;
+	let parse = move || {
+		let output = String::from_utf8(output)
+			.with_context(|| format!("failed to parse {engine} version output"))?;
+		let version = output
+			.split_once(' ')
+			.with_context(|| format!("failed to split {engine} version output"))?
+			.1;
+		let version = version.trim().trim_start_matches('v');
+		let version =
+			Version::parse(version).with_context(|| format!("failed to parse {engine} version"))?;
 
-	Ok(Some(version))
+		Ok::<_, anyhow::Error>(version)
+	};
+
+	match parse() {
+		Ok(version) => Ok(Some(version)),
+		Err(err) => {
+			let mut cause = vec![];
+			let mut source = err.source();
+			while let Some(err) = source {
+				cause.push(format!("\t- {err}"));
+				source = err.source();
+			}
+
+			tracing::error!(
+				"failed to extract {engine} version:\n{err}{}",
+				if cause.is_empty() {
+					"".to_string()
+				} else {
+					"\n".to_string() + &cause.join("\n")
+				}
+			);
+			Ok(None)
+		}
+	}
 }
 
 #[cfg_attr(not(feature = "version-management"), allow(unused_variables))]
