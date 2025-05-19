@@ -128,8 +128,8 @@ impl io::Write for IndicatifWriter {
 		Self::suspend(|| io::stderr().write_all(buf))
 	}
 
-	fn write_fmt(&mut self, fmt: std::fmt::Arguments<'_>) -> io::Result<()> {
-		Self::suspend(|| io::stderr().write_fmt(fmt))
+	fn write_fmt(&mut self, args: std::fmt::Arguments<'_>) -> io::Result<()> {
+		Self::suspend(|| io::stderr().write_fmt(args))
 	}
 }
 
