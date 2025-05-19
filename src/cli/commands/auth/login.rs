@@ -1,6 +1,7 @@
 use anyhow::Context as _;
 use clap::Args;
 use console::style;
+use reqwest::header::ACCEPT;
 use serde::Deserialize;
 use std::thread::spawn;
 use tokio::time::sleep;
@@ -81,6 +82,7 @@ impl LoginCommand {
 				"https://github.com/login/device/code",
 				&[("client_id", &client_id)],
 			)?)
+			.header(ACCEPT, "application/json")
 			.send()
 			.await
 			.context("failed to send device code request")?
@@ -131,6 +133,7 @@ impl LoginCommand {
 						),
 					],
 				)?)
+				.header(ACCEPT, "application/json")
 				.send()
 				.await
 				.context("failed to send access token request")?
