@@ -85,8 +85,8 @@ impl Project {
 					continue;
 				};
 
-				if matches!(specifier, DependencySpecifiers::Workspace(_)) {
-					// workspace dependencies must always be resolved brand new
+				if specifier.is_local() {
+					// local dependencies must always be resolved fresh in case their FS changes
 					continue;
 				}
 

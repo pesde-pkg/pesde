@@ -1,25 +1,19 @@
 use crate::{
-	engine::runtime::Engines,
 	graph::{DependencyGraphNodeWithTarget, DependencyGraphWithTarget},
-	linking::generator::get_file_types,
 	manifest::{Alias, Manifest},
-	scripts::{execute_script, ExecuteScriptHooks, ScriptName},
 	source::{
 		fs::{cas_path, store_in_cas},
 		ids::PackageId,
 		traits::PackageRef as _,
 	},
-	Project, LINK_LIB_NO_FILE_FOUND, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
+	Project, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
 use std::{
 	collections::HashMap,
-	ffi::OsStr,
 	path::{Path, PathBuf},
-	sync::Arc,
 };
-use tokio::task::{spawn_blocking, JoinSet};
-use tracing::{instrument, Instrument as _};
+use tokio::task::JoinSet;
 
 /// Generates linking modules for a project
 pub mod generator;
@@ -47,125 +41,12 @@ async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std:
 	fs::hard_link(cas_path(&hash, cas_dir), destination).await
 }
 
-#[derive(Debug, Clone, Copy)]
-struct LinkingExecuteScriptHooks;
-
-impl ExecuteScriptHooks for LinkingExecuteScriptHooks {
-	fn not_found(&self, script: ScriptName) {
-		tracing::warn!(
-			"not having a `{script}` script in the manifest might cause issues with linking"
-		);
-	}
-}
-
-type PackageTypes = HashMap<PackageId, Vec<String>>;
-
 impl Project {
-	/// Links the dependencies of the project
-	#[instrument(skip(self, graph), level = "debug")]
-	pub(crate) async fn link_dependencies(
-		&self,
-		graph: &DependencyGraphWithTarget,
-		engines: &Arc<Engines>,
-		with_types: bool,
-	) -> Result<(), errors::LinkingError> {
-		let manifest = self.deser_manifest().await?;
-		let manifest_target_kind = manifest.target.kind();
-
-		// step 1. link all non-wally packages (and their dependencies) temporarily without types
-		// we do this separately to allow the required tools for the scripts to be installed
-		self.link(graph, &manifest, &PackageTypes::default(), false)
-			.await?;
-
-		if !with_types {
-			return Ok(());
-		}
-
-		// step 2. extract the types from libraries, prepare Roblox packages for syncing
-		let mut tasks = graph
-			.iter()
-			.map(|(package_id, node)| {
-				let span =
-					tracing::info_span!("extract types", package_id = package_id.to_string());
-
-				let package_id = package_id.clone();
-				let node = node.clone();
-				let project = self.clone();
-				let engines = engines.clone();
-
-				async move {
-					let Some(lib_file) = node.target.lib_path() else {
-						return Ok((package_id, vec![]));
-					};
-
-					let container_folder = node.node.container_folder_from_project(
-						&package_id,
-						&project,
-						manifest_target_kind,
-					);
-
-					let types = if lib_file.as_str() == LINK_LIB_NO_FILE_FOUND {
-						vec![]
-					} else {
-						let lib_file = lib_file.to_path(&container_folder);
-
-						let contents = match fs::read_to_string(&lib_file).await {
-							Ok(contents) => contents,
-							Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-								return Err(errors::LinkingError::LibFileNotFound(
-									lib_file.display().to_string(),
-								));
-							}
-							Err(e) => return Err(e.into()),
-						};
-
-						let types = spawn_blocking(move || get_file_types(&contents))
-							.await
-							.unwrap();
-
-						tracing::debug!("contains {} exported types", types.len());
-
-						types
-					};
-
-					if let Some(build_files) = Some(&node.target)
-						.filter(|_| !node.node.pkg_ref.is_wally_package())
-						.and_then(|t| t.build_files())
-					{
-						execute_script(
-							ScriptName::RobloxSyncConfigGenerator,
-							&project,
-							&engines,
-							LinkingExecuteScriptHooks,
-							std::iter::once(container_folder.as_os_str())
-								.chain(build_files.iter().map(OsStr::new)),
-							false,
-						)
-						.await
-						.map_err(errors::LinkingError::ExecuteScript)?;
-					}
-
-					Ok((package_id, types))
-				}
-				.instrument(span)
-			})
-			.collect::<JoinSet<_>>();
-
-		let mut package_types = PackageTypes::new();
-		while let Some(task) = tasks.join_next().await {
-			let (package_id, types) = task.unwrap()?;
-			package_types.insert(package_id, types);
-		}
-
-		// step 3. link all packages (and their dependencies), this time with types
-		self.link(graph, &manifest, &package_types, true).await
-	}
-
-	async fn link(
+	pub(crate) async fn link(
 		&self,
 		graph: &DependencyGraphWithTarget,
 		manifest: &Manifest,
-		package_types: &PackageTypes,
+		package_types: &HashMap<PackageId, Vec<String>>,
 		is_complete: bool,
 	) -> Result<(), errors::LinkingError> {
 		let package_dir_canonical = fs::canonicalize(self.package_dir()).await?;
@@ -400,10 +281,6 @@ pub mod errors {
 	#[derive(Debug, Error)]
 	#[non_exhaustive]
 	pub enum LinkingError {
-		/// An error occurred while deserializing the project manifest
-		#[error("error deserializing project manifest")]
-		Manifest(#[from] crate::errors::ManifestReadError),
-
 		/// An error occurred while interacting with the filesystem
 		#[error("error interacting with filesystem")]
 		Io(#[from] std::io::Error),
@@ -411,14 +288,6 @@ pub mod errors {
 		/// A dependency was not found
 		#[error("dependency `{0}` of `{1}` not found")]
 		DependencyNotFound(String, String),
-
-		/// The library file was not found
-		#[error("library file at {0} not found")]
-		LibFileNotFound(String),
-
-		/// Executing a script failed
-		#[error("error executing script")]
-		ExecuteScript(#[from] crate::scripts::errors::ExecuteScriptError),
 
 		/// An error occurred while getting the require path for a library
 		#[error("error getting require path for library")]

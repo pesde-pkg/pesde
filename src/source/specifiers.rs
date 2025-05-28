@@ -19,6 +19,18 @@ pub enum DependencySpecifiers {
 	/// A path dependency specifier
 	Path(crate::source::path::specifier::PathDependencySpecifier),
 }
+
+impl DependencySpecifiers {
+	/// Returns whether this dependency specifier is for a local dependency
+	#[must_use]
+	pub fn is_local(&self) -> bool {
+		matches!(
+			self,
+			DependencySpecifiers::Workspace(_) | DependencySpecifiers::Path(_)
+		)
+	}
+}
+
 impl DependencySpecifier for DependencySpecifiers {}
 
 impl Display for DependencySpecifiers {

@@ -8,10 +8,7 @@ use console::style;
 use fs_err::tokio as fs;
 use pesde::{
 	patches::setup_patches_repo,
-	source::{
-		refs::PackageRefs,
-		traits::{DownloadOptions, PackageRef as _, PackageSource as _},
-	},
+	source::traits::{DownloadOptions, PackageRef as _, PackageSource as _},
 	Project, MANIFEST_FILE_NAME,
 };
 
@@ -33,12 +30,8 @@ impl PatchCommand {
 		let id = self.package.get(&graph)?;
 
 		let node = graph.get(&id).context("package not found in graph")?;
-
-		if matches!(
-			node.pkg_ref,
-			PackageRefs::Workspace(_) | PackageRefs::Path(_)
-		) {
-			anyhow::bail!("cannot patch a workspace or a path package")
+		if node.pkg_ref.is_local() {
+			anyhow::bail!("cannot patch a local package")
 		}
 
 		let source = node.pkg_ref.source();

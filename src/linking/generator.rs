@@ -120,7 +120,6 @@ fn luau_style_path(path: &Path) -> String {
 /// Get the require path for a library
 #[instrument(skip(project_manifest), level = "trace", ret)]
 #[allow(clippy::too_many_arguments)]
-#[must_use]
 pub fn get_lib_require_path(
 	target: TargetKind,
 	base_dir: &Path,

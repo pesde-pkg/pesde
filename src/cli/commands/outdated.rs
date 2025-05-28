@@ -51,12 +51,7 @@ impl OutdatedCommand {
 						return Ok::<_, anyhow::Error>(None);
 					};
 
-					if matches!(
-						specifier,
-						DependencySpecifiers::Git(_)
-							| DependencySpecifiers::Workspace(_)
-							| DependencySpecifiers::Path(_)
-					) {
+					if specifier.is_local() || matches!(specifier, DependencySpecifiers::Git(_)) {
 						return Ok(None);
 					}
 

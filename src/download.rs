@@ -74,7 +74,7 @@ impl<Reporter> Clone for DownloadGraphOptions<Reporter> {
 impl Project {
 	/// Downloads a graph of dependencies.
 	#[instrument(skip_all, level = "debug")]
-	pub(crate) async fn download_graph<Reporter>(
+	pub(crate) fn download_graph<Reporter>(
 		&self,
 		graph: &DependencyGraph,
 		options: DownloadGraphOptions<Reporter>,

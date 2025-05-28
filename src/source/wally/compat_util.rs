@@ -46,6 +46,7 @@ async fn find_lib_path(
 		true,
 	)
 	.await?
+	.into_output()
 	.filter(|result| !result.is_empty()) else {
 		return Ok(None);
 	};

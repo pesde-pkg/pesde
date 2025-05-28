@@ -15,6 +15,7 @@ use tokio::io::{AsyncBufReadExt as _, BufReader};
 use tracing::instrument;
 
 /// Script names used by pesde
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ScriptName {
 	/// Generates a config for syncing tools for Roblox. For example, for Rojo it should create a `default.project.json` file
@@ -98,6 +99,27 @@ pub(crate) trait ExecuteScriptHooks {
 	fn not_found(&self, script: ScriptName) {}
 }
 
+impl ExecuteScriptHooks for () {
+	#[allow(unused_variables)]
+	fn not_found(&self, script: ScriptName) {}
+}
+
+#[derive(Debug)]
+pub(crate) enum ExecuteScriptResult {
+	Output(String),
+	Ignored,
+	NotExecuted,
+}
+
+impl ExecuteScriptResult {
+	pub(crate) fn into_output(self) -> Option<String> {
+		match self {
+			ExecuteScriptResult::Output(output) => Some(output),
+			_ => None,
+		}
+	}
+}
+
 #[instrument(skip(project, hooks), level = "debug")]
 pub(crate) async fn execute_script<
 	A: IntoIterator<Item = S> + Debug,
@@ -110,10 +132,10 @@ pub(crate) async fn execute_script<
 	hooks: H,
 	args: A,
 	return_stdout: bool,
-) -> Result<Option<String>, errors::ExecuteScriptError> {
+) -> Result<ExecuteScriptResult, errors::ExecuteScriptError> {
 	let Some((runtime, script_path)) = find_script(project, engines, script_name).await? else {
 		hooks.not_found(script_name);
-		return Ok(None);
+		return Ok(ExecuteScriptResult::NotExecuted);
 	};
 
 	match runtime
@@ -157,16 +179,16 @@ pub(crate) async fn execute_script<
 				}
 			}
 
-			if return_stdout {
-				Ok(Some(stdout_str))
+			Ok(if return_stdout {
+				ExecuteScriptResult::Output(stdout_str)
 			} else {
-				Ok(None)
-			}
+				ExecuteScriptResult::Ignored
+			})
 		}
 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
 			tracing::warn!("`{}` could not be found in PATH: {e}", runtime.kind());
 
-			Ok(None)
+			Ok(ExecuteScriptResult::NotExecuted)
 		}
 		Err(e) => Err(e.into()),
 	}

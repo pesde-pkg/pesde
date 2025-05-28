@@ -33,6 +33,12 @@ impl PackageRefs {
 			_ => false,
 		}
 	}
+
+	/// Returns whether this package reference is local
+	#[must_use]
+	pub fn is_local(&self) -> bool {
+		matches!(self, PackageRefs::Workspace(_) | PackageRefs::Path(_))
+	}
 }
 
 impl PackageRef for PackageRefs {

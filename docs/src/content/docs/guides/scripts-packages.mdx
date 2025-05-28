@@ -3,6 +3,17 @@ title: Using Scripts Packages
 description: Learn how to use scripts packages.
 ---
 
+import { Aside } from "@astrojs/starlight/components"
+
+<Aside type="caution">
+    While scripts packages currently exist, it is intended that their functionality will be removed
+	before pesde 1.0 in favour of binaries. 
+    
+    Take this into consideration when creating a scripts
+	package.
+
+</Aside>
+
 A **scripts package** is a package that contains scripts. The scripts provided
 by the package are linked in `.pesde/{alias}/{script_name}.luau` of the project
 that uses the package.
