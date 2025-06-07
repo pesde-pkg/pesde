@@ -176,13 +176,16 @@ impl FromStr for Alias {
 			return Err(errors::AliasFromStr::TooLong(s.to_string()));
 		}
 
-		if [
-			"con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7",
-			"com8", "com9", "com¹", "com²", "com³", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6",
-			"lpt7", "lpt8", "lpt9", "lpt¹", "lpt²", "lpt³",
-		]
-		.contains(&s.to_ascii_lowercase().as_str())
-		{
+		if matches!(
+			s.to_ascii_lowercase().as_str(),
+			// Windows reserved file names
+			"con"    | "prn"  | "aux"  | "nul"  | "com1" | "com2" | "com3" | "com4" | "com5" | "com6" | "com7"
+			| "com8" | "com9" | "com¹" | "com²" | "com³" | "lpt1" | "lpt2" | "lpt3" | "lpt4" | "lpt5" | "lpt6"
+			| "lpt7" | "lpt8" | "lpt9" | "lpt¹" | "lpt²" | "lpt³"
+
+			// Luau's `@self` alias
+			| "self"
+		) {
 			return Err(errors::AliasFromStr::Reserved(s.to_string()));
 		}
 
@@ -304,8 +307,8 @@ pub mod errors {
 		#[error("alias `{0}` has more than 48 characters")]
 		TooLong(String),
 
-		/// The alias is a reserved file name
-		#[error("alias `{0}` is a reserved file name")]
+		/// The alias is reserved
+		#[error("alias `{0}` is reserved")]
 		Reserved(String),
 
 		/// The alias contains characters outside a-z, A-Z, 0-9, -, and _
