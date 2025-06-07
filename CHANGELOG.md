@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Changed
 - Reserve the `self` alias by @daimond113
+- Reserve the `cart` alias by @daimond113
 
 ## [0.7.0-rc.4] - 2025-06-03
 ### Changed

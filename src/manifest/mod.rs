@@ -185,6 +185,9 @@ impl FromStr for Alias {
 
 			// Luau's `@self` alias
 			| "self"
+
+			// The Cart runtime (#25)
+			| "cart"
 		) {
 			return Err(errors::AliasFromStr::Reserved(s.to_string()));
 		}
