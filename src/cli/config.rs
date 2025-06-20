@@ -51,7 +51,15 @@ pub async fn read_config() -> anyhow::Result<CliConfig> {
 #[instrument(level = "trace")]
 pub async fn write_config(config: &CliConfig) -> anyhow::Result<()> {
 	let config_string = toml::to_string(config).context("failed to serialize config")?;
-	fs::write(config_path()?, config_string)
+	let config_path = config_path()?;
+
+	if let Some(parent) = config_path.parent() {
+		fs::create_dir_all(parent)
+			.await
+			.context("failed to create config parent directories")?;
+	}
+
+	fs::write(config_path, config_string)
 		.await
 		.context("failed to write config file")?;
 
