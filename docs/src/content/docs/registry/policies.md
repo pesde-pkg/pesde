@@ -61,8 +61,8 @@ Packages are owned by scopes. Scope ownership is determined by the first person
 to publish a package to the scope. The owner of the scope may send a pull request
 to the index repository adding team members' user IDs to the scope's `scope.toml`
 file to give them access to the scope, however at least one package must be
-published to the scope before this can be done. The owner may also remove team
-members from the scope.
+published to the scope before this can be done. Each person added must confirm
+being added. The owner may also remove team members from the scope.
 
 A scope's true owner's ID must appear first in the `owners` field of the scope's
 `scope.toml` file. Ownership may be transferred by the current owner sending a
