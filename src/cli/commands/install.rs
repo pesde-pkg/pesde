@@ -29,9 +29,6 @@ pub struct InstallCommand {
 	force: bool,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error(transparent)]
-struct CallbackError(#[from] anyhow::Error);
 impl InstallCommand {
 	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
 		let install_dependencies_mode = match (self.prod, self.dev) {
