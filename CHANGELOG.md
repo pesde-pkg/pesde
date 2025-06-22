@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Fixed
 - Create `PESDE_HOME`/`~/.pesde` when writing config by @daimond113
+- Run `roblox_sync_config_generator` after linking dependencies by @daimond113
 
 ## [0.7.0-rc.5] - 2025-06-07
 ### Changed

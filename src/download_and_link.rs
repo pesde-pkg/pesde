@@ -22,7 +22,7 @@ use futures::TryStreamExt as _;
 use std::{
 	collections::{HashMap, VecDeque},
 	convert::Infallible,
-	ffi::OsStr,
+	ffi::OsString,
 	future::{self, Future},
 	num::NonZeroUsize,
 	path::{Path, PathBuf},
@@ -394,7 +394,7 @@ impl Project {
 			project: &Project,
 			downloaded_graph: HashMap<PackageId, (DependencyGraphNode, Arc<Path>, bool)>,
 			engines: &Arc<Engines>,
-		) -> Result<(), errors::DownloadAndLinkError<Hooks::Error>> {
+		) -> Result<Vec<Vec<OsString>>, errors::DownloadAndLinkError<Hooks::Error>> {
 			let mut tasks = downloaded_graph
 				.into_iter()
 				.map(|(id, (node, install_path, local))| {
@@ -417,57 +417,82 @@ impl Project {
 							)
 							.await?;
 
-						if let Some(build_files) = Some(&target)
+						let sync_config_args = Some(&target)
 							.filter(|_| !node.pkg_ref.is_wally_package() && !local)
 							.and_then(|t| t.build_files())
-						{
-							#[derive(Debug, Clone, Copy)]
-							struct LinkingExecuteScriptHooks;
-
-							impl ExecuteScriptHooks for LinkingExecuteScriptHooks {
-								fn not_found(&self, script: ScriptName) {
-									tracing::warn!(
-										"not having a `{script}` script in the manifest might cause issues with linking"
-									);
-								}
-							}
-
-							execute_script(
-								ScriptName::RobloxSyncConfigGenerator,
-								&project,
-								&engines,
-								LinkingExecuteScriptHooks,
-								std::iter::once(install_path.as_os_str())
-									.chain(build_files.iter().map(OsStr::new)),
-								false,
-							)
-							.await?;
-						}
+							.map(|build_files| {
+								std::iter::once(install_path.as_os_str().to_os_string())
+									.chain(build_files.iter().map(OsString::from))
+									.collect::<Vec<_>>()
+							});
 
 						Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
 							Arc::into_inner(id).unwrap(),
 							DependencyGraphNodeWithTarget { target, node },
+							sync_config_args,
 						))
 					}
 				})
 				.collect::<JoinSet<_>>();
 
+			let mut sync_config_args = vec![];
+
 			while let Some(task) = tasks.join_next().await {
-				let (id, node) = task.unwrap()?;
+				let (id, node, args) = task.unwrap()?;
 				graph.insert(id, node);
+				if let Some(args) = args {
+					sync_config_args.push(args);
+				}
 			}
 
-			Ok(())
+			Ok(sync_config_args)
 		}
 
 		// step 2. get targets for non Wally packages (Wally packages require the scripts packages to be downloaded first)
-		get_graph_targets::<Hooks>(&mut graph, self, other_graph_to_download, &engines)
-			.instrument(tracing::debug_span!("get targets (non-wally)"))
-			.await?;
+		let sync_config_args =
+			get_graph_targets::<Hooks>(&mut graph, self, other_graph_to_download, &engines)
+				.instrument(tracing::debug_span!("get targets (non-wally)"))
+				.await?;
 
 		self.link(&graph, &manifest, &Default::default(), false)
 			.instrument(tracing::debug_span!("link (non-wally)"))
 			.await?;
+
+		#[derive(Debug, Clone, Copy)]
+		struct LinkingExecuteScriptHooks;
+
+		impl ExecuteScriptHooks for LinkingExecuteScriptHooks {
+			fn not_found(&self, script: ScriptName) {
+				tracing::warn!(
+					"not having a `{script}` script in the manifest might cause issues with linking"
+				);
+			}
+		}
+
+		let mut tasks = sync_config_args
+			.into_iter()
+			.map(|args| {
+				let project = self.clone();
+				let engines = engines.clone();
+
+				async move {
+					execute_script(
+						ScriptName::RobloxSyncConfigGenerator,
+						&project,
+						&engines,
+						LinkingExecuteScriptHooks,
+						args,
+						false,
+					)
+					.await
+					.map(|_| ())
+				}
+			})
+			.collect::<JoinSet<_>>();
+
+		while let Some(result) = tasks.join_next().await {
+			result.unwrap()?;
+		}
 
 		if let Some(hooks) = &hooks {
 			hooks
