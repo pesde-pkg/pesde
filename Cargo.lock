@@ -3590,7 +3590,7 @@ checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
 name = "pesde"
-version = "0.7.0-rc.5"
+version = "0.7.0-rc.6"
 dependencies = [
  "anyhow",
  "async-compression",
