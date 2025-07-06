@@ -1,6 +1,6 @@
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
-use crate::manifest::target::TargetKind;
+use crate::manifest::{target::TargetKind, Manifest};
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
 use relative_path::RelativePath;
 use tracing::instrument;
@@ -80,7 +80,7 @@ pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
 	output
 }
 
-fn luau_style_path(path: &Path) -> String {
+fn luau_style_path(path: &Path, leading_slash: bool) -> String {
 	let path = path
 		.components()
 		.zip(
@@ -111,14 +111,15 @@ fn luau_style_path(path: &Path) -> String {
 		.collect::<Vec<_>>()
 		.join("/");
 
-	let require = format!("./{path}");
+	let prefix = if leading_slash { "./" } else { "" };
+	let require = format!("{prefix}{path}");
 	format!("{require:?}")
 }
 
 // This function should be simplified (especially to reduce the number of arguments),
 // but it's not clear how to do that while maintaining the current functionality.
 /// Get the require path for a library
-#[instrument(level = "trace", ret)]
+#[instrument(skip(project_manifest), level = "trace", ret)]
 #[allow(clippy::too_many_arguments)]
 pub fn get_lib_require_path(
 	target: TargetKind,
@@ -128,6 +129,7 @@ pub fn get_lib_require_path(
 	use_new_structure: bool,
 	root_container_dir: &Path,
 	container_dir: &Path,
+	project_manifest: &Manifest,
 ) -> Result<String, errors::GetLibRequirePath> {
 	let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
 	tracing::debug!("diffed lib path: {}", path.display());
@@ -137,7 +139,29 @@ pub fn get_lib_require_path(
 		path
 	};
 
-	Ok(luau_style_path(&path))
+	let (leading_slash, prefix) = if matches!(target, TargetKind::Roblox | TargetKind::RobloxServer) {
+		match target.try_into() {
+			Ok(place_kind) => (false, PathBuf::from(
+				project_manifest
+					.place
+					.get(&place_kind)
+					.ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
+						place_kind,
+					))?
+					.replace('.', "/")
+					.replace('[', "")
+					.replace(']', "")
+					.replace("'", "")
+					.replace('"', ""))
+			),
+			_ => (true, PathBuf::new()),
+		}
+	} else {
+		(true, PathBuf::new())
+	};
+	let path = prefix.join(path);
+	
+	Ok(luau_style_path(&path, leading_slash))
 }
 
 /// Generate a linking module for a binary
@@ -162,7 +186,7 @@ pub fn get_bin_require_path(
 	tracing::debug!("diffed bin path: {}", path.display());
 	let path = bin_file.to_path(path);
 
-	luau_style_path(&path)
+	luau_style_path(&path, true)
 }
 
 /// Generate a linking module for a script
@@ -183,7 +207,7 @@ pub fn get_script_require_path(
 	tracing::debug!("diffed script path: {}", path.display());
 	let path = script_file.to_path(path);
 
-	luau_style_path(&path)
+	luau_style_path(&path, true)
 }
 
 /// Errors for the linking module utilities
