@@ -75,7 +75,6 @@ impl Project {
 						node.node.pkg_ref.use_new_structure(),
 						root_container_folder,
 						relative_container_folder,
-						manifest,
 					)?,
 					package_types.get(package_id).unwrap_or(&NO_TYPES),
 				);

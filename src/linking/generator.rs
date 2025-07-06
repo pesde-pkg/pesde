@@ -1,6 +1,6 @@
 use std::path::{Component, Path};
 
-use crate::manifest::{target::TargetKind, Manifest};
+use crate::manifest::target::TargetKind;
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
 use relative_path::RelativePath;
 use tracing::instrument;
@@ -118,7 +118,7 @@ fn luau_style_path(path: &Path) -> String {
 // This function should be simplified (especially to reduce the number of arguments),
 // but it's not clear how to do that while maintaining the current functionality.
 /// Get the require path for a library
-#[instrument(skip(project_manifest), level = "trace", ret)]
+#[instrument(level = "trace", ret)]
 #[allow(clippy::too_many_arguments)]
 pub fn get_lib_require_path(
 	target: TargetKind,
@@ -128,7 +128,6 @@ pub fn get_lib_require_path(
 	use_new_structure: bool,
 	root_container_dir: &Path,
 	container_dir: &Path,
-	project_manifest: &Manifest,
 ) -> Result<String, errors::GetLibRequirePath> {
 	let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
 	tracing::debug!("diffed lib path: {}", path.display());
@@ -137,56 +136,6 @@ pub fn get_lib_require_path(
 	} else {
 		path
 	};
-
-	if matches!(target, TargetKind::Roblox | TargetKind::RobloxServer) {
-		let (prefix, path) = match target.try_into() {
-			Ok(place_kind) if !destination_dir.starts_with(root_container_dir) => (
-				project_manifest
-					.place
-					.get(&place_kind)
-					.ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
-						place_kind,
-					))?
-					.as_str(),
-				if use_new_structure {
-					lib_file.to_path(container_dir)
-				} else {
-					container_dir.to_path_buf()
-				},
-			),
-			_ => ("script.Parent", path),
-		};
-
-		let path = path
-			.components()
-			.zip(
-				path.components()
-					.skip(1)
-					.map(Some)
-					.chain(std::iter::repeat(None)),
-			)
-			.filter_map(|(component, next_comp)| match component {
-				Component::ParentDir => Some(".Parent".to_string()),
-				Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
-					let str = part.to_string_lossy();
-
-					Some(format!(
-						"[{:?}]",
-						if next_comp.is_some() {
-							&str
-						} else {
-							str.strip_suffix(".luau")
-								.or_else(|| str.strip_suffix(".lua"))
-								.unwrap_or(&str)
-						}
-					))
-				}
-				_ => None,
-			})
-			.collect::<String>();
-
-		return Ok(format!("{prefix}{path}"));
-	}
 
 	Ok(luau_style_path(&path))
 }
