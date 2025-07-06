@@ -139,20 +139,21 @@ pub fn get_lib_require_path(
 		path
 	};
 
-	let (leading_slash, prefix) = if matches!(target, TargetKind::Roblox | TargetKind::RobloxServer) {
+	let (leading_slash, prefix) = if matches!(target, TargetKind::Roblox | TargetKind::RobloxServer)
+	{
 		match target.try_into() {
-			Ok(place_kind) => (false, PathBuf::from(
-				project_manifest
-					.place
-					.get(&place_kind)
-					.ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
-						place_kind,
-					))?
-					.replace('.', "/")
-					.replace('[', "")
-					.replace(']', "")
-					.replace("'", "")
-					.replace('"', ""))
+			Ok(place_kind) => (
+				false,
+				PathBuf::from(
+					project_manifest
+						.place
+						.get(&place_kind)
+						.ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
+							place_kind,
+						))?
+						.replace('.', "/")
+						.replace(['[', ']', '\'', '"'], "")
+				),
 			),
 			_ => (true, PathBuf::new()),
 		}
@@ -160,7 +161,7 @@ pub fn get_lib_require_path(
 		(true, PathBuf::new())
 	};
 	let path = prefix.join(path);
-	
+
 	Ok(luau_style_path(&path, leading_slash))
 }
 
