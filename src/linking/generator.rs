@@ -1,4 +1,4 @@
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path};
 
 use crate::manifest::{target::TargetKind, Manifest};
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
@@ -80,7 +80,7 @@ pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
 	output
 }
 
-fn luau_style_path(path: &Path, leading_slash: bool) -> String {
+fn luau_style_path(path: &Path) -> String {
 	let path = path
 		.components()
 		.zip(
@@ -111,8 +111,7 @@ fn luau_style_path(path: &Path, leading_slash: bool) -> String {
 		.collect::<Vec<_>>()
 		.join("/");
 
-	let prefix = if leading_slash { "./" } else { "" };
-	let require = format!("{prefix}{path}");
+	let require = format!("./{path}");
 	format!("{require:?}")
 }
 
@@ -131,43 +130,65 @@ pub fn get_lib_require_path(
 	container_dir: &Path,
 	project_manifest: &Manifest,
 ) -> Result<String, errors::GetLibRequirePath> {
-	let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
-	tracing::debug!("diffed lib path: {}", path.display());
-	let path = if use_new_structure {
-		lib_file.to_path(path)
-	} else {
-		path
-	};
-
-	let (leading_slash, prefix, path) = match (target, target.try_into()) {
+	match (target, target.try_into()) {
 		(TargetKind::Roblox | TargetKind::RobloxServer, Ok(place_kind))
 			if !destination_dir.starts_with(root_container_dir) =>
 		{
-			(
-				false,
-				PathBuf::from(
-					project_manifest
-						.place
-						.get(&place_kind)
-						.ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
-							place_kind,
-						))?
-						.replace('.', "/")
-						.replace(['[', ']', '\'', '"'], ""),
-				),
-				if use_new_structure {
-					lib_file.to_path(container_dir)
-				} else {
-					container_dir.to_path_buf()
-				}
-			)
+			let prefix = project_manifest
+				.place
+				.get(&place_kind)
+				.ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
+					place_kind,
+				))?
+				.as_str();
+			let path = if use_new_structure {
+				lib_file.to_path(container_dir)
+			} else {
+				container_dir.to_path_buf()
+			};
+
+			let path = path
+				.components()
+				.zip(
+					path.components()
+						.skip(1)
+						.map(Some)
+						.chain(std::iter::repeat(None)),
+				)
+				.filter_map(|(component, next_comp)| match component {
+					Component::ParentDir => Some(".Parent".to_string()),
+					Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
+						let str = part.to_string_lossy();
+
+						Some(format!(
+							"[{:?}]",
+							if next_comp.is_some() {
+								&str
+							} else {
+								str.strip_suffix(".luau")
+									.or_else(|| str.strip_suffix(".lua"))
+									.unwrap_or(&str)
+							}
+						))
+					}
+					_ => None,
+				})
+				.collect::<String>();
+
+			Ok(format!("{prefix}{path}"))
 		}
 
-		_ => (true, PathBuf::new(), path),
-	};
-	let path = prefix.join(path);
-
-	Ok(luau_style_path(&path, leading_slash))
+		_ => {
+			let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
+			tracing::debug!("diffed lib path: {}", path.display());
+			let path = if use_new_structure {
+				lib_file.to_path(path)
+			} else {
+				path
+			};
+			Ok(luau_style_path(&path))
+		}
+	}
 }
 
 /// Generate a linking module for a binary
@@ -192,7 +213,7 @@ pub fn get_bin_require_path(
 	tracing::debug!("diffed bin path: {}", path.display());
 	let path = bin_file.to_path(path);
 
-	luau_style_path(&path, true)
+	luau_style_path(&path)
 }
 
 /// Generate a linking module for a script
@@ -213,7 +234,7 @@ pub fn get_script_require_path(
 	tracing::debug!("diffed script path: {}", path.display());
 	let path = script_file.to_path(path);
 
-	luau_style_path(&path, true)
+	luau_style_path(&path)
 }
 
 /// Errors for the linking module utilities
