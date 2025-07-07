@@ -11,7 +11,7 @@ use crate::{
 	util::no_build_metadata,
 	version_matches,
 };
-use reqwest::header::ACCEPT;
+use reqwest::header::{ACCEPT, AUTHORIZATION};
 use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -46,12 +46,23 @@ impl EngineSource for GitHubEngineSource {
 	) -> Result<BTreeMap<Version, Self::Ref>, Self::ResolveError> {
 		let ResolveOptions { reqwest, .. } = options;
 
-		Ok(reqwest
-			.get(format!(
-				"https://api.github.com/repos/{}/{}/releases",
-				urlencoding::encode(&self.owner),
-				urlencoding::encode(&self.repo),
-			))
+		let mut request = reqwest.get(format!(
+			"https://api.github.com/repos/{}/{}/releases",
+			urlencoding::encode(&self.owner),
+			urlencoding::encode(&self.repo),
+		));
+
+		// Check for GitHub token in environment variables
+		if let Ok(token) = std::env::var("GITHUB_TOKEN")
+			.or_else(|_| std::env::var("GH_TOKEN"))
+			.or_else(|_| std::env::var("PESDE_GITHUB_TOKEN"))
+		{
+			if !token.is_empty() {
+				request = request.header(AUTHORIZATION, format!("Bearer {}", token));
+			}
+		}
+
+		Ok(request
 			.send()
 			.await?
 			.error_for_status()?
@@ -100,9 +111,21 @@ impl EngineSource for GitHubEngineSource {
 
 		reporter.report_start();
 
-		let response = reqwest
+		let mut request = reqwest
 			.get(asset.url.clone())
-			.header(ACCEPT, "application/octet-stream")
+			.header(ACCEPT, "application/octet-stream");
+
+		// Check for GitHub token in environment variables
+		if let Ok(token) = std::env::var("GITHUB_TOKEN")
+			.or_else(|_| std::env::var("GH_TOKEN"))
+			.or_else(|_| std::env::var("PESDE_GITHUB_TOKEN"))
+		{
+			if !token.is_empty() {
+				request = request.header(AUTHORIZATION, format!("Bearer {}", token));
+			}
+		}
+
+		let response = request
 			.send()
 			.await?
 			.error_for_status()?;
