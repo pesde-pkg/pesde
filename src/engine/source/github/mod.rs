@@ -58,7 +58,7 @@ impl EngineSource for GitHubEngineSource {
 			.or_else(|_| std::env::var("PESDE_GITHUB_TOKEN"))
 		{
 			if !token.is_empty() {
-				request = request.header(AUTHORIZATION, format!("Bearer {}", token));
+				request = request.header(AUTHORIZATION, format!("Bearer {token}"));
 			}
 		}
 
@@ -121,14 +121,11 @@ impl EngineSource for GitHubEngineSource {
 			.or_else(|_| std::env::var("PESDE_GITHUB_TOKEN"))
 		{
 			if !token.is_empty() {
-				request = request.header(AUTHORIZATION, format!("Bearer {}", token));
+				request = request.header(AUTHORIZATION, format!("Bearer {token}"));
 			}
 		}
 
-		let response = request
-			.send()
-			.await?
-			.error_for_status()?;
+		let response = request.send().await?.error_for_status()?;
 
 		Ok(Archive {
 			info: asset.name.parse()?,
