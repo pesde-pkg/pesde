@@ -139,10 +139,11 @@ pub fn get_lib_require_path(
 		path
 	};
 
-	let (leading_slash, prefix) = if matches!(target, TargetKind::Roblox | TargetKind::RobloxServer)
-	{
-		match target.try_into() {
-			Ok(place_kind) => (
+	let (leading_slash, prefix, path) = match (target, target.try_into()) {
+		(TargetKind::Roblox | TargetKind::RobloxServer, Ok(place_kind))
+			if !destination_dir.starts_with(root_container_dir) =>
+		{
+			(
 				false,
 				PathBuf::from(
 					project_manifest
@@ -152,13 +153,17 @@ pub fn get_lib_require_path(
 							place_kind,
 						))?
 						.replace('.', "/")
-						.replace(['[', ']', '\'', '"'], "")
+						.replace(['[', ']', '\'', '"'], ""),
 				),
-			),
-			_ => (true, PathBuf::new()),
+				if use_new_structure {
+					lib_file.to_path(container_dir)
+				} else {
+					container_dir.to_path_buf()
+				}
+			)
 		}
-	} else {
-		(true, PathBuf::new())
+
+		_ => (true, PathBuf::new(), path),
 	};
 	let path = prefix.join(path);
 
