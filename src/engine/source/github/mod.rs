@@ -52,7 +52,6 @@ impl EngineSource for GitHubEngineSource {
 			urlencoding::encode(&self.repo),
 		));
 
-		// Check for GitHub token in environment variables
 		if let Ok(token) = std::env::var("GITHUB_TOKEN")
 			.or_else(|_| std::env::var("GH_TOKEN"))
 			.or_else(|_| std::env::var("PESDE_GITHUB_TOKEN"))
@@ -115,7 +114,6 @@ impl EngineSource for GitHubEngineSource {
 			.get(asset.url.clone())
 			.header(ACCEPT, "application/octet-stream");
 
-		// Check for GitHub token in environment variables
 		if let Ok(token) = std::env::var("GITHUB_TOKEN")
 			.or_else(|_| std::env::var("GH_TOKEN"))
 			.or_else(|_| std::env::var("PESDE_GITHUB_TOKEN"))
