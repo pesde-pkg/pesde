@@ -19,7 +19,7 @@ use pesde::{
 		EngineKind,
 	},
 	reporters::DownloadsReporter,
-	version_matches,
+	version_matches, AuthConfig,
 };
 use semver::{Version, VersionReq};
 use std::{
@@ -150,12 +150,13 @@ pub async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeS
 	Ok(installed_versions)
 }
 
-#[instrument(skip(reqwest, reporter), level = "trace")]
+#[instrument(skip(reqwest, reporter, auth_config), level = "trace")]
 pub async fn get_or_download_engine(
 	reqwest: &reqwest::Client,
 	engine: EngineKind,
 	req: VersionReq,
 	reporter: Arc<impl DownloadsReporter>,
+	auth_config: &AuthConfig,
 ) -> anyhow::Result<(PathBuf, Version)> {
 	let source = engine.source();
 	let path = engines_dir()?.join(source.directory());
@@ -180,6 +181,7 @@ pub async fn get_or_download_engine(
 			&req,
 			&ResolveOptions {
 				reqwest: reqwest.clone(),
+				auth_config: auth_config.clone(),
 			},
 		)
 		.await
@@ -195,6 +197,7 @@ pub async fn get_or_download_engine(
 				reqwest: reqwest.clone(),
 				reporter: reporter.into(),
 				version: version.clone(),
+				auth_config: auth_config.clone(),
 			},
 		)
 		.await
