@@ -42,6 +42,7 @@ const CHECK_INTERVAL: SignedDuration = SignedDuration::from_hours(6);
 pub async fn find_latest_version(
 	reqwest: &reqwest::Client,
 	include_pre: bool,
+	auth_config: &AuthConfig,
 ) -> anyhow::Result<Version> {
 	let include_pre = include_pre || !current_version().pre.is_empty();
 
@@ -50,6 +51,7 @@ pub async fn find_latest_version(
 			&VersionReq::STAR,
 			&ResolveOptions {
 				reqwest: reqwest.clone(),
+				auth_config: auth_config.clone(),
 			},
 		)
 		.await
@@ -63,8 +65,11 @@ pub async fn find_latest_version(
 	Ok(version)
 }
 
-#[instrument(skip(reqwest), level = "trace")]
-pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> {
+#[instrument(skip(reqwest, auth_config), level = "trace")]
+pub async fn check_for_updates(
+	reqwest: &reqwest::Client,
+	auth_config: &AuthConfig,
+) -> anyhow::Result<()> {
 	let config = read_config().await?;
 
 	let version = if let Some((_, version)) = config
@@ -75,7 +80,7 @@ pub async fn check_for_updates(reqwest: &reqwest::Client) -> anyhow::Result<()> 
 		version
 	} else {
 		tracing::debug!("checking for updates");
-		let version = find_latest_version(reqwest, false).await?;
+		let version = find_latest_version(reqwest, false, auth_config).await?;
 
 		write_config(&CliConfig {
 			last_checked_updates: Some((jiff::Timestamp::now(), version.clone())),

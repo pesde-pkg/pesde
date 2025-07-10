@@ -38,7 +38,7 @@ impl SelfUpgradeCommand {
 				.context("no cached version found")?
 				.1
 		} else {
-			find_latest_version(&reqwest, self.include_pre).await?
+			find_latest_version(&reqwest, self.include_pre, project.auth_config()).await?
 		};
 
 		let latest_version_no_metadata = no_build_metadata(&latest_version);
