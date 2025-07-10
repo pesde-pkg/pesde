@@ -362,7 +362,7 @@ async fn run() -> anyhow::Result<()> {
 
 	#[cfg(feature = "version-management")]
 	display_err(
-		check_for_updates(&reqwest).await,
+		check_for_updates(&reqwest, project.auth_config()).await,
 		" while checking for updates",
 	);
 

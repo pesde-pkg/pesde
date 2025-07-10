@@ -442,6 +442,7 @@ pub async fn get_project_engines(
 				let req = manifest.engines.get(&engine).cloned();
 				let reqwest = reqwest.clone();
 				let reporter = reporter.clone();
+				let auth_config = auth_config.clone();
 
 				async move {
 					let Some(req) = req else {
@@ -461,7 +462,7 @@ pub async fn get_project_engines(
 						engine,
 						req,
 						reporter,
-						auth_config,
+						&auth_config,
 					)
 					.await
 					.context("failed to install engine")?
