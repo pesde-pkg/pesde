@@ -287,7 +287,8 @@ async fn run() -> anyhow::Result<()> {
 			.context("failed to read manifest")?;
 		let manifest = toml::de::from_str(&manifest).context("failed to deserialize manifest")?;
 
-		let engines = get_project_engines(&manifest, &reqwest).await?;
+		let auth_config = AuthConfig::new().with_tokens(get_tokens().await?.0);
+		let engines = get_project_engines(&manifest, &reqwest, &auth_config).await?;
 
 		let status = compatible_runtime(target, &engines)?
 			.prepare_command(path.as_os_str(), std::env::args_os().skip(1))
@@ -343,6 +344,7 @@ async fn run() -> anyhow::Result<()> {
 			engine,
 			req.unwrap_or(semver::VersionReq::STAR),
 			().into(),
+			project.auth_config(),
 		)
 		.await?
 		.0;
@@ -360,7 +362,7 @@ async fn run() -> anyhow::Result<()> {
 
 	#[cfg(feature = "version-management")]
 	display_err(
-		check_for_updates(&reqwest).await,
+		check_for_updates(&reqwest, project.auth_config()).await,
 		" while checking for updates",
 	);
 

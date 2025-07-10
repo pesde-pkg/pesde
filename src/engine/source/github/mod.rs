@@ -11,7 +11,8 @@ use crate::{
 	util::no_build_metadata,
 	version_matches,
 };
-use reqwest::header::ACCEPT;
+use gix::bstr::BStr;
+use reqwest::header::{ACCEPT, AUTHORIZATION};
 use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -44,14 +45,24 @@ impl EngineSource for GitHubEngineSource {
 		requirement: &VersionReq,
 		options: &ResolveOptions,
 	) -> Result<BTreeMap<Version, Self::Ref>, Self::ResolveError> {
-		let ResolveOptions { reqwest, .. } = options;
+		let ResolveOptions {
+			reqwest,
+			auth_config,
+		} = options;
 
-		Ok(reqwest
-			.get(format!(
-				"https://api.github.com/repos/{}/{}/releases",
-				urlencoding::encode(&self.owner),
-				urlencoding::encode(&self.repo),
-			))
+		let mut request = reqwest.get(format!(
+			"https://api.github.com/repos/{}/{}/releases",
+			urlencoding::encode(&self.owner),
+			urlencoding::encode(&self.repo),
+		));
+
+		let github_api_url = gix::Url::from_bytes(BStr::new("https://github.com")).unwrap();
+		if let Some(token) = auth_config.tokens().get(&github_api_url) {
+			tracing::debug!("using token for {}", github_api_url);
+			request = request.header(AUTHORIZATION, token);
+		}
+
+		Ok(request
 			.send()
 			.await?
 			.error_for_status()?
@@ -78,7 +89,7 @@ impl EngineSource for GitHubEngineSource {
 			reqwest,
 			reporter,
 			version,
-			..
+			auth_config,
 		} = options;
 
 		let desired_asset_names = [
@@ -100,12 +111,17 @@ impl EngineSource for GitHubEngineSource {
 
 		reporter.report_start();
 
-		let response = reqwest
+		let mut request = reqwest
 			.get(asset.url.clone())
-			.header(ACCEPT, "application/octet-stream")
-			.send()
-			.await?
-			.error_for_status()?;
+			.header(ACCEPT, "application/octet-stream");
+
+		let github_api_url = gix::Url::from_bytes(BStr::new("https://github.com")).unwrap();
+		if let Some(token) = auth_config.tokens().get(&github_api_url) {
+			tracing::debug!("using token for {}", github_api_url);
+			request = request.header(AUTHORIZATION, token);
+		}
+
+		let response = request.send().await?.error_for_status()?;
 
 		Ok(Archive {
 			info: asset.name.parse()?,
