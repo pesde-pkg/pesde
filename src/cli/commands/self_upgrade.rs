@@ -26,7 +26,11 @@ pub struct SelfUpgradeCommand {
 }
 
 impl SelfUpgradeCommand {
-	pub async fn run(self, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(
+		self,
+		project: pesde::Project,
+		reqwest: reqwest::Client,
+	) -> anyhow::Result<()> {
 		let latest_version = if self.use_cached {
 			read_config()
 				.await?
@@ -67,6 +71,7 @@ impl SelfUpgradeCommand {
 				EngineKind::Pesde,
 				VersionReq::parse(&format!("={latest_version}")).unwrap(),
 				reporter,
+				project.auth_config(),
 			)
 			.await
 		})

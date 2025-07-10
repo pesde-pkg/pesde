@@ -20,7 +20,7 @@ use pesde::{
 	source::{
 		ids::VersionId, specifiers::DependencySpecifiers, workspace::specifier::VersionTypeOrReq,
 	},
-	Project, DEFAULT_INDEX_NAME,
+	AuthConfig, Project, DEFAULT_INDEX_NAME,
 };
 use relative_path::RelativePathBuf;
 use semver::Version;
@@ -421,6 +421,7 @@ async fn get_executable_version(engine: EngineKind) -> anyhow::Result<Option<Ver
 pub async fn get_project_engines(
 	manifest: &Manifest,
 	reqwest: &reqwest::Client,
+	auth_config: &AuthConfig,
 ) -> anyhow::Result<HashMap<EngineKind, Version>> {
 	use tokio::task::JoinSet;
 
@@ -456,7 +457,11 @@ pub async fn get_project_engines(
 					};
 
 					let version = crate::cli::version::get_or_download_engine(
-						&reqwest, engine, req, reporter,
+						&reqwest,
+						engine,
+						req,
+						reporter,
+						auth_config,
 					)
 					.await
 					.context("failed to install engine")?

@@ -11,6 +11,7 @@ use crate::{
 	util::no_build_metadata,
 	version_matches,
 };
+use gix::bstr::BStr;
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, path::PathBuf};
@@ -44,7 +45,10 @@ impl EngineSource for GitHubEngineSource {
 		requirement: &VersionReq,
 		options: &ResolveOptions,
 	) -> Result<BTreeMap<Version, Self::Ref>, Self::ResolveError> {
-		let ResolveOptions { reqwest, .. } = options;
+		let ResolveOptions {
+			reqwest,
+			auth_config,
+		} = options;
 
 		let mut request = reqwest.get(format!(
 			"https://api.github.com/repos/{}/{}/releases",
@@ -52,13 +56,10 @@ impl EngineSource for GitHubEngineSource {
 			urlencoding::encode(&self.repo),
 		));
 
-		if let Ok(token) = std::env::var("GITHUB_TOKEN")
-			.or_else(|_| std::env::var("GH_TOKEN"))
-			.or_else(|_| std::env::var("PESDE_GITHUB_TOKEN"))
-		{
-			if !token.is_empty() {
-				request = request.header(AUTHORIZATION, format!("Bearer {token}"));
-			}
+		let github_api_url = gix::Url::from_bytes(BStr::new("https://github.com")).unwrap();
+		if let Some(token) = auth_config.tokens().get(&github_api_url) {
+			tracing::debug!("using token for {}", github_api_url);
+			request = request.header(AUTHORIZATION, token);
 		}
 
 		Ok(request
@@ -88,7 +89,7 @@ impl EngineSource for GitHubEngineSource {
 			reqwest,
 			reporter,
 			version,
-			..
+			auth_config,
 		} = options;
 
 		let desired_asset_names = [
@@ -114,13 +115,10 @@ impl EngineSource for GitHubEngineSource {
 			.get(asset.url.clone())
 			.header(ACCEPT, "application/octet-stream");
 
-		if let Ok(token) = std::env::var("GITHUB_TOKEN")
-			.or_else(|_| std::env::var("GH_TOKEN"))
-			.or_else(|_| std::env::var("PESDE_GITHUB_TOKEN"))
-		{
-			if !token.is_empty() {
-				request = request.header(AUTHORIZATION, format!("Bearer {token}"));
-			}
+		let github_api_url = gix::Url::from_bytes(BStr::new("https://github.com")).unwrap();
+		if let Some(token) = auth_config.tokens().get(&github_api_url) {
+			tracing::debug!("using token for {}", github_api_url);
+			request = request.header(AUTHORIZATION, token);
 		}
 
 		let response = request.send().await?.error_for_status()?;

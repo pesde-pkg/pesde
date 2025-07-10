@@ -1,4 +1,4 @@
-use crate::{engine::source::archive::Archive, reporters::DownloadProgressReporter};
+use crate::{engine::source::archive::Archive, reporters::DownloadProgressReporter, AuthConfig};
 use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, fmt::Debug, future::Future, path::PathBuf, sync::Arc};
 
@@ -7,6 +7,8 @@ use std::{collections::BTreeMap, fmt::Debug, future::Future, path::PathBuf, sync
 pub struct ResolveOptions {
 	/// The reqwest client to use
 	pub reqwest: reqwest::Client,
+	/// The authentication configuration to use
+	pub auth_config: AuthConfig,
 }
 
 /// Options for downloading an engine
@@ -18,6 +20,8 @@ pub struct DownloadOptions<R: DownloadProgressReporter> {
 	pub reporter: Arc<R>,
 	/// The version of the engine to be downloaded
 	pub version: Version,
+	/// The authentication configuration to use
+	pub auth_config: AuthConfig,
 }
 
 /// A source of engines
