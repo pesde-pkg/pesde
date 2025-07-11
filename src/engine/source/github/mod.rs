@@ -14,7 +14,10 @@ use crate::{
 use gix::bstr::BStr;
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use semver::{Version, VersionReq};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf, sync::LazyLock};
+
+static GITHUB_URL: LazyLock<gix::Url> =
+	LazyLock::new(|| gix::Url::from_bytes(BStr::new("https://github.com")).unwrap());
 
 /// The GitHub engine source
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
@@ -56,9 +59,8 @@ impl EngineSource for GitHubEngineSource {
 			urlencoding::encode(&self.repo),
 		));
 
-		let github_api_url = gix::Url::from_bytes(BStr::new("https://github.com")).unwrap();
-		if let Some(token) = auth_config.tokens().get(&github_api_url) {
-			tracing::debug!("using token for {}", github_api_url);
+		if let Some(token) = auth_config.tokens().get(&GITHUB_URL) {
+			tracing::debug!("using token for {}", &*GITHUB_URL);
 			request = request.header(AUTHORIZATION, token);
 		}
 
@@ -115,9 +117,8 @@ impl EngineSource for GitHubEngineSource {
 			.get(asset.url.clone())
 			.header(ACCEPT, "application/octet-stream");
 
-		let github_api_url = gix::Url::from_bytes(BStr::new("https://github.com")).unwrap();
-		if let Some(token) = auth_config.tokens().get(&github_api_url) {
-			tracing::debug!("using token for {}", github_api_url);
+		if let Some(token) = auth_config.tokens().get(&GITHUB_URL) {
+			tracing::debug!("using token for {}", &*GITHUB_URL);
 			request = request.header(AUTHORIZATION, token);
 		}
 
