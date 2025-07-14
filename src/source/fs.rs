@@ -142,7 +142,14 @@ async fn package_fs_cas(
 						let cas_file_path = cas_path(&hash, &cas_dir_path);
 
 						if link {
-							fs::hard_link(cas_file_path, path).await?;
+							match fs::hard_link(cas_file_path.clone(), path.clone()).await {
+								Ok(_) => {}
+								Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+									fs::remove_file(&path).await?;
+									fs::hard_link(cas_file_path, path).await?;
+								}
+								Err(e) => return Err(e),
+							}
 						} else {
 							fs::copy(cas_file_path, &path).await?;
 							set_readonly(&path, false).await?;
