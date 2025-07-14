@@ -194,7 +194,16 @@ async fn package_fs_copy(
 				}
 			}
 
-			tasks.spawn(async { util::symlink_dir(path, dest_path).await });
+			tasks.spawn(async move {
+				match util::symlink_dir(path.clone(), dest_path.clone()).await {
+					Ok(_) => Ok(()),
+					Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+						fs::remove_dir_all(&dest_path).await?;
+						util::symlink_dir(path, dest_path).await
+					}
+					Err(e) => Err(e),
+				}
+			});
 			continue;
 		}
 
@@ -202,7 +211,16 @@ async fn package_fs_copy(
 			continue;
 		}
 
-		tasks.spawn(async { util::symlink_file(path, dest_path).await });
+		tasks.spawn(async move {
+			match util::symlink_file(path.clone(), dest_path.clone()).await {
+				Ok(_) => Ok(()),
+				Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+					fs::remove_file(&dest_path).await?;
+					util::symlink_file(path, dest_path).await
+				}
+				Err(e) => Err(e),
+			}
+		});
 	}
 
 	while let Some(task) = tasks.join_next().await {
