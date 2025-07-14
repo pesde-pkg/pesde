@@ -287,7 +287,8 @@ async fn run() -> anyhow::Result<()> {
 			.context("failed to read manifest")?;
 		let manifest = toml::de::from_str(&manifest).context("failed to deserialize manifest")?;
 
-		let auth_config = AuthConfig::new().with_tokens(get_tokens().await?.0);
+		// Use empty auth config since we're just executing an already-installed binary.
+		let auth_config = AuthConfig::new();
 		let engines = get_project_engines(&manifest, &reqwest, &auth_config).await?;
 
 		let status = compatible_runtime(target, &engines)?
