@@ -239,13 +239,6 @@ impl PackageFs {
 		cas_path: Q,
 		link: bool,
 	) -> std::io::Result<()> {
-		// Clean up existing destination to make operation idempotent
-		match fs::remove_dir_all(destination.as_ref()).await {
-			Ok(_) => {}
-			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-			Err(e) => return Err(e),
-		}
-
 		match self {
 			PackageFs::Cas(entries) => {
 				package_fs_cas(
