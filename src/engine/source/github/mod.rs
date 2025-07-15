@@ -93,6 +93,7 @@ impl EngineSource for GitHubEngineSource {
 			reporter,
 			version,
 			auth_config,
+			..
 		} = options;
 
 		let desired_asset_names = [
