@@ -12,6 +12,7 @@ use crate::cli::{
 	style::URL_STYLE,
 };
 use pesde::{
+	engine::source::github::GITHUB_URL,
 	source::{
 		pesde::PesdePackageSource,
 		traits::{PackageSource as _, RefreshOptions},
@@ -196,6 +197,11 @@ impl LoginCommand {
 		};
 
 		set_token(&index_url, Some(&token)).await?;
+
+		// Also save the token for GitHub API requests if we authenticated via GitHub OAuth
+		if !token_given {
+			set_token(&GITHUB_URL, Some(&token)).await?;
+		}
 
 		Ok(())
 	}

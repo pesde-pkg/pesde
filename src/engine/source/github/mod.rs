@@ -16,7 +16,8 @@ use reqwest::header::{ACCEPT, AUTHORIZATION};
 use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, path::PathBuf, sync::LazyLock};
 
-static GITHUB_URL: LazyLock<gix::Url> =
+/// The GitHub URL used for authentication
+pub static GITHUB_URL: LazyLock<gix::Url> =
 	LazyLock::new(|| gix::Url::from_bytes(BStr::new("https://github.com")).unwrap());
 
 /// The GitHub engine source
