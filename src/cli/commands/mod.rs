@@ -117,7 +117,7 @@ impl Subcommand {
 			#[cfg(feature = "version-management")]
 			Subcommand::SelfInstall(self_install) => self_install.run().await,
 			#[cfg(feature = "version-management")]
-			Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(reqwest).await,
+			Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(project, reqwest).await,
 		}
 	}
 }

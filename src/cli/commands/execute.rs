@@ -196,7 +196,8 @@ impl ExecuteCommand {
 					.await
 					.context("failed to deserialize manifest")?;
 
-				let engines = get_project_engines(&manifest, &reqwest).await?;
+				let engines =
+					get_project_engines(&manifest, &reqwest, project.auth_config()).await?;
 
 				anyhow::Ok((
 					tempdir,

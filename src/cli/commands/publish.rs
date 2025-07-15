@@ -127,8 +127,10 @@ impl PublishCommand {
 
 			match up_to_date_lockfile(project).await? {
 				Some(lockfile) => {
-					let engines =
-						Arc::new(crate::cli::get_project_engines(&manifest, &reqwest).await?);
+					let engines = Arc::new(
+						crate::cli::get_project_engines(&manifest, &reqwest, project.auth_config())
+							.await?,
+					);
 
 					let mut tasks = lockfile
 						.graph
