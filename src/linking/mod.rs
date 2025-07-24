@@ -4,6 +4,7 @@ use crate::{
 	source::{
 		fs::{cas_path, store_in_cas},
 		ids::PackageId,
+		specifiers::DependencySpecifiers,
 		traits::PackageRef as _,
 	},
 	Project, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
@@ -76,6 +77,11 @@ impl Project {
 						root_container_folder,
 						relative_container_folder,
 						manifest,
+						node.node
+							.direct
+							.as_ref()
+							.filter(|x| matches!(x.1, DependencySpecifiers::Wally(_)))
+							.is_some(),
 					)?,
 					package_types.get(package_id).unwrap_or(&NO_TYPES),
 				);

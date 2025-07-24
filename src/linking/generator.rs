@@ -129,11 +129,20 @@ pub fn get_lib_require_path(
 	root_container_dir: &Path,
 	container_dir: &Path,
 	project_manifest: &Manifest,
+	is_wally: bool,
 ) -> Result<String, errors::GetLibRequirePath> {
-	match (target, target.try_into()) {
-		(TargetKind::Roblox | TargetKind::RobloxServer, Ok(place_kind))
-			if !destination_dir.starts_with(root_container_dir) =>
-		{
+	let diff_path = || {
+		let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
+		tracing::debug!("diffed lib path: {}", path.display());
+		if use_new_structure {
+			lib_file.to_path(path)
+		} else {
+			path
+		}
+	};
+
+	match target.try_into() {
+		Ok(place_kind) if !destination_dir.starts_with(root_container_dir) => {
 			let prefix = project_manifest
 				.place
 				.get(&place_kind)
@@ -141,54 +150,56 @@ pub fn get_lib_require_path(
 					place_kind,
 				))?
 				.as_str();
+
 			let path = if use_new_structure {
 				lib_file.to_path(container_dir)
 			} else {
 				container_dir.to_path_buf()
 			};
 
-			let path = path
-				.components()
-				.zip(
-					path.components()
-						.skip(1)
-						.map(Some)
-						.chain(std::iter::repeat(None)),
-				)
-				.filter_map(|(component, next_comp)| match component {
-					Component::ParentDir => Some(".Parent".to_string()),
-					Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
-						let str = part.to_string_lossy();
-
-						Some(format!(
-							":FindFirstChild({:?})",
-							if next_comp.is_some() {
-								&str
-							} else {
-								str.strip_suffix(".luau")
-									.or_else(|| str.strip_suffix(".lua"))
-									.unwrap_or(&str)
-							}
-						))
-					}
-					_ => None,
-				})
-				.collect::<String>();
-
-			Ok(format!("{prefix}{path}"))
+			let roblox_path = build_roblox_path_components(&path);
+			Ok(format!("{prefix}{roblox_path}"))
 		}
-
-		_ => {
-			let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
-			tracing::debug!("diffed lib path: {}", path.display());
-			let path = if use_new_structure {
-				lib_file.to_path(path)
-			} else {
-				path
-			};
+		_ if !is_wally => {
+			let path = diff_path();
 			Ok(luau_style_path(&path))
 		}
+		_ => {
+			let path = diff_path();
+			let roblox_path = build_roblox_path_components(&path);
+			Ok(format!("script.Parent{roblox_path}"))
+		}
 	}
+}
+
+/// Build Roblox-style path components using FindFirstChild syntax
+fn build_roblox_path_components(path: &Path) -> String {
+	path.components()
+		.zip(
+			path.components()
+				.skip(1)
+				.map(Some)
+				.chain(std::iter::repeat(None)),
+		)
+		.filter_map(|(component, next_comp)| match component {
+			Component::ParentDir => Some(".Parent".to_string()),
+			Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
+				let str = part.to_string_lossy();
+
+				Some(format!(
+					"[{:?}]",
+					if next_comp.is_some() {
+						&str
+					} else {
+						str.strip_suffix(".luau")
+							.or_else(|| str.strip_suffix(".lua"))
+							.unwrap_or(&str)
+					}
+				))
+			}
+			_ => None,
+		})
+		.collect::<String>()
 }
 
 /// Generate a linking module for a binary
