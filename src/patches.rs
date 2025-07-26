@@ -95,7 +95,7 @@ fn reset_repo(repo: &Repository) -> Result<(), git2::Error> {
 #[instrument(skip(container_folder, patch_path, reporter), level = "debug")]
 pub async fn apply_patch<Reporter>(
 	package_id: &PackageId,
-	container_folder: PathBuf,
+	container_folder: Arc<Path>,
 	patch_path: &Path,
 	reporter: Arc<Reporter>,
 ) -> Result<(), errors::ApplyPatchError>

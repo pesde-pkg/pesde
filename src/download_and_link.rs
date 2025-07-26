@@ -374,6 +374,50 @@ impl Project {
 				downloaded_graph.insert(id, data);
 			}
 
+			#[cfg(feature = "patches")]
+			{
+				use crate::patches::apply_patch;
+				let mut tasks = manifest
+					.patches
+					.iter()
+					.flat_map(|(name, versions)| {
+						versions
+							.iter()
+							.map(|(v_id, path)| (PackageId::new(name.clone(), v_id.clone()), path))
+					})
+					.filter_map(|(id, patch_path)| {
+						downloaded_graph.get(&id).map(|(_, container_folder, _)| {
+							(id, container_folder.clone(), patch_path)
+						})
+					})
+					.map(|(id, container_folder, patch_path)| {
+						let patch_path = patch_path.to_path(self.package_dir());
+						let reporter = reporter.clone();
+
+						async move {
+							match reporter {
+								Some(reporter) => {
+									apply_patch(
+										&id,
+										container_folder,
+										&patch_path,
+										reporter.clone(),
+									)
+									.await
+								}
+								None => {
+									apply_patch(&id, container_folder, &patch_path, ().into()).await
+								}
+							}
+						}
+					})
+					.collect::<JoinSet<_>>();
+
+				while let Some(task) = tasks.join_next().await {
+					task.unwrap()?;
+				}
+			}
+
 			downloaded_graph
 		};
 
@@ -510,44 +554,6 @@ impl Project {
 		get_graph_targets::<Hooks>(&mut graph, self, wally_graph_to_download, &engines)
 			.instrument(tracing::debug_span!("get targets (wally)"))
 			.await?;
-
-		#[cfg(feature = "patches")]
-		{
-			use crate::patches::apply_patch;
-			let mut tasks = manifest
-				.patches
-				.iter()
-				.flat_map(|(name, versions)| {
-					versions
-						.iter()
-						.map(|(v_id, path)| (PackageId::new(name.clone(), v_id.clone()), path))
-				})
-				.filter_map(|(id, patch_path)| graph.get(&id).map(|node| (id, node, patch_path)))
-				.map(|(id, node, patch_path)| {
-					let patch_path = patch_path.to_path(self.package_dir());
-					let container_folder =
-						node.node
-							.container_folder_from_project(&id, self, manifest.target.kind());
-					let reporter = reporter.clone();
-
-					async move {
-						match reporter {
-							Some(reporter) => {
-								apply_patch(&id, container_folder, &patch_path, reporter.clone())
-									.await
-							}
-							None => {
-								apply_patch(&id, container_folder, &patch_path, ().into()).await
-							}
-						}
-					}
-				})
-				.collect::<JoinSet<_>>();
-
-			while let Some(task) = tasks.join_next().await {
-				task.unwrap()?;
-			}
-		}
 
 		let mut tasks = graph_download_data
 			.into_iter()
