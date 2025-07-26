@@ -9,12 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Save GitHub OAuth token for engine downloads by @taoshotaro
 
-### Fixed
-- Make repeated local dependency installs idempotent by @taoshotaro
-
 ### Changed
 - Use FindFirstChild over direct indexing in dependency linkers by @Stefanuk12
 - Apply patches before ever executing scripts by @daimond113
+
+### Fixed
+- Make repeated local dependency installs idempotent by @taoshotaro
 
 ## [0.7.0-rc.6] - 2025-06-23
 ### Fixed
