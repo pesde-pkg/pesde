@@ -157,7 +157,8 @@ pub async fn install(
 		}
 	};
 
-	let resolved_engine_versions = Arc::new(super::get_project_engines(&manifest, &reqwest).await?);
+	let resolved_engine_versions =
+		Arc::new(super::get_project_engines(&manifest, &reqwest, project.auth_config()).await?);
 
 	let overrides = resolve_overrides(&manifest)?;
 
