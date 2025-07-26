@@ -142,6 +142,11 @@ async fn package_fs_cas(
 						let cas_file_path = cas_path(&hash, &cas_dir_path);
 
 						if link {
+							match fs::remove_file(&path).await {
+								Ok(()) => (),
+								Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+								Err(e) => return Err(e),
+							}
 							fs::hard_link(cas_file_path, path).await?;
 						} else {
 							fs::copy(cas_file_path, &path).await?;
@@ -194,7 +199,14 @@ async fn package_fs_copy(
 				}
 			}
 
-			tasks.spawn(async { util::symlink_dir(path, dest_path).await });
+			tasks.spawn(async move {
+				match fs::remove_dir_all(&dest_path).await {
+					Ok(()) => (),
+					Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+					Err(e) => return Err(e),
+				}
+				util::symlink_dir(path, dest_path).await
+			});
 			continue;
 		}
 
@@ -202,7 +214,14 @@ async fn package_fs_copy(
 			continue;
 		}
 
-		tasks.spawn(async { util::symlink_file(path, dest_path).await });
+		tasks.spawn(async move {
+			match fs::remove_file(&dest_path).await {
+				Ok(()) => (),
+				Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+				Err(e) => return Err(e),
+			}
+			util::symlink_file(path, dest_path).await
+		});
 	}
 
 	while let Some(task) = tasks.join_next().await {
