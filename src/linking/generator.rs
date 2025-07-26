@@ -171,7 +171,7 @@ pub fn get_lib_require_path(
 					let str = part.to_string_lossy();
 
 					Some(format!(
-						"[{:?}]",
+						":FindFirstChild({:?})",
 						if next_comp.is_some() {
 							&str
 						} else {
