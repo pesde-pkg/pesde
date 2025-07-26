@@ -36,7 +36,8 @@ impl RunCommand {
 			.await
 			.context("failed to deserialize manifest")?;
 
-		let engines = Arc::new(get_project_engines(&manifest, &reqwest).await?);
+		let engines =
+			Arc::new(get_project_engines(&manifest, &reqwest, project.auth_config()).await?);
 
 		let run = async |runtime: Runtime, root: &Path, file_path: &Path| -> ! {
 			let tempdir = project.cas_dir().join(".tmp");

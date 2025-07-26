@@ -8,10 +8,11 @@ use tokio::time::sleep;
 use url::Url;
 
 use crate::cli::{
-	auth::{get_token_login, set_token},
+	auth::{get_token_login, get_tokens, set_token},
 	style::URL_STYLE,
 };
 use pesde::{
+	engine::source::github::GITHUB_URL,
 	source::{
 		pesde::PesdePackageSource,
 		traits::{PackageSource as _, RefreshOptions},
@@ -196,6 +197,14 @@ impl LoginCommand {
 		};
 
 		set_token(&index_url, Some(&token)).await?;
+
+		// Also save the token for GitHub API requests if we authenticated via GitHub OAuth
+		if !token_given {
+			let tokens = get_tokens().await?;
+			if !tokens.0.contains_key(&GITHUB_URL) {
+				set_token(&GITHUB_URL, Some(&token)).await?;
+			}
+		}
 
 		Ok(())
 	}
