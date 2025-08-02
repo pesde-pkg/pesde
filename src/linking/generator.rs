@@ -92,20 +92,25 @@ fn luau_style_path(path: &Path) -> String {
 		.filter_map(|(ct, next_ct)| match ct {
 			Component::CurDir => Some(".".to_string()),
 			Component::ParentDir => Some("..".to_string()),
-			Component::Normal(part) => {
-				let str = part.to_string_lossy();
+			Component::Normal(part_os) => {
+                let part = part_os.to_string_lossy();
 
-				Some(
-					(if next_ct.is_some() {
-						&str
-					} else {
-						str.strip_suffix(".luau")
-							.or_else(|| str.strip_suffix(".lua"))
-							.unwrap_or(&str)
-					})
-					.to_string(),
-				)
-			}
+                if part == "init.lua" || part == "init.luau" {
+                    return None;
+                }
+
+                let displayed =
+                    if next_ct.is_some() {
+                        &part
+                    } else {
+                        part.strip_suffix(".luau")
+                            .or_else(|| part.strip_suffix(".lua"))
+                            .unwrap_or(&*part)
+                    }
+                    .to_string();
+
+                Some(displayed)
+            }
 			_ => None,
 		})
 		.collect::<Vec<_>>()
