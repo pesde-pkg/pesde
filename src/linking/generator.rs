@@ -93,24 +93,24 @@ fn luau_style_path(path: &Path) -> String {
 			Component::CurDir => Some(".".to_string()),
 			Component::ParentDir => Some("..".to_string()),
 			Component::Normal(part_os) => {
-                let part = part_os.to_string_lossy();
+				let part = part_os.to_string_lossy();
 
-                if part == "init.lua" || part == "init.luau" {
-                    return None;
-                }
+				if part == "init.lua" || part == "init.luau" {
+					return None;
+				}
 
-                let displayed =
-                    if next_ct.is_some() {
-                        &part
-                    } else {
-                        part.strip_suffix(".luau")
-                            .or_else(|| part.strip_suffix(".lua"))
-                            .unwrap_or(&*part)
-                    }
-                    .to_string();
+				let displayed =
+					if next_ct.is_some() {
+						&part
+					} else {
+						part.strip_suffix(".luau")
+							.or_else(|| part.strip_suffix(".lua"))
+							.unwrap_or(&*part)
+					}
+					.to_string();
 
-                Some(displayed)
-            }
+				Some(displayed)
+			}
 			_ => None,
 		})
 		.collect::<Vec<_>>()
