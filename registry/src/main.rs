@@ -108,6 +108,7 @@ async fn run() -> std::io::Result<()> {
 		AuthConfig::new().with_git_credentials(Some(gix::sec::identity::Account {
 			username: benv!(required "GIT_USERNAME"),
 			password: benv!(required "GIT_PASSWORD"),
+			oauth_refresh_token: None,
 		})),
 	);
 	let source = PesdePackageSource::new(benv!(required "INDEX_REPO_URL").try_into().unwrap());
