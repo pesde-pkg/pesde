@@ -5,71 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-### Added
-- Add `cas path` command by @daimond113
-
-### Changed
-- Do not generate init.lua(u) elements in require paths by @4x8Matrix
-
-## [0.7.0-rc.7] - 2025-07-26
-### Added
-- Save GitHub OAuth token for engine downloads by @taoshotaro
-
-### Changed
-- Use FindFirstChild over direct indexing in dependency linkers by @Stefanuk12
-- Apply patches before ever executing scripts by @daimond113
-
-### Fixed
-- Make repeated local dependency installs idempotent by @taoshotaro
-
-## [0.7.0-rc.6] - 2025-06-23
-### Fixed
-- Create `PESDE_HOME`/`~/.pesde` when writing config by @daimond113
-- Run `roblox_sync_config_generator` after linking dependencies by @daimond113
-
-## [0.7.0-rc.5] - 2025-06-07
-### Changed
-- Reserve the `self` alias by @daimond113
-- Reserve the `cart` alias by @daimond113
-
-## [0.7.0-rc.4] - 2025-06-03
-### Changed
-- Rework linking by @daimond113
-
-### Fixed
-- Fix engines with invalid output from preventing installations by @daimond113
-- Fix `run` command generating invalid require paths by @daimond113
-- Fix `auth login` not working due to deserialization errors by @daimond113
-
-## [0.7.0-rc.3] - 2025-05-06
-### Changed
-- Increase alias length limit to 48 characters by @daimond113
-
-## [0.7.0-rc.2] - 2025-05-05
-### Changed
-- Remove usage of symlinks by @daimond113
-- Don't show update alert for pre-releases by @daimond113
-- Get engine versions from executables if not pesde managed by @daimond113
-
-## [0.7.0-rc.1] - 2025-05-03
+## [0.7.0] - 2025-08-05
 ### Added
 - Add dev only installs in #32 by @Stefanuk12
 - Add `PESDE_HOME` variable (defaults to $HOME/.pesde) to override pesde's directory's location by @daimond113
 - Add `--target` argument to execute command by @daimond113
 - Add `engines` when initializing a project based on the scripts package's by @daimond113
+- Save GitHub OAuth token for engine downloads by @taoshotaro
+- Add `cas path` command by @daimond113
+
+### Changed
+- Update `full-moon` dependency to 2.0.0 to support new Luau syntax by @daimond113
+- Limit aliases to 24 characters & forbid reserved Windows file names by @daimond113
+- Remove usage of symlinks by @daimond113
+- Don't show update alert for pre-releases by @daimond113
+- Get engine versions from executables if not pesde managed by @daimond113
+- Increase alias length limit to 48 characters by @daimond113
+- Rework linking by @daimond113
+- Reserve the `self` alias by @daimond113
+- Reserve the `cart` alias by @daimond113
+- Use FindFirstChild over direct indexing in dependency linkers by @Stefanuk12
+- Apply patches before ever executing scripts by @daimond113
+- Do not generate init.lua(u) elements in require paths by @4x8Matrix
 
 ### Fixed
 - Download engines in install step rather than lazily by @daimond113
 - Rewrite dependency type system to solve multiple issues by @daimond113
 - Fix support for different aliases resolving to the same package by @daimond113
+- Fix engines with invalid output from preventing installations by @daimond113
+- Fix `run` command generating invalid require paths by @daimond113
+- Fix `auth login` not working due to deserialization errors by @daimond113
+- Create `PESDE_HOME`/`~/.pesde` when writing config by @daimond113
+- Run `roblox_sync_config_generator` after linking dependencies by @daimond113
+- Make repeated local dependency installs idempotent by @taoshotaro
 
 ### Performance
 - Remove unnecessary `Arc`s from codebase by @daimond113
-
-### Changed
-- Update `full-moon` dependency to 2.0.0 to support new Luau syntax by @daimond113
-- Limit aliases to 24 characters & forbid reserved Windows file names by @daimond113
 
 ## [0.6.2] - 2025-03-14
 ### Fixed
@@ -251,13 +222,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Asyncify dependency linking by @daimond113
 - Use `exec` in Unix bin linking to reduce the number of processes by @daimond113
 
-[0.7.0-rc.7]: https://github.com/daimond113/pesde/compare/v0.7.0-rc.6%2Bregistry.0.2.3-rc.3..v0.7.0-rc.7%2Bregistry.0.2.3-rc.3
-[0.7.0-rc.6]: https://github.com/daimond113/pesde/compare/v0.7.0-rc.5%2Bregistry.0.2.3-rc.3..v0.7.0-rc.6%2Bregistry.0.2.3-rc.3
-[0.7.0-rc.5]: https://github.com/daimond113/pesde/compare/v0.7.0-rc.4%2Bregistry.0.2.3-rc.2..v0.7.0-rc.5%2Bregistry.0.2.3-rc.3
-[0.7.0-rc.4]: https://github.com/daimond113/pesde/compare/v0.7.0-rc.3%2Bregistry.0.2.3-rc.2..v0.7.0-rc.4%2Bregistry.0.2.3-rc.2
-[0.7.0-rc.3]: https://github.com/daimond113/pesde/compare/v0.7.0-rc.2%2Bregistry.0.2.3-rc.1..v0.7.0-rc.3%2Bregistry.0.2.3-rc.2
-[0.7.0-rc.2]: https://github.com/daimond113/pesde/compare/v0.7.0-rc.1%2Bregistry.0.2.3-rc.1..v0.7.0-rc.2%2Bregistry.0.2.3-rc.1
-[0.7.0-rc.1]: https://github.com/daimond113/pesde/compare/v0.6.2%2Bregistry.0.2.2..v0.7.0-rc.1%2Bregistry.0.2.3-rc.1
+[0.7.0]: https://github.com/daimond113/pesde/compare/v0.6.2%2Bregistry.0.2.2..v0.7.0%2Bregistry.0.2.3
 [0.6.2]: https://github.com/daimond113/pesde/compare/v0.6.1%2Bregistry.0.2.2..v0.6.2%2Bregistry.0.2.2
 [0.6.1]: https://github.com/daimond113/pesde/compare/v0.6.0%2Bregistry.0.2.1..v0.6.1%2Bregistry.0.2.2
 [0.6.0]: https://github.com/daimond113/pesde/compare/v0.5.3%2Bregistry.0.1.2..v0.6.0%2Bregistry.0.2.0
