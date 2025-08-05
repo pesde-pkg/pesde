@@ -92,11 +92,8 @@ fn luau_style_path(path: &Path) -> String {
 		.filter_map(|(ct, next_ct)| match ct {
 			Component::CurDir => Some(".".to_string()),
 			Component::ParentDir => Some("..".to_string()),
-			Component::Normal(part) => {
+			Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
 				let str = part.to_string_lossy();
-				if str == "init.lua" || str == "init.luau" {
-					return None;
-				}
 
 				Some(
 					(if next_ct.is_some() {
