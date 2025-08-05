@@ -94,6 +94,9 @@ fn luau_style_path(path: &Path) -> String {
 			Component::ParentDir => Some("..".to_string()),
 			Component::Normal(part) => {
 				let str = part.to_string_lossy();
+				if str == "init.lua" || str == "init.luau" {
+					return None;
+				}
 
 				Some(
 					(if next_ct.is_some() {
