@@ -45,8 +45,10 @@ impl RunCommand {
 				.await
 				.expect("failed to create temporary directory");
 
-			let mut caller =
-				tempfile::NamedTempFile::new_in(&tempdir).expect("failed to create tempfile");
+			let mut caller = tempfile::Builder::new()
+				.suffix(".luau")
+				.tempfile_in(&tempdir)
+				.expect("failed to create tempfile");
 
 			caller
 				.write_all(

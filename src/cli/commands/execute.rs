@@ -208,8 +208,10 @@ impl ExecuteCommand {
 		)
 		.await?;
 
-		let mut caller =
-			tempfile::NamedTempFile::new_in(tempdir.path()).context("failed to create tempfile")?;
+		let mut caller = tempfile::Builder::new()
+			.suffix(".luau")
+			.tempfile_in(tempdir.path())
+			.context("failed to create tempfile")?;
 		caller
 			.write_all(
 				generate_bin_linking_module(
