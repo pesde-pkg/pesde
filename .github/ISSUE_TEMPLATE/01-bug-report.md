@@ -23,7 +23,7 @@ A clear and concise description of what you expected to happen.
 
 **Please complete the following information:**
 
-- pesde: (e.g. 0.6.0)
+- pesde: (e.g. 0.7.0)
 - Operating system: (e.g. Windows 11, macOS 15, Ubuntu 24.04)
 
 **Additional context**

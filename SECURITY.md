@@ -4,7 +4,7 @@
 
 As pesde is currently in version 0.x, we can only guarantee security for:
 
-- **The latest minor** (currently 0.6).
+- **The latest minor** (currently 0.7).
 - **The latest release candidate for the next version**, if available.
 
 When a new minor version is released, the previous version will immediately lose security support.
@@ -13,8 +13,8 @@ When a new minor version is released, the previous version will immediately lose
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.6.x   | :white_check_mark: |
-| < 0.6   | :x:                |
+| 0.7.x   | :white_check_mark: |
+| < 0.7   | :x:                |
 
 ## Reporting a Vulnerability
 
