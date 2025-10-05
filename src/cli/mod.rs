@@ -544,9 +544,10 @@ impl ExecReplace for std::process::Command {
 #[cfg(windows)]
 mod imp {
 	use super::ExecReplace;
-	use windows::core::BOOL;
-	use windows::Win32::Foundation::TRUE;
-	use windows::Win32::System::Console::SetConsoleCtrlHandler;
+	use windows::{
+		core::BOOL,
+		Win32::{Foundation::TRUE, System::Console::SetConsoleCtrlHandler},
+	};
 
 	unsafe extern "system" fn ctrlc_handler(_: u32) -> BOOL {
 		TRUE
