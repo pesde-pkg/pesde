@@ -535,7 +535,7 @@ pub trait ExecReplace: Sized {
 #[cfg(unix)]
 impl ExecReplace for std::process::Command {
 	fn _exec_replace(mut self) -> std::io::Error {
-		use std::os::unix::process::CommandExt;
+		use std::os::unix::process::CommandExt as _;
 
 		self.exec()
 	}
