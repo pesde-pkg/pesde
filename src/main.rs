@@ -1,6 +1,6 @@
 #[cfg(feature = "version-management")]
 use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
-use crate::cli::{auth::get_tokens, display_err, style::ERROR_STYLE, PESDE_DIR};
+use crate::cli::{auth::get_tokens, display_err, style::ERROR_STYLE, ExecReplace as _, PESDE_DIR};
 use anyhow::Context as _;
 use clap::{builder::styling::AnsiColor, Parser};
 use cli::{compatible_runtime, data_dir, get_project_engines};
@@ -291,14 +291,10 @@ async fn run() -> anyhow::Result<()> {
 		let auth_config = AuthConfig::new();
 		let engines = get_project_engines(&manifest, &reqwest, &auth_config).await?;
 
-		let status = compatible_runtime(target, &engines)?
-			.prepare_command(path.as_os_str(), std::env::args_os().skip(1))
-			.current_dir(cwd)
-			.status()
-			.await
-			.expect("failed to run lune");
-
-		std::process::exit(status.code().unwrap_or(1i32));
+		let mut command = compatible_runtime(target, &engines)?
+			.prepare_command(path.as_os_str(), std::env::args_os().skip(1));
+		command.current_dir(cwd);
+		command.exec_replace();
 	};
 
 	let cas_dir = get_linkable_dir(&project_root_dir)
@@ -353,12 +349,9 @@ async fn run() -> anyhow::Result<()> {
 			anyhow::bail!("engine linker executed by itself")
 		}
 
-		let status = std::process::Command::new(exe_path)
-			.args(std::env::args_os().skip(1))
-			.status()
-			.expect("failed to run new version");
-
-		std::process::exit(status.code().unwrap_or(1i32));
+		let mut command = std::process::Command::new(exe_path);
+		command.args(std::env::args_os().skip(1));
+		command.exec_replace();
 	};
 
 	#[cfg(feature = "version-management")]

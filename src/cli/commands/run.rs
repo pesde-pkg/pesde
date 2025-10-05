@@ -1,4 +1,7 @@
-use crate::cli::{compatible_runtime, get_project_engines, style::WARN_STYLE, up_to_date_lockfile};
+use crate::cli::{
+	compatible_runtime, get_project_engines, style::WARN_STYLE, up_to_date_lockfile,
+	ExecReplace as _,
+};
 use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
@@ -71,16 +74,9 @@ impl RunCommand {
 				)
 				.expect("failed to write to tempfile");
 
-			let status = runtime
-				.prepare_command(caller.path().as_os_str(), self.args)
-				.current_dir(current_dir().expect("failed to get current directory"))
-				.status()
-				.await
-				.expect("failed to run script");
-
-			drop(caller);
-
-			std::process::exit(status.code().unwrap_or(1i32))
+			let mut command = runtime.prepare_command(caller.path().as_os_str(), self.args);
+			command.current_dir(current_dir().expect("failed to get current directory"));
+			command.exec_replace()
 		};
 
 		let Some(package_or_script) = self.package_or_script else {

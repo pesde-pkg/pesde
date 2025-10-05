@@ -90,7 +90,7 @@ paste = { version = "1.0.15", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-registry = { version = "0.5.3", optional = true }
-windows = { version = "0.61.3", features = ["Win32_Storage", "Win32_Storage_FileSystem", "Win32_Security"], optional = true }
+windows = { version = "0.61.3", features = ["Win32_Storage", "Win32_Storage_FileSystem", "Win32_Security", "Win32_System_Console"], optional = true }
 junction = { version = "1.2.0" }
 
 [dev-dependencies]

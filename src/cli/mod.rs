@@ -523,3 +523,55 @@ pub fn compatible_runtime(
 			.clone(),
 	))
 }
+
+pub trait ExecReplace: Sized {
+	fn _exec_replace(self) -> std::io::Error;
+
+	fn exec_replace(self) -> ! {
+		panic!("failed to replace process: {}", self._exec_replace());
+	}
+}
+
+#[cfg(unix)]
+impl ExecReplace for std::process::Command {
+	fn _exec_replace(mut self) -> std::io::Error {
+		use std::os::unix::process::CommandExt;
+
+		self.exec()
+	}
+}
+
+#[cfg(windows)]
+mod imp {
+	use super::ExecReplace;
+	use windows::core::BOOL;
+	use windows::Win32::Foundation::TRUE;
+	use windows::Win32::System::Console::SetConsoleCtrlHandler;
+
+	unsafe extern "system" fn ctrlc_handler(_: u32) -> BOOL {
+		TRUE
+	}
+
+	impl ExecReplace for std::process::Command {
+		fn _exec_replace(mut self) -> std::io::Error {
+			unsafe {
+				if let Err(e) = SetConsoleCtrlHandler(Some(ctrlc_handler), true) {
+					return e.into();
+				}
+			}
+
+			let status = match self.status() {
+				Ok(status) => status,
+				Err(e) => return e,
+			};
+
+			std::process::exit(status.code().unwrap_or(-1))
+		}
+	}
+}
+
+impl ExecReplace for tokio::process::Command {
+	fn _exec_replace(self) -> std::io::Error {
+		self.into_std()._exec_replace()
+	}
+}

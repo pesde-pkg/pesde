@@ -3,7 +3,7 @@ use crate::cli::{
 	config::read_config,
 	get_project_engines,
 	reporters::{self, CliReporter},
-	VersionedPackageName,
+	ExecReplace as _, VersionedPackageName,
 };
 use anyhow::Context as _;
 use clap::Args;
@@ -222,16 +222,8 @@ impl ExecuteCommand {
 			)
 			.context("failed to write to tempfile")?;
 
-		let status = runtime
-			.prepare_command(caller.path().as_os_str(), self.args)
-			.current_dir(current_dir().context("failed to get current directory")?)
-			.status()
-			.await
-			.context("failed to run script")?;
-
-		drop(caller);
-		drop(tempdir);
-
-		std::process::exit(status.code().unwrap_or(1i32))
+		let mut command = runtime.prepare_command(caller.path().as_os_str(), self.args);
+		command.current_dir(current_dir().context("failed to get current directory")?);
+		command.exec_replace();
 	}
 }
