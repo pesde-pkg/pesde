@@ -16,6 +16,7 @@ use tracing::instrument;
 /// Set up a git repository for patches
 pub fn setup_patches_repo<P: AsRef<Path>>(dir: P) -> Result<Repository, git2::Error> {
 	let repo = Repository::init(&dir)?;
+	repo.config()?.set_bool("core.autocrlf", false)?;
 
 	{
 		let signature = Signature::now(

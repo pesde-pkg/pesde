@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Fixed
 - Use `Command::exec` (or equivalents) to ensure processes get killed alongside us by @daimond113
+- Attempt to improve line ending errors in patches by @daimond113
 
 ## [0.7.1] - 2025-08-24
 ### Fixed
