@@ -104,23 +104,7 @@ impl ExecuteScriptHooks for () {
 	fn not_found(&self, script: ScriptName) {}
 }
 
-#[derive(Debug)]
-pub(crate) enum ExecuteScriptResult {
-	Output(String),
-	Ignored,
-	NotExecuted,
-}
-
-impl ExecuteScriptResult {
-	pub(crate) fn into_output(self) -> Option<String> {
-		match self {
-			ExecuteScriptResult::Output(output) => Some(output),
-			_ => None,
-		}
-	}
-}
-
-#[instrument(skip(project, hooks), level = "debug")]
+#[instrument(skip(project, hooks), ret(level = "trace"), level = "debug")]
 pub(crate) async fn execute_script<
 	A: IntoIterator<Item = S> + Debug,
 	S: AsRef<OsStr> + Debug,
@@ -132,10 +116,10 @@ pub(crate) async fn execute_script<
 	hooks: H,
 	args: A,
 	return_stdout: bool,
-) -> Result<ExecuteScriptResult, errors::ExecuteScriptError> {
+) -> Result<Option<String>, errors::ExecuteScriptError> {
 	let Some((runtime, script_path)) = find_script(project, engines, script_name).await? else {
 		hooks.not_found(script_name);
-		return Ok(ExecuteScriptResult::NotExecuted);
+		return Ok(None);
 	};
 
 	match runtime
@@ -179,16 +163,12 @@ pub(crate) async fn execute_script<
 				}
 			}
 
-			Ok(if return_stdout {
-				ExecuteScriptResult::Output(stdout_str)
-			} else {
-				ExecuteScriptResult::Ignored
-			})
+			Ok(return_stdout.then_some(stdout_str))
 		}
 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
 			tracing::warn!("`{}` could not be found in PATH: {e}", runtime.kind());
 
-			Ok(ExecuteScriptResult::NotExecuted)
+			Ok(None)
 		}
 		Err(e) => Err(e.into()),
 	}
