@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Log `sourcemap_generator` result in trace logs by @daimond113
+
 ### Fixed
 - Use `Command::exec` (or equivalents) to ensure processes get killed alongside us by @daimond113
 - Attempt to improve line ending errors in patches by @daimond113
