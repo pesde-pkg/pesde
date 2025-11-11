@@ -85,7 +85,7 @@ jobs:
             arch: x86_64
             target: x86_64-pc-windows-msvc
 
-          - os: macos-13
+          - os: macos-15-intel
             host: macos
             arch: x86_64
             target: x86_64-apple-darwin
