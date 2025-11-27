@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use `Command::exec` (or equivalents) to ensure processes get killed alongside us by @daimond113
 - Attempt to improve line ending errors in patches by @daimond113
 
+### Removed
+- Drop `build_files` ([RFC](https://github.com/pesde-pkg/pesde/issues/57)) by @daimond113
+
 ## [0.7.1] - 2025-08-24
 ### Fixed
 - Fix `x` and `run` not being able to resolve the script due to a lack of `.luau` by @daimond113

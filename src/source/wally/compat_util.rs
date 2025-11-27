@@ -73,16 +73,15 @@ pub(crate) async fn get_target(
 	let lib = find_lib_path(project, engines, path)
 		.await?
 		.or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND)));
-	let build_files = Default::default();
 
 	let manifest = path.join(WALLY_MANIFEST_FILE_NAME);
 	let manifest = fs::read_to_string(&manifest).await?;
 	let manifest: WallyManifest = toml::from_str(&manifest)?;
 
 	Ok(if matches!(manifest.package.realm, Realm::Shared) {
-		Target::Roblox { lib, build_files }
+		Target::Roblox { lib }
 	} else {
-		Target::RobloxServer { lib, build_files }
+		Target::RobloxServer { lib }
 	})
 }
 

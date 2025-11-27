@@ -38,22 +38,7 @@ lib = "init.luau"
 
 #### Roblox
 
-`bin` is not supported in Roblox packages. You must also specify a list of
-`build_files`. These are the files that should be synced into Roblox. They are
-passed to the `roblox_sync_config_generator` script.
-
-```toml
-[target]
-environment = "roblox"
-lib = "src/init.luau"
-build_files = ["src"]
-```
-
-<LinkCard
-	title="Roblox"
-	description="Learn more about authoring packages for Roblox."
-	href="/guides/roblox/#authoring-packages"
-/>
+`bin` is not supported in Roblox packages.
 
 ## Authentication
 

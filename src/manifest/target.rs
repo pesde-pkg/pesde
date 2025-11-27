@@ -2,7 +2,7 @@ use crate::ser_display_deser_fromstr;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 use std::{
-	collections::{BTreeMap, BTreeSet},
+	collections::BTreeMap,
 	fmt::{Display, Formatter},
 	str::FromStr,
 };
@@ -96,6 +96,7 @@ pub enum Target {
 		#[cfg_attr(test, schemars(with = "Option<std::path::PathBuf>"))]
 		lib: Option<RelativePathBuf>,
 		/// The files to include in the sync tool's config
+		#[cfg(not(feature = "bin"))]
 		#[serde(default)]
 		build_files: BTreeSet<String>,
 	},
@@ -106,6 +107,7 @@ pub enum Target {
 		#[cfg_attr(test, schemars(with = "Option<std::path::PathBuf>"))]
 		lib: Option<RelativePathBuf>,
 		/// The files to include in the sync tool's config
+		#[cfg(not(feature = "bin"))]
 		#[serde(default)]
 		build_files: BTreeSet<String>,
 	},
@@ -172,16 +174,6 @@ impl Target {
 			Target::RobloxServer { .. } => None,
 			Target::Lune { bin, .. } => bin.as_deref(),
 			Target::Luau { bin, .. } => bin.as_deref(),
-		}
-	}
-
-	/// Returns the Roblox build files
-	#[must_use]
-	pub fn build_files(&self) -> Option<&BTreeSet<String>> {
-		match self {
-			Target::Roblox { build_files, .. } => Some(build_files),
-			Target::RobloxServer { build_files, .. } => Some(build_files),
-			_ => None,
 		}
 	}
 

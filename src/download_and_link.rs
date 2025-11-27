@@ -9,7 +9,6 @@ use crate::{
 	linking::generator::get_file_types,
 	manifest::DependencyType,
 	reporters::{DownloadsReporter, PatchesReporter},
-	scripts::{execute_script, ExecuteScriptHooks, ScriptName},
 	source::{
 		ids::PackageId,
 		traits::{GetTargetOptions, PackageRef as _, PackageSource as _},
@@ -22,7 +21,6 @@ use futures::TryStreamExt as _;
 use std::{
 	collections::{HashMap, VecDeque},
 	convert::Infallible,
-	ffi::OsString,
 	future::{self, Future},
 	num::NonZeroUsize,
 	path::{Path, PathBuf},
@@ -330,7 +328,7 @@ impl Project {
 				while let Some(task) = tasks.join_next().await {
 					let (install_path, id, node) = task.unwrap();
 					if let Some(install_path) = install_path {
-						downloaded_graph.insert(id, (node, install_path, false));
+						downloaded_graph.insert(id, (node, install_path));
 						continue;
 					}
 
@@ -364,7 +362,7 @@ impl Project {
 
 					Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
 						id,
-						(node, container_folder.into(), false),
+						(node, container_folder.into()),
 					))
 				});
 			}
@@ -386,9 +384,9 @@ impl Project {
 							.map(|(v_id, path)| (PackageId::new(name.clone(), v_id.clone()), path))
 					})
 					.filter_map(|(id, patch_path)| {
-						downloaded_graph.get(&id).map(|(_, container_folder, _)| {
-							(id, container_folder.clone(), patch_path)
-						})
+						downloaded_graph
+							.get(&id)
+							.map(|(_, container_folder)| (id, container_folder.clone(), patch_path))
 					})
 					.map(|(id, container_folder, patch_path)| {
 						let patch_path = patch_path.to_path(self.package_dir());
@@ -423,25 +421,25 @@ impl Project {
 
 		let graph_download_data = graph_to_download
 			.iter()
-			.map(|(id, (_, install_path, _))| (id.clone(), install_path.clone()))
+			.map(|(id, (_, install_path))| (id.clone(), install_path.clone()))
 			.collect::<HashMap<_, _>>();
 
 		let (wally_graph_to_download, other_graph_to_download) =
 			graph_to_download
 				.into_iter()
-				.partition::<HashMap<_, _>, _>(|(_, (node, _, _))| node.pkg_ref.is_wally_package());
+				.partition::<HashMap<_, _>, _>(|(_, (node, _))| node.pkg_ref.is_wally_package());
 
 		let mut graph = DependencyGraphWithTarget::new();
 
 		async fn get_graph_targets<Hooks: DownloadAndLinkHooks>(
 			graph: &mut DependencyGraphWithTarget,
 			project: &Project,
-			downloaded_graph: HashMap<PackageId, (DependencyGraphNode, Arc<Path>, bool)>,
+			downloaded_graph: HashMap<PackageId, (DependencyGraphNode, Arc<Path>)>,
 			engines: &Arc<Engines>,
-		) -> Result<Vec<Vec<OsString>>, errors::DownloadAndLinkError<Hooks::Error>> {
+		) -> Result<(), errors::DownloadAndLinkError<Hooks::Error>> {
 			let mut tasks = downloaded_graph
 				.into_iter()
-				.map(|(id, (node, install_path, local))| {
+				.map(|(id, (node, install_path))| {
 					let source = node.pkg_ref.source();
 
 					let id = Arc::new(id);
@@ -461,82 +459,30 @@ impl Project {
 							)
 							.await?;
 
-						let sync_config_args = Some(&target)
-							.filter(|_| !node.pkg_ref.is_wally_package() && !local)
-							.and_then(|t| t.build_files())
-							.map(|build_files| {
-								std::iter::once(install_path.as_os_str().to_os_string())
-									.chain(build_files.iter().map(OsString::from))
-									.collect::<Vec<_>>()
-							});
-
 						Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
 							Arc::into_inner(id).unwrap(),
 							DependencyGraphNodeWithTarget { target, node },
-							sync_config_args,
 						))
 					}
 				})
 				.collect::<JoinSet<_>>();
 
-			let mut sync_config_args = vec![];
-
 			while let Some(task) = tasks.join_next().await {
-				let (id, node, args) = task.unwrap()?;
+				let (id, node) = task.unwrap()?;
 				graph.insert(id, node);
-				if let Some(args) = args {
-					sync_config_args.push(args);
-				}
 			}
 
-			Ok(sync_config_args)
+			Ok(())
 		}
 
 		// step 2. get targets for non Wally packages (Wally packages require the scripts packages to be downloaded first)
-		let sync_config_args =
-			get_graph_targets::<Hooks>(&mut graph, self, other_graph_to_download, &engines)
-				.instrument(tracing::debug_span!("get targets (non-wally)"))
-				.await?;
+		get_graph_targets::<Hooks>(&mut graph, self, other_graph_to_download, &engines)
+			.instrument(tracing::debug_span!("get targets (non-wally)"))
+			.await?;
 
 		self.link(&graph, &manifest, &Default::default(), false)
 			.instrument(tracing::debug_span!("link (non-wally)"))
 			.await?;
-
-		#[derive(Debug, Clone, Copy)]
-		struct LinkingExecuteScriptHooks;
-
-		impl ExecuteScriptHooks for LinkingExecuteScriptHooks {
-			fn not_found(&self, script: ScriptName) {
-				tracing::warn!(
-					"not having a `{script}` script in the manifest might cause issues with linking"
-				);
-			}
-		}
-
-		let mut tasks = sync_config_args
-			.into_iter()
-			.map(|args| {
-				let project = self.clone();
-				let engines = engines.clone();
-
-				async move {
-					execute_script(
-						ScriptName::RobloxSyncConfigGenerator,
-						&project,
-						&engines,
-						LinkingExecuteScriptHooks,
-						args,
-						false,
-					)
-					.await
-					.map(|_| ())
-				}
-			})
-			.collect::<JoinSet<_>>();
-
-		while let Some(result) = tasks.join_next().await {
-			result.unwrap()?;
-		}
 
 		if let Some(hooks) = &hooks {
 			hooks

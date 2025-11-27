@@ -34,102 +34,8 @@ Scaffold your project with `pesde init`, select the `roblox` or `roblox_server`
 target, and then create a `.pesde/roblox_sync_config_generator.luau` script
 and put it's path in the manifest.
 
-## Authoring packages
-
 When authoring packages for Roblox, it is recommended to have your code inside
 of a `src` directory (or any other directory you prefer).
-
-Inside of your `pesde.toml` you must specify the `roblox` environment and the
-`lib` field with the path to your main script. You must also specify a list of
-`build_files`. This list should contain names of top level files or directories
-that should be synced into Roblox by a sync tool, such as Rojo.
-
-Let's say you have a package with the following structure:
-
-<FileTree>
-
-- roblox_packages/
-  - dependency.luau
-  - ...
-- src/
-  - init.luau
-  - foo.luau
-  - bar.luau
-  - ...
-- LICENSE
-- pesde.toml
-- README.md
-- selene.toml
-- stylua.toml
-
-</FileTree>
-
-There are lots of files in the root directory that are not needed in Roblox,
-such as configuration files, READMEs, and licenses. We only want the `src` and
-the `roblox_packages` directory to be synced into Roblox.
-
-<FileTree>
-
-- roblox_packages/
-  - dependency (roblox_packages/dependency.luau)
-  - ...
-- src/ (src/init.luau)
-  - foo (src/foo.luau)
-  - bar (src/bar.luau)
-  - ...
-
-</FileTree>
-
-This is where `build_files` come in, we can specify a list of files that should
-be synced into Roblox. In this case, we only want the `src` directory to be
-synced. We do not need to specify the `roblox_packages` directory, as it is
-always synced.
-
-So for our package, the `pesde.toml` file would roughly look like this:
-
-```toml title="pesde.toml" {15}
-name = "acme/package"
-version = "1.0.0"
-license = "MIT"
-
-includes = [
-  "pesde.toml",
-  "LICENSE",
-  "README.md",
-  "src/**/*.luau",
-]
-
-[target]
-environment = "roblox"
-lib = "src/init.luau"
-build_files = ["src"]
-
-[dependencies]
-dependency = "acme/library"
-```
-
-When a consumer of your package installs it, the `roblox_sync_config_generator`
-script they are using will generate the configuration needed for their sync
-tool. For example, a Rojo user would get a `default.project.json` with the
-following contents:
-
-```json title="default.project.json"
-{
-	"tree": {
-		"src": {
-			"$path": "src"
-		},
-		"roblox_packages": {
-			"$path": "roblox_packages"
-		}
-	}
-}
-```
-
-The linker scripts that pesde generates will then point to the `src` module.
-
-Then, to publish your package, you can follow the steps in the
-["Publishing Packages"](/guides/publishing/) guide.
 
 ### Test place with Rojo
 
@@ -186,15 +92,9 @@ In Wally, it is standard to have a `default.project.json` with the following:
 
 This will cause the `src` directory to be directly synced into Roblox.
 
-In pesde, you should not have a `default.project.json` file in your package.
-Instead, you are required to use the `build_files` field to specify a 1:1 match
-between Roblox and the file system. These are given to the
-`roblox_sync_config_generator` script to generate the configuration for the sync
-tool the user is using. pesde forbids `default.project.json` to be part of a
-published package, as well as ignoring them from Git dependencies. This allows
-the consumer of your package to choose the sync tool they want to use, instead
-of being constrained to only using Rojo as well as preventing broken packages
-from being published (for example, if the project is configured as a DataModel).
+In pesde, you musn't not have a `default.project.json` file in your package.
+Instead, you should have a 1:1 mapping between your file system and the
+structure inside Roblox.
 
 This has the effect that the structure of the files in the file system ends up
 being reflected inside Roblox.

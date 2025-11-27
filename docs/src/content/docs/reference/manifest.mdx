@@ -134,22 +134,6 @@ run when the package is executed as a binary.
 	href="/guides/binary-packages/"
 />
 
-### `build_files`
-
-**Allowed in:** `roblox`, `roblox_server`
-
-A list of files that should be synced to Roblox when the package is installed.
-
-```toml
-build_files = [
-  "init.luau",
-  "foo.luau",
-]
-```
-
-These files are passed to [`roblox_sync_config_generator`](#roblox_sync_config_generator)
-when the package is installed in order to generate the necessary configuration.
-
 ### `scripts`
 
 **Allowed in:** `luau`, `lune`
@@ -175,27 +159,6 @@ test = "scripts/test.luau"
 ```
 
 There are also a few special scripts that are run in certain cases by pesde.
-
-### `roblox_sync_config_generator`
-
-This is responsible for generating adequate configuration files for Roblox
-sync tools.
-
-`process.args` will contain the directory containing the package, and the list
-of files specified within the [`target.build_files`](#build_files) of the
-package.
-
-<LinkCard
-	title="Roblox"
-	description="Learn more about using pesde in Roblox projects."
-	href="/guides/roblox/"
-/>
-
-<LinkCard
-	title="Example script for Rojo"
-	description="An example script for generating configuration for Rojo."
-	href="https://github.com/pesde-pkg/scripts/blob/master/src/generators/rojo/sync_config.luau"
-/>
 
 ### `sourcemap_generator`
 

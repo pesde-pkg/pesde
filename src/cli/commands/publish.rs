@@ -26,14 +26,9 @@ use pesde::{
 	},
 	Project, RefreshedSources, DEFAULT_INDEX_NAME, MANIFEST_FILE_NAME,
 };
-use relative_path::RelativePath;
 use reqwest::{header::AUTHORIZATION, StatusCode};
 use semver::VersionReq;
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	path::PathBuf,
-	sync::Arc,
-};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use tempfile::Builder;
 use tokio::{
 	io::{AsyncSeekExt as _, AsyncWriteExt as _},
@@ -121,10 +116,6 @@ impl PublishCommand {
 			manifest.target,
 			Target::Roblox { .. } | Target::RobloxServer { .. }
 		) {
-			if manifest.target.build_files().is_none_or(BTreeSet::is_empty) {
-				anyhow::bail!("no build files found in target");
-			}
-
 			match up_to_date_lockfile(project).await? {
 				Some(lockfile) => {
 					let engines = Arc::new(
@@ -173,7 +164,7 @@ impl PublishCommand {
 									.await?;
 
 								Ok::<_, anyhow::Error>(
-									target.build_files().is_none()
+									!target.kind().is_roblox()
 										&& node
 											.direct
 											.as_ref()
@@ -205,27 +196,6 @@ impl PublishCommand {
 		let mut archive = tokio_tar::Builder::new(
 			async_compression::tokio::write::GzipEncoder::with_quality(vec![], Level::Best),
 		);
-
-		let mut display_build_files: Vec<String> = vec![];
-
-		let (lib_path, bin_path, scripts, target_kind) = (
-			manifest
-				.target
-				.lib_path()
-				.map(RelativePath::to_relative_path_buf),
-			manifest
-				.target
-				.bin_path()
-				.map(RelativePath::to_relative_path_buf),
-			manifest.target.scripts().cloned(),
-			manifest.target.kind(),
-		);
-
-		let mut roblox_target = match &mut manifest.target {
-			Target::Roblox { build_files, .. } => Some(build_files),
-			Target::RobloxServer { build_files, .. } => Some(build_files),
-			_ => None,
-		};
 
 		let mut paths = matching_globs(
 			project.package_dir(),
@@ -292,7 +262,10 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 			}
 		}
 
-		for (name, path) in [("lib path", lib_path), ("bin path", bin_path)] {
+		for (name, path) in [
+			("lib path", manifest.target.lib_path()),
+			("bin path", manifest.target.bin_path()),
+		] {
 			let Some(relative_export_path) = path else {
 				continue;
 			};
@@ -323,9 +296,9 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 				.next()
 				.with_context(|| format!("{name} must contain at least one part"))?;
 
-			let relative_path::Component::Normal(first_part) = first_part else {
+			if !matches!(first_part, relative_path::Component::Normal(_)) {
 				anyhow::bail!("{name} must be within project directory");
-			};
+			}
 
 			if paths.insert(
 				export_path
@@ -335,44 +308,9 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 			) {
 				println!("{WARN_PREFIX}: {name} was not included, adding {relative_export_path}");
 			}
-
-			if roblox_target
-				.as_mut()
-				.is_some_and(|build_files| build_files.insert(first_part.to_string()))
-			{
-				println!("{WARN_PREFIX}: {name} was not in build files, adding {first_part}");
-			}
 		}
 
-		if let Some(build_files) = &roblox_target {
-			for build_file in build_files.iter() {
-				if build_file.eq_ignore_ascii_case(MANIFEST_FILE_NAME) {
-					println!(
-						"{WARN_PREFIX}: {MANIFEST_FILE_NAME} is in build files, please remove it",
-					);
-
-					continue;
-				}
-
-				let build_file_path = project.package_dir().join(build_file);
-
-				if fs::metadata(&build_file_path).await.is_err() {
-					anyhow::bail!("build file {build_file} does not exist");
-				}
-
-				if !paths.iter().any(|p| p.starts_with(build_file)) {
-					anyhow::bail!("build file {build_file} is not included, please add it");
-				}
-
-				if build_file_path.is_file() {
-					display_build_files.push(build_file.clone());
-				} else {
-					display_build_files.push(format!("{build_file}/*"));
-				}
-			}
-		}
-
-		if let Some(scripts) = scripts {
+		if let Some(scripts) = manifest.target.scripts() {
 			for (name, path) in scripts {
 				let script_path = path.to_path(&canonical_package_dir);
 
@@ -472,7 +410,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 							spec,
 							&ResolveOptions {
 								project: project.clone(),
-								target: target_kind,
+								target: manifest.target.kind(),
 								refreshed_sources: refreshed_sources.clone(),
 								loose_target: false,
 							},
@@ -555,8 +493,6 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 					.map_or("(none)", url::Url::as_str)
 			);
 
-			let roblox_target = roblox_target.is_some_and(|_| true);
-
 			println!("target: {}", manifest.target);
 			println!(
 				"\tlib path: {}",
@@ -566,9 +502,7 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 					.map_or_else(|| "(none)".to_string(), ToString::to_string)
 			);
 
-			if roblox_target {
-				println!("\tbuild files: {}", display_build_files.join(", "));
-			} else {
+			if !manifest.target.kind().is_roblox() {
 				println!(
 					"\tbin path: {}",
 					manifest
