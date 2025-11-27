@@ -18,8 +18,6 @@ use tracing::instrument;
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ScriptName {
-	/// Generates a config for syncing tools for Roblox. For example, for Rojo it should create a `default.project.json` file
-	RobloxSyncConfigGenerator,
 	/// Prints a sourcemap for a Wally package, used for finding the library export file
 	#[cfg(feature = "wally-compat")]
 	SourcemapGenerator,
@@ -28,7 +26,6 @@ pub enum ScriptName {
 impl Display for ScriptName {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			ScriptName::RobloxSyncConfigGenerator => write!(f, "roblox_sync_config_generator"),
 			#[cfg(feature = "wally-compat")]
 			ScriptName::SourcemapGenerator => write!(f, "sourcemap_generator"),
 		}
