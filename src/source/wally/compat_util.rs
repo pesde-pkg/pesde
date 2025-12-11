@@ -4,7 +4,6 @@ use relative_path::RelativePathBuf;
 use serde::Deserialize;
 
 use crate::{
-	engine::runtime::Engines,
 	manifest::target::Target,
 	scripts::{execute_script, ExecuteScriptHooks, ScriptName},
 	source::{
@@ -34,15 +33,13 @@ impl ExecuteScriptHooks for CompatExecuteScriptHooks {
 
 async fn find_lib_path(
 	project: &Project,
-	engines: &Engines,
 	package_dir: &Path,
 ) -> Result<Option<RelativePathBuf>, errors::GetTargetError> {
 	let Some(result) = execute_script(
 		ScriptName::SourcemapGenerator,
 		project,
-		engines,
 		CompatExecuteScriptHooks,
-		[package_dir],
+		vec![package_dir.into()],
 		true,
 	)
 	.await?
@@ -63,14 +60,9 @@ pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
 pub(crate) async fn get_target(
 	options: &GetTargetOptions,
 ) -> Result<Target, errors::GetTargetError> {
-	let GetTargetOptions {
-		project,
-		path,
-		engines,
-		..
-	} = options;
+	let GetTargetOptions { project, path, .. } = options;
 
-	let lib = find_lib_path(project, engines, path)
+	let lib = find_lib_path(project, path)
 		.await?
 		.or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND)));
 

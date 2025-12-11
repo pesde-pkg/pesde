@@ -70,6 +70,7 @@ fs-err = { version = "3.1.3", features = ["tokio"] }
 urlencoding = "2.1.3"
 async_zip = { version = "0.0.18", features = ["tokio", "deflate", "deflate64", "tokio-fs"] }
 ouroboros = "0.18.5"
+croshet = { git = "https://github.com/pesde-pkg/croshet", rev = "1cf15b770a6bce7d2f3d3de8b09b9240962e2a94" }
 
 # TODO: remove this when gitoxide adds support for: committing, pushing, adding
 git2 = { version = "0.20.2", optional = true }

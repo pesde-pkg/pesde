@@ -95,7 +95,7 @@ pub trait PackageSource: Debug {
 	fn refresh(
 		&self,
 		_options: &RefreshOptions,
-	) -> impl Future<Output = Result<(), Self::RefreshError>> + Send + Sync {
+	) -> impl Future<Output = Result<(), Self::RefreshError>> + Send {
 		async { Ok(()) }
 	}
 
@@ -104,19 +104,19 @@ pub trait PackageSource: Debug {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> impl Future<Output = Result<ResolveResult<Self::Ref>, Self::ResolveError>> + Send + Sync;
+	) -> impl Future<Output = Result<ResolveResult<Self::Ref>, Self::ResolveError>> + Send;
 
 	/// Downloads a package
 	fn download<R: DownloadProgressReporter>(
 		&self,
 		pkg_ref: &Self::Ref,
 		options: &DownloadOptions<R>,
-	) -> impl Future<Output = Result<PackageFs, Self::DownloadError>> + Send + Sync;
+	) -> impl Future<Output = Result<PackageFs, Self::DownloadError>> + Send;
 
 	/// Gets the target of a package
 	fn get_target(
 		&self,
 		pkg_ref: &Self::Ref,
 		options: &GetTargetOptions,
-	) -> impl Future<Output = Result<Target, Self::GetTargetError>> + Send + Sync;
+	) -> impl Future<Output = Result<Target, Self::GetTargetError>> + Send;
 }

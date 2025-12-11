@@ -1,5 +1,5 @@
 use crate::{
-	engine::{runtime::RuntimeKind, EngineKind},
+	engine::EngineKind,
 	manifest::{
 		overrides::{OverrideKey, OverrideSpecifier},
 		target::Target,
@@ -51,7 +51,7 @@ pub struct Manifest {
 	pub private: bool,
 	/// The scripts of the package
 	#[serde(default, skip_serializing)]
-	pub scripts: BTreeMap<String, Script>,
+	pub scripts: BTreeMap<String, String>,
 	/// The indices to use for the package
 	#[serde(
 		default,
@@ -227,24 +227,6 @@ impl Alias {
 	pub fn as_str(&self) -> &str {
 		&self.0
 	}
-}
-
-/// A script
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
-pub enum Script {
-	/// A path only script
-	#[cfg_attr(test, schemars(with = "std::path::PathBuf"))]
-	Path(RelativePathBuf),
-	/// A script which specifies both its path and its runtime
-	RuntimePath {
-		/// The runtime to execute this script with
-		runtime: RuntimeKind,
-		/// The path of the script to run
-		#[cfg_attr(test, schemars(with = "std::path::PathBuf"))]
-		path: RelativePathBuf,
-	},
 }
 
 /// A dependency type

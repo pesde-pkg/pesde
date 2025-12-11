@@ -1,24 +1,19 @@
 #[cfg(feature = "version-management")]
 use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
-use crate::cli::{auth::get_tokens, display_err, style::ERROR_STYLE, ExecReplace as _, PESDE_DIR};
+use crate::cli::{auth::get_tokens, display_err, ExecReplace as _, PESDE_DIR};
 use anyhow::Context as _;
 use clap::{builder::styling::AnsiColor, Parser};
-use cli::{compatible_runtime, data_dir, get_project_engines};
+use cli::data_dir;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
-use pesde::{
-	engine::EngineKind, find_roots, manifest::target::TargetKind, AuthConfig, Project,
-	MANIFEST_FILE_NAME,
-};
+use pesde::{engine::EngineKind, find_roots, AuthConfig, Project};
 use std::{
-	collections::HashMap,
 	io,
 	path::{Path, PathBuf},
 	str::FromStr as _,
 	sync::Mutex,
 };
 use tempfile::NamedTempFile;
-use tokio::task::JoinSet;
 use tracing::instrument;
 use tracing_subscriber::{
 	filter::LevelFilter, fmt::MakeWriter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
@@ -203,99 +198,6 @@ async fn run() -> anyhow::Result<()> {
 			env!("CARGO_PKG_VERSION")
 		))
 		.build()?;
-
-	'scripts: {
-		// if we're an engine, we don't want to run any scripts
-		if exe_name_engine.is_ok() {
-			break 'scripts;
-		}
-
-		if let Some(bin_folder) = current_exe.parent() {
-			// we're not in {path}/bin/{exe}
-			if bin_folder.file_name().is_some_and(|parent| parent != "bin") {
-				break 'scripts;
-			}
-		}
-
-		let linker_file_name = format!("{exe_name}.bin.luau");
-
-		let (path, target) = 'finder: {
-			let all_folders = TargetKind::VARIANTS
-				.iter()
-				.copied()
-				.filter(|t| t.has_bin())
-				.flat_map(|a| {
-					TargetKind::VARIANTS
-						.iter()
-						.copied()
-						.filter(|t| t.has_bin())
-						.map(move |b| (a.packages_folder(b), b))
-				})
-				.collect::<HashMap<_, _>>();
-
-			let mut tasks = all_folders
-				.into_iter()
-				.map(|(folder, target)| {
-					let package_path = project_root_dir.join(&folder).join(&linker_file_name);
-					let workspace_path = project_workspace_dir
-						.as_deref()
-						.map(|path| path.join(&folder).join(&linker_file_name));
-
-					async move {
-						if fs::metadata(&package_path).await.is_ok() {
-							return Some((true, package_path, target));
-						}
-
-						if let Some(workspace_path) = workspace_path {
-							if fs::metadata(&workspace_path).await.is_ok() {
-								return Some((false, workspace_path, target));
-							}
-						}
-
-						None
-					}
-				})
-				.collect::<JoinSet<_>>();
-
-			let mut workspace_path = None;
-
-			while let Some(res) = tasks.join_next().await {
-				if let Some((primary, path, target)) = res.unwrap() {
-					if primary {
-						break 'finder (path, target);
-					}
-
-					workspace_path = Some((path, target));
-				}
-			}
-
-			if let Some(path) = workspace_path {
-				break 'finder path;
-			}
-
-			eprintln!(
-				"{}",
-				ERROR_STYLE.apply_to(format!(
-					"binary `{exe_name}` not found. are you in the right directory?"
-				))
-			);
-			std::process::exit(1i32);
-		};
-
-		let manifest = fs::read_to_string(project_root_dir.join(MANIFEST_FILE_NAME))
-			.await
-			.context("failed to read manifest")?;
-		let manifest = toml::de::from_str(&manifest).context("failed to deserialize manifest")?;
-
-		// Use empty auth config since we're just executing an already-installed binary.
-		let auth_config = AuthConfig::new();
-		let engines = get_project_engines(&manifest, &reqwest, &auth_config).await?;
-
-		let mut command = compatible_runtime(target, &engines)?
-			.prepare_command(path.as_os_str(), std::env::args_os().skip(1));
-		command.current_dir(cwd);
-		command.exec_replace();
-	};
 
 	let cas_dir = get_linkable_dir(&project_root_dir)
 		.await
