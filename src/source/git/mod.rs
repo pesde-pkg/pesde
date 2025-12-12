@@ -1,24 +1,23 @@
 use crate::{
-	deser_manifest,
-	manifest::{target::Target, Alias, DependencyType, Manifest},
+	LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME, Project, deser_manifest,
+	manifest::{Alias, DependencyType, Manifest, target::Target},
 	names::PackageNames,
 	reporters::DownloadProgressReporter,
 	source::{
-		fs::{store_in_cas, FsEntry, PackageFs},
+		ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS, IGNORED_FILES, PackageSource, ResolveResult,
+		VersionId,
+		fs::{FsEntry, PackageFs, store_in_cas},
 		git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
-		git_index::{read_file, GitBasedSource},
+		git_index::{GitBasedSource, read_file},
 		specifiers::DependencySpecifiers,
 		traits::{
 			DownloadOptions, GetTargetOptions, PackageRef as _, RefreshOptions, ResolveOptions,
 		},
-		PackageSource, ResolveResult, VersionId, ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS,
-		IGNORED_FILES,
 	},
 	util::hash,
-	Project, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME,
 };
 use fs_err::tokio as fs;
-use gix::{bstr::BStr, traverse::tree::Recorder, ObjectId, Url};
+use gix::{ObjectId, Url, bstr::BStr, traverse::tree::Recorder};
 use relative_path::RelativePathBuf;
 use std::{
 	collections::{BTreeMap, BTreeSet},
@@ -26,7 +25,7 @@ use std::{
 	hash::Hash,
 	path::PathBuf,
 };
-use tokio::task::{spawn_blocking, JoinSet};
+use tokio::task::{JoinSet, spawn_blocking};
 use tracing::instrument;
 
 /// The Git package reference
@@ -117,13 +116,13 @@ fn transform_pesde_dependencies(
 								return Err(errors::ResolveError::ParseLockfile(
 									Box::new(repo_url.clone()),
 									e,
-								))
+								));
 							}
 						},
 						None => {
 							return Err(errors::ResolveError::NoLockfile(Box::new(
 								repo_url.clone(),
-							)))
+							)));
 						}
 					};
 
@@ -244,15 +243,14 @@ impl PackageSource for GitPackageSource {
 						return Err(errors::ResolveError::DeserManifest(
 							Box::new(repo_url.clone()),
 							e,
-						))
+						));
 					}
 				},
 				None => None,
 			};
 
 			#[cfg(feature = "wally-compat")]
-			let Some(manifest) = manifest
-			else {
+			let Some(manifest) = manifest else {
 				use crate::{
 					manifest::target::TargetKind,
 					source::wally::{
@@ -275,7 +273,7 @@ impl PackageSource for GitPackageSource {
 						return Err(errors::ResolveError::DeserManifest(
 							Box::new(repo_url.clone()),
 							e,
-						))
+						));
 					}
 				};
 				let dependencies = manifest.all_dependencies().map_err(|e| {
@@ -296,8 +294,7 @@ impl PackageSource for GitPackageSource {
 				));
 			};
 			#[cfg(not(feature = "wally-compat"))]
-			let Some(manifest) = manifest
-			else {
+			let Some(manifest) = manifest else {
 				return Err(errors::ResolveError::NoManifest(Box::new(repo_url.clone())));
 			};
 
@@ -383,7 +380,7 @@ impl PackageSource for GitPackageSource {
 						tree_id,
 						Box::new(repo_url),
 						e,
-					))
+					));
 				}
 			};
 
@@ -393,7 +390,7 @@ impl PackageSource for GitPackageSource {
 					return Err(errors::DownloadError::ParseObjectToTree(
 						Box::new(repo_url),
 						e,
-					))
+					));
 				}
 			};
 

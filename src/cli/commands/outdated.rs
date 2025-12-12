@@ -5,11 +5,11 @@ use crate::cli::{
 use anyhow::Context as _;
 use clap::Args;
 use pesde::{
+	Project, RefreshedSources,
 	source::{
 		specifiers::DependencySpecifiers,
 		traits::{PackageRef as _, PackageSource as _, RefreshOptions, ResolveOptions},
 	},
-	Project, RefreshedSources,
 };
 use semver::VersionReq;
 use tokio::task::JoinSet;

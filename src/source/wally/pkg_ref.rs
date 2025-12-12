@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{wally::WallyPackageSource, DependencySpecifiers, PackageRef, PackageSources},
+	source::{DependencySpecifiers, PackageRef, PackageSources, wally::WallyPackageSource},
 };
 
 /// A Wally package reference

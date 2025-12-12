@@ -5,22 +5,22 @@ use crate::cli::{
 use anyhow::Context as _;
 use futures::StreamExt as _;
 use pesde::{
+	AuthConfig, DEFAULT_INDEX_NAME, Project,
 	engine::{
-		runtime::{Runtime, RuntimeKind},
 		EngineKind,
+		runtime::{Runtime, RuntimeKind},
 	},
 	errors::ManifestReadError,
 	lockfile::Lockfile,
 	manifest::{
+		DependencyType, Manifest,
 		overrides::{OverrideKey, OverrideSpecifier},
 		target::TargetKind,
-		DependencyType, Manifest,
 	},
 	names::{PackageName, PackageNames},
 	source::{
 		ids::VersionId, specifiers::DependencySpecifiers, workspace::specifier::VersionTypeOrReq,
 	},
-	AuthConfig, Project, DEFAULT_INDEX_NAME,
 };
 use relative_path::RelativePathBuf;
 use semver::Version;
@@ -545,8 +545,8 @@ impl ExecReplace for std::process::Command {
 mod imp {
 	use super::ExecReplace;
 	use windows::{
-		core::BOOL,
 		Win32::{Foundation::TRUE, System::Console::SetConsoleCtrlHandler},
+		core::BOOL,
 	};
 
 	unsafe extern "system" fn ctrlc_handler(_: u32) -> BOOL {

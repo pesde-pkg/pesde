@@ -1,7 +1,8 @@
 use crate::{
+	PACKAGES_CONTAINER_NAME, Project,
 	manifest::{
-		target::{Target, TargetKind},
 		Alias, DependencyType,
+		target::{Target, TargetKind},
 	},
 	source::{
 		ids::{PackageId, VersionId},
@@ -9,7 +10,6 @@ use crate::{
 		specifiers::DependencySpecifiers,
 		traits::PackageRef as _,
 	},
-	Project, PACKAGES_CONTAINER_NAME,
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};

@@ -1,6 +1,6 @@
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{pesde, specifiers::DependencySpecifiers, traits::PackageRef, PackageSources},
+	source::{PackageSources, pesde, specifiers::DependencySpecifiers, traits::PackageRef},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

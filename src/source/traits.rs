@@ -1,12 +1,12 @@
 use crate::{
+	Project, RefreshedSources,
 	engine::runtime::Engines,
 	manifest::{
-		target::{Target, TargetKind},
 		Alias, DependencyType,
+		target::{Target, TargetKind},
 	},
 	reporters::DownloadProgressReporter,
-	source::{ids::PackageId, DependencySpecifiers, PackageFs, PackageSources, ResolveResult},
-	Project, RefreshedSources,
+	source::{DependencySpecifiers, PackageFs, PackageSources, ResolveResult, ids::PackageId},
 };
 use std::{
 	collections::BTreeMap,

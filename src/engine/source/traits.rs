@@ -1,4 +1,4 @@
-use crate::{engine::source::archive::Archive, reporters::DownloadProgressReporter, AuthConfig};
+use crate::{AuthConfig, engine::source::archive::Archive, reporters::DownloadProgressReporter};
 use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, fmt::Debug, future::Future, path::PathBuf, sync::Arc};
 

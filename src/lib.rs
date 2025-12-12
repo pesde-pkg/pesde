@@ -5,10 +5,10 @@
 
 use crate::{
 	lockfile::Lockfile,
-	manifest::{target::TargetKind, Manifest},
+	manifest::{Manifest, target::TargetKind},
 	source::{
-		traits::{PackageSource as _, RefreshOptions},
 		PackageSources,
+		traits::{PackageSource as _, RefreshOptions},
 	},
 };
 use async_stream::try_stream;
@@ -417,10 +417,10 @@ pub async fn find_roots(
 	while let Some(path) = current_path {
 		current_path = path.parent().map(Path::to_path_buf);
 
-		if workspace_dir.is_some() {
-			if let Some(project_root) = project_root {
-				return Ok((project_root, workspace_dir));
-			}
+		if workspace_dir.is_some()
+			&& let Some(project_root) = project_root
+		{
+			return Ok((project_root, workspace_dir));
 		}
 
 		let mut manifest = match fs::File::open(path.join(MANIFEST_FILE_NAME)).await {

@@ -1,4 +1,4 @@
-use crate::cli::config::{read_config, write_config, CliConfig};
+use crate::cli::config::{CliConfig, read_config, write_config};
 use clap::Args;
 
 #[derive(Debug, Args)]

@@ -1,12 +1,12 @@
 #[cfg(feature = "version-management")]
 use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
-use crate::cli::{auth::get_tokens, display_err, ExecReplace as _, PESDE_DIR};
+use crate::cli::{ExecReplace as _, PESDE_DIR, auth::get_tokens, display_err};
 use anyhow::Context as _;
-use clap::{builder::styling::AnsiColor, Parser};
+use clap::{Parser, builder::styling::AnsiColor};
 use cli::data_dir;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
-use pesde::{engine::EngineKind, find_roots, AuthConfig, Project};
+use pesde::{AuthConfig, Project, engine::EngineKind, find_roots};
 use std::{
 	io,
 	path::{Path, PathBuf},
@@ -16,8 +16,8 @@ use std::{
 use tempfile::NamedTempFile;
 use tracing::instrument;
 use tracing_subscriber::{
-	filter::LevelFilter, fmt::MakeWriter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
-	EnvFilter,
+	EnvFilter, filter::LevelFilter, fmt::MakeWriter, layer::SubscriberExt as _,
+	util::SubscriberInitExt as _,
 };
 
 mod cli;

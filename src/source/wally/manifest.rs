@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::{
-	manifest::{errors, target::TargetKind, Alias, DependencyType},
+	manifest::{Alias, DependencyType, errors, target::TargetKind},
 	names::wally::WallyPackageName,
 	source::{specifiers::DependencySpecifiers, wally::specifier::WallyDependencySpecifier},
 };

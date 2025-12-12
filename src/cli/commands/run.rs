@@ -1,20 +1,19 @@
 use crate::cli::{
-	compatible_runtime, get_project_engines, style::WARN_STYLE, up_to_date_lockfile,
-	ExecReplace as _,
+	ExecReplace as _, compatible_runtime, get_project_engines, style::WARN_STYLE,
+	up_to_date_lockfile,
 };
 use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
 use futures::{StreamExt as _, TryStreamExt as _};
 use pesde::{
+	MANIFEST_FILE_NAME, Project,
 	engine::runtime::Runtime,
 	errors::{ManifestReadError, WorkspaceMembersError},
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
 	manifest::{Alias, Manifest},
 	names::{PackageName, PackageNames},
-	scripts::parse_script,
 	source::traits::{GetTargetOptions, PackageRef as _, PackageSource as _, RefreshOptions},
-	Project, MANIFEST_FILE_NAME,
 };
 use relative_path::{RelativePath, RelativePathBuf};
 use std::{
@@ -126,7 +125,7 @@ impl RunCommand {
 						"outdated lockfile, please run the install command first to use an alias"
 					)
 				);
-			};
+			}
 		}
 
 		if let Some((id, node)) = package_info {
@@ -169,18 +168,18 @@ impl RunCommand {
 			run(compatible_runtime(target.kind(), &engines)?, &path, &path).await;
 		}
 
-		if let Ok(mut manifest) = project.deser_manifest().await {
-			if let Some(script) = manifest.scripts.remove(&package_or_script) {
-				let (runtime, script_path) =
-					parse_script(script, &engines).context("failed to get script info")?;
+		if let Ok(mut manifest) = project.deser_manifest().await
+			&& let Some(script) = manifest.scripts.remove(&package_or_script)
+		{
+			let (runtime, script_path) =
+				parse_script(script, &engines).context("failed to get script info")?;
 
-				run(
-					runtime,
-					project.package_dir(),
-					&script_path.to_path(project.package_dir()),
-				)
-				.await;
-			}
+			run(
+				runtime,
+				project.package_dir(),
+				&script_path.to_path(project.package_dir()),
+			)
+			.await;
 		}
 
 		let relative_path = RelativePathBuf::from(package_or_script);

@@ -13,21 +13,22 @@ use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
 use crate::{
+	Project,
 	engine::EngineKind,
 	manifest::{
-		target::{Target, TargetKind},
 		Alias, DependencyType,
+		target::{Target, TargetKind},
 	},
 	names::{PackageName, PackageNames},
-	reporters::{response_to_async_read, DownloadProgressReporter},
+	reporters::{DownloadProgressReporter, response_to_async_read},
 	source::{
-		fs::{store_in_cas, FsEntry, PackageFs},
-		git_index::{read_file, root_tree, GitBasedSource},
+		DependencySpecifiers, IGNORED_DIRS, IGNORED_FILES, PackageSource, ResolveResult, VersionId,
+		fs::{FsEntry, PackageFs, store_in_cas},
+		git_index::{GitBasedSource, read_file, root_tree},
 		traits::{DownloadOptions, GetTargetOptions, RefreshOptions, ResolveOptions},
-		DependencySpecifiers, PackageSource, ResolveResult, VersionId, IGNORED_DIRS, IGNORED_FILES,
 	},
 	util::hash,
-	version_matches, Project,
+	version_matches,
 };
 use fs_err::tokio as fs;
 use futures::StreamExt as _;

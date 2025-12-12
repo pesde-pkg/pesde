@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{workspace::WorkspacePackageSource, DependencySpecifiers, PackageRef, PackageSources},
+	source::{DependencySpecifiers, PackageRef, PackageSources, workspace::WorkspacePackageSource},
 };
 
 /// A workspace package reference

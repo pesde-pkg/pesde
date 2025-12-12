@@ -1,17 +1,17 @@
 use crate::{
+	Project, RefreshedSources,
 	graph::{DependencyGraph, DependencyGraphNode},
-	manifest::{overrides::OverrideSpecifier, Alias, DependencyType},
+	manifest::{Alias, DependencyType, overrides::OverrideSpecifier},
 	source::{
+		PackageSources,
 		ids::PackageId,
 		pesde::PesdePackageSource,
 		specifiers::DependencySpecifiers,
 		traits::{PackageRef as _, PackageSource as _, RefreshOptions, ResolveOptions},
-		PackageSources,
 	},
-	Project, RefreshedSources,
 };
-use std::collections::{btree_map::Entry, HashMap, VecDeque};
-use tracing::{instrument, Instrument as _};
+use std::collections::{HashMap, VecDeque, btree_map::Entry};
+use tracing::{Instrument as _, instrument};
 
 fn insert_node(
 	graph: &mut DependencyGraph,

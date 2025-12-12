@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{git::GitPackageSource, DependencySpecifiers, PackageRef, PackageSources},
+	source::{DependencySpecifiers, PackageRef, PackageSources, git::GitPackageSource},
 };
 
 /// A Git package reference

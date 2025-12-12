@@ -1,15 +1,16 @@
 use crate::cli::{
+	VersionedPackageName,
 	style::{CLI_STYLE, INFO_STYLE, WARN_PREFIX},
-	up_to_date_lockfile, VersionedPackageName,
+	up_to_date_lockfile,
 };
 use anyhow::Context as _;
 use clap::Args;
 use console::style;
 use fs_err::tokio as fs;
 use pesde::{
+	MANIFEST_FILE_NAME, Project,
 	patches::setup_patches_repo,
 	source::traits::{DownloadOptions, PackageRef as _, PackageSource as _},
-	Project, MANIFEST_FILE_NAME,
 };
 
 #[derive(Debug, Args)]

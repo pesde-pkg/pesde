@@ -1,6 +1,6 @@
 use std::path::{Component, Path};
 
-use crate::manifest::{target::TargetKind, Manifest};
+use crate::manifest::{Manifest, target::TargetKind};
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
 use relative_path::RelativePath;
 use tracing::instrument;

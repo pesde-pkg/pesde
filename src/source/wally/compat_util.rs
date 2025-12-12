@@ -4,13 +4,13 @@ use relative_path::RelativePathBuf;
 use serde::Deserialize;
 
 use crate::{
+	LINK_LIB_NO_FILE_FOUND, Project,
 	manifest::target::Target,
-	scripts::{execute_script, ExecuteScriptHooks, ScriptName},
+	scripts::{ExecuteScriptHooks, ScriptName, execute_script},
 	source::{
 		traits::GetTargetOptions,
 		wally::manifest::{Realm, WallyManifest},
 	},
-	Project, LINK_LIB_NO_FILE_FOUND,
 };
 use fs_err::tokio as fs;
 use tracing::instrument;

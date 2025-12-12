@@ -1,5 +1,5 @@
 use crate::{
-	all_packages_dirs,
+	LINK_LIB_NO_FILE_FOUND, Project, RefreshedSources, SCRIPTS_LINK_FOLDER, all_packages_dirs,
 	download::DownloadGraphOptions,
 	engine::runtime::Engines,
 	graph::{
@@ -13,7 +13,6 @@ use crate::{
 		ids::PackageId,
 		traits::{GetTargetOptions, PackageRef as _, PackageSource as _},
 	},
-	Project, RefreshedSources, LINK_LIB_NO_FILE_FOUND, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
@@ -28,9 +27,9 @@ use std::{
 };
 use tokio::{
 	pin,
-	task::{spawn_blocking, JoinSet},
+	task::{JoinSet, spawn_blocking},
 };
-use tracing::{instrument, Instrument as _};
+use tracing::{Instrument as _, instrument};
 
 /// Hooks to perform actions after certain events during download and linking.
 #[allow(unused_variables)]

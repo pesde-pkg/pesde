@@ -8,9 +8,9 @@ use crate::cli::{
 	style::{INFO_STYLE, SUCCESS_STYLE},
 };
 use pesde::{
+	Project,
 	manifest::{Alias, DependencyType},
 	source::specifiers::DependencySpecifiers,
-	Project,
 };
 
 #[derive(Debug, Args)]

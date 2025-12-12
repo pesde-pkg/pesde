@@ -12,12 +12,12 @@ use crate::cli::{
 	style::URL_STYLE,
 };
 use pesde::{
+	Project,
 	engine::source::github::GITHUB_URL,
 	source::{
 		pesde::PesdePackageSource,
 		traits::{PackageSource as _, RefreshOptions},
 	},
-	Project,
 };
 
 #[derive(Debug, Args)]

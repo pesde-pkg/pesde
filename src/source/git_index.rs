@@ -1,6 +1,6 @@
 #![allow(async_fn_in_trait)]
 
-use crate::{source::traits::RefreshOptions, util::authenticate_conn, Project};
+use crate::{Project, source::traits::RefreshOptions, util::authenticate_conn};
 use fs_err::tokio as fs;
 use gix::remote::Direction;
 use std::fmt::Debug;
@@ -33,7 +33,7 @@ pub trait GitBasedSource {
 				let remote = match repo.find_default_remote(Direction::Fetch) {
 					Some(Ok(remote)) => remote,
 					Some(Err(e)) => {
-						return Err(errors::RefreshError::GetDefaultRemote(path, Box::new(e)))
+						return Err(errors::RefreshError::GetDefaultRemote(path, Box::new(e)));
 					}
 					None => {
 						return Err(errors::RefreshError::NoDefaultRemote(path));
@@ -46,7 +46,7 @@ pub trait GitBasedSource {
 						return Err(errors::RefreshError::Connect(
 							repo_url.to_string(),
 							Box::new(e),
-						))
+						));
 					}
 				};
 
@@ -59,7 +59,7 @@ pub trait GitBasedSource {
 							return Err(errors::RefreshError::PrepareFetch(
 								repo_url.to_string(),
 								Box::new(e),
-							))
+							));
 						}
 					};
 

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{pesde::PesdePackageSource, DependencySpecifiers, PackageRef, PackageSources},
+	source::{DependencySpecifiers, PackageRef, PackageSources, pesde::PesdePackageSource},
 };
 
 /// A pesde package reference

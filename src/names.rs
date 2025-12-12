@@ -209,7 +209,7 @@ pub mod wally {
 	use std::{fmt::Display, str::FromStr};
 
 	use crate::{
-		names::{errors, ErrorReason},
+		names::{ErrorReason, errors},
 		ser_display_deser_fromstr,
 	};
 

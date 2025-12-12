@@ -9,16 +9,16 @@ use anyhow::Context as _;
 use console::style;
 use fs_err::tokio as fs;
 use pesde::{
+	Project, RefreshedSources,
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
 	graph::{DependencyGraph, DependencyGraphWithTarget},
 	lockfile::Lockfile,
 	manifest::DependencyType,
 	names::PackageNames,
 	source::{
-		traits::{PackageRef as _, RefreshOptions},
 		PackageSources,
+		traits::{PackageRef as _, RefreshOptions},
 	},
-	Project, RefreshedSources,
 };
 use std::{
 	collections::{BTreeMap, BTreeSet, HashSet},
@@ -208,7 +208,8 @@ pub async fn install(
 							.await
 							.context("failed to refresh source")?;
 
-						let file = source.read_index_file(&name, &project)
+						let file = source
+							.read_index_file(&name, &project)
 							.await
 							.context("failed to read package index file")?
 							.context("package not found in index")?;
@@ -239,7 +240,9 @@ pub async fn install(
 				root_progress.set_style(reporters::root_progress_style_with_progress());
 
 				let bin_dir = bin_dir()?;
-				fs::create_dir_all(&bin_dir).await.context("failed to create bin directory")?;
+				fs::create_dir_all(&bin_dir)
+					.await
+					.context("failed to create bin directory")?;
 
 				let hooks = InstallHooks {
 					bin_folder: bin_dir,
@@ -263,10 +266,17 @@ pub async fn install(
 
 				#[cfg(feature = "version-management")]
 				{
-					use pesde::{source::{refs::PackageRefs, pesde::PesdePackageSource}, MANIFEST_FILE_NAME, version_matches, manifest::Manifest, engine::EngineKind};
+					use pesde::{
+						MANIFEST_FILE_NAME,
+						engine::EngineKind,
+						manifest::Manifest,
+						source::{pesde::PesdePackageSource, refs::PackageRefs},
+						version_matches,
+					};
 
 					let manifest_target_kind = manifest.target.kind();
-					let mut tasks = downloaded_graph.iter()
+					let mut tasks = downloaded_graph
+						.iter()
 						.map(|(id, node)| {
 							let id = id.clone();
 							let node = node.clone();
@@ -276,7 +286,8 @@ pub async fn install(
 							async move {
 								let engines = match &node.node.pkg_ref {
 									PackageRefs::Pesde(pkg_ref) => {
-										let source = PesdePackageSource::new(pkg_ref.index_url.clone());
+										let source =
+											PesdePackageSource::new(pkg_ref.index_url.clone());
 										refreshed_sources
 											.refresh(
 												&PackageSources::Pesde(source.clone()),
@@ -292,13 +303,13 @@ pub async fn install(
 											panic!("unexpected package name");
 										};
 
-										let mut file = source.read_index_file(name, &project)
+										let mut file = source
+											.read_index_file(name, &project)
 											.await
 											.context("failed to read package index file")?
 											.context("package not found in index")?;
 
-										file
-											.entries
+										file.entries
 											.remove(id.version_id())
 											.context("package version not found in index")?
 											.engines
@@ -312,13 +323,26 @@ pub async fn install(
 											manifest_target_kind,
 										);
 
-										match fs::read_to_string(path.join(MANIFEST_FILE_NAME)).await {
-											Ok(manifest) => match toml::from_str::<Manifest>(&manifest) {
-												Ok(manifest) => manifest.engines,
-												Err(e) => return Err(e).context("failed to read package manifest"),
-											},
-											Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
-											Err(e) => return Err(e).context("failed to read package manifest"),
+										match fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+											.await
+										{
+											Ok(manifest) => {
+												match toml::from_str::<Manifest>(&manifest) {
+													Ok(manifest) => manifest.engines,
+													Err(e) => {
+														return Err(e).context(
+															"failed to read package manifest",
+														);
+													}
+												}
+											}
+											Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+												Default::default()
+											}
+											Err(e) => {
+												return Err(e)
+													.context("failed to read package manifest");
+											}
 										}
 									}
 								};
@@ -337,13 +361,17 @@ pub async fn install(
 							}
 
 							let Some(version) = resolved_engine_versions.get(&engine) else {
-								tracing::debug!("package {id} requires {engine} {req}, but it is not installed");
+								tracing::debug!(
+									"package {id} requires {engine} {req}, but it is not installed"
+								);
 								continue;
 							};
 
 							if !version_matches(&req, version) {
 								multi.suspend(|| {
-									println!("{WARN_PREFIX}: package {id} requires {engine} {req}, but {version} is installed");
+									println!(
+										"{WARN_PREFIX}: package {id} requires {engine} {req}, but {version} is installed"
+									);
 								});
 							}
 						}
@@ -372,7 +400,7 @@ pub async fn install(
 
 			anyhow::Ok((new_lockfile, old_graph.unwrap_or_default()))
 		})
-			.await?;
+		.await?;
 
 	let elapsed = start.elapsed();
 

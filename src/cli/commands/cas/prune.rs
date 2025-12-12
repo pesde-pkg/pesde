@@ -9,10 +9,10 @@ use anyhow::Context as _;
 use async_stream::try_stream;
 use clap::Args;
 use fs_err::tokio as fs;
-use futures::{future::BoxFuture, FutureExt as _, Stream, StreamExt as _};
+use futures::{FutureExt as _, Stream, StreamExt as _, future::BoxFuture};
 use pesde::{
-	source::fs::{FsEntry, PackageFs},
 	Project,
+	source::fs::{FsEntry, PackageFs},
 };
 use std::{
 	collections::{HashMap, HashSet},
@@ -49,14 +49,14 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 	{
 		use std::os::windows::ffi::OsStrExt as _;
 		use windows::{
-			core::PWSTR,
 			Win32::{
 				Foundation::CloseHandle,
 				Storage::FileSystem::{
-					CreateFileW, GetFileInformationByHandle, FILE_ATTRIBUTE_NORMAL,
-					FILE_GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING,
+					CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_SHARE_READ,
+					GetFileInformationByHandle, OPEN_EXISTING,
 				},
 			},
+			core::PWSTR,
 		};
 
 		let path = path.to_path_buf();

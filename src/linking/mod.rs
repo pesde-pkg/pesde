@@ -1,4 +1,5 @@
 use crate::{
+	PACKAGES_CONTAINER_NAME, Project, SCRIPTS_LINK_FOLDER,
 	graph::{DependencyGraphNodeWithTarget, DependencyGraphWithTarget},
 	manifest::{Alias, Manifest},
 	source::{
@@ -6,7 +7,6 @@ use crate::{
 		ids::PackageId,
 		traits::PackageRef as _,
 	},
-	Project, PACKAGES_CONTAINER_NAME, SCRIPTS_LINK_FOLDER,
 };
 use fs_err::tokio as fs;
 use std::{

@@ -3,8 +3,8 @@ use fs_err::tokio as fs;
 use gix::bstr::BStr;
 use semver::Version;
 use serde::{
-	de::{MapAccess, Visitor},
 	Deserialize, Deserializer, Serializer,
+	de::{MapAccess, Visitor},
 };
 use sha2::{Digest as _, Sha256};
 use std::{

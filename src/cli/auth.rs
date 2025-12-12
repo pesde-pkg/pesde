@@ -3,7 +3,7 @@ use anyhow::Context as _;
 use gix::bstr::BStr;
 use keyring::Entry;
 use reqwest::header::AUTHORIZATION;
-use serde::{ser::SerializeMap as _, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser::SerializeMap as _};
 use std::collections::BTreeMap;
 use tokio::task::spawn_blocking;
 use tracing::instrument;

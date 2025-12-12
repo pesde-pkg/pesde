@@ -7,7 +7,7 @@ use crate::{
 		github::engine_ref::Release,
 		traits::{DownloadOptions, EngineSource, ResolveOptions},
 	},
-	reporters::{response_to_async_read, DownloadProgressReporter},
+	reporters::{DownloadProgressReporter, response_to_async_read},
 	util::no_build_metadata,
 	version_matches,
 };

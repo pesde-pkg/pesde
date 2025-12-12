@@ -1,9 +1,8 @@
 use crate::cli::{
-	compatible_runtime,
+	ExecReplace as _, VersionedPackageName, compatible_runtime,
 	config::read_config,
 	get_project_engines,
 	reporters::{self, CliReporter},
-	ExecReplace as _, VersionedPackageName,
 };
 use anyhow::Context as _;
 use clap::Args;
@@ -11,17 +10,17 @@ use console::style;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
+	DEFAULT_INDEX_NAME, Project, RefreshedSources,
 	download_and_link::{DownloadAndLinkOptions, InstallDependenciesMode},
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
 	manifest::target::TargetKind,
 	names::{PackageName, PackageNames},
 	source::{
-		ids::PackageId,
-		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
-		traits::{DownloadOptions, PackageSource as _, RefreshOptions, ResolveOptions},
 		PackageSources,
+		ids::PackageId,
+		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
+		traits::{DownloadOptions, PackageSource as _, RefreshOptions, ResolveOptions},
 	},
-	Project, RefreshedSources, DEFAULT_INDEX_NAME,
 };
 use semver::VersionReq;
 use std::{

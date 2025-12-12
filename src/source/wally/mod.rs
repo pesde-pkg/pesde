@@ -1,19 +1,20 @@
 use crate::{
+	Project,
 	manifest::target::Target,
-	names::{wally::WallyPackageName, PackageNames},
-	reporters::{response_to_async_read, DownloadProgressReporter},
+	names::{PackageNames, wally::WallyPackageName},
+	reporters::{DownloadProgressReporter, response_to_async_read},
 	source::{
-		fs::{store_in_cas, FsEntry, PackageFs},
-		git_index::{read_file, root_tree, GitBasedSource},
+		IGNORED_DIRS, IGNORED_FILES, PackageSources, ResolveResult,
+		fs::{FsEntry, PackageFs, store_in_cas},
+		git_index::{GitBasedSource, read_file, root_tree},
 		ids::VersionId,
 		traits::{
 			DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
 		},
 		wally::{compat_util::get_target, manifest::WallyManifest, pkg_ref::WallyPackageRef},
-		PackageSources, ResolveResult, IGNORED_DIRS, IGNORED_FILES,
 	},
 	util::hash,
-	version_matches, Project,
+	version_matches,
 };
 use fs_err::tokio as fs;
 use gix::Url;

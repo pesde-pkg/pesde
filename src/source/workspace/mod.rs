@@ -4,12 +4,12 @@ use crate::{
 	names::PackageNames,
 	reporters::DownloadProgressReporter,
 	source::{
+		ResolveResult,
 		fs::PackageFs,
 		ids::VersionId,
 		specifiers::DependencySpecifiers,
 		traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
 		workspace::pkg_ref::WorkspacePackageRef,
-		ResolveResult,
 	},
 };
 use futures::StreamExt as _;

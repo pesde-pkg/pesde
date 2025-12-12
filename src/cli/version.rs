@@ -1,7 +1,7 @@
 use crate::{
 	cli::{
 		bin_dir,
-		config::{read_config, write_config, CliConfig},
+		config::{CliConfig, read_config, write_config},
 		style::{ADDED_STYLE, CLI_STYLE, REMOVED_STYLE, URL_STYLE},
 	},
 	util::no_build_metadata,
@@ -11,15 +11,16 @@ use console::Style;
 use fs_err::tokio as fs;
 use jiff::SignedDuration;
 use pesde::{
+	AuthConfig,
 	engine::{
-		source::{
-			traits::{DownloadOptions, EngineSource as _, ResolveOptions},
-			EngineSources,
-		},
 		EngineKind,
+		source::{
+			EngineSources,
+			traits::{DownloadOptions, EngineSource as _, ResolveOptions},
+		},
 	},
 	reporters::DownloadsReporter,
-	version_matches, AuthConfig,
+	version_matches,
 };
 use semver::{Version, VersionReq};
 use std::{

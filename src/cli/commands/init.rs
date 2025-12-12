@@ -6,17 +6,17 @@ use anyhow::Context as _;
 use clap::Args;
 use inquire::validator::Validation;
 use pesde::{
+	DEFAULT_INDEX_NAME, Project, RefreshedSources, SCRIPTS_LINK_FOLDER,
 	errors::ManifestReadError,
-	manifest::{target::TargetKind, DependencyType},
+	manifest::{DependencyType, target::TargetKind},
 	names::PackageName,
 	source::{
+		PackageSources,
 		git_index::GitBasedSource as _,
-		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
+		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
 		specifiers::DependencySpecifiers,
 		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
-		PackageSources,
 	},
-	Project, RefreshedSources, DEFAULT_INDEX_NAME, SCRIPTS_LINK_FOLDER,
 };
 use semver::VersionReq;
 use std::{fmt::Display, str::FromStr as _};
@@ -122,8 +122,8 @@ impl InitCommand {
 		.prompt()
 		.unwrap();
 
-		manifest["target"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-			["environment"] = toml_edit::value(target_env.to_string());
+		manifest["target"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))["environment"] =
+			toml_edit::value(target_env.to_string());
 
 		let source = PesdePackageSource::new(read_config().await?.default_index);
 

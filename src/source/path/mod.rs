@@ -1,17 +1,16 @@
 use crate::{
-	deser_manifest, find_roots,
+	Project, deser_manifest, find_roots,
 	manifest::target::Target,
 	names::PackageNames,
 	reporters::DownloadProgressReporter,
 	source::{
+		ResolveResult,
 		fs::PackageFs,
 		ids::VersionId,
 		path::{pkg_ref::PathPackageRef, specifier::PathDependencySpecifier},
 		specifiers::DependencySpecifiers,
 		traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
-		ResolveResult,
 	},
-	Project,
 };
 use futures::TryStreamExt as _;
 use std::collections::{BTreeMap, BTreeSet, HashMap};

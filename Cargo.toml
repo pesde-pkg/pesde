@@ -1,7 +1,7 @@
 [package]
 name = "pesde"
 version = "0.7.1"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 authors = ["daimond113 <contact@daimond113.com>"]
 description = "A package manager for the Luau programming language, supporting multiple runtimes including Roblox and Lune"

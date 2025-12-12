@@ -5,21 +5,21 @@ use clap::Args;
 use semver::VersionReq;
 
 use crate::cli::{
-	config::read_config, dep_type_to_key, AnyPackageIdentifier, VersionedPackageName,
+	AnyPackageIdentifier, VersionedPackageName, config::read_config, dep_type_to_key,
 };
 use pesde::{
-	manifest::{target::TargetKind, Alias, DependencyType},
+	DEFAULT_INDEX_NAME, Project, RefreshedSources,
+	manifest::{Alias, DependencyType, target::TargetKind},
 	names::PackageNames,
 	source::{
-		git::{specifier::GitDependencySpecifier, GitPackageSource},
-		path::{specifier::PathDependencySpecifier, PathPackageSource},
-		pesde::{specifier::PesdeDependencySpecifier, PesdePackageSource},
+		PackageSources,
+		git::{GitPackageSource, specifier::GitDependencySpecifier},
+		path::{PathPackageSource, specifier::PathDependencySpecifier},
+		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
 		specifiers::DependencySpecifiers,
 		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
-		workspace::{specifier::WorkspaceDependencySpecifier, WorkspacePackageSource},
-		PackageSources,
+		workspace::{WorkspacePackageSource, specifier::WorkspaceDependencySpecifier},
 	},
-	Project, RefreshedSources, DEFAULT_INDEX_NAME,
 };
 
 #[derive(Debug, Args)]
@@ -257,10 +257,10 @@ impl AddCommand {
 			}
 			DependencySpecifiers::Workspace(spec) => {
 				field["workspace"] = toml_edit::value(spec.name.to_string());
-				if let AnyPackageIdentifier::Workspace(versioned) = self.name {
-					if let Some(version) = versioned.1 {
-						field["version"] = toml_edit::value(version.to_string());
-					}
+				if let AnyPackageIdentifier::Workspace(versioned) = self.name
+					&& let Some(version) = versioned.1
+				{
+					field["version"] = toml_edit::value(version.to_string());
 				}
 
 				println!(

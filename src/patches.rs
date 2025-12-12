@@ -1,7 +1,7 @@
 use crate::{
+	MANIFEST_FILE_NAME,
 	reporters::{PatchProgressReporter as _, PatchesReporter},
 	source::ids::PackageId,
-	MANIFEST_FILE_NAME,
 };
 use fs_err::tokio as fs;
 use futures::TryFutureExt as _;
@@ -10,7 +10,7 @@ use std::{
 	path::{Path, PathBuf},
 	sync::Arc,
 };
-use tokio::task::{spawn_blocking, JoinSet};
+use tokio::task::{JoinSet, spawn_blocking};
 use tracing::instrument;
 
 /// Set up a git repository for patches

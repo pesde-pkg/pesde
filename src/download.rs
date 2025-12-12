@@ -1,4 +1,5 @@
 use crate::{
+	Project, RefreshedSources,
 	graph::{DependencyGraph, DependencyGraphNode},
 	reporters::{DownloadProgressReporter as _, DownloadsReporter},
 	source::{
@@ -6,13 +7,12 @@ use crate::{
 		ids::PackageId,
 		traits::{DownloadOptions, PackageRef as _, PackageSource as _, RefreshOptions},
 	},
-	Project, RefreshedSources,
 };
 use async_stream::try_stream;
 use futures::Stream;
 use std::{num::NonZeroUsize, sync::Arc};
 use tokio::{sync::Semaphore, task::JoinSet};
-use tracing::{instrument, Instrument as _};
+use tracing::{Instrument as _, instrument};
 
 /// Options for downloading.
 #[derive(Debug)]

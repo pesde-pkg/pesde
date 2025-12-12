@@ -3,10 +3,10 @@ use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
 use pesde::{
+	Project,
 	names::PackageNames,
 	patches::create_patch,
 	source::ids::{PackageId, VersionId},
-	Project,
 };
 use std::{path::PathBuf, str::FromStr as _};
 

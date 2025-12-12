@@ -45,7 +45,7 @@ impl FromStr for ArchiveInfo {
 				return Err(errors::ArchiveInfoFromStrError::Unsupported(
 					ArchiveKind::Zip,
 					Some(EncodingKind::Gzip),
-				))
+				));
 			}
 			[.., "zip"] => ArchiveInfo(ArchiveKind::Zip, None),
 			_ => return Err(errors::ArchiveInfoFromStrError::Invalid(s.to_string())),
