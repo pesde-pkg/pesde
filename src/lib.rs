@@ -10,6 +10,7 @@ use crate::{
 		PackageSources,
 		traits::{PackageSource as _, RefreshOptions},
 	},
+	util::hash,
 };
 use async_stream::try_stream;
 use fs_err::tokio as fs;
@@ -131,6 +132,7 @@ struct ProjectShared {
 	workspace_dir: Option<PathBuf>,
 	data_dir: PathBuf,
 	cas_dir: PathBuf,
+	bin_dir: PathBuf,
 	auth_config: AuthConfig,
 }
 
@@ -157,6 +159,11 @@ impl Project {
 				workspace_dir: workspace_dir.map(|d| d.as_ref().to_path_buf()),
 				data_dir: data_dir.as_ref().to_path_buf(),
 				cas_dir: cas_dir.as_ref().to_path_buf(),
+				bin_dir: data_dir
+					.as_ref()
+					.join("projects")
+					.join(hash(package_dir.as_ref().as_os_str().as_encoded_bytes()))
+					.join("bin"),
 				auth_config,
 			}
 			.into(),
@@ -185,6 +192,12 @@ impl Project {
 	#[must_use]
 	pub fn cas_dir(&self) -> &Path {
 		&self.shared.cas_dir
+	}
+
+	/// The bin directory
+	#[must_use]
+	pub fn bin_dir(&self) -> &Path {
+		&self.shared.bin_dir
 	}
 
 	/// The authentication configuration

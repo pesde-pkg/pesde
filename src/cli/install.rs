@@ -1,5 +1,5 @@
 use crate::cli::{
-	bin_dir, dep_type_to_key,
+	dep_type_to_key,
 	reporters::{self, CliReporter},
 	resolve_overrides, run_on_workspace_members,
 	style::{ADDED_STYLE, REMOVED_STYLE, WARN_PREFIX},
@@ -11,7 +11,7 @@ use fs_err::tokio as fs;
 use pesde::{
 	Project, RefreshedSources,
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
-	graph::{DependencyGraph, DependencyGraphWithTarget},
+	graph::DependencyGraph,
 	lockfile::Lockfile,
 	manifest::DependencyType,
 	names::PackageNames,
@@ -21,7 +21,7 @@ use pesde::{
 	},
 };
 use std::{
-	collections::{BTreeMap, BTreeSet, HashSet},
+	collections::{BTreeMap, BTreeSet},
 	num::NonZeroUsize,
 	path::Path,
 	sync::Arc,
@@ -40,28 +40,7 @@ pub struct InstallHooksError(#[from] anyhow::Error);
 impl DownloadAndLinkHooks for InstallHooks {
 	type Error = InstallHooksError;
 
-	async fn on_bins_downloaded(
-		&self,
-		graph: &DependencyGraphWithTarget,
-	) -> Result<(), Self::Error> {
-		let binary_packages = graph
-			.iter()
-			.filter_map(|(id, node)| node.target.bin_path().is_some().then_some(id))
-			.collect::<HashSet<_>>();
-
-		let aliases = graph
-			.iter()
-			.flat_map(|(_, node)| node.node.dependencies.iter())
-			.filter_map(|(alias, (id, _))| binary_packages.contains(id).then_some(alias.as_str()))
-			.chain(
-				graph
-					.iter()
-					.filter(|(_, node)| node.target.bin_path().is_some())
-					.filter_map(|(_, node)| node.node.direct.as_ref())
-					.map(|(alias, _, _)| alias.as_str()),
-			)
-			.collect::<HashSet<_>>();
-
+	async fn on_bins_downloaded(&self, aliases: BTreeSet<&str>) -> Result<(), Self::Error> {
 		let curr_exe: Arc<Path> = std::env::current_exe()
 			.context("failed to get current executable path")?
 			.as_path()
@@ -239,13 +218,17 @@ pub async fn install(
 				root_progress.set_message("download");
 				root_progress.set_style(reporters::root_progress_style_with_progress());
 
-				let bin_dir = bin_dir()?;
-				fs::create_dir_all(&bin_dir)
+				let bin_dir = project.bin_dir();
+				match fs::remove_dir_all(bin_dir).await {
+					Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+					e => e.context("failed to remove bin directory")?,
+				}
+				fs::create_dir_all(bin_dir)
 					.await
 					.context("failed to create bin directory")?;
 
 				let hooks = InstallHooks {
-					bin_folder: bin_dir,
+					bin_folder: bin_dir.to_path_buf(),
 				};
 
 				#[allow(unused_variables)]

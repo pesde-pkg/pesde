@@ -171,15 +171,15 @@ impl RunCommand {
 		if let Ok(mut manifest) = project.deser_manifest().await
 			&& let Some(script) = manifest.scripts.remove(&package_or_script)
 		{
-			let (runtime, script_path) =
-				parse_script(script, &engines).context("failed to get script info")?;
+			// let (runtime, script_path) =
+			// 	parse_script(script, &engines).context("failed to get script info")?;
 
-			run(
-				runtime,
-				project.package_dir(),
-				&script_path.to_path(project.package_dir()),
-			)
-			.await;
+			// run(
+			// 	runtime,
+			// 	project.package_dir(),
+			// 	&script_path.to_path(project.package_dir()),
+			// )
+			// .await;
 		}
 
 		let relative_path = RelativePathBuf::from(package_or_script);

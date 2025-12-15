@@ -18,7 +18,7 @@ use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
 
 use std::{
-	collections::{HashMap, VecDeque},
+	collections::{BTreeSet, HashMap, VecDeque},
 	convert::Infallible,
 	future::{self, Future},
 	num::NonZeroUsize,
@@ -37,20 +37,11 @@ pub trait DownloadAndLinkHooks: Send + Sync {
 	/// The error type for the hooks.
 	type Error: std::error::Error + Send + Sync + 'static;
 
-	/// Called after scripts have been downloaded. The `downloaded_graph`
-	/// contains all downloaded packages.
-	fn on_scripts_downloaded(
-		&self,
-		graph: &DependencyGraphWithTarget,
-	) -> impl Future<Output = Result<(), Self::Error>> + Send {
-		future::ready(Ok(()))
-	}
-
-	/// Called after binary dependencies have been downloaded. The
-	/// `downloaded_graph` contains all downloaded packages.
+	/// Called after binary dependencies have been downloaded.
+	/// `aliases` contains all the aliases binaries are known by.
 	fn on_bins_downloaded(
 		&self,
-		graph: &DependencyGraphWithTarget,
+		aliases: BTreeSet<&str>,
 	) -> impl Future<Output = Result<(), Self::Error>> + Send {
 		future::ready(Ok(()))
 	}
@@ -430,52 +421,49 @@ impl Project {
 
 		let mut graph = DependencyGraphWithTarget::new();
 
-		async fn get_graph_targets<Hooks: DownloadAndLinkHooks>(
-			graph: &mut DependencyGraphWithTarget,
-			project: &Project,
-			downloaded_graph: HashMap<PackageId, (DependencyGraphNode, Arc<Path>)>,
-			engines: &Arc<Engines>,
-		) -> Result<(), errors::DownloadAndLinkError<Hooks::Error>> {
-			let mut tasks = downloaded_graph
-				.into_iter()
-				.map(|(id, (node, install_path))| {
-					let source = node.pkg_ref.source();
+		let get_graph_targets =
+			async |graph: &mut DependencyGraphWithTarget,
+			       downloaded_graph: HashMap<PackageId, (DependencyGraphNode, Arc<Path>)>| {
+				let mut tasks = downloaded_graph
+					.into_iter()
+					.map(|(id, (node, install_path))| {
+						let source = node.pkg_ref.source();
 
-					let id = Arc::new(id);
-					let project = project.clone();
-					let engines = engines.clone();
+						let id = Arc::new(id);
+						let project = self.clone();
+						let engines = engines.clone();
 
-					async move {
-						let target = source
-							.get_target(
-								&node.pkg_ref,
-								&GetTargetOptions {
-									project: project.clone(),
-									path: install_path.clone(),
-									id: id.clone(),
-									engines: engines.clone(),
-								},
-							)
-							.await?;
+						async move {
+							let target = source
+								.get_target(
+									&node.pkg_ref,
+									&GetTargetOptions {
+										project,
+										path: install_path,
+										id: id.clone(),
+										engines,
+									},
+								)
+								.await?;
 
-						Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
-							Arc::into_inner(id).unwrap(),
-							DependencyGraphNodeWithTarget { target, node },
-						))
-					}
-				})
-				.collect::<JoinSet<_>>();
+							Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
+								Arc::into_inner(id).unwrap(),
+								DependencyGraphNodeWithTarget { target, node },
+							))
+						}
+					})
+					.collect::<JoinSet<_>>();
 
-			while let Some(task) = tasks.join_next().await {
-				let (id, node) = task.unwrap()?;
-				graph.insert(id, node);
-			}
+				while let Some(task) = tasks.join_next().await {
+					let (id, node) = task.unwrap()?;
+					graph.insert(id, node);
+				}
 
-			Ok(())
-		}
+				Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>(())
+			};
 
 		// step 2. get targets for non Wally packages (Wally packages require the scripts packages to be downloaded first)
-		get_graph_targets::<Hooks>(&mut graph, self, other_graph_to_download, &engines)
+		get_graph_targets(&mut graph, other_graph_to_download)
 			.instrument(tracing::debug_span!("get targets (non-wally)"))
 			.await?;
 
@@ -484,19 +472,34 @@ impl Project {
 			.await?;
 
 		if let Some(hooks) = &hooks {
-			hooks
-				.on_scripts_downloaded(&graph)
-				.await
-				.map_err(errors::DownloadAndLinkError::Hook)?;
+			let binary_packages = graph
+				.iter()
+				.filter_map(|(id, node)| node.target.bin_path().is_some().then_some(id))
+				.collect::<BTreeSet<_>>();
+
+			let aliases = graph
+				.values()
+				.flat_map(|node| node.node.dependencies.iter())
+				.filter_map(|(alias, (id, _))| {
+					binary_packages.contains(id).then_some(alias.as_str())
+				})
+				.chain(
+					graph
+						.values()
+						.filter(|node| node.target.bin_path().is_some())
+						.filter_map(|node| node.node.direct.as_ref())
+						.map(|(alias, _, _)| alias.as_str()),
+				)
+				.collect::<BTreeSet<_>>();
 
 			hooks
-				.on_bins_downloaded(&graph)
+				.on_bins_downloaded(aliases)
 				.await
 				.map_err(errors::DownloadAndLinkError::Hook)?;
 		}
 
 		// step 3. get targets for Wally packages
-		get_graph_targets::<Hooks>(&mut graph, self, wally_graph_to_download, &engines)
+		get_graph_targets(&mut graph, wally_graph_to_download)
 			.instrument(tracing::debug_span!("get targets (wally)"))
 			.await?;
 
@@ -613,10 +616,6 @@ pub mod errors {
 		#[cfg(feature = "patches")]
 		#[error("error applying patch")]
 		Patch(#[from] crate::patches::errors::ApplyPatchError),
-
-		/// Executing a script failed
-		#[error("error executing script")]
-		ExecuteScript(#[from] crate::scripts::errors::ExecuteScriptError),
 
 		/// The library file was not found
 		#[error("library file at `{0}` not found")]

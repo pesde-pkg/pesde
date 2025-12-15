@@ -11,7 +11,7 @@ use crate::{
 use std::{
 	collections::BTreeMap,
 	fmt::{Debug, Display},
-	future::Future,
+	future::{self, Future},
 	path::Path,
 	sync::Arc,
 };
@@ -96,7 +96,7 @@ pub trait PackageSource: Debug {
 		&self,
 		_options: &RefreshOptions,
 	) -> impl Future<Output = Result<(), Self::RefreshError>> + Send {
-		async { Ok(()) }
+		future::ready(Ok(()))
 	}
 
 	/// Resolves a specifier to a reference

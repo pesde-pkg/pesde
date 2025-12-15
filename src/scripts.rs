@@ -1,180 +1,123 @@
 use crate::Project;
 use std::{
-	fmt::{Debug, Display, Formatter},
-	io::{BufRead as _, BufReader, Read as _},
+	convert::Infallible,
+	env::{join_paths, split_paths},
+	error::Error,
+	future,
 };
 use tracing::instrument;
 
-/// Script names used by pesde
-#[allow(clippy::enum_variant_names)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum ScriptName {
-	/// Prints a sourcemap for a Wally package, used for finding the library export file
-	#[cfg(feature = "wally-compat")]
-	SourcemapGenerator,
-}
+/// Prints a sourcemap for a Wally package, used for finding the library export file
+#[cfg(feature = "wally-compat")]
+pub const SOURCEMAP_GENERATOR: &str = "sourcemap_generator";
 
-impl Display for ScriptName {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			#[cfg(feature = "wally-compat")]
-			ScriptName::SourcemapGenerator => write!(f, "sourcemap_generator"),
-		}
+/// Hooks for [execute_script]
+#[allow(unused_variables)]
+pub trait ExecuteScriptHooks {
+	/// The error the methods return
+	type Error: Error;
+
+	/// Returns the stdio options in the format of (stdout, stderr, stdin)
+	fn stdio(
+		&mut self,
+	) -> (
+		croshet::ShellPipeWriter,
+		croshet::ShellPipeWriter,
+		croshet::ShellPipeReader,
+	) {
+		(
+			croshet::ShellPipeWriter::Stdout,
+			croshet::ShellPipeWriter::Stderr,
+			croshet::ShellPipeReader::stdin(),
+		)
+	}
+
+	/// Called when the script is being executed
+	fn run(&mut self) -> impl Future<Output = Result<(), Self::Error>> {
+		future::ready(Ok(()))
 	}
 }
 
-/// Finds a script in the project, whether it be in the current package or it's workspace
-pub async fn find_script(
-	project: &Project,
-	script_name: ScriptName,
-) -> Result<Option<String>, errors::FindScriptError> {
-	let script_name_str = script_name.to_string();
-
-	Ok(
-		match project
-			.deser_manifest()
-			.await?
-			.scripts
-			.remove(&script_name_str)
-		{
-			Some(script) => Some(script),
-			None => project
-				.deser_workspace_manifest()
-				.await?
-				.and_then(|mut manifest| manifest.scripts.remove(&script_name_str)),
-		},
-	)
-}
-
-#[allow(unused_variables)]
-pub(crate) trait ExecuteScriptHooks {
-	fn not_found(&self, script: ScriptName) {}
-}
-
 impl ExecuteScriptHooks for () {
-	#[allow(unused_variables)]
-	fn not_found(&self, script: ScriptName) {}
+	type Error = Infallible;
 }
 
-#[instrument(skip(project, hooks), ret(level = "trace"), level = "debug")]
-pub(crate) async fn execute_script<H: ExecuteScriptHooks>(
-	script_name: ScriptName,
+/// Executes a script
+#[instrument(skip(project, hooks), level = "debug")]
+pub async fn execute_script<H: ExecuteScriptHooks>(
+	script_name: &str,
 	project: &Project,
-	hooks: H,
+	hooks: &mut H,
 	args: Vec<std::ffi::OsString>,
-	return_stdout: bool,
-) -> Result<Option<String>, errors::ExecuteScriptError> {
-	let Some(script) = find_script(project, script_name).await? else {
-		hooks.not_found(script_name);
-		return Ok(None);
+) -> Result<bool, errors::ExecuteScriptError<H>> {
+	let Some(script) = project.deser_manifest().await?.scripts.remove(script_name) else {
+		return Ok(false);
 	};
 
 	let parsed_script = croshet::parser::parse(&script)?;
 
-	let (stdout_reader, stdout_writer) = std::io::pipe()?;
-	let (stderr_reader, stderr_writer) = std::io::pipe()?;
+	let mut paths = vec![project.bin_dir().to_path_buf()];
+	if std::env::var("PESDE_IMPURE_SCRIPTS").is_ok_and(|s| !s.is_empty())
+		&& let Some(path) = std::env::var_os("PATH")
+	{
+		paths.extend(split_paths(&path));
+	}
+	let path = join_paths(paths)?;
 
-	let read_future = return_stdout.then(|| {
-		let mut stdout_reader_str = stdout_reader.try_clone().unwrap();
-		tokio::task::spawn_blocking(move || {
-			let mut str = String::new();
-			stdout_reader_str.read_to_string(&mut str).map(|_| str)
-		})
-	});
+	let (stdout, stderr, stdin) = hooks.stdio();
 
-	let (code, stdout_err, stderr_err) = tokio::join!(
+	let (code, stdio_result) = tokio::join!(
 		croshet::execute(
 			parsed_script,
 			croshet::ExecuteOptionsBuilder::new()
 				.cwd(project.package_dir().to_path_buf())
+				.stdout(stdout)
+				.stderr(stderr)
+				.stdin(stdin)
 				.args(args)
-				.stdout(croshet::ShellPipeWriter::OsPipe(stdout_writer))
-				.stderr(croshet::ShellPipeWriter::OsPipe(stderr_writer))
+				.env_var("PATH".into(), path)
 				.build()
-				.unwrap()
+				.unwrap(),
 		),
-		async {
-			if return_stdout {
-				Ok(())
-			} else {
-				tokio::task::spawn_blocking(move || {
-					let stdout = BufReader::new(stdout_reader).lines();
-					for line in stdout {
-						match line {
-							Ok(line) => {
-								tracing::info!("[{script_name}]: {line}");
-							}
-							Err(e) => {
-								tracing::error!("ERROR IN READING STDOUT OF {script_name}: {e}");
-							}
-						}
-					}
-				})
-				.await
-			}
-		},
-		{
-			let script_name = script_name;
-			tokio::task::spawn_blocking(move || {
-				let stderr = BufReader::new(stderr_reader).lines();
-				for line in stderr {
-					match line {
-						Ok(line) => {
-							tracing::error!("[{script_name}]: {line}");
-						}
-						Err(e) => {
-							tracing::error!("ERROR IN READING STDERR OF {script_name}: {e}");
-						}
-					}
-				}
-			})
-		}
+		hooks.run(),
 	);
-	stdout_err.unwrap();
-	stderr_err.unwrap();
+	stdio_result.map_err(errors::ExecuteScriptError::Hooks)?;
 	if code != 0i32 {
 		return Err(errors::ExecuteScriptError::Io(std::io::Error::other(
 			format!("script {script_name} exited with non-zero code {code}"),
 		)));
 	}
 
-	Ok(if let Some(read_future) = read_future {
-		let stdout = read_future.await.unwrap()?;
-		Some(stdout)
-	} else {
-		None
-	})
+	Ok(true)
 }
 
 /// Errors that can occur when using scripts
 pub mod errors {
 	use thiserror::Error;
 
-	/// Errors that can occur when finding a script
+	use crate::scripts::ExecuteScriptHooks;
+
+	/// Errors which can occur while executing a script
 	#[derive(Debug, Error)]
-	pub enum FindScriptError {
+	pub enum ExecuteScriptError<Hooks: ExecuteScriptHooks> {
+		/// An IO error occurred
+		#[error("IO error")]
+		Io(#[from] std::io::Error),
+
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),
 
-		/// An IO error occurred
-		#[error("IO error")]
-		Io(#[from] std::io::Error),
-	}
-
-	/// Errors which can occur while executing a script
-	#[derive(Debug, Error)]
-	pub enum ExecuteScriptError {
-		/// Finding the script failed
-		#[error("finding the script failed")]
-		FindScript(#[from] FindScriptError),
-
-		/// An IO error occurred
-		#[error("IO error")]
-		Io(#[from] std::io::Error),
+		/// Constructing a PATH failed
+		#[error("PATH creation error")]
+		Path(#[from] std::env::JoinPathsError),
 
 		/// Script parsing failed
 		#[error("script parsing failed")]
 		Parse(#[from] croshet::Error),
+
+		/// The hooks have errored
+		#[error("error executing hook")]
+		Hooks(Hooks::Error),
 	}
 }
