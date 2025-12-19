@@ -14,7 +14,6 @@ pub(crate) type Engines = HashMap<EngineKind, Version>;
 
 /// A runtime
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeKind {
 	/// The Lune runtime

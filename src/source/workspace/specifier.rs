@@ -7,7 +7,6 @@ use std::{fmt::Display, str::FromStr};
 
 /// The specifier for a workspace dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub struct WorkspaceDependencySpecifier {
 	/// The name of the workspace package
 	#[serde(rename = "workspace")]
@@ -28,20 +27,15 @@ impl Display for WorkspaceDependencySpecifier {
 
 /// The type of version to use when publishing a package
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub enum VersionType {
 	/// The "^" version type
 	#[default]
-	#[cfg_attr(test, schemars(rename = "^"))]
 	Caret,
 	/// The "~" version type
-	#[cfg_attr(test, schemars(rename = "~"))]
 	Tilde,
 	/// The "=" version type
-	#[cfg_attr(test, schemars(rename = "="))]
 	Exact,
 	/// The "*" version type
-	#[cfg_attr(test, schemars(rename = "*"))]
 	Wildcard,
 }
 ser_display_deser_fromstr!(VersionType);
@@ -75,13 +69,10 @@ impl FromStr for VersionType {
 
 /// Either a version type or a version requirement
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
-#[cfg_attr(test, schemars(untagged))]
 pub enum VersionTypeOrReq {
 	/// A version type
 	VersionType(VersionType),
 	/// A version requirement
-	#[cfg_attr(test, schemars(with = "String"))]
 	Req(semver::VersionReq),
 }
 ser_display_deser_fromstr!(VersionTypeOrReq);

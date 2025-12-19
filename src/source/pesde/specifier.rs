@@ -5,12 +5,10 @@ use std::fmt::Display;
 
 /// The specifier for a pesde dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub struct PesdeDependencySpecifier {
 	/// The name of the package
 	pub name: PackageName,
 	/// The version requirement for the package
-	#[cfg_attr(test, schemars(with = "String"))]
 	pub version: VersionReq,
 	/// The index to use for the package
 	#[serde(default = "crate::default_index_name")]

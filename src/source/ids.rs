@@ -65,35 +65,6 @@ impl FromStr for VersionId {
 	}
 }
 
-#[cfg(test)]
-impl schemars::JsonSchema for VersionId {
-	fn schema_name() -> std::borrow::Cow<'static, str> {
-		"VersionId".into()
-	}
-
-	fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-		let version_schema = Version::json_schema(&mut schemars::SchemaGenerator::default());
-		let version_pattern = version_schema
-			.get("pattern")
-			.unwrap()
-			.as_str()
-			.unwrap()
-			.trim_start_matches('^')
-			.trim_end_matches('$');
-
-		let target_pattern = TargetKind::VARIANTS
-			.iter()
-			.map(ToString::to_string)
-			.collect::<Vec<_>>()
-			.join("|");
-
-		schemars::json_schema!({
-			"type": "string",
-			"pattern": format!(r"^({version_pattern}) ({target_pattern})$"),
-		})
-	}
-}
-
 /// A package ID, which is a combination of a name and a version ID
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PackageId(pub(crate) PackageNames, pub(crate) VersionId);
