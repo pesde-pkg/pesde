@@ -7,17 +7,14 @@ use crate::{
 		DependencySpecifiers, PackageRef, PackageSources, git::GitPackageSource,
 		refs::StructureKind,
 	},
+	GixUrl,
 };
 
 /// A Git package reference
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct GitPackageRef {
 	/// The repository of the package
-	#[serde(
-		serialize_with = "crate::util::serialize_gix_url",
-		deserialize_with = "crate::util::deserialize_gix_url"
-	)]
-	pub repo: gix::Url,
+	pub repo: GixUrl,
 	/// The id of the package's tree
 	pub tree_id: String,
 	/// The dependencies of the package

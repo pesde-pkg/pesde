@@ -1,5 +1,5 @@
 use crate::{
-	Project,
+	GixUrl, Project,
 	manifest::target::Target,
 	names::{PackageNames, wally::WallyPackageName},
 	reporters::{DownloadProgressReporter, response_to_async_read},
@@ -17,7 +17,6 @@ use crate::{
 	version_matches,
 };
 use fs_err::tokio as fs;
-use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
@@ -39,7 +38,7 @@ pub mod specifier;
 /// The Wally package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct WallyPackageSource {
-	repo_url: Url,
+	repo_url: GixUrl,
 }
 
 impl GitBasedSource for WallyPackageSource {
@@ -50,7 +49,7 @@ impl GitBasedSource for WallyPackageSource {
 			.join(hash(self.as_bytes()))
 	}
 
-	fn repo_url(&self) -> &Url {
+	fn repo_url(&self) -> &GixUrl {
 		&self.repo_url
 	}
 }
@@ -58,18 +57,18 @@ impl GitBasedSource for WallyPackageSource {
 impl WallyPackageSource {
 	/// Creates a new Wally package source
 	#[must_use]
-	pub fn new(repo_url: Url) -> Self {
+	pub fn new(repo_url: GixUrl) -> Self {
 		Self { repo_url }
 	}
 
 	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.to_bstring().to_vec()
+		self.repo_url.as_url().to_bstring().to_vec()
 	}
 
 	/// Reads the config file
 	#[instrument(skip_all, ret(level = "trace"), level = "debug")]
 	pub async fn config(&self, project: &Project) -> Result<WallyIndexConfig, errors::ConfigError> {
-		let repo_url = self.repo_url.clone();
+		let repo_url = self.repo_url.clone().into_url();
 		let path = self.path(project);
 
 		spawn_blocking(move || {
@@ -168,7 +167,11 @@ impl PackageSource for WallyPackageSource {
 						break;
 					}
 					Ok(None) => {
-						tracing::debug!("{} not found in {}", specifier.name, source.repo_url);
+						tracing::debug!(
+							"{} not found in {}",
+							specifier.name,
+							source.repo_url.as_url()
+						);
 					}
 					Err(e) => return Err(e),
 				}
@@ -340,8 +343,7 @@ impl PackageSource for WallyPackageSource {
 #[derive(Debug, Clone, Deserialize)]
 pub struct WallyIndexConfig {
 	api: url::Url,
-	#[serde(default, deserialize_with = "crate::util::deserialize_gix_url_vec")]
-	fallback_registries: Vec<Url>,
+	fallback_registries: Vec<GixUrl>,
 }
 
 /// Errors that can occur when interacting with a Wally package source

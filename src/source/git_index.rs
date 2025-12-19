@@ -1,6 +1,6 @@
 #![allow(async_fn_in_trait)]
 
-use crate::{Project, source::traits::RefreshOptions, util::authenticate_conn};
+use crate::{GixUrl, Project, source::traits::RefreshOptions};
 use fs_err::tokio as fs;
 use gix::remote::Direction;
 use std::fmt::Debug;
@@ -13,16 +13,12 @@ pub trait GitBasedSource {
 	fn path(&self, project: &Project) -> std::path::PathBuf;
 
 	/// The URL of the repository
-	fn repo_url(&self) -> &gix::Url;
+	fn repo_url(&self) -> &GixUrl;
 
 	/// Refreshes the repository
 	async fn refresh(&self, options: &RefreshOptions) -> Result<(), errors::RefreshError> {
-		let RefreshOptions { project } = options;
-
-		let path = self.path(project);
-		let repo_url = self.repo_url().clone();
-
-		let project = project.clone();
+		let path = self.path(&options.project);
+		let repo_url = self.repo_url().clone().into_url();
 
 		if fs::metadata(&path).await.is_ok() {
 			spawn_blocking(move || {
@@ -40,17 +36,9 @@ pub trait GitBasedSource {
 					}
 				};
 
-				let mut connection = match remote.connect(Direction::Fetch) {
-					Ok(connection) => connection,
-					Err(e) => {
-						return Err(errors::RefreshError::Connect(
-							repo_url.to_string(),
-							Box::new(e),
-						));
-					}
-				};
-
-				authenticate_conn(&mut connection, project.auth_config());
+				let connection = remote.connect(Direction::Fetch).map_err(|e| {
+					errors::RefreshError::Connect(repo_url.to_string(), Box::new(e))
+				})?;
 
 				let fetch =
 					match connection.prepare_fetch(gix::progress::Discard, Default::default()) {
@@ -82,10 +70,6 @@ pub trait GitBasedSource {
 		spawn_blocking(move || {
 			gix::prepare_clone_bare(repo_url.clone(), &path)
 				.map_err(|e| errors::RefreshError::Clone(repo_url.to_string(), Box::new(e)))?
-				.configure_connection(move |c| {
-					authenticate_conn(c, project.auth_config());
-					Ok(())
-				})
 				.fetch_only(gix::progress::Discard, &false.into())
 				.map_err(|e| errors::RefreshError::Fetch(repo_url.to_string(), Box::new(e)))
 		})

@@ -1,14 +1,15 @@
 use crate::cli::auth::{get_token_login, get_tokens};
 use clap::Args;
 use console::style;
+use pesde::GixUrl;
 
 #[derive(Debug, Args)]
 pub struct WhoAmICommand;
 
 impl WhoAmICommand {
-	pub async fn run(self, index_url: gix::Url, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, index_url: GixUrl, reqwest: reqwest::Client) -> anyhow::Result<()> {
 		let tokens = get_tokens().await?;
-		let Some(token) = tokens.0.get(&index_url) else {
+		let Some(token) = tokens.get(&index_url) else {
 			println!("not logged in into {index_url}");
 			return Ok(());
 		};

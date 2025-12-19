@@ -21,7 +21,7 @@ use pesde::{
 		traits::RefreshOptions,
 		ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS, IGNORED_FILES,
 	},
-	MANIFEST_FILE_NAME,
+	GixUrl, MANIFEST_FILE_NAME,
 };
 use sentry::add_breadcrumb;
 use serde::Deserialize;
@@ -295,7 +295,7 @@ pub async fn publish_package(
 					let allowed = match gix::Url::try_from(&*specifier.index) {
 						Ok(url) => config
 							.other_registries_allowed
-							.is_allowed_or_same(source.repo_url().clone(), url),
+							.is_allowed_or_same(source.repo_url().clone(), GixUrl::new(url)),
 						Err(_) => false,
 					};
 
@@ -307,7 +307,7 @@ pub async fn publish_package(
 				}
 				DependencySpecifiers::Wally(specifier) => {
 					let allowed = match gix::Url::try_from(&*specifier.index) {
-						Ok(url) => config.wally_allowed.is_allowed(url),
+						Ok(url) => config.wally_allowed.is_allowed(GixUrl::new(url)),
 						Err(_) => false,
 					};
 

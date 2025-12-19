@@ -5,7 +5,7 @@ use crate::cli::{
 use anyhow::Context as _;
 use futures::StreamExt as _;
 use pesde::{
-	AuthConfig, DEFAULT_INDEX_NAME, Project,
+	AuthConfig, DEFAULT_INDEX_NAME, GixUrl, Project,
 	engine::{
 		EngineKind,
 		runtime::{Runtime, RuntimeKind},
@@ -212,7 +212,7 @@ impl VersionedPackageName {
 #[derive(Debug, Clone)]
 enum AnyPackageIdentifier<V: FromStr = VersionId, N: FromStr = PackageNames> {
 	PackageName(VersionedPackageName<V, N>),
-	Url((gix::Url, String)),
+	Url((GixUrl, String)),
 	Workspace(VersionedPackageName<VersionTypeOrReq, PackageName>),
 	Path(PathBuf),
 }
@@ -228,7 +228,7 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 			let (repo, rev) = s.split_once('#').context("missing revision")?;
 
 			Ok(AnyPackageIdentifier::Url((
-				repo.try_into()?,
+				GixUrl::new(repo.try_into()?),
 				rev.to_string(),
 			)))
 		} else if let Some(rest) = s.strip_prefix("workspace:") {
@@ -239,17 +239,13 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 			let (url, rev) = s.split_once('#').context("missing revision")?;
 
 			Ok(AnyPackageIdentifier::Url((
-				url.try_into()?,
+				GixUrl::new(url.try_into()?),
 				rev.to_string(),
 			)))
 		} else {
 			Ok(AnyPackageIdentifier::PackageName(s.parse()?))
 		}
 	}
-}
-
-pub fn parse_gix_url(s: &str) -> Result<gix::Url, gix::url::parse::Error> {
-	s.try_into()
 }
 
 pub fn shift_project_dir(project: &Project, pkg_dir: PathBuf) -> Project {
@@ -329,7 +325,7 @@ pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 	}
 }
 
-pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result<gix::Url> {
+pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result<GixUrl> {
 	let manifest = match project.deser_manifest().await {
 		Ok(manifest) => Some(manifest),
 		Err(e) => match e {
@@ -339,7 +335,7 @@ pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result
 	};
 
 	let index_url = match index {
-		Some(index) => index.try_into().ok(),
+		Some(index) => index.try_into().ok().map(GixUrl::new),
 		None => match manifest {
 			Some(_) => None,
 			None => Some(read_config().await?.default_index),

@@ -13,7 +13,10 @@ use pesde::{
 	names::PackageNames,
 	source::{
 		PackageSources,
-		git::{GitPackageSource, specifier::GitDependencySpecifier},
+		git::{
+			GitPackageSource,
+			specifier::{GitDependencySpecifier, GitVersionSpecifier},
+		},
 		path::{PathPackageSource, specifier::PathDependencySpecifier},
 		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
 		specifiers::DependencySpecifiers,
@@ -113,7 +116,7 @@ impl AddCommand {
 				PackageSources::Git(GitPackageSource::new(url.clone())),
 				DependencySpecifiers::Git(GitDependencySpecifier {
 					repo: url.clone(),
-					rev: rev.clone(),
+					version_specifier: GitVersionSpecifier::Rev(rev.clone()),
 					path: None,
 				}),
 			),
@@ -195,11 +198,12 @@ impl AddCommand {
 			None => match &self.name {
 				AnyPackageIdentifier::PackageName(versioned) => versioned.0.name().to_string(),
 				AnyPackageIdentifier::Url((url, _)) => url
+					.as_url()
 					.path
 					.to_string()
 					.split('/')
 					.next_back()
-					.map_or_else(|| url.path.to_string(), ToString::to_string),
+					.map_or_else(|| url.as_url().path.to_string(), ToString::to_string),
 				AnyPackageIdentifier::Workspace(versioned) => versioned.0.name().to_string(),
 				AnyPackageIdentifier::Path(path) => path
 					.file_name()
@@ -250,10 +254,18 @@ impl AddCommand {
 				);
 			}
 			DependencySpecifiers::Git(spec) => {
-				field["repo"] = toml_edit::value(spec.repo.to_bstring().to_string());
-				field["rev"] = toml_edit::value(spec.rev.clone());
+				field["repo"] = toml_edit::value(spec.repo.to_string());
+				match spec.version_specifier.clone() {
+					GitVersionSpecifier::Rev(rev) => field["rev"] = toml_edit::value(rev),
+					GitVersionSpecifier::VersionReq(req) => {
+						field["version"] = toml_edit::value(req.to_string());
+					}
+				}
 
-				println!("added git {}#{} to {dependency_key}", spec.repo, spec.rev);
+				println!(
+					"added git {}{} to {dependency_key}",
+					spec.repo, spec.version_specifier
+				);
 			}
 			DependencySpecifiers::Workspace(spec) => {
 				field["workspace"] = toml_edit::value(spec.name.to_string());

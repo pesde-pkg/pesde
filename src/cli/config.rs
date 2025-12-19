@@ -1,6 +1,7 @@
 use crate::cli::auth::Tokens;
 use anyhow::Context as _;
 use fs_err::tokio as fs;
+use pesde::GixUrl;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -9,11 +10,7 @@ use super::config_path;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CliConfig {
-	#[serde(
-		serialize_with = "crate::util::serialize_gix_url",
-		deserialize_with = "crate::util::deserialize_gix_url"
-	)]
-	pub default_index: gix::Url,
+	pub default_index: GixUrl,
 
 	pub tokens: Tokens,
 
@@ -24,7 +21,7 @@ pub struct CliConfig {
 impl Default for CliConfig {
 	fn default() -> Self {
 		Self {
-			default_index: "https://github.com/pesde-pkg/index".try_into().unwrap(),
+			default_index: GixUrl::new("https://github.com/pesde-pkg/index".try_into().unwrap()),
 
 			tokens: Tokens::default(),
 

@@ -12,7 +12,7 @@ use crate::cli::{
 	style::URL_STYLE,
 };
 use pesde::{
-	Project,
+	GixUrl, Project,
 	engine::source::github::GITHUB_URL,
 	source::{
 		pesde::PesdePackageSource,
@@ -56,13 +56,13 @@ enum AccessTokenResponse {
 impl LoginCommand {
 	pub async fn authenticate_device_flow(
 		&self,
-		index_url: &gix::Url,
+		index_url: GixUrl,
 		project: &Project,
 		reqwest: &reqwest::Client,
 	) -> anyhow::Result<String> {
 		println!("logging in into {index_url}");
 
-		let source = PesdePackageSource::new(index_url.clone());
+		let source = PesdePackageSource::new(index_url);
 		source
 			.refresh(&RefreshOptions {
 				project: project.clone(),
@@ -170,7 +170,7 @@ impl LoginCommand {
 
 	pub async fn run(
 		self,
-		index_url: gix::Url,
+		index_url: GixUrl,
 		project: Project,
 		reqwest: reqwest::Client,
 	) -> anyhow::Result<()> {
@@ -178,7 +178,7 @@ impl LoginCommand {
 		let token = match self.token {
 			Some(token) => token,
 			None => {
-				self.authenticate_device_flow(&index_url, &project, &reqwest)
+				self.authenticate_device_flow(index_url.clone(), &project, &reqwest)
 					.await?
 			}
 		};
@@ -201,7 +201,7 @@ impl LoginCommand {
 		// Also save the token for GitHub API requests if we authenticated via GitHub OAuth
 		if !token_given {
 			let tokens = get_tokens().await?;
-			if !tokens.0.contains_key(&GITHUB_URL) {
+			if !tokens.contains_key(&GITHUB_URL) {
 				set_token(&GITHUB_URL, Some(&token)).await?;
 			}
 		}

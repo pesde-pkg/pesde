@@ -211,7 +211,7 @@ async fn run() -> anyhow::Result<()> {
 		project_workspace_dir,
 		data_dir()?,
 		cas_dir,
-		AuthConfig::new().with_tokens(get_tokens().await?.0),
+		AuthConfig::new().with_tokens(get_tokens().await?),
 	);
 
 	#[cfg(feature = "version-management")]

@@ -1,4 +1,3 @@
-use gix::Url;
 use relative_path::RelativePathBuf;
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
@@ -13,7 +12,7 @@ use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
 use crate::{
-	Project,
+	GixUrl, Project,
 	engine::EngineKind,
 	manifest::{
 		Alias, DependencyType,
@@ -44,7 +43,7 @@ pub mod specifier;
 /// The pesde package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct PesdePackageSource {
-	repo_url: Url,
+	repo_url: GixUrl,
 }
 
 /// The file containing scope information
@@ -65,7 +64,7 @@ impl GitBasedSource for PesdePackageSource {
 			.join(hash(self.as_bytes()))
 	}
 
-	fn repo_url(&self) -> &Url {
+	fn repo_url(&self) -> &GixUrl {
 		&self.repo_url
 	}
 }
@@ -73,18 +72,18 @@ impl GitBasedSource for PesdePackageSource {
 impl PesdePackageSource {
 	/// Creates a new pesde package source
 	#[must_use]
-	pub fn new(repo_url: Url) -> Self {
+	pub fn new(repo_url: GixUrl) -> Self {
 		Self { repo_url }
 	}
 
 	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.to_bstring().to_vec()
+		self.repo_url.as_url().to_bstring().to_vec()
 	}
 
 	/// Reads the config file
 	#[instrument(skip_all, ret(level = "trace"), level = "debug")]
 	pub async fn config(&self, project: &Project) -> Result<IndexConfig, errors::ConfigError> {
-		let repo_url = self.repo_url.clone();
+		let repo_url = self.repo_url.clone().into_url();
 		let path = self.path(project);
 
 		spawn_blocking(move || {
@@ -349,8 +348,7 @@ pub enum AllowedRegistries {
 	/// All registries are allowed
 	All(bool),
 	/// Only specific registries are allowed
-	#[serde(deserialize_with = "crate::util::deserialize_gix_url_hashset")]
-	Specific(HashSet<Url>),
+	Specific(HashSet<GixUrl>),
 }
 
 impl Default for AllowedRegistries {
@@ -360,13 +358,14 @@ impl Default for AllowedRegistries {
 }
 
 // strips .git suffix to allow for more flexible matching
-fn simplify_url(mut url: Url) -> Url {
+fn simplify_url(url: GixUrl) -> GixUrl {
+	let mut url = url.into_url();
 	url.path = url.path.strip_suffix(b".git").unwrap_or(&url.path).into();
-	url
+	GixUrl::new(url)
 }
 
 impl AllowedRegistries {
-	fn _is_allowed(&self, url: &Url) -> bool {
+	fn _is_allowed(&self, url: &GixUrl) -> bool {
 		match self {
 			Self::All(all) => *all,
 			Self::Specific(urls) => urls.contains(url),
@@ -375,13 +374,13 @@ impl AllowedRegistries {
 
 	/// Whether the given URL is allowed
 	#[must_use]
-	pub fn is_allowed(&self, url: Url) -> bool {
+	pub fn is_allowed(&self, url: GixUrl) -> bool {
 		self._is_allowed(&simplify_url(url))
 	}
 
 	/// Whether the given URL is allowed, or is the same as the given URL
 	#[must_use]
-	pub fn is_allowed_or_same(&self, this: Url, external: Url) -> bool {
+	pub fn is_allowed_or_same(&self, this: GixUrl, external: GixUrl) -> bool {
 		let this = simplify_url(this);
 		let external = simplify_url(external);
 		(this == external) || self._is_allowed(&external) || self._is_allowed(&this)

@@ -1,3 +1,4 @@
+use crate::GixUrl;
 use crate::{
 	engine::EngineKind,
 	manifest::{
@@ -52,20 +53,12 @@ pub struct Manifest {
 	#[serde(default, skip_serializing)]
 	pub scripts: BTreeMap<String, String>,
 	/// The indices to use for the package
-	#[serde(
-		default,
-		skip_serializing,
-		deserialize_with = "crate::util::deserialize_gix_url_map"
-	)]
-	pub indices: BTreeMap<String, gix::Url>,
+	#[serde(default, skip_serializing)]
+	pub indices: BTreeMap<String, GixUrl>,
 	/// The indices to use for the package's wally dependencies
 	#[cfg(feature = "wally-compat")]
-	#[serde(
-		default,
-		skip_serializing,
-		deserialize_with = "crate::util::deserialize_gix_url_map"
-	)]
-	pub wally_indices: BTreeMap<String, gix::Url>,
+	#[serde(default, skip_serializing)]
+	pub wally_indices: BTreeMap<String, GixUrl>,
 	/// The overrides this package has
 	#[serde(default, skip_serializing)]
 	pub overrides: BTreeMap<OverrideKey, OverrideSpecifier>,

@@ -1,48 +1,19 @@
 use crate::cli::config::{read_config, write_config};
 use anyhow::Context as _;
-use gix::bstr::BStr;
 use keyring::Entry;
+use pesde::GixUrl;
 use reqwest::header::AUTHORIZATION;
-use serde::{Deserialize, Serialize, ser::SerializeMap as _};
+use serde::Deserialize;
 use std::collections::BTreeMap;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 
-#[derive(Debug, Clone, Default)]
-pub struct Tokens(pub BTreeMap<gix::Url, String>);
-
-impl Serialize for Tokens {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::ser::Serializer,
-	{
-		let mut map = serializer.serialize_map(Some(self.0.len()))?;
-		for (k, v) in &self.0 {
-			map.serialize_entry(&k.to_bstring().to_string(), v)?;
-		}
-		map.end()
-	}
-}
-
-impl<'de> Deserialize<'de> for Tokens {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: serde::de::Deserializer<'de>,
-	{
-		Ok(Tokens(
-			BTreeMap::<String, String>::deserialize(deserializer)?
-				.into_iter()
-				.map(|(k, v)| gix::Url::from_bytes(BStr::new(&k)).map(|k| (k, v)))
-				.collect::<Result<_, _>>()
-				.map_err(serde::de::Error::custom)?,
-		))
-	}
-}
+pub type Tokens = BTreeMap<GixUrl, String>;
 
 #[instrument(level = "trace")]
 pub async fn get_tokens() -> anyhow::Result<Tokens> {
 	let config = read_config().await?;
-	if !config.tokens.0.is_empty() {
+	if !config.tokens.is_empty() {
 		tracing::debug!("using tokens from config");
 		return Ok(config.tokens);
 	}
@@ -97,12 +68,12 @@ pub async fn set_tokens(tokens: Tokens) -> anyhow::Result<()> {
 	write_config(&config).await
 }
 
-pub async fn set_token(repo: &gix::Url, token: Option<&str>) -> anyhow::Result<()> {
+pub async fn set_token(repo: &GixUrl, token: Option<&str>) -> anyhow::Result<()> {
 	let mut tokens = get_tokens().await?;
 	if let Some(token) = token {
-		tokens.0.insert(repo.clone(), token.to_string());
+		tokens.insert(repo.clone(), token.to_string());
 	} else {
-		tokens.0.remove(repo);
+		tokens.remove(repo);
 	}
 	set_tokens(tokens).await
 }

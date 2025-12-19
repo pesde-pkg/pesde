@@ -18,7 +18,7 @@ use pesde::{
 		pesde::PesdePackageSource,
 		traits::{PackageSource as _, RefreshOptions},
 	},
-	AuthConfig, Project,
+	AuthConfig, GixUrl, Project,
 };
 use std::{env::current_dir, path::PathBuf, sync::Arc};
 use tracing::level_filters::LevelFilter;
@@ -105,13 +105,11 @@ async fn run() -> std::io::Result<()> {
 		None::<PathBuf>,
 		data_dir.join("project"),
 		&cwd,
-		AuthConfig::new().with_git_credentials(Some(gix::sec::identity::Account {
-			username: benv!(required "GIT_USERNAME"),
-			password: benv!(required "GIT_PASSWORD"),
-			oauth_refresh_token: None,
-		})),
+		AuthConfig::new(),
 	);
-	let source = PesdePackageSource::new(benv!(required "INDEX_REPO_URL").try_into().unwrap());
+	let source = PesdePackageSource::new(GixUrl::new(
+		benv!(required "INDEX_REPO_URL").try_into().unwrap(),
+	));
 	source
 		.refresh(&RefreshOptions {
 			project: project.clone(),

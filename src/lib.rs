@@ -15,13 +15,13 @@ use crate::{
 use async_stream::try_stream;
 use fs_err::tokio as fs;
 use futures::Stream;
-use gix::sec::identity::Account;
 use semver::{Version, VersionReq};
 use std::{
 	collections::{HashMap, HashSet},
-	fmt::Debug,
+	fmt::{Debug, Display, Formatter},
 	hash::{Hash as _, Hasher as _},
 	path::{Path, PathBuf},
+	str::FromStr,
 	sync::Arc,
 };
 use tokio::io::AsyncReadExt as _;
@@ -74,8 +74,7 @@ pub(crate) fn default_index_name() -> String {
 
 #[derive(Debug, Default)]
 struct AuthConfigShared {
-	tokens: HashMap<gix::Url, String>,
-	git_credentials: Option<Account>,
+	tokens: HashMap<GixUrl, String>,
 }
 
 /// Struct containing the authentication configuration
@@ -94,7 +93,7 @@ impl AuthConfig {
 	/// Set the tokens
 	/// Panics if the `AuthConfig` is shared
 	#[must_use]
-	pub fn with_tokens<I: IntoIterator<Item = (gix::Url, S)>, S: AsRef<str>>(
+	pub fn with_tokens<I: IntoIterator<Item = (GixUrl, S)>, S: AsRef<str>>(
 		mut self,
 		tokens: I,
 	) -> Self {
@@ -105,24 +104,10 @@ impl AuthConfig {
 		self
 	}
 
-	/// Set the git credentials
-	/// Panics if the `AuthConfig` is shared
-	#[must_use]
-	pub fn with_git_credentials(mut self, git_credentials: Option<Account>) -> Self {
-		Arc::get_mut(&mut self.shared).unwrap().git_credentials = git_credentials;
-		self
-	}
-
 	/// Get the tokens
 	#[must_use]
-	pub fn tokens(&self) -> &HashMap<gix::Url, String> {
+	pub fn tokens(&self) -> &HashMap<GixUrl, String> {
 		&self.shared.tokens
-	}
-
-	/// Get the git credentials
-	#[must_use]
-	pub fn git_credentials(&self) -> Option<&Account> {
-		self.shared.git_credentials.as_ref()
 	}
 }
 
@@ -488,6 +473,45 @@ pub(crate) fn all_packages_dirs() -> HashSet<&'static str> {
 		}
 	}
 	dirs
+}
+
+/// A git repo URL
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GixUrl(gix::Url);
+ser_display_deser_fromstr!(GixUrl);
+
+impl GixUrl {
+	/// Creates a new [GixUrl] from a [gix::Url]
+	#[must_use]
+	pub fn new(url: gix::Url) -> Self {
+		Self(url)
+	}
+
+	/// Returns the underlying [gix::Url] reference
+	#[must_use]
+	pub fn as_url(&self) -> &gix::Url {
+		&self.0
+	}
+
+	/// Unwraps into the underlying [gix::Url]
+	#[must_use]
+	pub fn into_url(self) -> gix::Url {
+		self.0
+	}
+}
+
+impl FromStr for GixUrl {
+	type Err = gix::url::parse::Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		s.try_into().map(GixUrl::new)
+	}
+}
+
+impl Display for GixUrl {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0.to_bstring())
+	}
 }
 
 /// Errors that can occur when using the pesde library

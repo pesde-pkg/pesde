@@ -82,10 +82,10 @@ pub async fn push_changes(
 		let mut push_options = git2::PushOptions::new();
 		let mut remote_callbacks = git2::RemoteCallbacks::new();
 
-		let git_creds = auth_config.git_credentials().unwrap();
-		remote_callbacks.credentials(|_, _, _| {
-			git2::Cred::userpass_plaintext(&git_creds.username, &git_creds.password)
-		});
+		// let git_creds = auth_config.git_credentials().unwrap();
+		// remote_callbacks.credentials(|_, _, _| {
+		// 	git2::Cred::userpass_plaintext(&git_creds.username, &git_creds.password)
+		// });
 
 		push_options.remote_callbacks(remote_callbacks);
 

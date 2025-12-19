@@ -128,7 +128,7 @@ impl InitCommand {
 		let source = PesdePackageSource::new(read_config().await?.default_index);
 
 		manifest["indices"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-			[DEFAULT_INDEX_NAME] = toml_edit::value(source.repo_url().to_bstring().to_string());
+			[DEFAULT_INDEX_NAME] = toml_edit::value(source.repo_url().to_string());
 
 		let refreshed_sources = RefreshedSources::new();
 

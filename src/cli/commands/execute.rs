@@ -10,7 +10,7 @@ use console::style;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
-	DEFAULT_INDEX_NAME, Project, RefreshedSources,
+	DEFAULT_INDEX_NAME, GixUrl, Project, RefreshedSources,
 	download_and_link::{DownloadAndLinkOptions, InstallDependenciesMode},
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
 	manifest::target::TargetKind,
@@ -41,8 +41,8 @@ pub struct ExecuteCommand {
 	target: TargetKind,
 
 	/// The index URL to use for the package
-	#[arg(short, long, value_parser = crate::cli::parse_gix_url)]
-	index: Option<gix::Url>,
+	#[arg(short, long)]
+	index: Option<GixUrl>,
 
 	/// Arguments to pass to the script
 	#[arg(index = 2, last = true)]

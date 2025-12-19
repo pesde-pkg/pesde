@@ -2,6 +2,7 @@
 pub mod engine_ref;
 
 use crate::{
+	GixUrl,
 	engine::source::{
 		archive::Archive,
 		github::engine_ref::Release,
@@ -17,8 +18,8 @@ use semver::{Version, VersionReq};
 use std::{collections::BTreeMap, path::PathBuf, sync::LazyLock};
 
 /// The GitHub URL used for authentication
-pub static GITHUB_URL: LazyLock<gix::Url> =
-	LazyLock::new(|| gix::Url::from_bytes(BStr::new("https://github.com")).unwrap());
+pub static GITHUB_URL: LazyLock<GixUrl> =
+	LazyLock::new(|| GixUrl::new(gix::Url::from_bytes(BStr::new("https://github.com")).unwrap()));
 
 /// The GitHub engine source
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]

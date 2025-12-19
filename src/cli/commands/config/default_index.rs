@@ -1,11 +1,12 @@
 use crate::cli::config::{CliConfig, read_config, write_config};
 use clap::Args;
+use pesde::GixUrl;
 
 #[derive(Debug, Args)]
 pub struct DefaultIndexCommand {
 	/// The new index URL to set as default, don't pass any value to check the current default index
-	#[arg(index = 1, value_parser = crate::cli::parse_gix_url)]
-	index: Option<gix::Url>,
+	#[arg(index = 1)]
+	index: Option<GixUrl>,
 
 	/// Resets the default index to the default value
 	#[arg(short, long, conflicts_with = "index")]

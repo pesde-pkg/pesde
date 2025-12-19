@@ -1,5 +1,5 @@
 use crate::{
-	Project, RefreshedSources,
+	GixUrl, Project, RefreshedSources,
 	graph::{DependencyGraph, DependencyGraphNode},
 	manifest::{Alias, DependencyType, overrides::OverrideSpecifier},
 	source::{
@@ -189,11 +189,11 @@ impl Project {
 								))?
 								.clone()
 						} else {
-							specifier.index
+							GixUrl::new(specifier.index
 								.as_str()
 								.try_into()
 								// specifiers in indices store the index url in this field
-								.unwrap()
+								.unwrap())
 						};
 
 						PackageSources::Pesde(PesdePackageSource::new(index_url))
@@ -209,11 +209,11 @@ impl Project {
 								))?
 								.clone()
 						} else {
-							specifier.index
+							GixUrl::new(specifier.index
 								.as_str()
 								.try_into()
 								// specifiers in indices store the index url in this field
-								.unwrap()
+								.unwrap())
 						};
 
 						PackageSources::Wally(crate::source::wally::WallyPackageSource::new(index_url))
