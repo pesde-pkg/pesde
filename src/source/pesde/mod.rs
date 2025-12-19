@@ -2,7 +2,7 @@ use relative_path::RelativePathBuf;
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
 use std::{
-	collections::{BTreeMap, BTreeSet, HashSet},
+	collections::{BTreeMap, BTreeSet},
 	fmt::Debug,
 	hash::Hash,
 	path::PathBuf,
@@ -341,52 +341,6 @@ fn default_archive_size() -> usize {
 	4 * 1024 * 1024
 }
 
-/// The allowed registries for a package
-#[derive(Deserialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum AllowedRegistries {
-	/// All registries are allowed
-	All(bool),
-	/// Only specific registries are allowed
-	Specific(HashSet<GixUrl>),
-}
-
-impl Default for AllowedRegistries {
-	fn default() -> Self {
-		Self::All(false)
-	}
-}
-
-// strips .git suffix to allow for more flexible matching
-fn simplify_url(url: GixUrl) -> GixUrl {
-	let mut url = url.into_url();
-	url.path = url.path.strip_suffix(b".git").unwrap_or(&url.path).into();
-	GixUrl::new(url)
-}
-
-impl AllowedRegistries {
-	fn _is_allowed(&self, url: &GixUrl) -> bool {
-		match self {
-			Self::All(all) => *all,
-			Self::Specific(urls) => urls.contains(url),
-		}
-	}
-
-	/// Whether the given URL is allowed
-	#[must_use]
-	pub fn is_allowed(&self, url: GixUrl) -> bool {
-		self._is_allowed(&simplify_url(url))
-	}
-
-	/// Whether the given URL is allowed, or is the same as the given URL
-	#[must_use]
-	pub fn is_allowed_or_same(&self, this: GixUrl, external: GixUrl) -> bool {
-		let this = simplify_url(this);
-		let external = simplify_url(external);
-		(this == external) || self._is_allowed(&external) || self._is_allowed(&this)
-	}
-}
-
 /// The configuration for the pesde index
 #[derive(Deserialize, Debug, Clone)]
 pub struct IndexConfig {
@@ -394,15 +348,6 @@ pub struct IndexConfig {
 	pub api: url::Url,
 	/// The URL to download packages from
 	pub download: Option<String>,
-	/// Whether Git is allowed as a source for publishing packages
-	#[serde(default)]
-	pub git_allowed: AllowedRegistries,
-	/// Whether other registries are allowed as a source for publishing packages
-	#[serde(default)]
-	pub other_registries_allowed: AllowedRegistries,
-	/// Whether Wally is allowed as a source for publishing packages
-	#[serde(default)]
-	pub wally_allowed: AllowedRegistries,
 	/// The OAuth client ID for GitHub
 	#[serde(default)]
 	pub github_oauth_client_id: Option<String>,
