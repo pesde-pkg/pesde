@@ -5,6 +5,16 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// A type of structure
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StructureKind {
+	/// Linker files in the parent of the folder containing the package's contents
+	Wally,
+	/// `packages` folders inside the package's content folder
+	PesdeV1,
+}
+
 /// All possible package references
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "ref_ty")]
@@ -29,7 +39,7 @@ impl PackageRefs {
 		match self {
 			#[cfg(feature = "wally-compat")]
 			PackageRefs::Wally(_) => true,
-			PackageRefs::Git(git) => !git.use_new_structure(),
+			PackageRefs::Git(git) => git.structure_kind() == StructureKind::Wally,
 			_ => false,
 		}
 	}
@@ -53,14 +63,14 @@ impl PackageRef for PackageRefs {
 		}
 	}
 
-	fn use_new_structure(&self) -> bool {
+	fn structure_kind(&self) -> StructureKind {
 		match self {
-			PackageRefs::Pesde(pkg_ref) => pkg_ref.use_new_structure(),
+			PackageRefs::Pesde(pkg_ref) => pkg_ref.structure_kind(),
 			#[cfg(feature = "wally-compat")]
-			PackageRefs::Wally(pkg_ref) => pkg_ref.use_new_structure(),
-			PackageRefs::Git(pkg_ref) => pkg_ref.use_new_structure(),
-			PackageRefs::Workspace(pkg_ref) => pkg_ref.use_new_structure(),
-			PackageRefs::Path(pkg_ref) => pkg_ref.use_new_structure(),
+			PackageRefs::Wally(pkg_ref) => pkg_ref.structure_kind(),
+			PackageRefs::Git(pkg_ref) => pkg_ref.structure_kind(),
+			PackageRefs::Workspace(pkg_ref) => pkg_ref.structure_kind(),
+			PackageRefs::Path(pkg_ref) => pkg_ref.structure_kind(),
 		}
 	}
 

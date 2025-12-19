@@ -480,7 +480,7 @@ pub fn version_matches(req: &VersionReq, version: &Version) -> bool {
 	*req == VersionReq::STAR || req.matches(version)
 }
 
-pub(crate) fn all_packages_dirs() -> HashSet<String> {
+pub(crate) fn all_packages_dirs() -> HashSet<&'static str> {
 	let mut dirs = HashSet::new();
 	for target_kind_a in TargetKind::VARIANTS {
 		for target_kind_b in TargetKind::VARIANTS {

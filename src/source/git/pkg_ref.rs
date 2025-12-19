@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{DependencySpecifiers, PackageRef, PackageSources, git::GitPackageSource},
+	source::{
+		DependencySpecifiers, PackageRef, PackageSources, git::GitPackageSource,
+		refs::StructureKind,
+	},
 };
 
 /// A Git package reference
@@ -20,16 +23,16 @@ pub struct GitPackageRef {
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
-	/// Whether this package uses the new structure
-	pub new_structure: bool,
+	/// The structure kind of this package
+	pub structure_kind: StructureKind,
 }
 impl PackageRef for GitPackageRef {
 	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)> {
 		&self.dependencies
 	}
 
-	fn use_new_structure(&self) -> bool {
-		self.new_structure
+	fn structure_kind(&self) -> StructureKind {
+		self.structure_kind
 	}
 
 	fn source(&self) -> PackageSources {

@@ -234,7 +234,7 @@ impl Project {
 
 			let mut tasks = all_packages_dirs()
 				.into_iter()
-				.map(|folder| remove_dir(self.package_dir().join(&folder)))
+				.map(|folder| remove_dir(self.package_dir().join(folder)))
 				.chain(std::iter::once(remove_dir(
 					self.package_dir().join(SCRIPTS_LINK_FOLDER),
 				)))

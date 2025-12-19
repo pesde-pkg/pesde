@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// The current format of the lockfile
-pub const CURRENT_FORMAT: usize = 2;
+pub const CURRENT_FORMAT: usize = 3;
 
 /// A lockfile
 #[derive(Serialize, Deserialize, Debug, Clone)]

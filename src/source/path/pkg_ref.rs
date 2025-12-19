@@ -1,6 +1,9 @@
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{DependencySpecifiers, PackageRef, PackageSources, path::PathPackageSource},
+	source::{
+		DependencySpecifiers, PackageRef, PackageSources, path::PathPackageSource,
+		refs::StructureKind,
+	},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
@@ -19,8 +22,8 @@ impl PackageRef for PathPackageRef {
 		&self.dependencies
 	}
 
-	fn use_new_structure(&self) -> bool {
-		true
+	fn structure_kind(&self) -> StructureKind {
+		StructureKind::PesdeV1
 	}
 
 	fn source(&self) -> PackageSources {

@@ -4,7 +4,10 @@ use std::collections::BTreeMap;
 
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{DependencySpecifiers, PackageRef, PackageSources, workspace::WorkspacePackageSource},
+	source::{
+		DependencySpecifiers, PackageRef, PackageSources, refs::StructureKind,
+		workspace::WorkspacePackageSource,
+	},
 };
 
 /// A workspace package reference
@@ -21,8 +24,8 @@ impl PackageRef for WorkspacePackageRef {
 		&self.dependencies
 	}
 
-	fn use_new_structure(&self) -> bool {
-		true
+	fn structure_kind(&self) -> StructureKind {
+		StructureKind::PesdeV1
 	}
 
 	fn source(&self) -> PackageSources {

@@ -6,7 +6,10 @@ use crate::{
 		target::{Target, TargetKind},
 	},
 	reporters::DownloadProgressReporter,
-	source::{DependencySpecifiers, PackageFs, PackageSources, ResolveResult, ids::PackageId},
+	source::{
+		DependencySpecifiers, PackageFs, PackageSources, ResolveResult, ids::PackageId,
+		refs::StructureKind,
+	},
 };
 use std::{
 	collections::BTreeMap,
@@ -23,8 +26,8 @@ pub trait DependencySpecifier: Debug + Display {}
 pub trait PackageRef: Debug {
 	/// The dependencies of this package
 	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)>;
-	/// Whether to use the new structure (`packages` folders inside the package's content folder) or the old structure (Wally-style, with linker files in the parent of the folder containing the package's contents)
-	fn use_new_structure(&self) -> bool;
+	/// The kind of structure this package uses
+	fn structure_kind(&self) -> StructureKind;
 	/// The source of this package
 	fn source(&self) -> PackageSources;
 }

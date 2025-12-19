@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{DependencySpecifiers, PackageRef, PackageSources, pesde::PesdePackageSource},
+	source::{
+		DependencySpecifiers, PackageRef, PackageSources, pesde::PesdePackageSource,
+		refs::StructureKind,
+	},
 };
 
 /// A pesde package reference
@@ -25,8 +28,8 @@ impl PackageRef for PesdePackageRef {
 		&self.dependencies
 	}
 
-	fn use_new_structure(&self) -> bool {
-		true
+	fn structure_kind(&self) -> StructureKind {
+		StructureKind::PesdeV1
 	}
 
 	fn source(&self) -> PackageSources {

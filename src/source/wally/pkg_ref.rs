@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	manifest::{Alias, DependencyType},
-	source::{DependencySpecifiers, PackageRef, PackageSources, wally::WallyPackageSource},
+	source::{
+		DependencySpecifiers, PackageRef, PackageSources, refs::StructureKind,
+		wally::WallyPackageSource,
+	},
 };
 
 /// A Wally package reference
@@ -25,8 +28,8 @@ impl PackageRef for WallyPackageRef {
 		&self.dependencies
 	}
 
-	fn use_new_structure(&self) -> bool {
-		false
+	fn structure_kind(&self) -> StructureKind {
+		StructureKind::Wally
 	}
 
 	fn source(&self) -> PackageSources {

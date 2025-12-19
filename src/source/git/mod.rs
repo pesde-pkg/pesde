@@ -9,6 +9,7 @@ use crate::{
 		fs::{FsEntry, PackageFs, store_in_cas},
 		git::{pkg_ref::GitPackageRef, specifier::GitDependencySpecifier},
 		git_index::{GitBasedSource, read_file},
+		refs::StructureKind,
 		specifiers::DependencySpecifiers,
 		traits::{
 			DownloadOptions, GetTargetOptions, PackageRef as _, RefreshOptions, ResolveOptions,
@@ -311,7 +312,11 @@ impl PackageSource for GitPackageSource {
 		.await
 		.unwrap()?;
 
-		let new_structure = matches!(name, PackageNames::Pesde(_));
+		let structure_kind = if matches!(name, PackageNames::Pesde(_)) {
+			StructureKind::PesdeV1
+		} else {
+			StructureKind::Wally
+		};
 
 		Ok((
 			name,
@@ -320,7 +325,7 @@ impl PackageSource for GitPackageSource {
 				GitPackageRef {
 					repo: self.repo_url.clone(),
 					tree_id,
-					new_structure,
+					structure_kind,
 					dependencies,
 				},
 			)]),
@@ -441,7 +446,9 @@ impl PackageSource for GitPackageSource {
 					return false;
 				}
 
-				if pkg_ref.use_new_structure() && ADDITIONAL_FORBIDDEN_FILES.contains(&name) {
+				if pkg_ref.structure_kind() != StructureKind::Wally
+					&& ADDITIONAL_FORBIDDEN_FILES.contains(&name)
+				{
 					tracing::debug!(
 						"removing {name} from {}#{} at {path} - using new structure",
 						pkg_ref.repo,
@@ -500,7 +507,7 @@ impl PackageSource for GitPackageSource {
 		pkg_ref: &Self::Ref,
 		options: &GetTargetOptions,
 	) -> Result<Target, Self::GetTargetError> {
-		if !pkg_ref.new_structure {
+		if pkg_ref.structure_kind == StructureKind::Wally {
 			#[cfg(feature = "wally-compat")]
 			return crate::source::wally::compat_util::get_target(options)
 				.await

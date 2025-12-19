@@ -6,7 +6,7 @@ use crate::{
 	},
 	source::{
 		ids::{PackageId, VersionId},
-		refs::PackageRefs,
+		refs::{PackageRefs, StructureKind},
 		specifiers::DependencySpecifiers,
 		traits::PackageRef as _,
 	},
@@ -35,11 +35,10 @@ impl DependencyGraphNode {
 		&self,
 		version_id: &VersionId,
 		project_target: TargetKind,
-	) -> String {
-		if self.pkg_ref.use_new_structure() {
-			version_id.target().packages_folder(project_target)
-		} else {
-			"..".to_string()
+	) -> &'static str {
+		match self.pkg_ref.structure_kind() {
+			StructureKind::Wally => "..",
+			StructureKind::PesdeV1 => version_id.target().packages_folder(project_target),
 		}
 	}
 

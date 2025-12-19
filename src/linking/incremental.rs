@@ -201,7 +201,7 @@ impl Project {
 		let mut tasks = all_packages_dirs()
 			.into_iter()
 			.map(|folder| {
-				let packages_dir = self.package_dir().join(&folder);
+				let packages_dir = self.package_dir().join(folder);
 				let packages_index_dir = packages_dir.join(PACKAGES_CONTAINER_NAME);
 				let used_paths = used_paths.clone();
 				#[cfg(feature = "patches")]

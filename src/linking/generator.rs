@@ -1,6 +1,12 @@
-use std::path::{Component, Path};
+use std::{
+	borrow::Cow,
+	path::{Component, Path},
+};
 
-use crate::manifest::{Manifest, target::TargetKind};
+use crate::{
+	manifest::{Manifest, target::TargetKind},
+	source::refs::StructureKind,
+};
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
 use relative_path::RelativePath;
 use tracing::instrument;
@@ -125,17 +131,16 @@ pub fn get_lib_require_path(
 	base_dir: &Path,
 	lib_file: &RelativePath,
 	destination_dir: &Path,
-	use_new_structure: bool,
+	structure_kind: StructureKind,
 	root_container_dir: &Path,
 	container_dir: &Path,
 	project_manifest: &Manifest,
 ) -> Result<String, errors::GetLibRequirePath> {
 	let path = pathdiff::diff_paths(destination_dir, base_dir).unwrap();
 	tracing::debug!("diffed lib path: {}", path.display());
-	let path = if use_new_structure {
-		lib_file.to_path(path)
-	} else {
-		path
+	let path = match structure_kind {
+		StructureKind::Wally => path,
+		StructureKind::PesdeV1 => lib_file.to_path(path),
 	};
 
 	if matches!(target, TargetKind::Roblox | TargetKind::RobloxServer) {
@@ -148,13 +153,12 @@ pub fn get_lib_require_path(
 						place_kind,
 					))?
 					.as_str(),
-				if use_new_structure {
-					lib_file.to_path(container_dir)
-				} else {
-					container_dir.to_path_buf()
+				match structure_kind {
+					StructureKind::Wally => Cow::Borrowed(container_dir),
+					StructureKind::PesdeV1 => Cow::Owned(lib_file.to_path(container_dir)),
 				},
 			),
-			_ => ("script.Parent", path),
+			_ => ("script.Parent", Cow::Owned(path)),
 		};
 
 		let path = path

@@ -72,7 +72,7 @@ impl Project {
 						base_folder,
 						lib_file,
 						container_folder,
-						node.node.pkg_ref.use_new_structure(),
+						node.node.pkg_ref.structure_kind(),
 						root_container_folder,
 						relative_container_folder,
 						manifest,
