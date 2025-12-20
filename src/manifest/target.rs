@@ -2,7 +2,6 @@ use crate::ser_display_deser_fromstr;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 use std::{
-	collections::BTreeMap,
 	fmt::{Display, Formatter},
 	str::FromStr,
 };
@@ -119,9 +118,6 @@ pub enum Target {
 		/// The path to the bin export file
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		bin: Option<RelativePathBuf>,
-		/// The exported scripts
-		#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-		scripts: BTreeMap<String, RelativePathBuf>,
 	},
 	/// A Luau target
 	Luau {
@@ -131,9 +127,6 @@ pub enum Target {
 		/// The path to the bin export file
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		bin: Option<RelativePathBuf>,
-		/// The exported scripts
-		#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-		scripts: BTreeMap<String, RelativePathBuf>,
 	},
 }
 
@@ -168,16 +161,6 @@ impl Target {
 			Target::RobloxServer { .. } => None,
 			Target::Lune { bin, .. } => bin.as_deref(),
 			Target::Luau { bin, .. } => bin.as_deref(),
-		}
-	}
-
-	/// Returns the scripts exported by this target
-	#[must_use]
-	pub fn scripts(&self) -> Option<&BTreeMap<String, RelativePathBuf>> {
-		match self {
-			Target::Lune { scripts, .. } => Some(scripts),
-			Target::Luau { scripts, .. } => Some(scripts),
-			_ => None,
 		}
 	}
 }

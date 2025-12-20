@@ -6,7 +6,7 @@ use anyhow::Context as _;
 use clap::Args;
 use inquire::validator::Validation;
 use pesde::{
-	DEFAULT_INDEX_NAME, Project, RefreshedSources, SCRIPTS_LINK_FOLDER,
+	DEFAULT_INDEX_NAME, Project, RefreshedSources,
 	errors::ManifestReadError,
 	manifest::{DependencyType, target::TargetKind},
 	names::PackageName,
@@ -224,19 +224,6 @@ impl InitCommand {
 					.entries
 					.remove(&v_id)
 					.context("failed to remove scripts package entry")?;
-
-				let Some(scripts) = entry.target.scripts().filter(|s| !s.is_empty()) else {
-					anyhow::bail!("scripts package has no scripts.")
-				};
-
-				let scripts_field =
-					manifest["scripts"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
-
-				for script_name in scripts.keys() {
-					scripts_field[script_name] = toml_edit::value(format!(
-						"{SCRIPTS_LINK_FOLDER}/scripts/{script_name}.luau"
-					));
-				}
 
 				let dev_deps = manifest["dev_dependencies"]
 					.or_insert(toml_edit::Item::Table(toml_edit::Table::new()));

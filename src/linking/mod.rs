@@ -1,5 +1,5 @@
 use crate::{
-	PACKAGES_CONTAINER_NAME, Project, SCRIPTS_LINK_FOLDER,
+	PACKAGES_CONTAINER_NAME, Project,
 	graph::{DependencyGraphNodeWithTarget, DependencyGraphWithTarget},
 	manifest::{Alias, Manifest},
 	source::{
@@ -49,8 +49,6 @@ impl Project {
 		package_types: &HashMap<PackageId, Vec<String>>,
 		is_complete: bool,
 	) -> Result<(), errors::LinkingError> {
-		let package_dir_canonical = fs::canonicalize(self.package_dir()).await?;
-
 		let mut tasks = JoinSet::<Result<_, errors::LinkingError>>::new();
 		let mut link_files = |base_folder: &Path,
 		                      container_folder: &Path,
@@ -58,8 +56,7 @@ impl Project {
 		                      relative_container_folder: &Path,
 		                      node: &DependencyGraphNodeWithTarget,
 		                      package_id: &PackageId,
-		                      alias: &Alias,
-		                      is_root: bool|
+		                      alias: &Alias|
 		 -> Result<(), errors::LinkingError> {
 			static NO_TYPES: Vec<String> = Vec::new();
 
@@ -102,36 +99,6 @@ impl Project {
 						.await
 						.map_err(Into::into)
 				});
-			}
-
-			if let Some(scripts) = node
-				.target
-				.scripts()
-				.filter(|s| !s.is_empty() && node.node.direct.is_some() && is_root)
-			{
-				let scripts_base = package_dir_canonical
-					.join(SCRIPTS_LINK_FOLDER)
-					.join(alias.as_str());
-
-				for (script_name, script_path) in scripts {
-					let destination = scripts_base.join(format!("{script_name}.luau"));
-					let script_module = generator::generate_script_linking_module(
-						&generator::get_script_require_path(
-							&scripts_base,
-							script_path,
-							container_folder,
-						),
-					);
-					let cas_dir = self.cas_dir().to_path_buf();
-
-					tasks.spawn(async move {
-						fs::create_dir_all(destination.parent().unwrap()).await?;
-
-						write_cas(destination, &cas_dir, &script_module)
-							.await
-							.map_err(Into::into)
-					});
-				}
 			}
 
 			Ok(())
@@ -181,7 +148,6 @@ impl Project {
 								&node,
 								&package_id,
 								alias,
-								true,
 							)?;
 						}
 
@@ -258,7 +224,6 @@ impl Project {
 						&dependency_node,
 						&dependency_id,
 						&dependency_alias,
-						false,
 					)?;
 				},
 				else => break,

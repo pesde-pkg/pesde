@@ -1,6 +1,6 @@
 use crate::{
-	PACKAGES_CONTAINER_NAME, Project, SCRIPTS_LINK_FOLDER, all_packages_dirs,
-	graph::DependencyGraphWithTarget, manifest::Alias, util::remove_empty_dir,
+	PACKAGES_CONTAINER_NAME, Project, all_packages_dirs, graph::DependencyGraphWithTarget,
+	manifest::Alias, util::remove_empty_dir,
 };
 use fs_err::tokio as fs;
 use futures::FutureExt as _;
@@ -127,38 +127,6 @@ fn packages_entry(
 	});
 }
 
-fn scripts_entry(
-	entry: fs::DirEntry,
-	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
-	expected_aliases: Arc<HashSet<Alias>>,
-) {
-	tasks.spawn(async move {
-		if !entry.file_type().await?.is_dir() {
-			return Ok(());
-		}
-
-		let path = entry.path();
-		let name = path
-			.file_name()
-			.unwrap()
-			.to_str()
-			.expect("non UTF-8 file name in scripts folder");
-		let name = match name.parse::<Alias>() {
-			Ok(name) => name,
-			Err(e) => {
-				tracing::error!("invalid alias in scripts folder: {e}");
-				return Ok(());
-			}
-		};
-
-		if !expected_aliases.contains(&name) {
-			fs::remove_dir_all(&path).await?;
-		}
-
-		Ok(())
-	});
-}
-
 impl Project {
 	/// Removes unused packages from the project
 	pub async fn remove_unused(
@@ -267,34 +235,9 @@ impl Project {
 			})
 			.collect::<JoinSet<_>>();
 
-		let scripts_dir = self.package_dir().join(SCRIPTS_LINK_FOLDER);
-		match fs::read_dir(&scripts_dir).await {
-			Ok(mut entries) => {
-				let expected_aliases = graph
-					.iter()
-					.filter_map(|(_, node)| {
-						node.node
-							.direct
-							.as_ref()
-							.map(|(alias, _, _)| alias.clone())
-							.filter(|_| node.target.scripts().is_some_and(|s| !s.is_empty()))
-					})
-					.collect::<HashSet<_>>();
-				let expected_aliases = Arc::new(expected_aliases);
-
-				while let Some(entry) = entries.next_entry().await? {
-					scripts_entry(entry, &mut tasks, expected_aliases.clone());
-				}
-			}
-			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-			Err(e) => return Err(e.into()),
-		}
-
 		while let Some(task) = tasks.join_next().await {
 			task.unwrap()?;
 		}
-
-		remove_empty_dir(&scripts_dir).await?;
 
 		Ok(())
 	}

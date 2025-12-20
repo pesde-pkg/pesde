@@ -27,7 +27,7 @@ use pesde::{
 };
 use reqwest::{StatusCode, header::AUTHORIZATION};
 use semver::VersionReq;
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 use tempfile::Builder;
 use tokio::{
 	io::{AsyncSeekExt as _, AsyncWriteExt as _},
@@ -104,10 +104,7 @@ impl PublishCommand {
 			return Ok(());
 		}
 
-		if manifest.target.lib_path().is_none()
-			&& manifest.target.bin_path().is_none()
-			&& manifest.target.scripts().is_none_or(BTreeMap::is_empty)
-		{
+		if manifest.target.lib_path().is_none() && manifest.target.bin_path().is_none() {
 			anyhow::bail!("no exports found in target");
 		}
 
@@ -305,40 +302,6 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 			}
 		}
 
-		if let Some(scripts) = manifest.target.scripts() {
-			for (name, path) in scripts {
-				let script_path = path.to_path(&canonical_package_dir);
-
-				let contents = match fs::read_to_string(&script_path).await {
-					Ok(contents) => contents,
-					Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-						anyhow::bail!("script {name} does not exist");
-					}
-					Err(e) if e.kind() == std::io::ErrorKind::IsADirectory => {
-						anyhow::bail!("script {name} must point to a file");
-					}
-					Err(e) => {
-						return Err(e).context(format!("failed to read script {name}"));
-					}
-				};
-
-				let script_path = fs::canonicalize(script_path)
-					.await
-					.with_context(|| format!("failed to canonicalize script {name}"))?;
-
-				self.validate_luau_file(&format!("the `{name}` script"), &contents)?;
-
-				if paths.insert(
-					script_path
-						.strip_prefix(&canonical_package_dir)
-						.unwrap()
-						.to_path_buf(),
-				) {
-					println!("{WARN_PREFIX}: script {name} was not included, adding {path}");
-				}
-			}
-		}
-
 		for relative_path in &paths {
 			let path = project.package_dir().join(relative_path);
 
@@ -504,17 +467,6 @@ info: otherwise, the file was deemed unnecessary, if you don't understand why, p
 						.target
 						.bin_path()
 						.map_or_else(|| "(none)".to_string(), ToString::to_string)
-				);
-				println!(
-					"\tscripts: {}",
-					manifest
-						.target
-						.scripts()
-						.filter(|s| !s.is_empty())
-						.map_or_else(
-							|| "(none)".to_string(),
-							|s| { s.keys().cloned().collect::<Vec<_>>().join(", ") }
-						)
 				);
 			}
 

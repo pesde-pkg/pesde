@@ -1,5 +1,5 @@
 use crate::{
-	LINK_LIB_NO_FILE_FOUND, Project, RefreshedSources, SCRIPTS_LINK_FOLDER, all_packages_dirs,
+	LINK_LIB_NO_FILE_FOUND, Project, RefreshedSources, all_packages_dirs,
 	download::DownloadGraphOptions,
 	engine::runtime::Engines,
 	graph::{
@@ -235,9 +235,6 @@ impl Project {
 			let mut tasks = all_packages_dirs()
 				.into_iter()
 				.map(|folder| remove_dir(self.package_dir().join(folder)))
-				.chain(std::iter::once(remove_dir(
-					self.package_dir().join(SCRIPTS_LINK_FOLDER),
-				)))
 				.collect::<JoinSet<_>>();
 
 			while let Some(task) = tasks.join_next().await {
