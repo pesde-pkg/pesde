@@ -7,9 +7,9 @@
 <br>
 
 pesde is a package manager for the Luau programming language, supporting
-multiple runtimes including Roblox and Lune. pesde has its own registry, however
-it can also use Wally, and Git repositories as package sources. It has been
-designed with multiple targets in mind, namely Roblox, Lune, and Luau.
+multiple runtimes including Roblox and Lune. pesde uses Git repositories for
+packages, however it can also use Wally as package sources. It has been designed
+with multiple targets in mind, namely Roblox, Lune, and Luau.
 
 ## Installation
 
@@ -32,19 +32,6 @@ pesde self-upgrade
 
 For more information about its usage, you can check the
 [documentation](https://docs.pesde.daimond113.com).
-
-## Registry
-
-The main pesde registry is hosted on [fly.io](https://fly.io). You can find it
-at https://registry.pesde.daimond113.com.
-
-### Self-hosting
-
-The registry tries to require no modifications to be self-hosted. Please refer
-to the
-[documentation](http://docs.pesde.daimond113.com/guides/self-hosting-registries)
-for more information.
-
 ## Previous art
 
 pesde is heavily inspired by [npm](https://www.npmjs.com/),

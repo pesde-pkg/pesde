@@ -110,10 +110,6 @@ incremental = true
 codegen-units = 1
 panic = "abort"
 
-[profile.release.package.pesde-registry]
-# add debug symbols for Sentry stack traces
-debug = "full"
-
 [workspace.lints.clippy]
 zero_sized_map_values = "warn"
 while_float = "deny"
