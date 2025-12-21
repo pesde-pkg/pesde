@@ -223,9 +223,6 @@ impl Project {
 					DependencySpecifiers::Git(specifier) => PackageSources::Git(
 						crate::source::git::GitPackageSource::new(specifier.repo.clone()),
 					),
-					DependencySpecifiers::Workspace(_) => {
-						PackageSources::Workspace(crate::source::workspace::WorkspacePackageSource)
-					}
 					DependencySpecifiers::Path(_) => {
 						PackageSources::Path(crate::source::path::PathPackageSource)
 					}

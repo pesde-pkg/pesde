@@ -108,49 +108,6 @@ fn transform_pesde_dependencies(
 						.to_string();
 				}
 				DependencySpecifiers::Git(_) => {}
-				DependencySpecifiers::Workspace(specifier) => {
-					let lockfile = read_file(root_tree, [LOCKFILE_FILE_NAME]).map_err(|e| {
-						errors::ResolveError::ReadLockfile(Box::new(repo_url.clone()), e)
-					})?;
-
-					let lockfile = match lockfile {
-						Some(l) => match crate::lockfile::parse_lockfile(&l) {
-							Ok(l) => l,
-							Err(e) => {
-								return Err(errors::ResolveError::ParseLockfile(
-									Box::new(repo_url.clone()),
-									e,
-								));
-							}
-						},
-						None => {
-							return Err(errors::ResolveError::NoLockfile(Box::new(
-								repo_url.clone(),
-							)));
-						}
-					};
-
-					let target = specifier.target.unwrap_or(manifest.target.kind());
-
-					let path = lockfile
-						.workspace
-						.get(&specifier.name)
-						.and_then(|targets| targets.get(&target))
-						.ok_or_else(|| {
-							errors::ResolveError::NoPathForWorkspaceMember(
-								specifier.name.to_string(),
-								target,
-								Box::new(repo_url.clone()),
-							)
-						})?
-						.clone();
-
-					spec = DependencySpecifiers::Git(GitDependencySpecifier {
-						repo: GixUrl::new(repo_url.clone()),
-						version_specifier: GitVersionSpecifier::Rev(rev.to_string()),
-						path: Some(path),
-					});
-				}
 				DependencySpecifiers::Path(_) => {
 					return Err(errors::ResolveError::Path(Box::new(repo_url.clone())));
 				}

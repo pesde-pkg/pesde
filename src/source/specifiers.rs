@@ -13,8 +13,6 @@ pub enum DependencySpecifiers {
 	Wally(crate::source::wally::specifier::WallyDependencySpecifier),
 	/// A Git dependency specifier
 	Git(crate::source::git::specifier::GitDependencySpecifier),
-	/// A workspace dependency specifier
-	Workspace(crate::source::workspace::specifier::WorkspaceDependencySpecifier),
 	/// A path dependency specifier
 	Path(crate::source::path::specifier::PathDependencySpecifier),
 }
@@ -23,10 +21,7 @@ impl DependencySpecifiers {
 	/// Returns whether this dependency specifier is for a local dependency
 	#[must_use]
 	pub fn is_local(&self) -> bool {
-		matches!(
-			self,
-			DependencySpecifiers::Workspace(_) | DependencySpecifiers::Path(_)
-		)
+		matches!(self, DependencySpecifiers::Path(_))
 	}
 }
 
@@ -39,7 +34,6 @@ impl Display for DependencySpecifiers {
 			#[cfg(feature = "wally-compat")]
 			DependencySpecifiers::Wally(specifier) => write!(f, "{specifier}"),
 			DependencySpecifiers::Git(specifier) => write!(f, "{specifier}"),
-			DependencySpecifiers::Workspace(specifier) => write!(f, "{specifier}"),
 			DependencySpecifiers::Path(specifier) => write!(f, "{specifier}"),
 		}
 	}

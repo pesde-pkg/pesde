@@ -26,8 +26,6 @@ pub enum PackageRefs {
 	Wally(crate::source::wally::pkg_ref::WallyPackageRef),
 	/// A Git package reference
 	Git(crate::source::git::pkg_ref::GitPackageRef),
-	/// A workspace package reference
-	Workspace(crate::source::workspace::pkg_ref::WorkspacePackageRef),
 	/// A path package reference
 	Path(crate::source::path::pkg_ref::PathPackageRef),
 }
@@ -47,7 +45,7 @@ impl PackageRefs {
 	/// Returns whether this package reference is local
 	#[must_use]
 	pub fn is_local(&self) -> bool {
-		matches!(self, PackageRefs::Workspace(_) | PackageRefs::Path(_))
+		matches!(self, PackageRefs::Path(_))
 	}
 }
 
@@ -58,7 +56,6 @@ impl PackageRef for PackageRefs {
 			#[cfg(feature = "wally-compat")]
 			PackageRefs::Wally(pkg_ref) => pkg_ref.dependencies(),
 			PackageRefs::Git(pkg_ref) => pkg_ref.dependencies(),
-			PackageRefs::Workspace(pkg_ref) => pkg_ref.dependencies(),
 			PackageRefs::Path(pkg_ref) => pkg_ref.dependencies(),
 		}
 	}
@@ -69,7 +66,6 @@ impl PackageRef for PackageRefs {
 			#[cfg(feature = "wally-compat")]
 			PackageRefs::Wally(pkg_ref) => pkg_ref.structure_kind(),
 			PackageRefs::Git(pkg_ref) => pkg_ref.structure_kind(),
-			PackageRefs::Workspace(pkg_ref) => pkg_ref.structure_kind(),
 			PackageRefs::Path(pkg_ref) => pkg_ref.structure_kind(),
 		}
 	}
@@ -80,7 +76,6 @@ impl PackageRef for PackageRefs {
 			#[cfg(feature = "wally-compat")]
 			PackageRefs::Wally(pkg_ref) => pkg_ref.source(),
 			PackageRefs::Git(pkg_ref) => pkg_ref.source(),
-			PackageRefs::Workspace(pkg_ref) => pkg_ref.source(),
 			PackageRefs::Path(pkg_ref) => pkg_ref.source(),
 		}
 	}

@@ -93,20 +93,6 @@ impl PackageSource for PathPackageSource {
 								.to_string();
 						}
 						DependencySpecifiers::Git(_) => {}
-						DependencySpecifiers::Workspace(specifier) => {
-							let member = (
-								specifier.name.clone(),
-								specifier.target.unwrap_or(manifest.target.kind()),
-							);
-
-							spec = DependencySpecifiers::Path(PathDependencySpecifier {
-								path: workspace_members.get(&member).cloned().ok_or(
-									errors::ResolveError::WorkspacePackageNotFound(
-										member.0, member.1,
-									),
-								)?,
-							});
-						}
 						DependencySpecifiers::Path(_) => {}
 					}
 

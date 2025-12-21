@@ -33,8 +33,6 @@ pub mod traits;
 /// The Wally package source
 #[cfg(feature = "wally-compat")]
 pub mod wally;
-/// The workspace package source
-pub mod workspace;
 
 /// Files that will not be stored when downloading a package. These are only files which break pesde's functionality, or are meaningless and possibly heavy (e.g. `.DS_Store`)
 pub const IGNORED_FILES: &[&str] = &["foreman.toml", "aftman.toml", "rokit.toml", ".DS_Store"];
@@ -58,8 +56,6 @@ pub enum PackageSources {
 	Wally(wally::WallyPackageSource),
 	/// A Git package source
 	Git(git::GitPackageSource),
-	/// A workspace package source
-	Workspace(workspace::WorkspacePackageSource),
 	/// A path package source
 	Path(path::PathPackageSource),
 }
@@ -87,7 +83,6 @@ impl PackageSource for PackageSources {
 				.refresh(options)
 				.await
 				.map_err(Self::RefreshError::Git),
-			PackageSources::Workspace(source) => source.refresh(options).await.map_err(Into::into),
 			PackageSources::Path(source) => source.refresh(options).await.map_err(Into::into),
 		}
 	}
@@ -144,25 +139,6 @@ impl PackageSource for PackageSources {
 				})
 				.map_err(Into::into),
 
-			(PackageSources::Workspace(source), DependencySpecifiers::Workspace(specifier)) => {
-				source
-					.resolve(specifier, options)
-					.await
-					.map(|(name, results, suggestions)| {
-						(
-							name,
-							results
-								.into_iter()
-								.map(|(version, pkg_ref)| {
-									(version, PackageRefs::Workspace(pkg_ref))
-								})
-								.collect(),
-							suggestions,
-						)
-					})
-					.map_err(Into::into)
-			}
-
 			(PackageSources::Path(source), DependencySpecifiers::Path(specifier)) => source
 				.resolve(specifier, options)
 				.await
@@ -201,10 +177,6 @@ impl PackageSource for PackageSources {
 				source.download(pkg_ref, options).await.map_err(Into::into)
 			}
 
-			(PackageSources::Workspace(source), PackageRefs::Workspace(pkg_ref)) => {
-				source.download(pkg_ref, options).await.map_err(Into::into)
-			}
-
 			(PackageSources::Path(source), PackageRefs::Path(pkg_ref)) => {
 				source.download(pkg_ref, options).await.map_err(Into::into)
 			}
@@ -231,11 +203,6 @@ impl PackageSource for PackageSources {
 				.map_err(Into::into),
 
 			(PackageSources::Git(source), PackageRefs::Git(pkg_ref)) => source
-				.get_target(pkg_ref, options)
-				.await
-				.map_err(Into::into),
-
-			(PackageSources::Workspace(source), PackageRefs::Workspace(pkg_ref)) => source
 				.get_target(pkg_ref, options)
 				.await
 				.map_err(Into::into),
@@ -271,10 +238,6 @@ pub mod errors {
 		#[error("error refreshing git package source")]
 		Git(#[source] crate::source::git_index::errors::RefreshError),
 
-		/// A workspace package source failed to refresh
-		#[error("error refreshing workspace package source")]
-		Workspace(#[from] crate::source::workspace::errors::RefreshError),
-
 		/// A path package source failed to refresh
 		#[error("error refreshing path package source")]
 		Path(#[from] crate::source::path::errors::RefreshError),
@@ -300,10 +263,6 @@ pub mod errors {
 		/// A Git package source failed to resolve
 		#[error("error resolving git package")]
 		Git(#[from] crate::source::git::errors::ResolveError),
-
-		/// A workspace package source failed to resolve
-		#[error("error resolving workspace package")]
-		Workspace(#[from] crate::source::workspace::errors::ResolveError),
 
 		/// A path package source failed to resolve
 		#[error("error resolving path package")]
@@ -331,10 +290,6 @@ pub mod errors {
 		#[error("error downloading git package")]
 		Git(#[from] crate::source::git::errors::DownloadError),
 
-		/// A workspace package source failed to download
-		#[error("error downloading workspace package")]
-		Workspace(#[from] crate::source::workspace::errors::DownloadError),
-
 		/// A path package source failed to download
 		#[error("error downloading path package")]
 		Path(#[from] crate::source::path::errors::DownloadError),
@@ -360,10 +315,6 @@ pub mod errors {
 		/// A Git package source failed to get the target
 		#[error("error getting target for git package")]
 		Git(#[from] crate::source::git::errors::GetTargetError),
-
-		/// A workspace package source failed to get the target
-		#[error("error getting target for workspace package")]
-		Workspace(#[from] crate::source::workspace::errors::GetTargetError),
 
 		/// A path package source failed to get the target
 		#[error("error getting target for path package")]

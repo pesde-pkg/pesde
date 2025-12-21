@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Drop `build_files` ([RFC](https://github.com/pesde-pkg/pesde/issues/57)) by @daimond113
 - Remove pesde-managed script inheritance by @daimond113
 - Remove scripts packages by @daimond113
+- Remove workspace packages, use the FS package source instead by @daimond113
 
 ## [0.7.1] - 2025-08-24
 ### Fixed
