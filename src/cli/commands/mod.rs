@@ -4,7 +4,6 @@ mod add;
 mod auth;
 mod cas;
 mod config;
-mod deprecate;
 mod execute;
 mod init;
 mod install;
@@ -14,7 +13,6 @@ mod outdated;
 mod patch;
 #[cfg(feature = "patches")]
 mod patch_commit;
-mod publish;
 mod remove;
 mod run;
 #[cfg(feature = "version-management")]
@@ -22,7 +20,6 @@ mod self_install;
 #[cfg(feature = "version-management")]
 mod self_upgrade;
 mod update;
-mod yank;
 
 #[derive(Debug, clap::Subcommand)]
 pub enum Subcommand {
@@ -62,15 +59,6 @@ pub enum Subcommand {
 	/// Runs a script, an executable package, or a file with Lune
 	Run(run::RunCommand),
 
-	/// Publishes the project to the registry
-	Publish(publish::PublishCommand),
-
-	/// Yanks a package from the registry
-	Yank(yank::YankCommand),
-
-	/// Deprecates a package from the registry
-	Deprecate(deprecate::DeprecateCommand),
-
 	/// Sets up a patching environment for a package
 	#[cfg(feature = "patches")]
 	Patch(patch::PatchCommand),
@@ -106,9 +94,6 @@ impl Subcommand {
 			Subcommand::Outdated(outdated) => outdated.run(project).await,
 			Subcommand::List(list) => list.run(project).await,
 			Subcommand::Run(run) => run.run(project, reqwest).await,
-			Subcommand::Publish(publish) => publish.run(project, reqwest).await,
-			Subcommand::Yank(yank) => yank.run(project, reqwest).await,
-			Subcommand::Deprecate(deprecate) => deprecate.run(project, reqwest).await,
 			#[cfg(feature = "patches")]
 			Subcommand::Patch(patch) => patch.run(project, reqwest).await,
 			#[cfg(feature = "patches")]

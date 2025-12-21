@@ -189,11 +189,12 @@ impl Project {
 								))?
 								.clone()
 						} else {
-							GixUrl::new(specifier.index
+							specifier.index
 								.as_str()
 								.try_into()
+								.map(GixUrl::new)
 								// specifiers in indices store the index url in this field
-								.unwrap())
+								.unwrap()
 						};
 
 						PackageSources::Pesde(PesdePackageSource::new(index_url))
@@ -209,11 +210,12 @@ impl Project {
 								))?
 								.clone()
 						} else {
-							GixUrl::new(specifier.index
+							specifier.index
 								.as_str()
 								.try_into()
+								.map(GixUrl::new)
 								// specifiers in indices store the index url in this field
-								.unwrap())
+								.unwrap()
 						};
 
 						PackageSources::Wally(crate::source::wally::WallyPackageSource::new(index_url))

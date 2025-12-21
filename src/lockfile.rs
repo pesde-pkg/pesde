@@ -6,7 +6,6 @@ use crate::{
 	source::specifiers::DependencySpecifiers,
 };
 use relative_path::RelativePathBuf;
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -16,10 +15,6 @@ pub const CURRENT_FORMAT: usize = 3;
 /// A lockfile
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Lockfile {
-	/// The name of the package
-	pub name: PackageName,
-	/// The version of the package
-	pub version: Version,
 	/// The target of the package
 	pub target: TargetKind,
 	/// The overrides of the package

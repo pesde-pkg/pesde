@@ -480,8 +480,15 @@ ser_display_deser_fromstr!(GixUrl);
 
 impl GixUrl {
 	/// Creates a new [GixUrl] from a [gix::Url]
+	/// pesde assumes the following information about Git URLs:
+	/// - they are case insensitive
+	/// - appending .git at the end is supported
 	#[must_use]
-	pub fn new(url: gix::Url) -> Self {
+	pub fn new(mut url: gix::Url) -> Self {
+		url.path.make_ascii_lowercase();
+		if !url.path.ends_with(b".git") {
+			url.path.extend_from_slice(b".git");
+		};
 		Self(url)
 	}
 

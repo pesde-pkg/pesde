@@ -5,12 +5,11 @@ use crate::{
 		overrides::{OverrideKey, OverrideSpecifier},
 		target::Target,
 	},
-	names::PackageName,
 	ser_display_deser_fromstr,
 	source::specifiers::DependencySpecifiers,
 };
 use relative_path::RelativePathBuf;
-use semver::{Version, VersionReq};
+use semver::VersionReq;
 use serde::{Deserialize, Serialize};
 use std::{
 	collections::{BTreeMap, HashMap},
@@ -26,38 +25,28 @@ pub mod overrides;
 pub mod target;
 
 /// A package manifest
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct Manifest {
-	/// The name of the package
-	pub name: PackageName,
-	/// The version of the package
-	pub version: Version,
 	/// The description of the package
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(default)]
 	pub description: Option<String>,
-	/// The license of the package
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub license: Option<String>,
 	/// The authors of the package
-	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	#[serde(default)]
 	pub authors: Vec<String>,
 	/// The repository of the package
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(default)]
 	pub repository: Option<url::Url>,
 	/// The target of the package
 	pub target: Target,
-	/// Whether the package is private
-	#[serde(default)]
-	pub private: bool,
 	/// The scripts of the package
-	#[serde(default, skip_serializing)]
+	#[serde(default)]
 	pub scripts: BTreeMap<String, String>,
 	/// The indices to use for the package
-	#[serde(default, skip_serializing)]
+	#[serde(default)]
 	pub indices: BTreeMap<String, GixUrl>,
 	/// The indices to use for the package's wally dependencies
 	#[cfg(feature = "wally-compat")]
-	#[serde(default, skip_serializing)]
+	#[serde(default)]
 	pub wally_indices: BTreeMap<String, GixUrl>,
 	/// The overrides this package has
 	#[serde(default, skip_serializing)]
@@ -67,41 +56,29 @@ pub struct Manifest {
 	pub includes: Vec<String>,
 	/// The patches to apply to packages
 	#[cfg(feature = "patches")]
-	#[serde(default, skip_serializing)]
+	#[serde(default)]
 	pub patches: BTreeMap<
 		crate::names::PackageNames,
 		BTreeMap<crate::source::ids::VersionId, RelativePathBuf>,
 	>,
 	/// A list of globs pointing to workspace members' directories
-	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	#[serde(default)]
 	pub workspace_members: Vec<String>,
 	/// The Roblox place of this project
-	#[serde(default, skip_serializing)]
+	#[serde(default)]
 	pub place: BTreeMap<target::RobloxPlaceKind, String>,
 	/// The engines this package supports
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	#[serde(default)]
 	pub engines: BTreeMap<EngineKind, VersionReq>,
 
 	/// The standard dependencies of the package
-	#[serde(
-		default,
-		skip_serializing_if = "BTreeMap::is_empty",
-		deserialize_with = "crate::util::deserialize_no_dup_keys"
-	)]
+	#[serde(default, deserialize_with = "crate::util::deserialize_no_dup_keys")]
 	pub dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The peer dependencies of the package
-	#[serde(
-		default,
-		skip_serializing_if = "BTreeMap::is_empty",
-		deserialize_with = "crate::util::deserialize_no_dup_keys"
-	)]
+	#[serde(default, deserialize_with = "crate::util::deserialize_no_dup_keys")]
 	pub peer_dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The dev dependencies of the package
-	#[serde(
-		default,
-		skip_serializing_if = "BTreeMap::is_empty",
-		deserialize_with = "crate::util::deserialize_no_dup_keys"
-	)]
+	#[serde(default, deserialize_with = "crate::util::deserialize_no_dup_keys")]
 	pub dev_dependencies: BTreeMap<Alias, DependencySpecifiers>,
 	/// The user-defined fields of the package
 	#[serde(flatten)]

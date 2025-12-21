@@ -1,3 +1,4 @@
+#![expect(deprecated)]
 use crate::ser_display_deser_fromstr;
 use std::{fmt::Display, str::FromStr};
 
@@ -20,6 +21,7 @@ impl Display for ErrorReason {
 }
 
 /// A pesde package name
+#[deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PackageName(String, String);
 
