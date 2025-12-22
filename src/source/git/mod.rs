@@ -55,7 +55,7 @@ impl Display for GitPackageSource {
 }
 
 impl FromStr for GitPackageSource {
-	type Err = gix::url::parse::Error;
+	type Err = crate::errors::GixUrlError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		s.parse().map(Self::new)

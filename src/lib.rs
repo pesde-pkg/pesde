@@ -15,6 +15,7 @@ use crate::{
 use async_stream::try_stream;
 use fs_err::tokio as fs;
 use futures::Stream;
+use gix::bstr::ByteSlice as _;
 use semver::{Version, VersionReq};
 use std::{
 	collections::{HashMap, HashSet},
@@ -483,6 +484,9 @@ impl GixUrl {
 	/// pesde assumes the following information about Git URLs:
 	/// - they are case insensitive
 	/// - .git at the end is optional (it is removed if present)
+	///
+	/// Additionally, URLs are expected to use the HTTPS scheme. Users may override this in their Git configuration,
+	/// but pesde will always use HTTPS URLs internally (specifically to make overriding easier).
 	#[must_use]
 	pub fn new(mut url: gix::Url) -> Self {
 		url.path.make_ascii_lowercase();
@@ -490,6 +494,7 @@ impl GixUrl {
 			let len = url.path.len();
 			url.path.truncate(len - b".git".len());
 		}
+		url.scheme = gix::url::Scheme::Https;
 		Self(url)
 	}
 
@@ -507,16 +512,35 @@ impl GixUrl {
 }
 
 impl FromStr for GixUrl {
-	type Err = gix::url::parse::Error;
+	type Err = errors::GixUrlError;
 
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		s.try_into().map(GixUrl::new)
+	fn from_str(mut s: &str) -> Result<Self, Self::Err> {
+		if s.contains("://") {
+			let Some(stripped) = s.strip_prefix("https://") else {
+				return Err(Self::Err::HasScheme);
+			};
+
+			tracing::warn!(
+				"specifying schemes in git URLs is deprecated and will be removed in a future version of pesde. faulty URL: {s}",
+			);
+			s = stripped;
+		}
+
+		format!("https://{s}")
+			.try_into()
+			.map(GixUrl::new)
+			.map_err(Into::into)
 	}
 }
 
 impl Display for GixUrl {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.0.to_bstring())
+		let url = self.0.to_bstring();
+		write!(
+			f,
+			"{}",
+			url.strip_prefix(b"https://").unwrap_or(&url).as_bstr()
+		)
 	}
 }
 
@@ -605,5 +629,17 @@ pub mod errors {
 		/// Globbing failed
 		#[error("error globbing")]
 		Globbing(#[from] MatchingGlobsError),
+	}
+
+	/// Errors that can occur when interacting with git URLs
+	#[derive(Debug, Error)]
+	pub enum GixUrlError {
+		/// An error occurred while parsing the git URL
+		#[error("error parsing git URL")]
+		Parse(#[from] gix::url::parse::Error),
+
+		/// The URL has a scheme which is not supported by pesde
+		#[error("git URL has unsupported scheme")]
+		HasScheme,
 	}
 }

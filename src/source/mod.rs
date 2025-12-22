@@ -232,7 +232,7 @@ pub mod errors {
 
 		/// Parsing the URL failed
 		#[error("error parsing url")]
-		UrlParse(#[from] gix::url::parse::Error),
+		UrlParse(#[from] crate::errors::GixUrlError),
 	}
 
 	/// Errors that occur when refreshing a package source

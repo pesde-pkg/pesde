@@ -61,7 +61,7 @@ impl Display for PesdePackageSource {
 }
 
 impl FromStr for PesdePackageSource {
-	type Err = gix::url::parse::Error;
+	type Err = crate::errors::GixUrlError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		s.parse().map(Self::new)

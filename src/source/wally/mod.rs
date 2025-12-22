@@ -53,7 +53,7 @@ impl Display for WallyPackageSource {
 }
 
 impl FromStr for WallyPackageSource {
-	type Err = gix::url::parse::Error;
+	type Err = crate::errors::GixUrlError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		s.parse().map(Self::new)
