@@ -2,12 +2,7 @@ use crate::cli::up_to_date_lockfile;
 use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
-use pesde::{
-	Project,
-	names::PackageNames,
-	patches::create_patch,
-	source::ids::{PackageId, VersionId},
-};
+use pesde::{Project, patches::create_patch};
 use std::{path::PathBuf, str::FromStr as _};
 
 #[derive(Debug, Args)]
@@ -25,28 +20,16 @@ impl PatchCommitCommand {
 			anyhow::bail!("outdated lockfile, please run the install command first")
 		};
 
-		let id = PackageId::new(
-			PackageNames::from_escaped(
-				self.directory
-					.parent()
-					.context("directory has no parent")?
-					.parent()
-					.context("directory has no grandparent")?
-					.file_name()
-					.context("directory grandparent has no name")?
-					.to_str()
-					.context("directory grandparent name is not valid")?,
-			)?,
-			VersionId::from_escaped(
-				self.directory
-					.parent()
-					.context("directory has no parent")?
-					.file_name()
-					.context("directory parent has no name")?
-					.to_str()
-					.context("directory parent name is not valid")?,
-			)?,
-		);
+		let id = self
+			.directory
+			.parent()
+			.context("directory has no parent")?
+			.file_name()
+			.context("directory parent has no name")?
+			.to_str()
+			.context("directory parent name is not valid")?
+			.parse()
+			.context("failed to parse package id")?;
 
 		graph.get(&id).context("package not found in graph")?;
 
@@ -65,11 +48,7 @@ impl PatchCommitCommand {
 			.await
 			.context("failed to create patches directory")?;
 
-		let patch_file_name = format!(
-			"{}-{}.patch",
-			id.name().escaped(),
-			id.version_id().escaped()
-		);
+		let patch_file_name = format!("{id}.patch");
 
 		let patch_file = patches_dir.join(&patch_file_name);
 
@@ -78,8 +57,7 @@ impl PatchCommitCommand {
 			.context("failed to write patch file")?;
 
 		manifest["patches"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-			[&id.name().to_string()][&id.version_id().to_string()] =
-			toml_edit::value(format!("patches/{patch_file_name}"));
+			[&id.to_string()] = toml_edit::value(format!("patches/{patch_file_name}"));
 
 		project
 			.write_manifest(manifest.to_string())

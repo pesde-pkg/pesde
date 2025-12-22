@@ -69,7 +69,7 @@ impl Project {
 						base_folder,
 						lib_file,
 						container_folder,
-						node.node.pkg_ref.structure_kind(),
+						node.node.resolved.pkg_ref.structure_kind(),
 						root_container_folder,
 						relative_container_folder,
 						manifest,
@@ -107,12 +107,9 @@ impl Project {
 		let mut node_tasks = graph
 			.iter()
 			.map(|(id, node)| {
-				let base_folder = self.package_dir().join(
-					manifest
-						.target
-						.kind()
-						.packages_folder(id.version_id().target()),
-				);
+				let base_folder = self
+					.package_dir()
+					.join(manifest.target.kind().packages_folder(id.v_id().target()));
 
 				let id = id.clone();
 				let node = node.clone();
@@ -154,7 +151,7 @@ impl Project {
 						(container_folder, base_folder)
 					};
 
-					for (dep_alias, (dep_id, _)) in &node.node.dependencies {
+					for (dep_alias, dep_id) in &node.node.resolved_dependencies {
 						let dep_id = dep_id.clone();
 						let dep_alias = dep_alias.clone();
 						let dep_node = graph.get(&dep_id).cloned();
@@ -178,13 +175,13 @@ impl Project {
 
 							let base_folder = package_dir.join(
 								package_id
-									.version_id()
+									.v_id()
 									.target()
-									.packages_folder(dep_id.version_id().target()),
+									.packages_folder(dep_id.v_id().target()),
 							);
 							let linker_folder = node_container_folder.join(node.node.dependencies_dir(
-								package_id.version_id(),
-								dep_id.version_id().target(),
+								package_id.v_id(),
+								dep_id.v_id().target(),
 							));
 
 							Ok(Some((

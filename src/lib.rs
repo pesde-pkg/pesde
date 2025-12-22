@@ -482,13 +482,14 @@ impl GixUrl {
 	/// Creates a new [GixUrl] from a [gix::Url]
 	/// pesde assumes the following information about Git URLs:
 	/// - they are case insensitive
-	/// - appending .git at the end is supported
+	/// - .git at the end is optional (it is removed if present)
 	#[must_use]
 	pub fn new(mut url: gix::Url) -> Self {
 		url.path.make_ascii_lowercase();
-		if !url.path.ends_with(b".git") {
-			url.path.extend_from_slice(b".git");
-		};
+		if url.path.ends_with(b".git") {
+			let len = url.path.len();
+			url.path.truncate(len - b".git".len());
+		}
 		Self(url)
 	}
 

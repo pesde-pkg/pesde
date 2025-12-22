@@ -1,3 +1,4 @@
+#![expect(deprecated)]
 use crate::source::{pesde, traits::DependencySpecifier};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;

@@ -5,7 +5,7 @@ use crate::{
 	source::{
 		fs::PackageFs,
 		ids::PackageId,
-		traits::{DownloadOptions, PackageRef as _, PackageSource as _, RefreshOptions},
+		traits::{DownloadOptions, PackageSource as _, RefreshOptions},
 	},
 };
 use async_stream::try_stream;
@@ -120,10 +120,10 @@ impl Project {
 						progress_reporter.report_start();
 					}
 
-					let source = node.pkg_ref.source();
+					let source = package_id.source();
 					refreshed_sources
 						.refresh(
-							&source,
+							source,
 							&RefreshOptions {
 								project: project.clone(),
 							},
@@ -136,11 +136,11 @@ impl Project {
 						Some(progress_reporter) => {
 							source
 								.download(
-									&node.pkg_ref,
+									&node.resolved.pkg_ref,
 									&DownloadOptions {
 										project: project.clone(),
 										reqwest,
-										id: package_id.clone(),
+										version_id: Arc::new(package_id.v_id().clone()),
 										reporter: progress_reporter.into(),
 									},
 								)
@@ -149,11 +149,11 @@ impl Project {
 						None => {
 							source
 								.download(
-									&node.pkg_ref,
+									&node.resolved.pkg_ref,
 									&DownloadOptions {
 										project: project.clone(),
 										reqwest,
-										id: package_id.clone(),
+										version_id: Arc::new(package_id.v_id().clone()),
 										reporter: ().into(),
 									},
 								)

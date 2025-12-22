@@ -1,19 +1,21 @@
+#![expect(deprecated)]
 use crate::{
-	Project, deser_manifest, find_roots,
+	deser_manifest,
 	manifest::target::Target,
-	names::PackageNames,
 	reporters::DownloadProgressReporter,
 	source::{
-		ResolveResult,
+		PackageSources, ResolveResult,
 		fs::PackageFs,
-		ids::VersionId,
-		path::{pkg_ref::PathPackageRef, specifier::PathDependencySpecifier},
+		ids::{PackageId, VersionId},
+		path::pkg_ref::PathPackageRef,
+		refs::{PackageRefs, ResolveRecord},
 		specifiers::DependencySpecifiers,
 		traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
 	},
 };
-use futures::TryStreamExt as _;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use semver::Version;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use tracing::instrument;
 
 /// The path package reference
@@ -22,7 +24,7 @@ pub mod pkg_ref;
 pub mod specifier;
 
 /// The path package source
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct PathPackageSource;
 
 impl PackageSource for PathPackageSource {
@@ -37,75 +39,78 @@ impl PackageSource for PathPackageSource {
 	async fn resolve(
 		&self,
 		specifier: &Self::Specifier,
-		options: &ResolveOptions,
+		_options: &ResolveOptions,
 	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
-		let ResolveOptions { project, .. } = options;
+		// let ResolveOptions { project, .. } = options;
 
 		let manifest = deser_manifest(&specifier.path).await?;
 
-		let (path_package_dir, path_workspace_dir) = find_roots(specifier.path.clone()).await?;
-		let path_project = Project::new(
-			path_package_dir,
-			path_workspace_dir,
-			// these don't matter, we're not using any functionality which uses them
-			project.data_dir(),
-			project.cas_dir(),
-			project.auth_config().clone(),
-		);
+		// let (path_package_dir, path_workspace_dir) = find_roots(specifier.path.clone()).await?;
+		// let path_project = Project::new(
+		// 	path_package_dir,
+		// 	path_workspace_dir,
+		// 	// these don't matter, we're not using any functionality which uses them
+		// 	project.data_dir(),
+		// 	project.cas_dir(),
+		// 	project.auth_config().clone(),
+		// );
 
-		let workspace_members = path_project
-			.workspace_members(true)
-			.await?
-			.map_ok(|(path, manifest)| ((manifest.name, manifest.target.kind()), path))
-			.try_collect::<HashMap<_, _>>()
-			.await?;
+		let dependencies = manifest
+			.all_dependencies()?
+			.into_iter()
+			.map(|(alias, (mut spec, ty))| {
+				match &mut spec {
+					DependencySpecifiers::Pesde(spec) => {
+						spec.index = manifest
+							.indices
+							.get(&spec.index)
+							.ok_or_else(|| {
+								errors::ResolveError::IndexNotFound(
+									spec.index.clone(),
+									specifier.path.clone(),
+								)
+							})?
+							.to_string();
+					}
+					#[cfg(feature = "wally-compat")]
+					DependencySpecifiers::Wally(spec) => {
+						spec.index = manifest
+							.wally_indices
+							.get(&spec.index)
+							.ok_or_else(|| {
+								errors::ResolveError::IndexNotFound(
+									spec.index.clone(),
+									specifier.path.clone(),
+								)
+							})?
+							.to_string();
+					}
+					DependencySpecifiers::Git(_) => {}
+					DependencySpecifiers::Path(_) => {}
+				}
+
+				Ok((alias, (spec, ty)))
+			})
+			.collect::<Result<_, errors::ResolveError>>()?;
 
 		let pkg_ref = PathPackageRef {
 			path: specifier.path.clone(),
-			dependencies: manifest
-				.all_dependencies()?
-				.into_iter()
-				.map(|(alias, (mut spec, ty))| {
-					match &mut spec {
-						DependencySpecifiers::Pesde(spec) => {
-							spec.index = manifest
-								.indices
-								.get(&spec.index)
-								.ok_or_else(|| {
-									errors::ResolveError::IndexNotFound(
-										spec.index.clone(),
-										specifier.path.clone(),
-									)
-								})?
-								.to_string();
-						}
-						#[cfg(feature = "wally-compat")]
-						DependencySpecifiers::Wally(spec) => {
-							spec.index = manifest
-								.wally_indices
-								.get(&spec.index)
-								.ok_or_else(|| {
-									errors::ResolveError::IndexNotFound(
-										spec.index.clone(),
-										specifier.path.clone(),
-									)
-								})?
-								.to_string();
-						}
-						DependencySpecifiers::Git(_) => {}
-						DependencySpecifiers::Path(_) => {}
-					}
-
-					Ok((alias, (spec, ty)))
-				})
-				.collect::<Result<_, errors::ResolveError>>()?,
 		};
 
 		Ok((
-			PackageNames::Pesde(manifest.name),
 			BTreeMap::from([(
-				VersionId::new(manifest.version, manifest.target.kind()),
-				pkg_ref,
+				PackageId::new(
+					PackageSources::Path(*self),
+					PackageRefs::Path(pkg_ref.clone()),
+					VersionId::new(
+						/* TODO */ Version::new(0, 1, 0),
+						manifest.target.kind(),
+					),
+				),
+				ResolveRecord {
+					pkg_ref,
+					dependencies,
+				},
 			)]),
 			BTreeSet::new(),
 		))

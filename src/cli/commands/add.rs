@@ -1,3 +1,4 @@
+#![expect(deprecated)]
 use std::str::FromStr as _;
 
 use anyhow::Context as _;
@@ -21,7 +22,6 @@ use pesde::{
 		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
 		specifiers::DependencySpecifiers,
 		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
-		workspace::{WorkspacePackageSource, specifier::WorkspaceDependencySpecifier},
 	},
 };
 
@@ -61,6 +61,7 @@ impl AddCommand {
 
 		let (source, specifier) = match &self.name {
 			AnyPackageIdentifier::PackageName(versioned) => match &versioned {
+				#[expect(deprecated)]
 				VersionedPackageName(PackageNames::Pesde(name), version) => {
 					let index = manifest
 						.indices
@@ -120,14 +121,6 @@ impl AddCommand {
 					path: None,
 				}),
 			),
-			AnyPackageIdentifier::Workspace(VersionedPackageName(name, version)) => (
-				PackageSources::Workspace(WorkspacePackageSource),
-				DependencySpecifiers::Workspace(WorkspaceDependencySpecifier {
-					name: name.clone(),
-					version: version.clone().unwrap_or_default(),
-					target: self.target,
-				}),
-			),
 			AnyPackageIdentifier::Path(path) => (
 				PackageSources::Path(PathPackageSource),
 				DependencySpecifiers::Path(PathDependencySpecifier { path: path.clone() }),
@@ -146,7 +139,7 @@ impl AddCommand {
 			.await
 			.context("failed to refresh package source")?;
 
-		let (_, mut versions, suggestions) = source
+		let (mut versions, suggestions) = source
 			.resolve(
 				&specifier,
 				&ResolveOptions {
@@ -159,7 +152,7 @@ impl AddCommand {
 			.await
 			.context("failed to resolve package")?;
 
-		let Some((version_id, _)) = versions.pop_last() else {
+		let Some((package_id, _)) = versions.pop_last() else {
 			anyhow::bail!(
 				"no matching versions found for package{}",
 				if suggestions.is_empty() {
@@ -204,7 +197,6 @@ impl AddCommand {
 					.split('/')
 					.next_back()
 					.map_or_else(|| url.as_url().path.to_string(), ToString::to_string),
-				AnyPackageIdentifier::Workspace(versioned) => versioned.0.name().to_string(),
 				AnyPackageIdentifier::Path(path) => path
 					.file_name()
 					.map(|s| s.to_string_lossy().to_string())
@@ -218,12 +210,13 @@ impl AddCommand {
 			.or_insert(toml_edit::Item::Table(toml_edit::Table::new()))[alias.as_str()];
 
 		match specifier {
+			#[expect(deprecated)]
 			DependencySpecifiers::Pesde(spec) => {
 				field["name"] = toml_edit::value(spec.name.to_string());
-				field["version"] = toml_edit::value(format!("^{}", version_id.version()));
+				field["version"] = toml_edit::value(format!("^{}", package_id.v_id().version()));
 
-				if version_id.target() != project_target {
-					field["target"] = toml_edit::value(version_id.target().to_string());
+				if package_id.v_id().target() != project_target {
+					field["target"] = toml_edit::value(package_id.v_id().target().to_string());
 				}
 
 				if spec.index != DEFAULT_INDEX_NAME {
@@ -233,8 +226,8 @@ impl AddCommand {
 				println!(
 					"added {}@{} {} to {dependency_key}",
 					spec.name,
-					version_id.version(),
-					version_id.target()
+					package_id.v_id().version(),
+					package_id.v_id().target()
 				);
 			}
 			#[cfg(feature = "wally-compat")]
@@ -242,7 +235,7 @@ impl AddCommand {
 				let name_str = spec.name.to_string();
 				let name_str = name_str.trim_start_matches("wally#");
 				field["wally"] = toml_edit::value(name_str);
-				field["version"] = toml_edit::value(format!("^{}", version_id.version()));
+				field["version"] = toml_edit::value(format!("^{}", package_id.v_id().version()));
 
 				if spec.index != DEFAULT_INDEX_NAME {
 					field["index"] = toml_edit::value(spec.index);
@@ -250,7 +243,7 @@ impl AddCommand {
 
 				println!(
 					"added wally {name_str}@{} to {dependency_key}",
-					version_id.version()
+					package_id.v_id().version()
 				);
 			}
 			DependencySpecifiers::Git(spec) => {
@@ -265,19 +258,6 @@ impl AddCommand {
 				println!(
 					"added git {}{} to {dependency_key}",
 					spec.repo, spec.version_specifier
-				);
-			}
-			DependencySpecifiers::Workspace(spec) => {
-				field["workspace"] = toml_edit::value(spec.name.to_string());
-				if let AnyPackageIdentifier::Workspace(versioned) = self.name
-					&& let Some(version) = versioned.1
-				{
-					field["version"] = toml_edit::value(version.to_string());
-				}
-
-				println!(
-					"added workspace {}@{} to {dependency_key}",
-					spec.name, spec.version
 				);
 			}
 			DependencySpecifiers::Path(spec) => {

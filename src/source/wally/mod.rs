@@ -1,13 +1,15 @@
 use crate::{
 	GixUrl, Project,
 	manifest::target::Target,
-	names::{PackageNames, wally::WallyPackageName},
+	names::wally::WallyPackageName,
 	reporters::{DownloadProgressReporter, response_to_async_read},
+	ser_display_deser_fromstr,
 	source::{
 		IGNORED_DIRS, IGNORED_FILES, PackageSources, ResolveResult,
 		fs::{FsEntry, PackageFs, store_in_cas},
 		git_index::{GitBasedSource, read_file, root_tree},
-		ids::VersionId,
+		ids::{PackageId, VersionId},
+		refs::{PackageRefs, ResolveRecord},
 		traits::{
 			DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
 		},
@@ -22,7 +24,9 @@ use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
 use std::{
 	collections::{BTreeMap, BTreeSet},
+	fmt::Display,
 	path::PathBuf,
+	str::FromStr,
 };
 use tokio::{io::AsyncReadExt as _, pin, task::spawn_blocking};
 use tokio_util::compat::FuturesAsyncReadCompatExt as _;
@@ -36,9 +40,24 @@ pub mod pkg_ref;
 pub mod specifier;
 
 /// The Wally package source
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct WallyPackageSource {
 	repo_url: GixUrl,
+}
+ser_display_deser_fromstr!(WallyPackageSource);
+
+impl Display for WallyPackageSource {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.repo_url)
+	}
+}
+
+impl FromStr for WallyPackageSource {
+	type Err = gix::url::parse::Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		s.parse().map(Self::new)
+	}
 }
 
 impl GitBasedSource for WallyPackageSource {
@@ -191,7 +210,6 @@ impl PackageSource for WallyPackageSource {
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
 		Ok((
-			PackageNames::Wally(specifier.name.clone()),
 			entries
 				.into_iter()
 				.filter(|manifest| version_matches(&specifier.version, &manifest.package.version))
@@ -200,10 +218,23 @@ impl PackageSource for WallyPackageSource {
 						errors::ResolveError::AllDependencies(specifier.to_string(), e)
 					})?;
 
+					let pkg_ref = WallyPackageRef {
+						name: manifest.package.name,
+					};
+
 					Ok((
-						VersionId(manifest.package.version, manifest.package.realm.to_target()),
-						WallyPackageRef {
-							index_url: index_url.clone(),
+						PackageId::new(
+							PackageSources::Wally(WallyPackageSource {
+								repo_url: index_url.clone(),
+							}),
+							PackageRefs::Wally(pkg_ref.clone()),
+							VersionId::new(
+								manifest.package.version,
+								manifest.package.realm.to_target(),
+							),
+						),
+						ResolveRecord {
+							pkg_ref,
 							dependencies,
 						},
 					))
@@ -216,14 +247,14 @@ impl PackageSource for WallyPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn download<R: DownloadProgressReporter>(
 		&self,
-		_pkg_ref: &Self::Ref,
+		pkg_ref: &Self::Ref,
 		options: &DownloadOptions<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let DownloadOptions {
 			project,
 			reqwest,
 			reporter,
-			id,
+			version_id,
 			..
 		} = options;
 
@@ -232,12 +263,15 @@ impl PackageSource for WallyPackageSource {
 			.cas_dir()
 			.join("wally_index")
 			.join(hash(self.as_bytes()))
-			.join(id.name().escaped())
-			.join(id.version_id().version().to_string());
+			.join(pkg_ref.name.escaped())
+			.join(version_id.version().to_string());
 
 		match fs::read_to_string(&index_file).await {
 			Ok(s) => {
-				tracing::debug!("using cached index file for package {id}");
+				tracing::debug!(
+					"using cached index file for package {}@{version_id}",
+					pkg_ref.name
+				);
 
 				reporter.report_done();
 
@@ -247,7 +281,7 @@ impl PackageSource for WallyPackageSource {
 			Err(e) => return Err(errors::DownloadError::ReadIndex(e)),
 		}
 
-		let (scope, name) = id.name().as_str();
+		let (scope, name) = pkg_ref.name.as_str();
 
 		let mut request = reqwest
 			.get(format!(
@@ -255,7 +289,7 @@ impl PackageSource for WallyPackageSource {
 				config.api.as_str().trim_end_matches('/'),
 				urlencoding::encode(scope),
 				urlencoding::encode(name),
-				urlencoding::encode(&id.version_id().version().to_string())
+				urlencoding::encode(&version_id.version().to_string())
 			))
 			.header(
 				"Wally-Version",
@@ -343,6 +377,7 @@ impl PackageSource for WallyPackageSource {
 #[derive(Debug, Clone, Deserialize)]
 pub struct WallyIndexConfig {
 	api: url::Url,
+	#[serde(default)]
 	fallback_registries: Vec<GixUrl>,
 }
 

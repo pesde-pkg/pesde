@@ -1,38 +1,42 @@
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::str::FromStr;
 
 use crate::{
-	manifest::{Alias, DependencyType},
-	source::{
-		DependencySpecifiers, PackageRef, PackageSources, git::GitPackageSource,
-		refs::StructureKind,
-	},
-	GixUrl,
+	ser_display_deser_fromstr,
+	source::{PackageRef, refs::StructureKind},
 };
 
 /// A Git package reference
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GitPackageRef {
-	/// The repository of the package
-	pub repo: GixUrl,
 	/// The id of the package's tree
 	pub tree_id: String,
-	/// The dependencies of the package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 	/// The structure kind of this package
 	pub structure_kind: StructureKind,
 }
-impl PackageRef for GitPackageRef {
-	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)> {
-		&self.dependencies
-	}
+ser_display_deser_fromstr!(GitPackageRef);
 
+impl PackageRef for GitPackageRef {
 	fn structure_kind(&self) -> StructureKind {
 		self.structure_kind
 	}
+}
 
-	fn source(&self) -> PackageSources {
-		PackageSources::Git(GitPackageSource::new(self.repo.clone()))
+impl std::fmt::Display for GitPackageRef {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}:{}", self.tree_id, self.structure_kind)
+	}
+}
+
+impl FromStr for GitPackageRef {
+	type Err = crate::source::refs::errors::GitPackageRefParseError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let Some((tree_id, structure_kind)) = s.split_once(':') else {
+			return Err(Self::Err::InvalidFormat);
+		};
+		Ok(GitPackageRef {
+			tree_id: tree_id.to_string(),
+			structure_kind: structure_kind.parse()?,
+		})
 	}
 }

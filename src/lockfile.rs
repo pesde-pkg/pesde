@@ -2,7 +2,6 @@
 use crate::{
 	graph::DependencyGraph,
 	manifest::{overrides::OverrideKey, target::TargetKind},
-	names::PackageName,
 	source::specifiers::DependencySpecifiers,
 };
 use relative_path::RelativePathBuf;
@@ -23,7 +22,7 @@ pub struct Lockfile {
 
 	/// The workspace members
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub workspace: BTreeMap<PackageName, BTreeMap<TargetKind, RelativePathBuf>>,
+	pub workspace: BTreeMap<RelativePathBuf, TargetKind>,
 
 	/// The graph of dependencies
 	#[serde(default, skip_serializing_if = "DependencyGraph::is_empty")]

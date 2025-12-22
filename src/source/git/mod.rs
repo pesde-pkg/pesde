@@ -1,18 +1,20 @@
+#![expect(deprecated)]
 use crate::{
-	GixUrl, LOCKFILE_FILE_NAME, MANIFEST_FILE_NAME, Project, deser_manifest,
+	GixUrl, MANIFEST_FILE_NAME, Project, deser_manifest,
 	manifest::{Alias, DependencyType, Manifest, target::Target},
-	names::PackageNames,
 	reporters::DownloadProgressReporter,
+	ser_display_deser_fromstr,
 	source::{
-		ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS, IGNORED_FILES, PackageSource, ResolveResult,
-		VersionId,
+		ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS, IGNORED_FILES, PackageSource, PackageSources,
+		ResolveResult, VersionId,
 		fs::{FsEntry, PackageFs, store_in_cas},
 		git::{
 			pkg_ref::GitPackageRef,
 			specifier::{GitDependencySpecifier, GitVersionSpecifier},
 		},
 		git_index::{GitBasedSource, read_file},
-		refs::StructureKind,
+		ids::PackageId,
+		refs::{PackageRefs, ResolveRecord, StructureKind},
 		specifiers::DependencySpecifiers,
 		traits::{
 			DownloadOptions, GetTargetOptions, PackageRef as _, RefreshOptions, ResolveOptions,
@@ -23,11 +25,13 @@ use crate::{
 use fs_err::tokio as fs;
 use gix::{ObjectId, Url, bstr::BStr, traverse::tree::Recorder};
 use relative_path::RelativePathBuf;
+use semver::Version;
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	fmt::Debug,
+	fmt::{Debug, Display},
 	hash::Hash,
 	path::PathBuf,
+	str::FromStr,
 };
 use tokio::task::{JoinSet, spawn_blocking};
 use tracing::instrument;
@@ -38,9 +42,24 @@ pub mod pkg_ref;
 pub mod specifier;
 
 /// The Git package source
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct GitPackageSource {
 	repo_url: GixUrl,
+}
+ser_display_deser_fromstr!(GitPackageSource);
+
+impl Display for GitPackageSource {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.repo_url)
+	}
+}
+
+impl FromStr for GitPackageSource {
+	type Err = gix::url::parse::Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		s.parse().map(Self::new)
+	}
 }
 
 impl GitBasedSource for GitPackageSource {
@@ -71,8 +90,6 @@ impl GitPackageSource {
 fn transform_pesde_dependencies(
 	manifest: &Manifest,
 	repo_url: &Url,
-	rev: &str,
-	root_tree: &gix::Tree,
 ) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
 	let dependencies = manifest
 		.all_dependencies()
@@ -143,7 +160,7 @@ impl PackageSource for GitPackageSource {
 		let repo_url = self.repo_url.clone().into_url();
 		let specifier = specifier.clone();
 
-		let (name, version_id, dependencies, tree_id) = spawn_blocking(move || {
+		let (structure_kind, version_id, dependencies, tree_id) = spawn_blocking(move || {
 			let repo = gix::open(path).map_err(|e| {
 				errors::ResolveError::OpenRepo(Box::new(repo_url.clone()), Box::new(e))
 			})?;
@@ -243,8 +260,8 @@ impl PackageSource for GitPackageSource {
 				})?;
 
 				return Ok((
-					PackageNames::Wally(manifest.package.name),
-					VersionId(
+					StructureKind::Wally,
+					VersionId::new(
 						manifest.package.version,
 						match manifest.package.realm {
 							Realm::Shared => TargetKind::Roblox,
@@ -260,12 +277,14 @@ impl PackageSource for GitPackageSource {
 				return Err(errors::ResolveError::NoManifest(Box::new(repo_url.clone())));
 			};
 
-			let dependencies =
-				transform_pesde_dependencies(&manifest, &repo_url, rev_str, &root_tree)?;
+			let dependencies = transform_pesde_dependencies(&manifest, &repo_url)?;
 
 			Ok((
-				PackageNames::Pesde(manifest.name),
-				VersionId(manifest.version, manifest.target.kind()),
+				StructureKind::PesdeV1,
+				VersionId::new(
+					/* TODO */ Version::new(0, 1, 0),
+					manifest.target.kind(),
+				),
 				dependencies,
 				tree.id.to_string(),
 			))
@@ -273,20 +292,20 @@ impl PackageSource for GitPackageSource {
 		.await
 		.unwrap()?;
 
-		let structure_kind = if matches!(name, PackageNames::Pesde(_)) {
-			StructureKind::PesdeV1
-		} else {
-			StructureKind::Wally
+		let pkg_ref = GitPackageRef {
+			tree_id,
+			structure_kind,
 		};
 
 		Ok((
-			name,
 			BTreeMap::from([(
-				version_id,
-				GitPackageRef {
-					repo: self.repo_url.clone(),
-					tree_id,
-					structure_kind,
+				PackageId::new(
+					PackageSources::Git(self.clone()),
+					PackageRefs::Git(pkg_ref.clone()),
+					version_id,
+				),
+				ResolveRecord {
+					pkg_ref,
 					dependencies,
 				},
 			)]),
@@ -316,7 +335,7 @@ impl PackageSource for GitPackageSource {
 			Ok(s) => {
 				tracing::debug!(
 					"using cached index file for package {}#{}",
-					pkg_ref.repo.as_url(),
+					self.repo_url,
 					pkg_ref.tree_id
 				);
 				reporter.report_done();
@@ -412,7 +431,7 @@ impl PackageSource for GitPackageSource {
 				{
 					tracing::debug!(
 						"removing {name} from {}#{} at {path} - using new structure",
-						pkg_ref.repo.as_url(),
+						self.repo_url,
 						pkg_ref.tree_id
 					);
 					return false;

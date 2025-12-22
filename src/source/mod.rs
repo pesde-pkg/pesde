@@ -1,15 +1,20 @@
+#![expect(deprecated)]
 use crate::{
 	manifest::target::{Target, TargetKind},
-	names::PackageNames,
 	reporters::DownloadProgressReporter,
+	ser_display_deser_fromstr,
 	source::{
-		fs::PackageFs, ids::VersionId, refs::PackageRefs, specifiers::DependencySpecifiers,
+		fs::PackageFs,
+		ids::{PackageId, VersionId},
+		refs::{PackageRefs, ResolveRecord},
+		specifiers::DependencySpecifiers,
 		traits::*,
 	},
 };
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	fmt::Debug,
+	fmt::{Debug, Display},
+	str::FromStr,
 };
 
 /// Packages' filesystems
@@ -44,10 +49,13 @@ pub const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 pub const IGNORED_DIRS: &[&str] = &[".git"];
 
 /// The result of resolving a package
-pub type ResolveResult<Ref> = (PackageNames, BTreeMap<VersionId, Ref>, BTreeSet<TargetKind>);
+pub type ResolveResult<Ref> = (
+	BTreeMap<PackageId, ResolveRecord<Ref>>,
+	BTreeSet<TargetKind>,
+);
 
 /// All possible package sources
-#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, PartialOrd, Ord)]
 pub enum PackageSources {
 	/// A pesde package source
 	Pesde(pesde::PesdePackageSource),
@@ -58,6 +66,36 @@ pub enum PackageSources {
 	Git(git::GitPackageSource),
 	/// A path package source
 	Path(path::PathPackageSource),
+}
+ser_display_deser_fromstr!(PackageSources);
+
+impl Display for PackageSources {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Pesde(source) => write!(f, "pesde+{source}"),
+			Self::Wally(source) => write!(f, "wally+{source}"),
+			Self::Git(source) => write!(f, "git+{source}"),
+			Self::Path(..) => write!(f, "path+"),
+		}
+	}
+}
+
+impl FromStr for PackageSources {
+	type Err = errors::PackageSourcesFromStr;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let Some((discriminator, source)) = s.split_once('+') else {
+			return Err(Self::Err::InvalidFormat);
+		};
+
+		Ok(match discriminator {
+			"pesde" => Self::Pesde(source.parse()?),
+			"wally" => Self::Wally(source.parse()?),
+			"git" => Self::Git(source.parse()?),
+			"path" => Self::Path(path::PathPackageSource),
+			_ => return Err(Self::Err::Unknown),
+		})
+	}
 }
 
 impl PackageSource for PackageSources {
@@ -96,12 +134,19 @@ impl PackageSource for PackageSources {
 			(PackageSources::Pesde(source), DependencySpecifiers::Pesde(specifier)) => source
 				.resolve(specifier, options)
 				.await
-				.map(|(name, results, suggestions)| {
+				.map(|(results, suggestions)| {
 					(
-						name,
 						results
 							.into_iter()
-							.map(|(version, pkg_ref)| (version, PackageRefs::Pesde(pkg_ref)))
+							.map(|(id, record)| {
+								(
+									id,
+									ResolveRecord {
+										pkg_ref: PackageRefs::Pesde(record.pkg_ref),
+										dependencies: record.dependencies,
+									},
+								)
+							})
 							.collect(),
 						suggestions,
 					)
@@ -112,12 +157,19 @@ impl PackageSource for PackageSources {
 			(PackageSources::Wally(source), DependencySpecifiers::Wally(specifier)) => source
 				.resolve(specifier, options)
 				.await
-				.map(|(name, results, suggestions)| {
+				.map(|(results, suggestions)| {
 					(
-						name,
 						results
 							.into_iter()
-							.map(|(version, pkg_ref)| (version, PackageRefs::Wally(pkg_ref)))
+							.map(|(id, record)| {
+								(
+									id,
+									ResolveRecord {
+										pkg_ref: PackageRefs::Wally(record.pkg_ref),
+										dependencies: record.dependencies,
+									},
+								)
+							})
 							.collect(),
 						suggestions,
 					)
@@ -127,12 +179,19 @@ impl PackageSource for PackageSources {
 			(PackageSources::Git(source), DependencySpecifiers::Git(specifier)) => source
 				.resolve(specifier, options)
 				.await
-				.map(|(name, results, suggestions)| {
+				.map(|(results, suggestions)| {
 					(
-						name,
 						results
 							.into_iter()
-							.map(|(version, pkg_ref)| (version, PackageRefs::Git(pkg_ref)))
+							.map(|(id, record)| {
+								(
+									id,
+									ResolveRecord {
+										pkg_ref: PackageRefs::Git(record.pkg_ref),
+										dependencies: record.dependencies,
+									},
+								)
+							})
 							.collect(),
 						suggestions,
 					)
@@ -142,12 +201,19 @@ impl PackageSource for PackageSources {
 			(PackageSources::Path(source), DependencySpecifiers::Path(specifier)) => source
 				.resolve(specifier, options)
 				.await
-				.map(|(name, results, suggestions)| {
+				.map(|(results, suggestions)| {
 					(
-						name,
 						results
 							.into_iter()
-							.map(|(version, pkg_ref)| (version, PackageRefs::Path(pkg_ref)))
+							.map(|(id, record)| {
+								(
+									id,
+									ResolveRecord {
+										pkg_ref: PackageRefs::Path(record.pkg_ref),
+										dependencies: record.dependencies,
+									},
+								)
+							})
 							.collect(),
 						suggestions,
 					)
@@ -220,6 +286,23 @@ impl PackageSource for PackageSources {
 /// Errors that can occur when interacting with a package source
 pub mod errors {
 	use thiserror::Error;
+
+	/// Errors that occur when parsing package sources from string
+	#[derive(Debug, Error)]
+	#[non_exhaustive]
+	pub enum PackageSourcesFromStr {
+		/// The string has an invalid format
+		#[error("input string is not properly formatted")]
+		InvalidFormat,
+
+		/// The source isn't known
+		#[error("unknown source")]
+		Unknown,
+
+		/// Parsing the URL failed
+		#[error("error parsing url")]
+		UrlParse(#[from] gix::url::parse::Error),
+	}
 
 	/// Errors that occur when refreshing a package source
 	#[derive(Debug, Error)]

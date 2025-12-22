@@ -1,35 +1,35 @@
-use std::collections::BTreeMap;
-
-use serde::{Deserialize, Serialize};
+use std::{fmt::Display, str::FromStr};
 
 use crate::{
-	manifest::{Alias, DependencyType},
-	source::{
-		DependencySpecifiers, PackageRef, PackageSources, pesde::PesdePackageSource,
-		refs::StructureKind,
-	},
-	GixUrl,
+	names::PackageName,
+	ser_display_deser_fromstr,
+	source::{PackageRef, refs::StructureKind},
 };
 
 /// A pesde package reference
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PesdePackageRef {
-	/// The index of the package
-	pub index_url: GixUrl,
-	/// The dependencies of the package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
+	/// The name of the package
+	pub name: PackageName,
 }
-impl PackageRef for PesdePackageRef {
-	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)> {
-		&self.dependencies
-	}
+ser_display_deser_fromstr!(PesdePackageRef);
 
+impl PackageRef for PesdePackageRef {
 	fn structure_kind(&self) -> StructureKind {
 		StructureKind::PesdeV1
 	}
+}
 
-	fn source(&self) -> PackageSources {
-		PackageSources::Pesde(PesdePackageSource::new(self.index_url.clone()))
+impl Display for PesdePackageRef {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.name)
+	}
+}
+
+impl FromStr for PesdePackageRef {
+	type Err = crate::names::errors::PackageNameError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(PesdePackageRef { name: s.parse()? })
 	}
 }

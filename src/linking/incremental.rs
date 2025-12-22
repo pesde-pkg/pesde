@@ -133,111 +133,102 @@ impl Project {
 		&self,
 		graph: &DependencyGraphWithTarget,
 	) -> Result<(), errors::RemoveUnusedError> {
-		let manifest = self.deser_manifest().await?;
-		let used_paths = graph
-			.iter()
-			.map(|(id, node)| {
-				node.node
-					.container_folder(id)
-					.parent()
-					.unwrap()
-					.to_path_buf()
-			})
-			.collect::<HashSet<_>>();
-		let used_paths = Arc::new(used_paths);
-		#[cfg(feature = "patches")]
-		let patched_packages = manifest
-			.patches
-			.iter()
-			.flat_map(|(name, versions)| {
-				versions
-					.keys()
-					.map(|v_id| crate::source::ids::PackageId::new(name.clone(), v_id.clone()))
-			})
-			.filter_map(|id| graph.get(&id).map(|node| (id, node)))
-			.map(|(id, node)| {
-				node.node
-					.container_folder(&id)
-					.parent()
-					.unwrap()
-					.to_path_buf()
-			})
-			.collect::<HashSet<_>>();
-		#[cfg(feature = "patches")]
-		let patched_packages = Arc::new(patched_packages);
+		// let manifest = self.deser_manifest().await?;
+		// let used_paths = graph
+		// 	.iter()
+		// 	.map(|(id, node)| {
+		// 		node.node
+		// 			.container_folder(id)
+		// 			.parent()
+		// 			.unwrap()
+		// 			.to_path_buf()
+		// 	})
+		// 	.collect::<HashSet<_>>();
+		// let used_paths = Arc::new(used_paths);
+		// #[cfg(feature = "patches")]
+		// let patched_packages = manifest
+		// 	.patches
+		// 	.keys()
+		// 	.filter_map(|id| graph.get(id).map(|node| (id, node)))
+		// 	.map(|(id, node)| {
+		// 		node.node
+		// 			.container_folder(id)
+		// 			.parent()
+		// 			.unwrap()
+		// 			.to_path_buf()
+		// 	})
+		// 	.collect::<HashSet<_>>();
+		// #[cfg(feature = "patches")]
+		// let patched_packages = Arc::new(patched_packages);
 
-		let mut tasks = all_packages_dirs()
-			.into_iter()
-			.map(|folder| {
-				let packages_dir = self.package_dir().join(folder);
-				let packages_index_dir = packages_dir.join(PACKAGES_CONTAINER_NAME);
-				let used_paths = used_paths.clone();
-				#[cfg(feature = "patches")]
-				let patched_packages = patched_packages.clone();
+		// let mut tasks = all_packages_dirs()
+		// 	.into_iter()
+		// 	.map(|folder| {
+		// 		let packages_dir = self.package_dir().join(folder);
+		// 		let packages_index_dir = packages_dir.join(PACKAGES_CONTAINER_NAME);
+		// 		let used_paths = used_paths.clone();
+		// 		#[cfg(feature = "patches")]
+		// 		let patched_packages = patched_packages.clone();
 
-				let expected_aliases = graph
-					.iter()
-					.filter(|(id, _)| {
-						manifest
-							.target
-							.kind()
-							.packages_folder(id.version_id().target())
-							== folder
-					})
-					.filter_map(|(_, node)| {
-						node.node.direct.as_ref().map(|(alias, _, _)| alias.clone())
-					})
-					.collect::<HashSet<_>>();
-				let expected_aliases = Arc::new(expected_aliases);
+		// 		let expected_aliases = graph
+		// 			.iter()
+		// 			.filter(|(id, _)| {
+		// 				manifest.target.kind().packages_folder(id.v_id().target()) == folder
+		// 			})
+		// 			.filter_map(|(_, node)| {
+		// 				node.node.direct.as_ref().map(|(alias, _, _)| alias.clone())
+		// 			})
+		// 			.collect::<HashSet<_>>();
+		// 		let expected_aliases = Arc::new(expected_aliases);
 
-				async move {
-					let mut index_entries = match fs::read_dir(&packages_index_dir).await {
-						Ok(entries) => entries,
-						Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-						Err(e) => return Err(e.into()),
-					};
-					// we don't handle NotFound here because the upper level will handle it
-					let mut packages_entries = fs::read_dir(&packages_dir).await?;
-					let mut tasks = JoinSet::new();
+		// 		async move {
+		// 			let mut index_entries = match fs::read_dir(&packages_index_dir).await {
+		// 				Ok(entries) => entries,
+		// 				Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+		// 				Err(e) => return Err(e.into()),
+		// 			};
+		// 			// we don't handle NotFound here because the upper level will handle it
+		// 			let mut packages_entries = fs::read_dir(&packages_dir).await?;
+		// 			let mut tasks = JoinSet::new();
 
-					loop {
-						tokio::select! {
-							Some(entry) = index_entries.next_entry().map(Result::transpose) => {
-								index_entry(
-									&entry?,
-									&packages_index_dir,
-									&mut tasks,
-									used_paths.clone(),
-									#[cfg(feature = "patches")]
-									patched_packages.clone(),
-								);
-							}
-							Some(entry) = packages_entries.next_entry().map(Result::transpose) => {
-								packages_entry(
-									entry?,
-									&mut tasks,
-									expected_aliases.clone(),
-								);
-							}
-							else => break,
-						}
-					}
+		// 			loop {
+		// 				tokio::select! {
+		// 					Some(entry) = index_entries.next_entry().map(Result::transpose) => {
+		// 						index_entry(
+		// 							&entry?,
+		// 							&packages_index_dir,
+		// 							&mut tasks,
+		// 							used_paths.clone(),
+		// 							#[cfg(feature = "patches")]
+		// 							patched_packages.clone(),
+		// 						);
+		// 					}
+		// 					Some(entry) = packages_entries.next_entry().map(Result::transpose) => {
+		// 						packages_entry(
+		// 							entry?,
+		// 							&mut tasks,
+		// 							expected_aliases.clone(),
+		// 						);
+		// 					}
+		// 					else => break,
+		// 				}
+		// 			}
 
-					while let Some(task) = tasks.join_next().await {
-						task.unwrap()?;
-					}
+		// 			while let Some(task) = tasks.join_next().await {
+		// 				task.unwrap()?;
+		// 			}
 
-					remove_empty_dir(&packages_index_dir).await?;
-					remove_empty_dir(&packages_dir).await?;
+		// 			remove_empty_dir(&packages_index_dir).await?;
+		// 			remove_empty_dir(&packages_dir).await?;
 
-					Ok::<_, errors::RemoveUnusedError>(())
-				}
-			})
-			.collect::<JoinSet<_>>();
+		// 			Ok::<_, errors::RemoveUnusedError>(())
+		// 		}
+		// 	})
+		// 	.collect::<JoinSet<_>>();
 
-		while let Some(task) = tasks.join_next().await {
-			task.unwrap()?;
-		}
+		// while let Some(task) = tasks.join_next().await {
+		// 	task.unwrap()?;
+		// }
 
 		Ok(())
 	}

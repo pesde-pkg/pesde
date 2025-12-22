@@ -1,3 +1,4 @@
+#![expect(deprecated)]
 use crate::cli::{
 	ExecReplace as _, compatible_runtime, get_project_engines, style::WARN_STYLE,
 	up_to_date_lockfile,
@@ -12,8 +13,11 @@ use pesde::{
 	errors::{ManifestReadError, WorkspaceMembersError},
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
 	manifest::{Alias, Manifest},
-	names::{PackageName, PackageNames},
-	source::traits::{GetTargetOptions, PackageRef as _, PackageSource as _, RefreshOptions},
+	names::PackageName,
+	source::{
+		specifiers::DependencySpecifiers,
+		traits::{GetTargetOptions, PackageSource as _, RefreshOptions},
+	},
 };
 use relative_path::{RelativePath, RelativePathBuf};
 use std::{
@@ -100,11 +104,13 @@ impl RunCommand {
 				anyhow::bail!("outdated lockfile, please run the install command first")
 			};
 
-			let pkg_name = PackageNames::Pesde(pkg_name);
-
 			let mut versions = graph
 				.into_iter()
-				.filter(|(id, node)| *id.name() == pkg_name && node.direct.is_some())
+				.filter(|(_, node)| {
+					node.direct.as_ref().is_some_and(
+						|(_, spec, _)| matches!(spec, DependencySpecifiers::Pesde(spec) if spec.name == pkg_name),
+					)
+				})
 				.collect::<Vec<_>>();
 
 			package_info = Some(match versions.len() {
@@ -140,7 +146,7 @@ impl RunCommand {
 					.kind(),
 			);
 
-			let source = node.pkg_ref.source();
+			let source = id.source();
 			source
 				.refresh(&RefreshOptions {
 					project: project.clone(),
@@ -149,11 +155,11 @@ impl RunCommand {
 				.context("failed to refresh source")?;
 			let target = source
 				.get_target(
-					&node.pkg_ref,
+					&node.resolved.pkg_ref,
 					&GetTargetOptions {
 						project: project.clone(),
 						path: container_folder.as_path().into(),
-						id: id.into(),
+						version_id: Arc::new(id.v_id().clone()),
 						engines: engines.clone(),
 					},
 				)

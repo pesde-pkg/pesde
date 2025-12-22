@@ -1,3 +1,4 @@
+#![expect(deprecated)]
 use anyhow::Context as _;
 use clap::Args;
 use console::style;

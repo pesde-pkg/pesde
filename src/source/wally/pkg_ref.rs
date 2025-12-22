@@ -1,35 +1,35 @@
-use std::collections::BTreeMap;
-
-use serde::{Deserialize, Serialize};
+use std::{fmt::Display, str::FromStr};
 
 use crate::{
-	manifest::{Alias, DependencyType},
-	source::{
-		DependencySpecifiers, PackageRef, PackageSources, refs::StructureKind,
-		wally::WallyPackageSource,
-	},
-	GixUrl,
+	names::wally::WallyPackageName,
+	ser_display_deser_fromstr,
+	source::{PackageRef, refs::StructureKind},
 };
 
 /// A Wally package reference
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WallyPackageRef {
-	/// The index of the package
-	pub index_url: GixUrl,
-	/// The dependencies of the package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
+	/// The name of the package
+	pub name: WallyPackageName,
 }
-impl PackageRef for WallyPackageRef {
-	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)> {
-		&self.dependencies
-	}
+ser_display_deser_fromstr!(WallyPackageRef);
 
+impl PackageRef for WallyPackageRef {
 	fn structure_kind(&self) -> StructureKind {
 		StructureKind::Wally
 	}
+}
 
-	fn source(&self) -> PackageSources {
-		PackageSources::Wally(WallyPackageSource::new(self.index_url.clone()))
+impl Display for WallyPackageRef {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.name)
+	}
+}
+
+impl FromStr for WallyPackageRef {
+	type Err = crate::names::errors::WallyPackageNameError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(WallyPackageRef { name: s.parse()? })
 	}
 }

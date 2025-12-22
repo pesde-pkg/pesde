@@ -6,7 +6,7 @@ use crate::{
 	},
 	source::{
 		ids::{PackageId, VersionId},
-		refs::{PackageRefs, StructureKind},
+		refs::{ResolveRecord, StructureKind},
 		specifiers::DependencySpecifiers,
 		traits::PackageRef as _,
 	},
@@ -25,9 +25,10 @@ pub struct DependencyGraphNode {
 	pub direct: Option<(Alias, DependencySpecifiers, DependencyType)>,
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<Alias, (PackageId, DependencyType)>,
-	/// The package reference
-	pub pkg_ref: PackageRefs,
+	pub resolved_dependencies: BTreeMap<Alias, PackageId>,
+	/// The resolved package
+	#[serde(flatten)]
+	pub resolved: ResolveRecord,
 }
 
 impl DependencyGraphNode {
@@ -36,7 +37,7 @@ impl DependencyGraphNode {
 		version_id: &VersionId,
 		project_target: TargetKind,
 	) -> &'static str {
-		match self.pkg_ref.structure_kind() {
+		match self.resolved.pkg_ref.structure_kind() {
 			StructureKind::Wally => "..",
 			StructureKind::PesdeV1 => version_id.target().packages_folder(project_target),
 		}
@@ -45,21 +46,7 @@ impl DependencyGraphNode {
 	/// Returns the folder to store the contents of the package in
 	#[must_use]
 	pub fn container_folder(&self, package_id: &PackageId) -> PathBuf {
-		let (name, v_id) = package_id.parts();
-
-		if self.pkg_ref.is_wally_package() {
-			return PathBuf::from(format!(
-				"{}_{}@{}",
-				name.scope(),
-				name.name(),
-				v_id.version()
-			))
-			.join(name.name());
-		}
-
-		PathBuf::from(name.escaped())
-			.join(v_id.version().to_string())
-			.join(name.name())
+		PathBuf::from(package_id.escaped()).join(package_id.v_id().escaped())
 	}
 
 	/// Returns the folder to store the contents of the package in starting from the project's package directory
@@ -72,7 +59,7 @@ impl DependencyGraphNode {
 	) -> PathBuf {
 		project
 			.package_dir()
-			.join(manifest_target_kind.packages_folder(package_id.version_id().target()))
+			.join(manifest_target_kind.packages_folder(package_id.v_id().target()))
 			.join(PACKAGES_CONTAINER_NAME)
 			.join(self.container_folder(package_id))
 	}

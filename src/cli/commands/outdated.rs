@@ -1,3 +1,4 @@
+#![expect(deprecated)]
 use crate::cli::{
 	style::{ADDED_STYLE, INFO_STYLE, REMOVED_STYLE, SUCCESS_STYLE},
 	up_to_date_lockfile,
@@ -8,7 +9,7 @@ use pesde::{
 	Project, RefreshedSources,
 	source::{
 		specifiers::DependencySpecifiers,
-		traits::{PackageRef as _, PackageSource as _, RefreshOptions, ResolveOptions},
+		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
 	},
 };
 use semver::VersionReq;
@@ -43,7 +44,7 @@ impl OutdatedCommand {
 
 		let mut tasks = graph
 			.into_iter()
-			.map(|(current_id, node)| {
+			.map(|(id, node)| {
 				let project = project.clone();
 				let refreshed_sources = refreshed_sources.clone();
 				async move {
@@ -55,7 +56,7 @@ impl OutdatedCommand {
 						return Ok(None);
 					}
 
-					let source = node.pkg_ref.source();
+					let source = id.source().clone();
 					refreshed_sources
 						.refresh(
 							&source,
@@ -75,7 +76,6 @@ impl OutdatedCommand {
 								spec.version = VersionReq::STAR;
 							}
 							DependencySpecifiers::Git(_) => {}
-							DependencySpecifiers::Workspace(_) => {}
 							DependencySpecifiers::Path(_) => {}
 						}
 					}
@@ -92,13 +92,13 @@ impl OutdatedCommand {
 						)
 						.await
 						.context("failed to resolve package versions")?
-						.1
+						.0
 						.pop_last()
-						.map(|(v_id, _)| v_id)
+						.map(|(id, _)| id.v_id().clone())
 						.with_context(|| format!("no versions of {specifier} found"))?;
 
-					Ok(Some((alias, current_id, new_id))
-						.filter(|(_, current_id, new_id)| current_id.version_id() != new_id))
+					Ok(Some((alias, id.v_id().clone(), new_id))
+						.filter(|(_, current_id, new_id)| current_id != new_id))
 				}
 			})
 			.collect::<JoinSet<_>>();
@@ -113,10 +113,9 @@ impl OutdatedCommand {
 			all_up_to_date = false;
 
 			println!(
-				"{} ({}) {} → {}",
-				current_id.name(),
+				"({}) {} → {}",
 				INFO_STYLE.apply_to(alias),
-				REMOVED_STYLE.apply_to(current_id.version_id()),
+				REMOVED_STYLE.apply_to(current_id),
 				ADDED_STYLE.apply_to(new_id),
 			);
 		}

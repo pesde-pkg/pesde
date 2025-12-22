@@ -1,11 +1,14 @@
+#![deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
+#![expect(deprecated)]
 use relative_path::RelativePathBuf;
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	fmt::Debug,
+	fmt::{Debug, Display},
 	hash::Hash,
 	path::PathBuf,
+	str::FromStr,
 };
 
 use pkg_ref::PesdePackageRef;
@@ -18,12 +21,16 @@ use crate::{
 		Alias, DependencyType,
 		target::{Target, TargetKind},
 	},
-	names::{PackageName, PackageNames},
+	names::PackageName,
 	reporters::{DownloadProgressReporter, response_to_async_read},
+	ser_display_deser_fromstr,
 	source::{
-		DependencySpecifiers, IGNORED_DIRS, IGNORED_FILES, PackageSource, ResolveResult, VersionId,
+		DependencySpecifiers, IGNORED_DIRS, IGNORED_FILES, PackageSource, PackageSources,
+		ResolveResult, VersionId,
 		fs::{FsEntry, PackageFs, store_in_cas},
 		git_index::{GitBasedSource, read_file, root_tree},
+		ids::PackageId,
+		refs::{PackageRefs, ResolveRecord},
 		traits::{DownloadOptions, GetTargetOptions, RefreshOptions, ResolveOptions},
 	},
 	util::hash,
@@ -41,19 +48,24 @@ pub mod pkg_ref;
 pub mod specifier;
 
 /// The pesde package source
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct PesdePackageSource {
 	repo_url: GixUrl,
 }
+ser_display_deser_fromstr!(PesdePackageSource);
 
-/// The file containing scope information
-pub const SCOPE_INFO_FILE: &str = "scope.toml";
+impl Display for PesdePackageSource {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.repo_url)
+	}
+}
 
-/// Information about a scope
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScopeInfo {
-	/// The people authorized to publish packages to this scope
-	pub owners: BTreeSet<u64>,
+impl FromStr for PesdePackageSource {
+	type Err = gix::url::parse::Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		s.parse().map(Self::new)
+	}
 }
 
 impl GitBasedSource for PesdePackageSource {
@@ -172,7 +184,6 @@ impl PackageSource for PesdePackageSource {
 		let specifier_target = specifier.target.unwrap_or(*project_target);
 
 		Ok((
-			PackageNames::Pesde(specifier.name.clone()),
 			entries
 				.into_iter()
 				.filter(|(_, entry)| !entry.yanked)
@@ -185,11 +196,18 @@ impl PackageSource for PesdePackageSource {
 						specifier_target == v_id.target()
 					}
 				})
-				.map(|(id, entry)| {
+				.map(|(v_id, entry)| {
+					let pkg_ref = PesdePackageRef {
+						name: specifier.name.clone(),
+					};
 					(
-						id,
-						PesdePackageRef {
-							index_url: self.repo_url.clone(),
+						PackageId::new(
+							PackageSources::Pesde(self.clone()),
+							PackageRefs::Pesde(pkg_ref.clone()),
+							v_id,
+						),
+						ResolveRecord {
+							pkg_ref,
 							dependencies: entry.dependencies,
 						},
 					)
@@ -202,14 +220,14 @@ impl PackageSource for PesdePackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn download<R: DownloadProgressReporter>(
 		&self,
-		_pkg_ref: &Self::Ref,
+		pkg_ref: &Self::Ref,
 		options: &DownloadOptions<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let DownloadOptions {
 			project,
 			reporter,
 			reqwest,
-			id,
+			version_id,
 			..
 		} = options;
 
@@ -218,13 +236,16 @@ impl PackageSource for PesdePackageSource {
 			.cas_dir()
 			.join("index")
 			.join(hash(self.as_bytes()))
-			.join(id.name().escaped())
-			.join(id.version_id().version().to_string())
-			.join(id.version_id().target().to_string());
+			.join(pkg_ref.name.escaped())
+			.join(version_id.version().to_string())
+			.join(version_id.target().to_string());
 
 		match fs::read_to_string(&index_file).await {
 			Ok(s) => {
-				tracing::debug!("using cached index file for package {id}");
+				tracing::debug!(
+					"using cached index file for package {}@{version_id}",
+					pkg_ref.name
+				);
 
 				reporter.report_done();
 
@@ -236,14 +257,14 @@ impl PackageSource for PesdePackageSource {
 
 		let url = config
 			.download()
-			.replace("{PACKAGE}", &urlencoding::encode(&id.name().to_string()))
+			.replace("{PACKAGE}", &urlencoding::encode(&pkg_ref.name.to_string()))
 			.replace(
 				"{PACKAGE_VERSION}",
-				&urlencoding::encode(&id.version_id().version().to_string()),
+				&urlencoding::encode(&version_id.version().to_string()),
 			)
 			.replace(
 				"{PACKAGE_TARGET}",
-				&urlencoding::encode(&id.version_id().target().to_string()),
+				&urlencoding::encode(&version_id.target().to_string()),
 			);
 
 		let mut request = reqwest.get(&url).header(ACCEPT, "application/octet-stream");
@@ -314,24 +335,19 @@ impl PackageSource for PesdePackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn get_target(
 		&self,
-		_pkg_ref: &Self::Ref,
+		pkg_ref: &Self::Ref,
 		options: &GetTargetOptions,
 	) -> Result<Target, Self::GetTargetError> {
-		let GetTargetOptions { id, .. } = options;
-		#[allow(irrefutable_let_patterns)]
-		let PackageNames::Pesde(name) = id.name() else {
-			panic!("unexpected package name");
-		};
-
-		let Some(IndexFile { mut entries, .. }) =
-			self.read_index_file(name, &options.project).await?
+		let Some(IndexFile { mut entries, .. }) = self
+			.read_index_file(&pkg_ref.name, &options.project)
+			.await?
 		else {
-			return Err(errors::GetTargetError::NotFound(name.to_string()));
+			return Err(errors::GetTargetError::NotFound(pkg_ref.name.to_string()));
 		};
 
 		let entry = entries
-			.remove(id.version_id())
-			.ok_or_else(|| errors::GetTargetError::NotFound(name.to_string()))?;
+			.remove(&options.version_id)
+			.ok_or_else(|| errors::GetTargetError::NotFound(pkg_ref.name.to_string()))?;
 
 		Ok(entry.target)
 	}

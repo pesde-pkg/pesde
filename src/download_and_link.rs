@@ -11,7 +11,7 @@ use crate::{
 	reporters::{DownloadsReporter, PatchesReporter},
 	source::{
 		ids::PackageId,
-		traits::{GetTargetOptions, PackageRef as _, PackageSource as _},
+		traits::{GetTargetOptions, PackageSource as _},
 	},
 };
 use fs_err::tokio as fs;
@@ -272,9 +272,9 @@ impl Project {
 						continue;
 					}
 
-					node.dependencies
+					node.resolved_dependencies
 						.values()
-						.filter_map(|(id, _)| graph.get(id).map(|node| (id, node)))
+						.filter_map(|id| graph.get(id).map(|node| (id, node)))
 						.for_each(|x| queue.push_back(x));
 				}
 
@@ -296,7 +296,7 @@ impl Project {
 						async move {
 							return (
 								// force local packages to be updated
-								if node.pkg_ref.is_local() {
+								if node.resolved.pkg_ref.is_local() {
 									None
 								} else {
 									fs::metadata(&container_folder)
@@ -365,17 +365,13 @@ impl Project {
 				let mut tasks = manifest
 					.patches
 					.iter()
-					.flat_map(|(name, versions)| {
-						versions
-							.iter()
-							.map(|(v_id, path)| (PackageId::new(name.clone(), v_id.clone()), path))
-					})
 					.filter_map(|(id, patch_path)| {
 						downloaded_graph
-							.get(&id)
+							.get(id)
 							.map(|(_, container_folder)| (id, container_folder.clone(), patch_path))
 					})
 					.map(|(id, container_folder, patch_path)| {
+						let id = id.clone();
 						let patch_path = patch_path.to_path(self.package_dir());
 						let reporter = reporter.clone();
 
@@ -411,10 +407,11 @@ impl Project {
 			.map(|(id, (_, install_path))| (id.clone(), install_path.clone()))
 			.collect::<HashMap<_, _>>();
 
-		let (wally_graph_to_download, other_graph_to_download) =
-			graph_to_download
-				.into_iter()
-				.partition::<HashMap<_, _>, _>(|(_, (node, _))| node.pkg_ref.is_wally_package());
+		let (wally_graph_to_download, other_graph_to_download) = graph_to_download
+			.into_iter()
+			.partition::<HashMap<_, _>, _>(
+			|(_, (node, _))| node.resolved.pkg_ref.is_wally_package(),
+		);
 
 		let mut graph = DependencyGraphWithTarget::new();
 
@@ -424,7 +421,7 @@ impl Project {
 				let mut tasks = downloaded_graph
 					.into_iter()
 					.map(|(id, (node, install_path))| {
-						let source = node.pkg_ref.source();
+						let source = id.source().clone();
 
 						let id = Arc::new(id);
 						let project = self.clone();
@@ -433,11 +430,11 @@ impl Project {
 						async move {
 							let target = source
 								.get_target(
-									&node.pkg_ref,
+									&node.resolved.pkg_ref,
 									&GetTargetOptions {
 										project,
 										path: install_path,
-										id: id.clone(),
+										version_id: Arc::new(id.v_id().clone()),
 										engines,
 									},
 								)
@@ -476,10 +473,8 @@ impl Project {
 
 			let aliases = graph
 				.values()
-				.flat_map(|node| node.node.dependencies.iter())
-				.filter_map(|(alias, (id, _))| {
-					binary_packages.contains(id).then_some(alias.as_str())
-				})
+				.flat_map(|node| node.node.resolved_dependencies.iter())
+				.filter_map(|(alias, id)| binary_packages.contains(id).then_some(alias.as_str()))
 				.chain(
 					graph
 						.values()

@@ -1,3 +1,4 @@
+#![expect(deprecated)]
 use crate::cli::{
 	config::read_config,
 	style::{ERROR_PREFIX, INFO_STYLE, SUCCESS_STYLE},
@@ -193,7 +194,7 @@ impl InitCommand {
 			};
 
 			if let Some(scripts_pkg_name) = scripts_package {
-				let (v_id, pkg_ref) = source
+				let (id, resolved) = source
 					.resolve(
 						&PesdeDependencySpecifier {
 							name: scripts_pkg_name.clone(),
@@ -210,7 +211,7 @@ impl InitCommand {
 					)
 					.await
 					.context("failed to resolve scripts package")?
-					.1
+					.0
 					.pop_last()
 					.context("scripts package not found")?;
 
@@ -222,7 +223,7 @@ impl InitCommand {
 
 				let entry = file
 					.entries
-					.remove(&v_id)
+					.remove(id.v_id())
 					.context("failed to remove scripts package entry")?;
 
 				let dev_deps = manifest["dev_dependencies"]
@@ -230,10 +231,10 @@ impl InitCommand {
 
 				let field = &mut dev_deps["scripts"];
 				field["name"] = toml_edit::value(scripts_pkg_name.to_string());
-				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
-				field["target"] = toml_edit::value(v_id.target().to_string());
+				field["version"] = toml_edit::value(format!("^{}", id.v_id().version()));
+				field["target"] = toml_edit::value(id.v_id().target().to_string());
 
-				for (alias, (spec, ty)) in pkg_ref.dependencies {
+				for (alias, (spec, ty)) in resolved.dependencies {
 					if ty != DependencyType::Peer {
 						continue;
 					}
@@ -245,8 +246,11 @@ impl InitCommand {
 					let field = &mut dev_deps[alias.as_str()];
 					field["name"] = toml_edit::value(spec.name.to_string());
 					field["version"] = toml_edit::value(spec.version.to_string());
-					field["target"] =
-						toml_edit::value(spec.target.unwrap_or_else(|| v_id.target()).to_string());
+					field["target"] = toml_edit::value(
+						spec.target
+							.unwrap_or_else(|| id.v_id().target())
+							.to_string(),
+					);
 				}
 
 				if !entry.engines.is_empty() {

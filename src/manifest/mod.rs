@@ -1,4 +1,6 @@
 use crate::GixUrl;
+#[cfg(feature = "patches")]
+use crate::source::ids::PackageId;
 use crate::{
 	engine::EngineKind,
 	manifest::{
@@ -57,10 +59,7 @@ pub struct Manifest {
 	/// The patches to apply to packages
 	#[cfg(feature = "patches")]
 	#[serde(default)]
-	pub patches: BTreeMap<
-		crate::names::PackageNames,
-		BTreeMap<crate::source::ids::VersionId, RelativePathBuf>,
-	>,
+	pub patches: BTreeMap<PackageId, RelativePathBuf>,
 	/// A list of globs pointing to workspace members' directories
 	#[serde(default)]
 	pub workspace_members: Vec<String>,

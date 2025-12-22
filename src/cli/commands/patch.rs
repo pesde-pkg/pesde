@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::cli::{
 	VersionedPackageName,
 	style::{CLI_STYLE, INFO_STYLE, WARN_PREFIX},
@@ -10,7 +12,7 @@ use fs_err::tokio as fs;
 use pesde::{
 	MANIFEST_FILE_NAME, Project,
 	patches::setup_patches_repo,
-	source::traits::{DownloadOptions, PackageRef as _, PackageSource as _},
+	source::traits::{DownloadOptions, PackageSource as _},
 };
 
 #[derive(Debug, Args)]
@@ -31,28 +33,27 @@ impl PatchCommand {
 		let id = self.package.get(&graph)?;
 
 		let node = graph.get(&id).context("package not found in graph")?;
-		if node.pkg_ref.is_local() {
+		if node.resolved.pkg_ref.is_local() {
 			anyhow::bail!("cannot patch a local package")
 		}
 
-		let source = node.pkg_ref.source();
+		let source = id.source();
 
 		let directory = project
 			.data_dir()
 			.join("patches")
-			.join(id.name().escaped())
-			.join(id.version_id().escaped())
+			.join(id.to_string())
 			.join(jiff::Timestamp::now().as_second().to_string());
 		fs::create_dir_all(&directory).await?;
 
 		source
 			.download(
-				&node.pkg_ref,
+				&node.resolved.pkg_ref,
 				&DownloadOptions {
 					project: project.clone(),
 					reqwest,
 					reporter: ().into(),
-					id: id.into(),
+					version_id: Arc::new(id.v_id().clone()),
 				},
 			)
 			.await?

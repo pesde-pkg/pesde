@@ -17,10 +17,8 @@ use pesde::{
 		overrides::{OverrideKey, OverrideSpecifier},
 		target::TargetKind,
 	},
-	names::{PackageName, PackageNames},
-	source::{
-		ids::VersionId, specifiers::DependencySpecifiers, workspace::specifier::VersionTypeOrReq,
-	},
+	names::PackageNames,
+	source::{ids::VersionId, specifiers::DependencySpecifiers},
 };
 use relative_path::RelativePathBuf;
 use semver::Version;
@@ -127,11 +125,6 @@ pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Loc
 		return Ok(None);
 	}
 
-	if manifest.name != lockfile.name || manifest.version != lockfile.version {
-		tracing::debug!("name or version is different");
-		return Ok(None);
-	}
-
 	let specs = lockfile
 		.graph
 		.iter()
@@ -181,31 +174,32 @@ impl VersionedPackageName {
 	#[cfg(feature = "patches")]
 	fn get(
 		self,
-		graph: &pesde::graph::DependencyGraph,
+		_graph: &pesde::graph::DependencyGraph,
 	) -> anyhow::Result<pesde::source::ids::PackageId> {
-		let version_id = if let Some(version) = self.1 {
-			version
-		} else {
-			let versions = graph
-				.keys()
-				.filter(|id| *id.name() == self.0)
-				.collect::<Vec<_>>();
+		unimplemented!()
+		// let version_id = if let Some(version) = self.1 {
+		// 	version
+		// } else {
+		// 	let versions = graph
+		// 		.keys()
+		// 		.filter(|id| *id.name() == self.0)
+		// 		.collect::<Vec<_>>();
 
-			match versions.len() {
-				0 => anyhow::bail!("package not found"),
-				1 => versions[0].version_id().clone(),
-				_ => anyhow::bail!(
-					"multiple versions found, please specify one of: {}",
-					versions
-						.iter()
-						.map(ToString::to_string)
-						.collect::<Vec<_>>()
-						.join(", ")
-				),
-			}
-		};
+		// 	match versions.len() {
+		// 		0 => anyhow::bail!("package not found"),
+		// 		1 => versions[0].version_id().clone(),
+		// 		_ => anyhow::bail!(
+		// 			"multiple versions found, please specify one of: {}",
+		// 			versions
+		// 				.iter()
+		// 				.map(ToString::to_string)
+		// 				.collect::<Vec<_>>()
+		// 				.join(", ")
+		// 		),
+		// 	}
+		// };
 
-		Ok(pesde::source::ids::PackageId::new(self.0, version_id))
+		// Ok(pesde::source::ids::PackageId::new(self.0, version_id))
 	}
 }
 
@@ -213,7 +207,6 @@ impl VersionedPackageName {
 enum AnyPackageIdentifier<V: FromStr = VersionId, N: FromStr = PackageNames> {
 	PackageName(VersionedPackageName<V, N>),
 	Url((GixUrl, String)),
-	Workspace(VersionedPackageName<VersionTypeOrReq, PackageName>),
 	Path(PathBuf),
 }
 
@@ -231,8 +224,6 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 				GixUrl::new(repo.try_into()?),
 				rev.to_string(),
 			)))
-		} else if let Some(rest) = s.strip_prefix("workspace:") {
-			Ok(AnyPackageIdentifier::Workspace(rest.parse()?))
 		} else if let Some(rest) = s.strip_prefix("path:") {
 			Ok(AnyPackageIdentifier::Path(rest.into()))
 		} else if s.contains(':') {
@@ -261,7 +252,7 @@ pub fn shift_project_dir(project: &Project, pkg_dir: PathBuf) -> Project {
 pub async fn run_on_workspace_members<F: Future<Output = anyhow::Result<()>>>(
 	project: &Project,
 	f: impl Fn(Project) -> F,
-) -> anyhow::Result<BTreeMap<PackageName, BTreeMap<TargetKind, RelativePathBuf>>> {
+) -> anyhow::Result<BTreeMap<RelativePathBuf, TargetKind>> {
 	// this might seem counterintuitive, but remember that
 	// the presence of a workspace dir means that this project is a member of one
 	if project.workspace_dir().is_some() {
@@ -271,7 +262,7 @@ pub async fn run_on_workspace_members<F: Future<Output = anyhow::Result<()>>>(
 	let members_future = project.workspace_members(true).await?;
 	pin!(members_future);
 
-	let mut results = BTreeMap::<PackageName, BTreeMap<TargetKind, RelativePathBuf>>::new();
+	let mut results = BTreeMap::<RelativePathBuf, TargetKind>::new();
 
 	while let Some((path, manifest)) = members_future.next().await.transpose()? {
 		let relative_path =
@@ -283,9 +274,8 @@ pub async fn run_on_workspace_members<F: Future<Output = anyhow::Result<()>>>(
 		}
 
 		results
-			.entry(manifest.name)
-			.or_default()
-			.insert(manifest.target.kind(), relative_path);
+			.entry(relative_path)
+			.or_insert(manifest.target.kind());
 	}
 
 	Ok(results)
@@ -426,7 +416,7 @@ pub async fn get_project_engines(
 		#[cfg(feature = "version-management")]
 		let reporter = reporter;
 
-		root_progress.set_prefix(format!("{} {}: ", manifest.name, manifest.target));
+		root_progress.set_prefix(format!("{}: ", manifest.target));
 		root_progress.reset();
 		root_progress.set_message("update engines");
 

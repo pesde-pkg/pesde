@@ -1,18 +1,11 @@
 use crate::{
 	Project, RefreshedSources,
 	engine::runtime::Engines,
-	manifest::{
-		Alias, DependencyType,
-		target::{Target, TargetKind},
-	},
+	manifest::target::{Target, TargetKind},
 	reporters::DownloadProgressReporter,
-	source::{
-		DependencySpecifiers, PackageFs, PackageSources, ResolveResult, ids::PackageId,
-		refs::StructureKind,
-	},
+	source::{PackageFs, ResolveResult, ids::VersionId, refs::StructureKind},
 };
 use std::{
-	collections::BTreeMap,
 	fmt::{Debug, Display},
 	future::{self, Future},
 	path::Path,
@@ -24,12 +17,8 @@ pub trait DependencySpecifier: Debug + Display {}
 
 /// A reference to a package
 pub trait PackageRef: Debug {
-	/// The dependencies of this package
-	fn dependencies(&self) -> &BTreeMap<Alias, (DependencySpecifiers, DependencyType)>;
 	/// The kind of structure this package uses
 	fn structure_kind(&self) -> StructureKind;
-	/// The source of this package
-	fn source(&self) -> PackageSources;
 }
 
 /// Options for refreshing a source
@@ -62,8 +51,8 @@ pub struct DownloadOptions<R: DownloadProgressReporter> {
 	pub reqwest: reqwest::Client,
 	/// The reporter to use
 	pub reporter: Arc<R>,
-	/// The package ID of the package to be downloaded
-	pub id: Arc<PackageId>,
+	/// The version ID of the package to be downloaded
+	pub version_id: Arc<VersionId>,
 }
 
 /// Options for getting a package's Target
@@ -73,8 +62,8 @@ pub struct GetTargetOptions {
 	pub project: Project,
 	/// The path the package has been written to
 	pub path: Arc<Path>,
-	/// The package ID of the package to be downloaded
-	pub id: Arc<PackageId>,
+	/// The version ID of the package to be downloaded
+	pub version_id: Arc<VersionId>,
 	/// The engines this project is using
 	pub engines: Arc<Engines>,
 }

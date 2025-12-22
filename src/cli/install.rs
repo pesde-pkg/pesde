@@ -14,11 +14,7 @@ use pesde::{
 	graph::DependencyGraph,
 	lockfile::Lockfile,
 	manifest::DependencyType,
-	names::PackageNames,
-	source::{
-		PackageSources,
-		traits::{PackageRef as _, RefreshOptions},
-	},
+	source::{PackageSources, refs::PackageRefs, traits::RefreshOptions},
 };
 use std::{
 	collections::{BTreeMap, BTreeSet},
@@ -146,7 +142,7 @@ pub async fn install(
 			let multi = multi;
 			let root_progress = root_progress;
 
-			root_progress.set_prefix(format!("{} {}: ", manifest.name, manifest.target));
+			root_progress.set_prefix(format!("{}: ", manifest.target));
 			root_progress.reset();
 			root_progress.set_message("resolve");
 
@@ -163,16 +159,18 @@ pub async fn install(
 
 			check_peers_satisfied(&graph);
 
+			#[expect(deprecated)]
 			let mut tasks = graph
 				.iter()
 				.filter_map(|(id, node)| {
-					let PackageSources::Pesde(source) = node.pkg_ref.source() else {
+					let PackageSources::Pesde(source) = id.source() else {
 						return None;
 					};
-					#[allow(irrefutable_let_patterns)]
-					let PackageNames::Pesde(name) = id.name().clone() else {
-						panic!("unexpected package name");
+					let PackageRefs::Pesde(pkg_ref) = &node.resolved.pkg_ref else {
+						return None;
 					};
+					let source = source.clone();
+					let name = pkg_ref.name.clone();
 					let project = project.clone();
 					let refreshed_sources = refreshed_sources.clone();
 
@@ -248,13 +246,11 @@ pub async fn install(
 					.context("failed to download and link dependencies")?;
 
 				#[cfg(feature = "version-management")]
+				#[expect(deprecated)]
 				{
 					use pesde::{
-						MANIFEST_FILE_NAME,
-						engine::EngineKind,
-						manifest::Manifest,
-						source::{pesde::PesdePackageSource, refs::PackageRefs},
-						version_matches,
+						MANIFEST_FILE_NAME, engine::EngineKind, manifest::Manifest,
+						source::refs::PackageRefs, version_matches,
 					};
 
 					let manifest_target_kind = manifest.target.kind();
@@ -267,13 +263,15 @@ pub async fn install(
 							let refreshed_sources = refreshed_sources.clone();
 
 							async move {
-								let engines = match &node.node.pkg_ref {
+								let engines = match &node.node.resolved.pkg_ref {
 									PackageRefs::Pesde(pkg_ref) => {
-										let source =
-											PesdePackageSource::new(pkg_ref.index_url.clone());
+										let PackageSources::Pesde(source) = id.source() else {
+											return Ok((id, Default::default()));
+										};
+
 										refreshed_sources
 											.refresh(
-												&PackageSources::Pesde(source.clone()),
+												id.source(),
 												&RefreshOptions {
 													project: project.clone(),
 												},
@@ -281,19 +279,14 @@ pub async fn install(
 											.await
 											.context("failed to refresh source")?;
 
-										#[allow(irrefutable_let_patterns)]
-										let PackageNames::Pesde(name) = id.name() else {
-											panic!("unexpected package name");
-										};
-
 										let mut file = source
-											.read_index_file(name, &project)
+											.read_index_file(&pkg_ref.name, &project)
 											.await
 											.context("failed to read package index file")?
 											.context("package not found in index")?;
 
 										file.entries
-											.remove(id.version_id())
+											.remove(id.v_id())
 											.context("package version not found in index")?
 											.engines
 									}
@@ -366,8 +359,6 @@ pub async fn install(
 			root_progress.set_message("finish");
 
 			let new_lockfile = Lockfile {
-				name: manifest.name.clone(),
-				version: manifest.version,
 				target: manifest.target.kind(),
 				overrides,
 
@@ -392,7 +383,7 @@ pub async fn install(
 	}
 
 	print_package_diff(
-		&format!("{} {}:", manifest.name, manifest.target),
+		&format!("{}:", manifest.target),
 		&old_graph,
 		&new_lockfile.graph,
 	);
@@ -515,14 +506,13 @@ pub fn print_package_diff(prefix: &str, old_graph: &DependencyGraph, new_graph: 
 
 			for (id, added) in set {
 				println!(
-					"{} {} {}",
+					"{} {}",
 					if added {
 						ADDED_STYLE.apply_to("+")
 					} else {
 						REMOVED_STYLE.apply_to("-")
 					},
-					id.name(),
-					style(id.version_id()).dim()
+					style(id.v_id()).dim()
 				);
 			}
 		}
@@ -538,9 +528,15 @@ pub fn check_peers_satisfied(graph: &DependencyGraph) {
 		};
 
 		let mut queue = node
-			.dependencies
+			.resolved_dependencies
 			.iter()
-			.map(|(dep_alias, (dep_id, dep_ty))| (vec![(id, alias)], (dep_id, dep_alias), *dep_ty))
+			.map(|(dep_alias, dep_id)| {
+				(
+					vec![(id, alias)],
+					(dep_id, dep_alias),
+					node.resolved.dependencies[dep_alias].1,
+				)
+			})
 			.collect::<Vec<_>>();
 
 		while let Some((path, (dep_id, dep_alias), dep_ty)) = queue.pop() {
@@ -554,7 +550,12 @@ pub fn check_peers_satisfied(graph: &DependencyGraph) {
 					.take(2);
 
 				let satisfied = if iter.len() > 0 {
-					iter.any(|id| graph[id].dependencies.values().any(|(id, _)| id == dep_id))
+					iter.any(|id| {
+						graph[id]
+							.resolved_dependencies
+							.values()
+							.any(|id| id == dep_id)
+					})
 				} else {
 					graph.get(dep_id).is_some_and(|node| node.direct.is_some())
 				};
@@ -570,15 +571,15 @@ pub fn check_peers_satisfied(graph: &DependencyGraph) {
 				}
 			}
 
-			queue.extend(graph[dep_id].dependencies.iter().map(
-				|(inner_dep_alias, (inner_dep_id, inner_dep_ty))| {
+			queue.extend(graph[dep_id].resolved_dependencies.iter().map(
+				|(inner_dep_alias, inner_dep_id)| {
 					(
 						path.iter()
 							.copied()
 							.chain(std::iter::once((dep_id, dep_alias)))
 							.collect(),
 						(inner_dep_id, inner_dep_alias),
-						*inner_dep_ty,
+						graph[dep_id].resolved.dependencies[inner_dep_alias].1,
 					)
 				},
 			));

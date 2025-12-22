@@ -1,3 +1,4 @@
+#![expect(deprecated)]
 use crate::cli::{
 	ExecReplace as _, VersionedPackageName, compatible_runtime,
 	config::read_config,
@@ -14,10 +15,9 @@ use pesde::{
 	download_and_link::{DownloadAndLinkOptions, InstallDependenciesMode},
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
 	manifest::target::TargetKind,
-	names::{PackageName, PackageNames},
+	names::PackageName,
 	source::{
 		PackageSources,
-		ids::PackageId,
 		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
 		traits::{DownloadOptions, PackageSource as _, RefreshOptions, ResolveOptions},
 	},
@@ -89,7 +89,7 @@ impl ExecuteCommand {
 					.context("failed to refresh source")?;
 
 				let version_req = self.package.1.unwrap_or(VersionReq::STAR);
-				let Some((v_id, pkg_ref)) = source
+				let Some((id, resolved)) = source
 					.resolve(
 						&PesdeDependencySpecifier {
 							name: self.package.0.clone(),
@@ -106,7 +106,7 @@ impl ExecuteCommand {
 					)
 					.await
 					.context("failed to resolve package")?
-					.1
+					.0
 					.pop_last()
 				else {
 					anyhow::bail!(
@@ -139,7 +139,7 @@ impl ExecuteCommand {
 
 				let entry = file
 					.entries
-					.remove(&v_id)
+					.remove(id.v_id())
 					.context("version id not present in index file")?;
 
 				let bin_path = entry
@@ -147,16 +147,14 @@ impl ExecuteCommand {
 					.bin_path()
 					.context("package has no binary export")?;
 
-				let id = Arc::new(PackageId::new(PackageNames::Pesde(name), v_id));
-
 				let fs = source
 					.download(
-						&pkg_ref,
+						&resolved.pkg_ref,
 						&DownloadOptions {
 							project: project.clone(),
 							reqwest: reqwest.clone(),
 							reporter: ().into(),
-							id: id.clone(),
+							version_id: Arc::new(id.v_id().clone()),
 						},
 					)
 					.await
