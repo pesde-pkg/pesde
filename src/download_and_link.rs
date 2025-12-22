@@ -272,7 +272,7 @@ impl Project {
 						continue;
 					}
 
-					node.resolved_dependencies
+					node.dependencies
 						.values()
 						.filter_map(|id| graph.get(id).map(|node| (id, node)))
 						.for_each(|x| queue.push_back(x));
@@ -296,7 +296,7 @@ impl Project {
 						async move {
 							return (
 								// force local packages to be updated
-								if node.resolved.pkg_ref.is_local() {
+								if id.pkg_ref().is_local() {
 									None
 								} else {
 									fs::metadata(&container_folder)
@@ -407,11 +407,10 @@ impl Project {
 			.map(|(id, (_, install_path))| (id.clone(), install_path.clone()))
 			.collect::<HashMap<_, _>>();
 
-		let (wally_graph_to_download, other_graph_to_download) = graph_to_download
-			.into_iter()
-			.partition::<HashMap<_, _>, _>(
-			|(_, (node, _))| node.resolved.pkg_ref.is_wally_package(),
-		);
+		let (wally_graph_to_download, other_graph_to_download) =
+			graph_to_download
+				.into_iter()
+				.partition::<HashMap<_, _>, _>(|(id, _)| id.pkg_ref().is_wally_package());
 
 		let mut graph = DependencyGraphWithTarget::new();
 
@@ -430,7 +429,7 @@ impl Project {
 						async move {
 							let target = source
 								.get_target(
-									&node.resolved.pkg_ref,
+									id.pkg_ref(),
 									&GetTargetOptions {
 										project,
 										path: install_path,
@@ -473,7 +472,7 @@ impl Project {
 
 			let aliases = graph
 				.values()
-				.flat_map(|node| node.node.resolved_dependencies.iter())
+				.flat_map(|node| node.node.dependencies.iter())
 				.filter_map(|(alias, id)| binary_packages.contains(id).then_some(alias.as_str()))
 				.chain(
 					graph

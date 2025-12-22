@@ -155,7 +155,7 @@ impl RunCommand {
 				.context("failed to refresh source")?;
 			let target = source
 				.get_target(
-					&node.resolved.pkg_ref,
+					id.pkg_ref(),
 					&GetTargetOptions {
 						project: project.clone(),
 						path: container_folder.as_path().into(),

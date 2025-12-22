@@ -194,7 +194,7 @@ impl InitCommand {
 			};
 
 			if let Some(scripts_pkg_name) = scripts_package {
-				let (id, resolved) = source
+				let (id, dependencies) = source
 					.resolve(
 						&PesdeDependencySpecifier {
 							name: scripts_pkg_name.clone(),
@@ -234,7 +234,7 @@ impl InitCommand {
 				field["version"] = toml_edit::value(format!("^{}", id.v_id().version()));
 				field["target"] = toml_edit::value(id.v_id().target().to_string());
 
-				for (alias, (spec, ty)) in resolved.dependencies {
+				for (alias, (spec, ty)) in dependencies {
 					if ty != DependencyType::Peer {
 						continue;
 					}

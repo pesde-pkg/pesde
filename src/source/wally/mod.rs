@@ -9,7 +9,7 @@ use crate::{
 		fs::{FsEntry, PackageFs, store_in_cas},
 		git_index::{GitBasedSource, read_file, root_tree},
 		ids::{PackageId, VersionId},
-		refs::{PackageRefs, ResolveRecord},
+		refs::PackageRefs,
 		traits::{
 			DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
 		},
@@ -143,7 +143,7 @@ impl PackageSource for WallyPackageSource {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+	) -> Result<ResolveResult, Self::ResolveError> {
 		let ResolveOptions {
 			project,
 			refreshed_sources,
@@ -218,25 +218,20 @@ impl PackageSource for WallyPackageSource {
 						errors::ResolveError::AllDependencies(specifier.to_string(), e)
 					})?;
 
-					let pkg_ref = WallyPackageRef {
-						name: manifest.package.name,
-					};
-
 					Ok((
 						PackageId::new(
 							PackageSources::Wally(WallyPackageSource {
 								repo_url: index_url.clone(),
 							}),
-							PackageRefs::Wally(pkg_ref.clone()),
+							PackageRefs::Wally(WallyPackageRef {
+								name: manifest.package.name,
+							}),
 							VersionId::new(
 								manifest.package.version,
 								manifest.package.realm.to_target(),
 							),
 						),
-						ResolveRecord {
-							pkg_ref,
-							dependencies,
-						},
+						dependencies,
 					))
 				})
 				.collect::<Result<_, errors::ResolveError>>()?,

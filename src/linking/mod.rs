@@ -1,6 +1,6 @@
 use crate::{
 	PACKAGES_CONTAINER_NAME, Project,
-	graph::{DependencyGraphNodeWithTarget, DependencyGraphWithTarget},
+	graph::{DependencyGraphNode, DependencyGraphNodeWithTarget, DependencyGraphWithTarget},
 	manifest::{Alias, Manifest},
 	source::{
 		fs::{cas_path, store_in_cas},
@@ -69,7 +69,7 @@ impl Project {
 						base_folder,
 						lib_file,
 						container_folder,
-						node.node.resolved.pkg_ref.structure_kind(),
+						package_id.pkg_ref().structure_kind(),
 						root_container_folder,
 						relative_container_folder,
 						manifest,
@@ -151,11 +151,10 @@ impl Project {
 						(container_folder, base_folder)
 					};
 
-					for (dep_alias, dep_id) in &node.node.resolved_dependencies {
+					for (dep_alias, dep_id) in &node.node.dependencies {
 						let dep_id = dep_id.clone();
 						let dep_alias = dep_alias.clone();
 						let dep_node = graph.get(&dep_id).cloned();
-						let node = node.clone();
 						let package_id = package_id.clone();
 						let node_container_folder = node_container_folder.clone();
 						let node_packages_folder = node_packages_folder.clone();
@@ -179,10 +178,7 @@ impl Project {
 									.target()
 									.packages_folder(dep_id.v_id().target()),
 							);
-							let linker_folder = node_container_folder.join(node.node.dependencies_dir(
-								package_id.v_id(),
-								dep_id.v_id().target(),
-							));
+							let linker_folder = node_container_folder.join(DependencyGraphNode::dependencies_dir(&package_id, dep_id.v_id().target()));
 
 							Ok(Some((
 								dep_node.clone(),

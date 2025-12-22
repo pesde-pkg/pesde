@@ -11,7 +11,7 @@ use fs_err::tokio as fs;
 use pesde::{
 	Project, RefreshedSources,
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
-	graph::DependencyGraph,
+	graph::{DependencyGraph, TypeGraph},
 	lockfile::Lockfile,
 	manifest::DependencyType,
 	source::{PackageSources, refs::PackageRefs, traits::RefreshOptions},
@@ -148,7 +148,7 @@ pub async fn install(
 
 			let old_graph = lockfile.map(|lockfile| lockfile.graph);
 
-			let graph = project
+			let (graph, type_graph) = project
 				.dependency_graph(
 					old_graph.as_ref().filter(|_| options.use_lockfile),
 					refreshed_sources.clone(),
@@ -157,16 +157,18 @@ pub async fn install(
 				.await
 				.context("failed to build dependency graph")?;
 
-			check_peers_satisfied(&graph);
+			if let Some(type_graph) = type_graph {
+				check_peers_satisfied(&type_graph);
+			}
 
 			#[expect(deprecated)]
 			let mut tasks = graph
-				.iter()
-				.filter_map(|(id, node)| {
+				.keys()
+				.filter_map(|id| {
 					let PackageSources::Pesde(source) = id.source() else {
 						return None;
 					};
-					let PackageRefs::Pesde(pkg_ref) = &node.resolved.pkg_ref else {
+					let PackageRefs::Pesde(pkg_ref) = id.pkg_ref() else {
 						return None;
 					};
 					let source = source.clone();
@@ -263,7 +265,7 @@ pub async fn install(
 							let refreshed_sources = refreshed_sources.clone();
 
 							async move {
-								let engines = match &node.node.resolved.pkg_ref {
+								let engines = match id.pkg_ref() {
 									PackageRefs::Pesde(pkg_ref) => {
 										let PackageSources::Pesde(source) = id.source() else {
 											return Ok((id, Default::default()));
@@ -521,22 +523,16 @@ pub fn print_package_diff(prefix: &str, old_graph: &DependencyGraph, new_graph: 
 	}
 }
 
-pub fn check_peers_satisfied(graph: &DependencyGraph) {
+pub fn check_peers_satisfied(graph: &TypeGraph) {
 	for (id, node) in graph {
-		let Some((alias, _, _)) = &node.direct else {
+		let Some(alias) = &node.direct else {
 			continue;
 		};
 
 		let mut queue = node
-			.resolved_dependencies
+			.dependencies
 			.iter()
-			.map(|(dep_alias, dep_id)| {
-				(
-					vec![(id, alias)],
-					(dep_id, dep_alias),
-					node.resolved.dependencies[dep_alias].1,
-				)
-			})
+			.map(|(dep_alias, (dep_id, dep_ty))| (vec![(id, alias)], (dep_id, dep_alias), *dep_ty))
 			.collect::<Vec<_>>();
 
 		while let Some((path, (dep_id, dep_alias), dep_ty)) = queue.pop() {
@@ -550,12 +546,7 @@ pub fn check_peers_satisfied(graph: &DependencyGraph) {
 					.take(2);
 
 				let satisfied = if iter.len() > 0 {
-					iter.any(|id| {
-						graph[id]
-							.resolved_dependencies
-							.values()
-							.any(|id| id == dep_id)
-					})
+					iter.any(|id| graph[id].dependencies.values().any(|(id, _)| id == dep_id))
 				} else {
 					graph.get(dep_id).is_some_and(|node| node.direct.is_some())
 				};
@@ -571,15 +562,15 @@ pub fn check_peers_satisfied(graph: &DependencyGraph) {
 				}
 			}
 
-			queue.extend(graph[dep_id].resolved_dependencies.iter().map(
-				|(inner_dep_alias, inner_dep_id)| {
+			queue.extend(graph[dep_id].dependencies.iter().map(
+				|(inner_dep_alias, (inner_dep_id, inner_dep_ty))| {
 					(
 						path.iter()
 							.copied()
 							.chain(std::iter::once((dep_id, dep_alias)))
 							.collect(),
 						(inner_dep_id, inner_dep_alias),
-						graph[dep_id].resolved.dependencies[inner_dep_alias].1,
+						*inner_dep_ty,
 					)
 				},
 			));

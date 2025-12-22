@@ -5,9 +5,7 @@ use crate::{
 		target::{Target, TargetKind},
 	},
 	source::{
-		ids::{PackageId, VersionId},
-		refs::{ResolveRecord, StructureKind},
-		specifiers::DependencySpecifiers,
+		ids::PackageId, refs::StructureKind, specifiers::DependencySpecifiers,
 		traits::PackageRef as _,
 	},
 };
@@ -25,21 +23,17 @@ pub struct DependencyGraphNode {
 	pub direct: Option<(Alias, DependencySpecifiers, DependencyType)>,
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub resolved_dependencies: BTreeMap<Alias, PackageId>,
-	/// The resolved package
-	#[serde(flatten)]
-	pub resolved: ResolveRecord,
+	pub dependencies: BTreeMap<Alias, PackageId>,
 }
 
 impl DependencyGraphNode {
 	pub(crate) fn dependencies_dir(
-		&self,
-		version_id: &VersionId,
+		package_id: &PackageId,
 		project_target: TargetKind,
 	) -> &'static str {
-		match self.resolved.pkg_ref.structure_kind() {
+		match package_id.pkg_ref().structure_kind() {
 			StructureKind::Wally => "..",
-			StructureKind::PesdeV1 => version_id.target().packages_folder(project_target),
+			StructureKind::PesdeV1 => package_id.v_id().target().packages_folder(project_target),
 		}
 	}
 
@@ -67,6 +61,18 @@ impl DependencyGraphNode {
 
 /// A graph of `DependencyGraphNode`s
 pub type DependencyGraph = Graph<DependencyGraphNode>;
+
+/// A dependency graph node for type information
+#[derive(Debug)]
+pub struct DependencyTypeGraphNode {
+	/// The alias of the dependency, if it is a direct dependency
+	pub direct: Option<Alias>,
+	/// The dependencies of the package
+	pub dependencies: BTreeMap<Alias, (PackageId, DependencyType)>,
+}
+
+/// A graph of `DependencyGraphTypesNode`s
+pub type TypeGraph = Graph<DependencyTypeGraphNode>;
 
 /// A dependency graph node with a `Target`
 #[derive(Debug, Clone)]

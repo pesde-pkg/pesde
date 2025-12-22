@@ -14,7 +14,7 @@ use crate::{
 		},
 		git_index::{GitBasedSource, read_file},
 		ids::PackageId,
-		refs::{PackageRefs, ResolveRecord, StructureKind},
+		refs::{PackageRefs, StructureKind},
 		specifiers::DependencySpecifiers,
 		traits::{
 			DownloadOptions, GetTargetOptions, PackageRef as _, RefreshOptions, ResolveOptions,
@@ -153,7 +153,7 @@ impl PackageSource for GitPackageSource {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+	) -> Result<ResolveResult, Self::ResolveError> {
 		let ResolveOptions { project, .. } = options;
 
 		let path = self.path(project);
@@ -292,22 +292,17 @@ impl PackageSource for GitPackageSource {
 		.await
 		.unwrap()?;
 
-		let pkg_ref = GitPackageRef {
-			tree_id,
-			structure_kind,
-		};
-
 		Ok((
 			BTreeMap::from([(
 				PackageId::new(
 					PackageSources::Git(self.clone()),
-					PackageRefs::Git(pkg_ref.clone()),
+					PackageRefs::Git(GitPackageRef {
+						tree_id,
+						structure_kind,
+					}),
 					version_id,
 				),
-				ResolveRecord {
-					pkg_ref,
-					dependencies,
-				},
+				dependencies,
 			)]),
 			BTreeSet::new(),
 		))

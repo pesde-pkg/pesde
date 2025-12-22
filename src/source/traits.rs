@@ -96,7 +96,7 @@ pub trait PackageSource: Debug {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> impl Future<Output = Result<ResolveResult<Self::Ref>, Self::ResolveError>> + Send;
+	) -> impl Future<Output = Result<ResolveResult, Self::ResolveError>> + Send;
 
 	/// Downloads a package
 	fn download<R: DownloadProgressReporter>(

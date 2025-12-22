@@ -136,7 +136,7 @@ impl Project {
 						Some(progress_reporter) => {
 							source
 								.download(
-									&node.resolved.pkg_ref,
+									package_id.pkg_ref(),
 									&DownloadOptions {
 										project: project.clone(),
 										reqwest,
@@ -149,7 +149,7 @@ impl Project {
 						None => {
 							source
 								.download(
-									&node.resolved.pkg_ref,
+									package_id.pkg_ref(),
 									&DownloadOptions {
 										project: project.clone(),
 										reqwest,

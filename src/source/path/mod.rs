@@ -8,7 +8,7 @@ use crate::{
 		fs::PackageFs,
 		ids::{PackageId, VersionId},
 		path::pkg_ref::PathPackageRef,
-		refs::{PackageRefs, ResolveRecord},
+		refs::PackageRefs,
 		specifiers::DependencySpecifiers,
 		traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
 	},
@@ -40,7 +40,7 @@ impl PackageSource for PathPackageSource {
 		&self,
 		specifier: &Self::Specifier,
 		_options: &ResolveOptions,
-	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+	) -> Result<ResolveResult, Self::ResolveError> {
 		// let ResolveOptions { project, .. } = options;
 
 		let manifest = deser_manifest(&specifier.path).await?;
@@ -93,24 +93,19 @@ impl PackageSource for PathPackageSource {
 			})
 			.collect::<Result<_, errors::ResolveError>>()?;
 
-		let pkg_ref = PathPackageRef {
-			path: specifier.path.clone(),
-		};
-
 		Ok((
 			BTreeMap::from([(
 				PackageId::new(
 					PackageSources::Path(*self),
-					PackageRefs::Path(pkg_ref.clone()),
+					PackageRefs::Path(PathPackageRef {
+						path: specifier.path.clone(),
+					}),
 					VersionId::new(
 						/* TODO */ Version::new(0, 1, 0),
 						manifest.target.kind(),
 					),
 				),
-				ResolveRecord {
-					pkg_ref,
-					dependencies,
-				},
+				dependencies,
 			)]),
 			BTreeSet::new(),
 		))

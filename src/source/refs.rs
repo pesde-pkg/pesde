@@ -1,12 +1,7 @@
 #![expect(deprecated)]
-use std::{collections::BTreeMap, fmt::Display, str::FromStr};
+use std::{fmt::Display, str::FromStr};
 
-use crate::{
-	manifest::{Alias, DependencyType},
-	ser_display_deser_fromstr,
-	source::{specifiers::DependencySpecifiers, traits::PackageRef},
-};
-use serde::{Deserialize, Serialize};
+use crate::{ser_display_deser_fromstr, source::traits::PackageRef};
 
 /// A type of structure
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -36,16 +31,6 @@ impl FromStr for StructureKind {
 			_ => Err(errors::StructureKindParseError::UnknownKind(s.to_string())),
 		}
 	}
-}
-
-/// A resolved package
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ResolveRecord<Ref: PackageRef = PackageRefs> {
-	/// The package ref
-	pub pkg_ref: Ref,
-	/// The dependencies of this package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 }
 
 /// All possible package references

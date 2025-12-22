@@ -30,7 +30,7 @@ use crate::{
 		fs::{FsEntry, PackageFs, store_in_cas},
 		git_index::{GitBasedSource, read_file, root_tree},
 		ids::PackageId,
-		refs::{PackageRefs, ResolveRecord},
+		refs::PackageRefs,
 		traits::{DownloadOptions, GetTargetOptions, RefreshOptions, ResolveOptions},
 	},
 	util::hash,
@@ -158,7 +158,7 @@ impl PackageSource for PesdePackageSource {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+	) -> Result<ResolveResult, Self::ResolveError> {
 		let ResolveOptions {
 			project,
 			target: project_target,
@@ -197,19 +197,15 @@ impl PackageSource for PesdePackageSource {
 					}
 				})
 				.map(|(v_id, entry)| {
-					let pkg_ref = PesdePackageRef {
-						name: specifier.name.clone(),
-					};
 					(
 						PackageId::new(
 							PackageSources::Pesde(self.clone()),
-							PackageRefs::Pesde(pkg_ref.clone()),
+							PackageRefs::Pesde(PesdePackageRef {
+								name: specifier.name.clone(),
+							}),
 							v_id,
 						),
-						ResolveRecord {
-							pkg_ref,
-							dependencies: entry.dependencies,
-						},
+						entry.dependencies,
 					)
 				})
 				.collect(),

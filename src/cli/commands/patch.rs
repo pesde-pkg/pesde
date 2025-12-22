@@ -31,9 +31,7 @@ impl PatchCommand {
 		};
 
 		let id = self.package.get(&graph)?;
-
-		let node = graph.get(&id).context("package not found in graph")?;
-		if node.resolved.pkg_ref.is_local() {
+		if id.pkg_ref().is_local() {
 			anyhow::bail!("cannot patch a local package")
 		}
 
@@ -48,7 +46,7 @@ impl PatchCommand {
 
 		source
 			.download(
-				&node.resolved.pkg_ref,
+				id.pkg_ref(),
 				&DownloadOptions {
 					project: project.clone(),
 					reqwest,

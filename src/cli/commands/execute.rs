@@ -19,6 +19,7 @@ use pesde::{
 	source::{
 		PackageSources,
 		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
+		refs::PackageRefs,
 		traits::{DownloadOptions, PackageSource as _, RefreshOptions, ResolveOptions},
 	},
 };
@@ -89,7 +90,7 @@ impl ExecuteCommand {
 					.context("failed to refresh source")?;
 
 				let version_req = self.package.1.unwrap_or(VersionReq::STAR);
-				let Some((id, resolved)) = source
+				let Some((id, _)) = source
 					.resolve(
 						&PesdeDependencySpecifier {
 							name: self.package.0.clone(),
@@ -147,9 +148,13 @@ impl ExecuteCommand {
 					.bin_path()
 					.context("package has no binary export")?;
 
+				let PackageRefs::Pesde(pkg_ref) = id.pkg_ref() else {
+					unreachable!()
+				};
+
 				let fs = source
 					.download(
-						&resolved.pkg_ref,
+						pkg_ref,
 						&DownloadOptions {
 							project: project.clone(),
 							reqwest: reqwest.clone(),
@@ -167,7 +172,8 @@ impl ExecuteCommand {
 				let graph = project
 					.dependency_graph(None, refreshed_sources.clone(), true)
 					.await
-					.context("failed to build dependency graph")?;
+					.context("failed to build dependency graph")?
+					.0;
 
 				multi_progress.suspend(|| {
 					eprintln!("{}", style(format!("using {}", style(id).bold())).dim());

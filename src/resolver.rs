@@ -1,3 +1,4 @@
+use crate::graph::{DependencyTypeGraphNode, TypeGraph};
 #[expect(deprecated)]
 use crate::{
 	GixUrl, Project, RefreshedSources,
@@ -61,7 +62,7 @@ impl Project {
 		refreshed_sources: RefreshedSources,
 		// used by `x` command - if true, specifier indices are expected to be URLs. will not do peer dependency checks
 		is_published_package: bool,
-	) -> Result<DependencyGraph, Box<errors::DependencyGraphError>> {
+	) -> Result<(DependencyGraph, Option<TypeGraph>), Box<errors::DependencyGraphError>> {
 		let manifest = self
 			.deser_manifest()
 			.await
@@ -102,7 +103,7 @@ impl Project {
 				let _guard = span.enter();
 
 				let mut queue = node
-					.resolved_dependencies
+					.dependencies
 					.iter()
 					.map(|(dep_alias, id)| (id, vec![alias.to_string(), dep_alias.to_string()]))
 					.collect::<VecDeque<_>>();
@@ -134,7 +135,7 @@ impl Project {
 						insert_node(&mut graph, dep_id, dep_node.clone(), false);
 
 						dep_node
-							.resolved_dependencies
+							.dependencies
 							.iter()
 							.map(|(alias, id)| {
 								(
@@ -166,12 +167,15 @@ impl Project {
 				)
 			})
 			.collect::<VecDeque<_>>();
+		let mut type_graph = None::<TypeGraph>;
 
 		let refresh_options = RefreshOptions {
 			project: self.clone(),
 		};
 
 		while let Some((specifier, ty, dependant, path, overridden, target)) = queue.pop_front() {
+			let type_graph = type_graph.get_or_insert_default();
+
 			async {
 				let alias = path.last().unwrap();
 				let depth = path.len() - 1;
@@ -284,11 +288,16 @@ impl Project {
 					graph
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in graph")
-						.resolved_dependencies
+						.dependencies
 						.insert(alias.clone(), package_id.clone());
+					type_graph
+						.get_mut(&dependant_id)
+						.expect("dependant package not found in type graph")
+						.dependencies
+						.insert(alias.clone(), (package_id.clone(), ty));
 				}
 
-				let resolved = resolved.remove(&package_id).unwrap();
+				let dependencies = resolved.remove(&package_id).unwrap();
 
 				if let Some(already_resolved) = graph.get_mut(&package_id) {
 					tracing::debug!("{package_id} already resolved");
@@ -302,14 +311,20 @@ impl Project {
 
 				let node = DependencyGraphNode {
 					direct: (depth == 0).then(|| (alias.clone(), specifier.clone(), ty)),
-					resolved: resolved.clone(),
-					resolved_dependencies: Default::default(),
+					dependencies: Default::default(),
 				};
 				insert_node(&mut graph, &package_id, node, depth == 0);
+				type_graph.insert(
+					package_id.clone(),
+					DependencyTypeGraphNode {
+						direct: (depth == 0).then(|| alias.clone()),
+						dependencies: Default::default(),
+					},
+				);
 
 				tracing::debug!("resolved {package_id} from new dependency graph");
 
-				for (dependency_alias, (dependency_spec, dependency_ty)) in resolved.dependencies {
+				for (dependency_alias, (dependency_spec, dependency_ty)) in dependencies {
 					if dependency_ty == DependencyType::Dev {
 						// dev dependencies of dependencies are to be ignored
 						continue;
@@ -370,7 +385,7 @@ impl Project {
 			.await?;
 		}
 
-		Ok(graph)
+		Ok((graph, type_graph))
 	}
 }
 

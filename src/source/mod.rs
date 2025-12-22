@@ -1,12 +1,15 @@
 #![expect(deprecated)]
 use crate::{
-	manifest::target::{Target, TargetKind},
+	manifest::{
+		Alias, DependencyType,
+		target::{Target, TargetKind},
+	},
 	reporters::DownloadProgressReporter,
 	ser_display_deser_fromstr,
 	source::{
 		fs::PackageFs,
 		ids::{PackageId, VersionId},
-		refs::{PackageRefs, ResolveRecord},
+		refs::PackageRefs,
 		specifiers::DependencySpecifiers,
 		traits::*,
 	},
@@ -49,8 +52,8 @@ pub const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 pub const IGNORED_DIRS: &[&str] = &[".git"];
 
 /// The result of resolving a package
-pub type ResolveResult<Ref> = (
-	BTreeMap<PackageId, ResolveRecord<Ref>>,
+pub type ResolveResult = (
+	BTreeMap<PackageId, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
 	BTreeSet<TargetKind>,
 );
 
@@ -129,96 +132,24 @@ impl PackageSource for PackageSources {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
+	) -> Result<ResolveResult, Self::ResolveError> {
 		match (self, specifier) {
-			(PackageSources::Pesde(source), DependencySpecifiers::Pesde(specifier)) => source
-				.resolve(specifier, options)
-				.await
-				.map(|(results, suggestions)| {
-					(
-						results
-							.into_iter()
-							.map(|(id, record)| {
-								(
-									id,
-									ResolveRecord {
-										pkg_ref: PackageRefs::Pesde(record.pkg_ref),
-										dependencies: record.dependencies,
-									},
-								)
-							})
-							.collect(),
-						suggestions,
-					)
-				})
-				.map_err(Into::into),
+			(PackageSources::Pesde(source), DependencySpecifiers::Pesde(specifier)) => {
+				source.resolve(specifier, options).await.map_err(Into::into)
+			}
 
 			#[cfg(feature = "wally-compat")]
-			(PackageSources::Wally(source), DependencySpecifiers::Wally(specifier)) => source
-				.resolve(specifier, options)
-				.await
-				.map(|(results, suggestions)| {
-					(
-						results
-							.into_iter()
-							.map(|(id, record)| {
-								(
-									id,
-									ResolveRecord {
-										pkg_ref: PackageRefs::Wally(record.pkg_ref),
-										dependencies: record.dependencies,
-									},
-								)
-							})
-							.collect(),
-						suggestions,
-					)
-				})
-				.map_err(Into::into),
+			(PackageSources::Wally(source), DependencySpecifiers::Wally(specifier)) => {
+				source.resolve(specifier, options).await.map_err(Into::into)
+			}
 
-			(PackageSources::Git(source), DependencySpecifiers::Git(specifier)) => source
-				.resolve(specifier, options)
-				.await
-				.map(|(results, suggestions)| {
-					(
-						results
-							.into_iter()
-							.map(|(id, record)| {
-								(
-									id,
-									ResolveRecord {
-										pkg_ref: PackageRefs::Git(record.pkg_ref),
-										dependencies: record.dependencies,
-									},
-								)
-							})
-							.collect(),
-						suggestions,
-					)
-				})
-				.map_err(Into::into),
+			(PackageSources::Git(source), DependencySpecifiers::Git(specifier)) => {
+				source.resolve(specifier, options).await.map_err(Into::into)
+			}
 
-			(PackageSources::Path(source), DependencySpecifiers::Path(specifier)) => source
-				.resolve(specifier, options)
-				.await
-				.map(|(results, suggestions)| {
-					(
-						results
-							.into_iter()
-							.map(|(id, record)| {
-								(
-									id,
-									ResolveRecord {
-										pkg_ref: PackageRefs::Path(record.pkg_ref),
-										dependencies: record.dependencies,
-									},
-								)
-							})
-							.collect(),
-						suggestions,
-					)
-				})
-				.map_err(Into::into),
+			(PackageSources::Path(source), DependencySpecifiers::Path(specifier)) => {
+				source.resolve(specifier, options).await.map_err(Into::into)
+			}
 
 			_ => Err(errors::ResolveError::Mismatch),
 		}
