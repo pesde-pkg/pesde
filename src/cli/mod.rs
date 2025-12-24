@@ -220,19 +220,13 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 			let s = format!("https://github.com/{s}");
 			let (repo, rev) = s.split_once('#').context("missing revision")?;
 
-			Ok(AnyPackageIdentifier::Url((
-				GixUrl::new(repo.try_into()?),
-				rev.to_string(),
-			)))
+			Ok(AnyPackageIdentifier::Url((repo.parse()?, rev.to_string())))
 		} else if let Some(rest) = s.strip_prefix("path:") {
 			Ok(AnyPackageIdentifier::Path(rest.into()))
 		} else if s.contains(':') {
 			let (url, rev) = s.split_once('#').context("missing revision")?;
 
-			Ok(AnyPackageIdentifier::Url((
-				GixUrl::new(url.try_into()?),
-				rev.to_string(),
-			)))
+			Ok(AnyPackageIdentifier::Url((url.parse()?, rev.to_string())))
 		} else {
 			Ok(AnyPackageIdentifier::PackageName(s.parse()?))
 		}
@@ -325,7 +319,7 @@ pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result
 	};
 
 	let index_url = match index {
-		Some(index) => index.try_into().ok().map(GixUrl::new),
+		Some(index) => index.parse().ok(),
 		None => match manifest {
 			Some(_) => None,
 			None => Some(read_config().await?.default_index),

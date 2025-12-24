@@ -21,7 +21,7 @@ pub struct CliConfig {
 impl Default for CliConfig {
 	fn default() -> Self {
 		Self {
-			default_index: GixUrl::new("https://github.com/pesde-pkg/index".try_into().unwrap()),
+			default_index: "github.com/pesde-pkg/index".parse().unwrap(),
 
 			tokens: Tokens::default(),
 
