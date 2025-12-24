@@ -25,7 +25,10 @@ use std::{
 	str::FromStr,
 	sync::Arc,
 };
-use tokio::io::AsyncReadExt as _;
+use tokio::{
+	io::AsyncReadExt as _,
+	sync::{OwnedRwLockReadGuard, RwLock},
+};
 use tracing::instrument;
 use wax::Pattern as _;
 
@@ -125,6 +128,7 @@ struct ProjectShared {
 #[derive(Debug, Clone)]
 pub struct Project {
 	shared: Arc<ProjectShared>,
+	manifest: Arc<RwLock<Option<Manifest>>>,
 }
 
 impl Project {
@@ -151,6 +155,7 @@ impl Project {
 				auth_config,
 			}
 			.into(),
+			manifest: Arc::new(RwLock::new(None)),
 		}
 	}
 
@@ -197,11 +202,25 @@ impl Project {
 		Ok(string)
 	}
 
-	// TODO: cache the manifest
 	/// Deserialize the manifest file
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
-	pub async fn deser_manifest(&self) -> Result<Manifest, errors::ManifestReadError> {
-		deser_manifest(self.package_dir()).await
+	pub async fn deser_manifest(
+		&self,
+	) -> Result<OwnedRwLockReadGuard<Option<Manifest>, Manifest>, errors::ManifestReadError> {
+		{
+			let manifest_guard = self.manifest.clone().read_owned().await;
+			if manifest_guard.is_some() {
+				return Ok(OwnedRwLockReadGuard::map(manifest_guard, |m| {
+					m.as_ref().unwrap()
+				}));
+			}
+		}
+		let mut manifest_guard = self.manifest.clone().write_owned().await;
+		let manifest = deser_manifest(self.package_dir()).await?;
+		*manifest_guard = Some(manifest);
+		Ok(OwnedRwLockReadGuard::map(manifest_guard.downgrade(), |m| {
+			m.as_ref().unwrap()
+		}))
 	}
 
 	/// Deserialize the manifest file of the workspace root
@@ -218,7 +237,8 @@ impl Project {
 
 	/// Write the manifest file
 	#[instrument(skip(self, manifest), level = "debug")]
-	pub async fn write_manifest<S: AsRef<[u8]>>(&self, manifest: S) -> Result<(), std::io::Error> {
+	pub async fn write_manifest(&self, manifest: impl AsRef<[u8]>) -> Result<(), std::io::Error> {
+		*self.manifest.write().await = None;
 		fs::write(
 			self.package_dir().join(MANIFEST_FILE_NAME),
 			manifest.as_ref(),

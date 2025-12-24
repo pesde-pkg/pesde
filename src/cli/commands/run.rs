@@ -174,8 +174,8 @@ impl RunCommand {
 			run(compatible_runtime(target.kind(), &engines)?, &path, &path).await;
 		}
 
-		if let Ok(mut manifest) = project.deser_manifest().await
-			&& let Some(script) = manifest.scripts.remove(&package_or_script)
+		if let Ok(manifest) = project.deser_manifest().await
+			&& let Some(script) = manifest.scripts.get(&package_or_script)
 		{
 			// let (runtime, script_path) =
 			// 	parse_script(script, &engines).context("failed to get script info")?;

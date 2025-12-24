@@ -341,8 +341,9 @@ pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result
 	manifest
 		.unwrap()
 		.indices
-		.remove(index_name)
+		.get(index_name)
 		.with_context(|| format!("index {index_name} not found in manifest"))
+		.cloned()
 }
 
 pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {

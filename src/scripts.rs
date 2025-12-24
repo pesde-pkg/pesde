@@ -50,11 +50,13 @@ pub async fn execute_script<H: ExecuteScriptHooks>(
 	hooks: &mut H,
 	args: Vec<std::ffi::OsString>,
 ) -> Result<bool, errors::ExecuteScriptError<H>> {
-	let Some(script) = project.deser_manifest().await?.scripts.remove(script_name) else {
-		return Ok(false);
+	let parsed_script = {
+		let manifest = project.deser_manifest().await?;
+		match manifest.scripts.get(script_name) {
+			Some(s) => croshet::parser::parse(s)?,
+			None => return Ok(false),
+		}
 	};
-
-	let parsed_script = croshet::parser::parse(&script)?;
 
 	let mut paths = vec![project.bin_dir().to_path_buf()];
 	if std::env::var("PESDE_IMPURE_SCRIPTS").is_ok_and(|s| !s.is_empty())

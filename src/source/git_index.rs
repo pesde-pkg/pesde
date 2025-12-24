@@ -18,7 +18,7 @@ pub trait GitBasedSource {
 	/// Refreshes the repository
 	async fn refresh(&self, options: &RefreshOptions) -> Result<(), errors::RefreshError> {
 		let path = self.path(&options.project);
-		let repo_url = self.repo_url().clone().into_url();
+		let repo_url = self.repo_url().clone();
 
 		if fs::metadata(&path).await.is_ok() {
 			spawn_blocking(move || {
@@ -68,7 +68,7 @@ pub trait GitBasedSource {
 		fs::create_dir_all(&path).await?;
 
 		spawn_blocking(move || {
-			gix::prepare_clone_bare(repo_url.clone(), &path)
+			gix::prepare_clone_bare(repo_url.clone().into_url(), &path)
 				.map_err(|e| errors::RefreshError::Clone(repo_url.to_string(), Box::new(e)))?
 				.fetch_only(gix::progress::Discard, &false.into())
 				.map_err(|e| errors::RefreshError::Fetch(repo_url.to_string(), Box::new(e)))

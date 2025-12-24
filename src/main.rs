@@ -221,7 +221,7 @@ async fn run() -> anyhow::Result<()> {
 		};
 
 		let req = match project.deser_manifest().await {
-			Ok(mut manifest) => manifest.engines.remove(&engine),
+			Ok(manifest) => manifest.engines.get(&engine).cloned(),
 			Err(pesde::errors::ManifestReadError::Io(e)) if e.kind() == io::ErrorKind::NotFound => {
 				None
 			}
