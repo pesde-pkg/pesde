@@ -57,9 +57,8 @@ pub async fn find_latest_version(
 		.await
 		.context("failed to resolve version")?
 		.into_keys()
-		.filter(|ver| include_pre || ver.pre.is_empty())
 		// since the iterator is from a BTreeMap it is already sorted
-		.next_back()
+		.rfind(|ver| include_pre || ver.pre.is_empty())
 		.context("no versions found")?;
 
 	Ok(version)
@@ -170,8 +169,7 @@ pub async fn get_or_download_engine(
 
 	let max_matching = installed_versions
 		.iter()
-		.filter(|v| version_matches(&req, v))
-		.next_back();
+		.rfind(|v| version_matches(&req, v));
 	if let Some(version) = max_matching {
 		return Ok((
 			path.join(version.to_string())
