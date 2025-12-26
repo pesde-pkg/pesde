@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Changed
 - Log `sourcemap_generator` result in trace logs by @daimond113
+- Use string requires for Roblox packages if not originating from Wally by @daimond113
 
 ### Fixed
 - Use `Command::exec` (or equivalents) to ensure processes get killed alongside us by @daimond113
