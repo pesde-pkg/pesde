@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-	manifest::{Manifest, target::TargetKind},
+	manifest::{target::TargetKind, Manifest},
 	source::refs::StructureKind,
 };
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
@@ -143,56 +143,53 @@ pub fn get_lib_require_path(
 		StructureKind::PesdeV1 => lib_file.to_path(path),
 	};
 
-	if matches!(target, TargetKind::Roblox | TargetKind::RobloxServer) {
-		let (prefix, path) = match target.try_into() {
-			Ok(place_kind) if !destination_dir.starts_with(root_container_dir) => (
-				project_manifest
-					.place
-					.get(&place_kind)
-					.ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
-						place_kind,
-					))?
-					.as_str(),
-				match structure_kind {
-					StructureKind::Wally => Cow::Borrowed(container_dir),
-					StructureKind::PesdeV1 => Cow::Owned(lib_file.to_path(container_dir)),
-				},
-			),
-			_ => ("script.Parent", Cow::Owned(path)),
-		};
+	let (prefix, path) = match target.try_into() {
+		Ok(place_kind) if !destination_dir.starts_with(root_container_dir) => (
+			project_manifest
+				.place
+				.get(&place_kind)
+				.ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
+					place_kind,
+				))?
+				.as_str(),
+			match structure_kind {
+				StructureKind::Wally => Cow::Borrowed(container_dir),
+				StructureKind::PesdeV1 => Cow::Owned(lib_file.to_path(container_dir)),
+			},
+		),
+		Ok(_) if structure_kind == StructureKind::Wally => ("script.Parent", Cow::Owned(path)),
+		_ => return Ok(luau_style_path(&path)),
+	};
 
-		let path = path
-			.components()
-			.zip(
-				path.components()
-					.skip(1)
-					.map(Some)
-					.chain(std::iter::repeat(None)),
-			)
-			.filter_map(|(component, next_comp)| match component {
-				Component::ParentDir => Some(".Parent".to_string()),
-				Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
-					let str = part.to_string_lossy();
+	let path = path
+		.components()
+		.zip(
+			path.components()
+				.skip(1)
+				.map(Some)
+				.chain(std::iter::repeat(None)),
+		)
+		.filter_map(|(component, next_comp)| match component {
+			Component::ParentDir => Some(".Parent".to_string()),
+			Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
+				let str = part.to_string_lossy();
 
-					Some(format!(
-						":FindFirstChild({:?})",
-						if next_comp.is_some() {
-							&str
-						} else {
-							str.strip_suffix(".luau")
-								.or_else(|| str.strip_suffix(".lua"))
-								.unwrap_or(&str)
-						}
-					))
-				}
-				_ => None,
-			})
-			.collect::<String>();
+				Some(format!(
+					":FindFirstChild({:?})",
+					if next_comp.is_some() {
+						&str
+					} else {
+						str.strip_suffix(".luau")
+							.or_else(|| str.strip_suffix(".lua"))
+							.unwrap_or(&str)
+					}
+				))
+			}
+			_ => None,
+		})
+		.collect::<String>();
 
-		return Ok(format!("{prefix}{path}"));
-	}
-
-	Ok(luau_style_path(&path))
+	Ok(format!("{prefix}{path}"))
 }
 
 /// Generate a linking module for a binary
