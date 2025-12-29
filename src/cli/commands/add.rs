@@ -191,12 +191,12 @@ impl AddCommand {
 			None => match &self.name {
 				AnyPackageIdentifier::PackageName(versioned) => versioned.0.name().to_string(),
 				AnyPackageIdentifier::Url((url, _)) => url
-					.inner()
+					.as_url()
 					.path
 					.to_string()
 					.split('/')
 					.next_back()
-					.map_or_else(|| url.inner().path.to_string(), ToString::to_string),
+					.map_or_else(|| url.as_url().path.to_string(), ToString::to_string),
 				AnyPackageIdentifier::Path(path) => path
 					.file_name()
 					.map(|s| s.to_string_lossy().to_string())

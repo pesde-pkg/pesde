@@ -518,9 +518,9 @@ impl GixUrl {
 		Self(url.into())
 	}
 
-	/// Returns the underlying [Arc] containing a [gix::Url]
+	/// Returns the underlying [gix::Url]
 	#[must_use]
-	pub fn inner(&self) -> &Arc<gix::Url> {
+	pub fn as_url(&self) -> &gix::Url {
 		&self.0
 	}
 }

@@ -65,7 +65,7 @@ pub trait GitBasedSource {
 		fs::create_dir_all(&path).await?;
 
 		spawn_blocking(move || {
-			gix::prepare_clone_bare::<gix::Url, Infallible>((**repo_url.inner()).clone(), &path)
+			gix::prepare_clone_bare::<gix::Url, Infallible>(repo_url.as_url().clone(), &path)
 				.map_err(|e| errors::RefreshError::Clone(repo_url.clone(), Box::new(e)))?
 				.fetch_only(gix::progress::Discard, &false.into())
 				.map_err(|e| errors::RefreshError::Fetch(repo_url.clone(), Box::new(e)))

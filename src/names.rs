@@ -23,7 +23,7 @@ impl Display for ErrorReason {
 /// A pesde package name
 #[deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct PackageName(Arc<str>, Arc<str>);
+pub struct PackageName(Arc<(Box<str>, Box<str>)>);
 
 ser_display_deser_fromstr!(PackageName);
 
@@ -64,13 +64,13 @@ impl FromStr for PackageName {
 			}
 		}
 
-		Ok(Self(scope.into(), name.into()))
+		Ok(Self(Arc::new((scope.into(), name.into()))))
 	}
 }
 
 impl Display for PackageName {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}/{}", self.0, self.1)
+		write!(f, "{}/{}", self.scope(), self.name())
 	}
 }
 
@@ -78,25 +78,25 @@ impl PackageName {
 	/// Returns the parts of the package name
 	#[must_use]
 	pub fn as_str(&self) -> (&str, &str) {
-		(&self.0, &self.1)
+		(self.scope(), self.name())
 	}
 
 	/// Returns the package name as a string suitable for use in the filesystem
 	#[must_use]
 	pub fn escaped(&self) -> String {
-		format!("{}+{}", self.0, self.1)
+		format!("{}+{}", self.scope(), self.name())
 	}
 
 	/// Returns the scope of the package name
 	#[must_use]
 	pub fn scope(&self) -> &str {
-		&self.0
+		&self.0.0
 	}
 
 	/// Returns the name of the package name
 	#[must_use]
 	pub fn name(&self) -> &str {
-		&self.1
+		&self.0.1
 	}
 }
 
@@ -201,7 +201,7 @@ pub mod wally {
 
 	/// A Wally package name
 	#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-	pub struct WallyPackageName(Arc<str>, Arc<str>);
+	pub struct WallyPackageName(Arc<(Box<str>, Box<str>)>);
 	ser_display_deser_fromstr!(WallyPackageName);
 
 	impl FromStr for WallyPackageName {
@@ -227,13 +227,13 @@ pub mod wally {
 				}
 			}
 
-			Ok(Self(scope.into(), name.into()))
+			Ok(Self(Arc::new((scope.into(), name.into()))))
 		}
 	}
 
 	impl Display for WallyPackageName {
 		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-			write!(f, "wally#{}/{}", self.0, self.1)
+			write!(f, "wally#{}/{}", self.scope(), self.name())
 		}
 	}
 
@@ -241,25 +241,25 @@ pub mod wally {
 		/// Returns the parts of the package name
 		#[must_use]
 		pub fn as_str(&self) -> (&str, &str) {
-			(&self.0, &self.1)
+			(self.scope(), self.name())
 		}
 
 		/// Returns the package name as a string suitable for use in the filesystem
 		#[must_use]
 		pub fn escaped(&self) -> String {
-			format!("wally#{}+{}", self.0, self.1)
+			format!("wally#{}+{}", self.scope(), self.name())
 		}
 
 		/// Returns the scope of the package name
 		#[must_use]
 		pub fn scope(&self) -> &str {
-			&self.0
+			&self.0.0
 		}
 
 		/// Returns the name of the package name
 		#[must_use]
 		pub fn name(&self) -> &str {
-			&self.1
+			&self.0.1
 		}
 	}
 }

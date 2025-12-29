@@ -88,7 +88,7 @@ impl PesdePackageSource {
 	}
 
 	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.inner().to_bstring().to_vec()
+		self.repo_url.as_url().to_bstring().to_vec()
 	}
 
 	/// Reads the config file
