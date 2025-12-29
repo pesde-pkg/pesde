@@ -97,7 +97,7 @@ impl WallyPackageSource {
 
 			match file {
 				Some(s) => serde_json::from_str(&s).map_err(Into::into),
-				None => Err(errors::ConfigError::Missing(Box::new(repo_url))),
+				None => Err(errors::ConfigError::Missing(repo_url)),
 			}
 		})
 		.await
@@ -439,7 +439,7 @@ pub mod errors {
 
 		/// The config file is missing
 		#[error("missing config file for index at {0}")]
-		Missing(Box<GixUrl>),
+		Missing(GixUrl),
 	}
 
 	/// Errors that can occur when downloading a package from a Wally package source
