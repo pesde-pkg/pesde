@@ -3,7 +3,7 @@
 use crate::{GixUrl, Project, source::traits::RefreshOptions};
 use fs_err::tokio as fs;
 use gix::remote::Direction;
-use std::fmt::Debug;
+use std::{convert::Infallible, fmt::Debug};
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 
@@ -36,16 +36,16 @@ pub trait GitBasedSource {
 					}
 				};
 
-				let connection = remote.connect(Direction::Fetch).map_err(|e| {
-					errors::RefreshError::Connect(repo_url.to_string(), Box::new(e))
-				})?;
+				let connection = remote
+					.connect(Direction::Fetch)
+					.map_err(|e| errors::RefreshError::Connect(repo_url.clone(), Box::new(e)))?;
 
 				let fetch =
 					match connection.prepare_fetch(gix::progress::Discard, Default::default()) {
 						Ok(fetch) => fetch,
 						Err(e) => {
 							return Err(errors::RefreshError::PrepareFetch(
-								repo_url.to_string(),
+								repo_url.clone(),
 								Box::new(e),
 							));
 						}
@@ -53,10 +53,7 @@ pub trait GitBasedSource {
 
 				match fetch.receive(gix::progress::Discard, &false.into()) {
 					Ok(_) => Ok(()),
-					Err(e) => Err(errors::RefreshError::Read(
-						repo_url.to_string(),
-						Box::new(e),
-					)),
+					Err(e) => Err(errors::RefreshError::Read(repo_url.clone(), Box::new(e))),
 				}
 			})
 			.await
@@ -68,10 +65,10 @@ pub trait GitBasedSource {
 		fs::create_dir_all(&path).await?;
 
 		spawn_blocking(move || {
-			gix::prepare_clone_bare(repo_url.clone().into_url(), &path)
-				.map_err(|e| errors::RefreshError::Clone(repo_url.to_string(), Box::new(e)))?
+			gix::prepare_clone_bare::<gix::Url, Infallible>((**repo_url.inner()).clone(), &path)
+				.map_err(|e| errors::RefreshError::Clone(repo_url.clone(), Box::new(e)))?
 				.fetch_only(gix::progress::Discard, &false.into())
-				.map_err(|e| errors::RefreshError::Fetch(repo_url.to_string(), Box::new(e)))
+				.map_err(|e| errors::RefreshError::Fetch(repo_url.clone(), Box::new(e)))
 		})
 		.await
 		.unwrap()
@@ -163,6 +160,8 @@ pub mod errors {
 
 	use thiserror::Error;
 
+	use crate::GixUrl;
+
 	/// Errors that can occur when refreshing a git-based package source
 	#[derive(Debug, Error)]
 	#[non_exhaustive]
@@ -185,23 +184,23 @@ pub mod errors {
 
 		/// Error connecting to remote repository
 		#[error("error connecting to remote repository at {0}")]
-		Connect(String, #[source] Box<gix::remote::connect::Error>),
+		Connect(GixUrl, #[source] Box<gix::remote::connect::Error>),
 
 		/// Error preparing fetch from remote repository
 		#[error("error preparing fetch from remote repository at {0}")]
-		PrepareFetch(String, #[source] Box<gix::remote::fetch::prepare::Error>),
+		PrepareFetch(GixUrl, #[source] Box<gix::remote::fetch::prepare::Error>),
 
 		/// Error reading from remote repository
 		#[error("error reading from remote repository at {0}")]
-		Read(String, #[source] Box<gix::remote::fetch::Error>),
+		Read(GixUrl, #[source] Box<gix::remote::fetch::Error>),
 
 		/// Error cloning repository
 		#[error("error cloning repository from {0}")]
-		Clone(String, #[source] Box<gix::clone::Error>),
+		Clone(GixUrl, #[source] Box<gix::clone::Error>),
 
 		/// Error fetching repository
 		#[error("error fetching repository from {0}")]
-		Fetch(String, #[source] Box<gix::clone::fetch::Error>),
+		Fetch(GixUrl, #[source] Box<gix::clone::fetch::Error>),
 	}
 
 	/// Errors that can occur when reading a git-based package source's tree

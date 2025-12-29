@@ -1,6 +1,6 @@
 #![expect(deprecated)]
 use crate::ser_display_deser_fromstr;
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, str::FromStr, sync::Arc};
 
 /// The invalid part of a package name
 #[derive(Debug)]
@@ -23,7 +23,7 @@ impl Display for ErrorReason {
 /// A pesde package name
 #[deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct PackageName(String, String);
+pub struct PackageName(Arc<str>, Arc<str>);
 
 ser_display_deser_fromstr!(PackageName);
 
@@ -64,7 +64,7 @@ impl FromStr for PackageName {
 			}
 		}
 
-		Ok(Self(scope.to_string(), name.to_string()))
+		Ok(Self(scope.into(), name.into()))
 	}
 }
 
@@ -192,7 +192,7 @@ impl FromStr for PackageNames {
 /// Wally package names
 #[cfg(feature = "wally-compat")]
 pub mod wally {
-	use std::{fmt::Display, str::FromStr};
+	use std::{fmt::Display, str::FromStr, sync::Arc};
 
 	use crate::{
 		names::{ErrorReason, errors},
@@ -201,7 +201,7 @@ pub mod wally {
 
 	/// A Wally package name
 	#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-	pub struct WallyPackageName(String, String);
+	pub struct WallyPackageName(Arc<str>, Arc<str>);
 	ser_display_deser_fromstr!(WallyPackageName);
 
 	impl FromStr for WallyPackageName {
@@ -227,7 +227,7 @@ pub mod wally {
 				}
 			}
 
-			Ok(Self(scope.to_string(), name.to_string()))
+			Ok(Self(scope.into(), name.into()))
 		}
 	}
 

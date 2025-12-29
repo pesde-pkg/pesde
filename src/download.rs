@@ -140,7 +140,7 @@ impl Project {
 									&DownloadOptions {
 										project: project.clone(),
 										reqwest,
-										version_id: Arc::new(package_id.v_id().clone()),
+										version_id: package_id.v_id(),
 										reporter: progress_reporter.into(),
 									},
 								)
@@ -153,7 +153,7 @@ impl Project {
 									&DownloadOptions {
 										project: project.clone(),
 										reqwest,
-										version_id: Arc::new(package_id.v_id().clone()),
+										version_id: package_id.v_id(),
 										reporter: ().into(),
 									},
 								)

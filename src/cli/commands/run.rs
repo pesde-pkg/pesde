@@ -159,7 +159,7 @@ impl RunCommand {
 					&GetTargetOptions {
 						project: project.clone(),
 						path: container_folder.as_path().into(),
-						version_id: Arc::new(id.v_id().clone()),
+						version_id: id.v_id(),
 						engines: engines.clone(),
 					},
 				)

@@ -117,7 +117,7 @@ pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
 
 #[instrument(skip_all, level = "debug")]
 pub(crate) async fn get_target(
-	options: &GetTargetOptions,
+	options: &GetTargetOptions<'_>,
 ) -> Result<Target, errors::GetTargetError> {
 	let GetTargetOptions { project, path, .. } = options;
 

@@ -245,7 +245,7 @@ impl Project {
 					.await
 					.map_err(|e| Box::new(e.into()))?;
 
-				let (mut resolved, suggestions) = source
+				let (source, pkg_ref, mut versions, suggestions) = source
 					.resolve(
 						&specifier,
 						&ResolveOptions {
@@ -258,12 +258,25 @@ impl Project {
 					.await
 					.map_err(|e| Box::new(e.into()))?;
 
-				let Some(package_id) = graph
+				let Some((package_id, dependencies)) = graph
 					.keys()
-					.filter(|id| resolved.contains_key(id))
+					.filter(|package_id| {
+						*package_id.source() == source
+							&& *package_id.pkg_ref() == pkg_ref
+							&& versions.contains_key(package_id.v_id())
+					})
 					.max()
-					.or_else(|| resolved.last_key_value().map(|(id, _)| id))
-					.cloned()
+					.map(|package_id| {
+						(
+							package_id.clone(),
+							versions.remove(package_id.v_id()).unwrap(),
+						)
+					})
+					.or_else(|| {
+						versions.pop_last().map(|(v_id, dependencies)| {
+							(PackageId::new(source, pkg_ref, v_id), dependencies)
+						})
+					})
 				else {
 					return Err(Box::new(errors::DependencyGraphError::NoMatchingVersion(
 						format!(
@@ -296,8 +309,6 @@ impl Project {
 						.dependencies
 						.insert(alias.clone(), (package_id.clone(), ty));
 				}
-
-				let dependencies = resolved.remove(&package_id).unwrap();
 
 				if let Some(already_resolved) = graph.get_mut(&package_id) {
 					tracing::debug!("{package_id} already resolved");

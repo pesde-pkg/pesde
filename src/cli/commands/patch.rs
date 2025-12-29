@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::cli::{
 	VersionedPackageName,
 	style::{CLI_STYLE, INFO_STYLE, WARN_PREFIX},
@@ -51,7 +49,7 @@ impl PatchCommand {
 					project: project.clone(),
 					reqwest,
 					reporter: ().into(),
-					version_id: Arc::new(id.v_id().clone()),
+					version_id: id.v_id(),
 				},
 			)
 			.await?

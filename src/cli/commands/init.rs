@@ -194,7 +194,7 @@ impl InitCommand {
 			};
 
 			if let Some(scripts_pkg_name) = scripts_package {
-				let (id, dependencies) = source
+				let (v_id, dependencies) = source
 					.resolve(
 						&PesdeDependencySpecifier {
 							name: scripts_pkg_name.clone(),
@@ -211,7 +211,7 @@ impl InitCommand {
 					)
 					.await
 					.context("failed to resolve scripts package")?
-					.0
+					.2
 					.pop_last()
 					.context("scripts package not found")?;
 
@@ -223,7 +223,7 @@ impl InitCommand {
 
 				let entry = file
 					.entries
-					.remove(id.v_id())
+					.remove(&v_id)
 					.context("failed to remove scripts package entry")?;
 
 				let dev_deps = manifest["dev_dependencies"]
@@ -231,8 +231,8 @@ impl InitCommand {
 
 				let field = &mut dev_deps["scripts"];
 				field["name"] = toml_edit::value(scripts_pkg_name.to_string());
-				field["version"] = toml_edit::value(format!("^{}", id.v_id().version()));
-				field["target"] = toml_edit::value(id.v_id().target().to_string());
+				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
+				field["target"] = toml_edit::value(v_id.target().to_string());
 
 				for (alias, (spec, ty)) in dependencies {
 					if ty != DependencyType::Peer {
@@ -246,11 +246,8 @@ impl InitCommand {
 					let field = &mut dev_deps[alias.as_str()];
 					field["name"] = toml_edit::value(spec.name.to_string());
 					field["version"] = toml_edit::value(spec.version.to_string());
-					field["target"] = toml_edit::value(
-						spec.target
-							.unwrap_or_else(|| id.v_id().target())
-							.to_string(),
-					);
+					field["target"] =
+						toml_edit::value(spec.target.unwrap_or(v_id.target()).to_string());
 				}
 
 				if !entry.engines.is_empty() {

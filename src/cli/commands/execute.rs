@@ -18,6 +18,7 @@ use pesde::{
 	names::PackageName,
 	source::{
 		PackageSources,
+		ids::PackageId,
 		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
 		refs::PackageRefs,
 		traits::{DownloadOptions, PackageSource as _, RefreshOptions, ResolveOptions},
@@ -28,7 +29,6 @@ use std::{
 	env::current_dir,
 	ffi::OsString,
 	io::{Stderr, Write as _},
-	sync::Arc,
 };
 
 #[derive(Debug, Args)]
@@ -90,7 +90,7 @@ impl ExecuteCommand {
 					.context("failed to refresh source")?;
 
 				let version_req = self.package.1.unwrap_or(VersionReq::STAR);
-				let Some((id, _)) = source
+				let (pkg_source, pkg_ref, mut versions, _) = source
 					.resolve(
 						&PesdeDependencySpecifier {
 							name: self.package.0.clone(),
@@ -106,10 +106,8 @@ impl ExecuteCommand {
 						},
 					)
 					.await
-					.context("failed to resolve package")?
-					.0
-					.pop_last()
-				else {
+					.context("failed to resolve package")?;
+				let Some((v_id, _)) = versions.pop_last() else {
 					anyhow::bail!(
 						"no compatible package could be found for {}@{version_req}",
 						self.package.0,
@@ -131,16 +129,15 @@ impl ExecuteCommand {
 					project.auth_config().clone(),
 				);
 
-				let name = self.package.0.clone();
 				let mut file = source
-					.read_index_file(&name, &project)
+					.read_index_file(&self.package.0, &project)
 					.await
 					.context("failed to read package index file")?
 					.context("package doesn't exist on the index")?;
 
 				let entry = file
 					.entries
-					.remove(id.v_id())
+					.remove(&v_id)
 					.context("version id not present in index file")?;
 
 				let bin_path = entry
@@ -148,18 +145,18 @@ impl ExecuteCommand {
 					.bin_path()
 					.context("package has no binary export")?;
 
-				let PackageRefs::Pesde(pkg_ref) = id.pkg_ref() else {
+				let PackageRefs::Pesde(pesde_ref) = &pkg_ref else {
 					unreachable!()
 				};
 
 				let fs = source
 					.download(
-						pkg_ref,
+						pesde_ref,
 						&DownloadOptions {
 							project: project.clone(),
 							reqwest: reqwest.clone(),
 							reporter: ().into(),
-							version_id: Arc::new(id.v_id().clone()),
+							version_id: &v_id,
 						},
 					)
 					.await
@@ -175,6 +172,7 @@ impl ExecuteCommand {
 					.context("failed to build dependency graph")?
 					.0;
 
+				let id = PackageId::new(pkg_source, pkg_ref, v_id);
 				multi_progress.suspend(|| {
 					eprintln!("{}", style(format!("using {}", style(id).bold())).dim());
 				});

@@ -18,6 +18,7 @@ use std::{
 	fmt::Display,
 	hash::Hash,
 	str::FromStr,
+	sync::Arc,
 };
 use tracing::instrument;
 
@@ -87,7 +88,7 @@ pub struct Manifest {
 /// An alias of a dependency
 /// Equality checks (Ord, PartialOrd, PartialEq, Eq, Hash) are case-insensitive
 #[derive(Debug, Clone)]
-pub struct Alias(String);
+pub struct Alias(Arc<str>);
 ser_display_deser_fromstr!(Alias);
 
 impl Ord for Alias {
@@ -161,7 +162,7 @@ impl FromStr for Alias {
 			return Err(errors::AliasFromStr::EngineName(s.to_string()));
 		}
 
-		Ok(Self(s.to_string()))
+		Ok(Self(s.into()))
 	}
 }
 

@@ -41,6 +41,6 @@ impl DependencySpecifier for GitDependencySpecifier {}
 
 impl Display for GitDependencySpecifier {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}{}", self.repo.as_url(), self.version_specifier)
+		write!(f, "{}{}", self.repo, self.version_specifier)
 	}
 }

@@ -117,11 +117,11 @@ impl PackageId {
 
 impl Display for PackageId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let pkg_ref = match self.pkg_ref() {
-			PackageRefs::Pesde(pkg_ref) => pkg_ref.to_string(),
-			PackageRefs::Wally(pkg_ref) => pkg_ref.to_string(),
-			PackageRefs::Git(pkg_ref) => pkg_ref.to_string(),
-			PackageRefs::Path(pkg_ref) => pkg_ref.to_string(),
+		let pkg_ref: &dyn Display = match self.pkg_ref() {
+			PackageRefs::Pesde(pkg_ref) => pkg_ref,
+			PackageRefs::Wally(pkg_ref) => pkg_ref,
+			PackageRefs::Git(pkg_ref) => pkg_ref,
+			PackageRefs::Path(pkg_ref) => pkg_ref,
 		};
 
 		write!(f, "{}|{pkg_ref}|{}", self.source(), self.v_id())

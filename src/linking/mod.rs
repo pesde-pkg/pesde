@@ -181,7 +181,7 @@ impl Project {
 							let linker_folder = node_container_folder.join(DependencyGraphNode::dependencies_dir(&package_id, dep_id.v_id().target()));
 
 							Ok(Some((
-								dep_node.clone(),
+								dep_node,
 								dep_id,
 								dep_alias,
 								create_and_canonicalize(base_folder).await?,

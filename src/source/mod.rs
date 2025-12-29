@@ -53,7 +53,9 @@ pub const IGNORED_DIRS: &[&str] = &[".git"];
 
 /// The result of resolving a package
 pub type ResolveResult = (
-	BTreeMap<PackageId, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
+	PackageSources,
+	PackageRefs,
+	BTreeMap<VersionId, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
 	BTreeSet<TargetKind>,
 );
 
@@ -158,7 +160,7 @@ impl PackageSource for PackageSources {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		pkg_ref: &Self::Ref,
-		options: &DownloadOptions<R>,
+		options: &DownloadOptions<'_, R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		match (self, pkg_ref) {
 			(PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => {
@@ -185,7 +187,7 @@ impl PackageSource for PackageSources {
 	async fn get_target(
 		&self,
 		pkg_ref: &Self::Ref,
-		options: &GetTargetOptions,
+		options: &GetTargetOptions<'_>,
 	) -> Result<Target, Self::GetTargetError> {
 		match (self, pkg_ref) {
 			(PackageSources::Pesde(source), PackageRefs::Pesde(pkg_ref)) => source

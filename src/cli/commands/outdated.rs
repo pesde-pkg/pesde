@@ -56,10 +56,9 @@ impl OutdatedCommand {
 						return Ok(None);
 					}
 
-					let source = id.source().clone();
 					refreshed_sources
 						.refresh(
-							&source,
+							id.source(),
 							&RefreshOptions {
 								project: project.clone(),
 							},
@@ -80,7 +79,8 @@ impl OutdatedCommand {
 						}
 					}
 
-					let new_id = source
+					let new_id = id
+						.source()
 						.resolve(
 							&specifier,
 							&ResolveOptions {
@@ -92,9 +92,9 @@ impl OutdatedCommand {
 						)
 						.await
 						.context("failed to resolve package versions")?
-						.0
+						.2
 						.pop_last()
-						.map(|(id, _)| id.v_id().clone())
+						.map(|(v_id, _)| v_id)
 						.with_context(|| format!("no versions of {specifier} found"))?;
 
 					Ok(Some((alias, id.v_id().clone(), new_id))

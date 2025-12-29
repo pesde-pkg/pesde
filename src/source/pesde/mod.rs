@@ -29,7 +29,6 @@ use crate::{
 		ResolveResult, VersionId,
 		fs::{FsEntry, PackageFs, store_in_cas},
 		git_index::{GitBasedSource, read_file, root_tree},
-		ids::PackageId,
 		refs::PackageRefs,
 		traits::{DownloadOptions, GetTargetOptions, RefreshOptions, ResolveOptions},
 	},
@@ -89,13 +88,13 @@ impl PesdePackageSource {
 	}
 
 	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.as_url().to_bstring().to_vec()
+		self.repo_url.inner().to_bstring().to_vec()
 	}
 
 	/// Reads the config file
 	#[instrument(skip_all, ret(level = "trace"), level = "debug")]
 	pub async fn config(&self, project: &Project) -> Result<IndexConfig, errors::ConfigError> {
-		let repo_url = self.repo_url.clone().into_url();
+		let repo_url = self.repo_url.clone();
 		let path = self.path(project);
 
 		spawn_blocking(move || {
@@ -105,7 +104,7 @@ impl PesdePackageSource {
 
 			match file {
 				Some(s) => toml::from_str(&s).map_err(Into::into),
-				None => Err(errors::ConfigError::Missing(Box::new(repo_url))),
+				None => Err(errors::ConfigError::Missing(repo_url)),
 			}
 		})
 		.await
@@ -169,7 +168,7 @@ impl PackageSource for PesdePackageSource {
 		let Some(IndexFile { entries, .. }) =
 			self.read_index_file(&specifier.name, project).await?
 		else {
-			return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
+			return Err(errors::ResolveError::NotFound(specifier.name.clone()));
 		};
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
@@ -184,6 +183,10 @@ impl PackageSource for PesdePackageSource {
 		let specifier_target = specifier.target.unwrap_or(*project_target);
 
 		Ok((
+			PackageSources::Pesde(self.clone()),
+			PackageRefs::Pesde(PesdePackageRef {
+				name: specifier.name.clone(),
+			}),
 			entries
 				.into_iter()
 				.filter(|(_, entry)| !entry.yanked)
@@ -196,18 +199,7 @@ impl PackageSource for PesdePackageSource {
 						specifier_target == v_id.target()
 					}
 				})
-				.map(|(v_id, entry)| {
-					(
-						PackageId::new(
-							PackageSources::Pesde(self.clone()),
-							PackageRefs::Pesde(PesdePackageRef {
-								name: specifier.name.clone(),
-							}),
-							v_id,
-						),
-						entry.dependencies,
-					)
-				})
+				.map(|(v_id, entry)| (v_id, entry.dependencies))
 				.collect(),
 			suggestions,
 		))
@@ -217,7 +209,7 @@ impl PackageSource for PesdePackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		pkg_ref: &Self::Ref,
-		options: &DownloadOptions<R>,
+		options: &DownloadOptions<'_, R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let DownloadOptions {
 			project,
@@ -332,18 +324,18 @@ impl PackageSource for PesdePackageSource {
 	async fn get_target(
 		&self,
 		pkg_ref: &Self::Ref,
-		options: &GetTargetOptions,
+		options: &GetTargetOptions<'_>,
 	) -> Result<Target, Self::GetTargetError> {
 		let Some(IndexFile { mut entries, .. }) = self
 			.read_index_file(&pkg_ref.name, &options.project)
 			.await?
 		else {
-			return Err(errors::GetTargetError::NotFound(pkg_ref.name.to_string()));
+			return Err(errors::GetTargetError::NotFound(pkg_ref.name.clone()));
 		};
 
 		let entry = entries
-			.remove(&options.version_id)
-			.ok_or_else(|| errors::GetTargetError::NotFound(pkg_ref.name.to_string()))?;
+			.remove(options.version_id)
+			.ok_or_else(|| errors::GetTargetError::NotFound(pkg_ref.name.clone()))?;
 
 		Ok(entry.target)
 	}
@@ -501,7 +493,11 @@ pub struct IndexFile {
 pub mod errors {
 	use thiserror::Error;
 
-	use crate::source::git_index::errors::{ReadFile, TreeError};
+	use crate::{
+		GixUrl,
+		names::PackageName,
+		source::git_index::errors::{ReadFile, TreeError},
+	};
 
 	/// Errors that can occur when reading an index file of a pesde package source
 	#[derive(Debug, Error)]
@@ -529,8 +525,8 @@ pub mod errors {
 	#[non_exhaustive]
 	pub enum ResolveError {
 		/// Package not found in index
-		#[error("package {0} not found")]
-		NotFound(String),
+		#[error("package `{0}` not found")]
+		NotFound(PackageName),
 
 		/// Error reading index file
 		#[error("error reading index file")]
@@ -559,7 +555,7 @@ pub mod errors {
 
 		/// The config file is missing
 		#[error("missing config file for index at {0}")]
-		Missing(Box<gix::Url>),
+		Missing(GixUrl),
 	}
 
 	/// Errors that can occur when downloading a package from a pesde package source
@@ -609,6 +605,6 @@ pub mod errors {
 
 		/// Package not found in index
 		#[error("package `{0}` not found in index")]
-		NotFound(String),
+		NotFound(PackageName),
 	}
 }

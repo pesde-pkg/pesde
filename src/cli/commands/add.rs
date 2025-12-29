@@ -139,7 +139,7 @@ impl AddCommand {
 			.await
 			.context("failed to refresh package source")?;
 
-		let (mut versions, suggestions) = source
+		let (_, _, mut versions, suggestions) = source
 			.resolve(
 				&specifier,
 				&ResolveOptions {
@@ -152,7 +152,7 @@ impl AddCommand {
 			.await
 			.context("failed to resolve package")?;
 
-		let Some((package_id, _)) = versions.pop_last() else {
+		let Some((v_id, _)) = versions.pop_last() else {
 			anyhow::bail!(
 				"no matching versions found for package{}",
 				if suggestions.is_empty() {
@@ -191,12 +191,12 @@ impl AddCommand {
 			None => match &self.name {
 				AnyPackageIdentifier::PackageName(versioned) => versioned.0.name().to_string(),
 				AnyPackageIdentifier::Url((url, _)) => url
-					.as_url()
+					.inner()
 					.path
 					.to_string()
 					.split('/')
 					.next_back()
-					.map_or_else(|| url.as_url().path.to_string(), ToString::to_string),
+					.map_or_else(|| url.inner().path.to_string(), ToString::to_string),
 				AnyPackageIdentifier::Path(path) => path
 					.file_name()
 					.map(|s| s.to_string_lossy().to_string())
@@ -213,10 +213,10 @@ impl AddCommand {
 			#[expect(deprecated)]
 			DependencySpecifiers::Pesde(spec) => {
 				field["name"] = toml_edit::value(spec.name.to_string());
-				field["version"] = toml_edit::value(format!("^{}", package_id.v_id().version()));
+				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
 
-				if package_id.v_id().target() != project_target {
-					field["target"] = toml_edit::value(package_id.v_id().target().to_string());
+				if v_id.target() != project_target {
+					field["target"] = toml_edit::value(v_id.target().to_string());
 				}
 
 				if spec.index != DEFAULT_INDEX_NAME {
@@ -226,8 +226,8 @@ impl AddCommand {
 				println!(
 					"added {}@{} {} to {dependency_key}",
 					spec.name,
-					package_id.v_id().version(),
-					package_id.v_id().target()
+					v_id.version(),
+					v_id.target()
 				);
 			}
 			#[cfg(feature = "wally-compat")]
@@ -235,7 +235,7 @@ impl AddCommand {
 				let name_str = spec.name.to_string();
 				let name_str = name_str.trim_start_matches("wally#");
 				field["wally"] = toml_edit::value(name_str);
-				field["version"] = toml_edit::value(format!("^{}", package_id.v_id().version()));
+				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
 
 				if spec.index != DEFAULT_INDEX_NAME {
 					field["index"] = toml_edit::value(spec.index);
@@ -243,7 +243,7 @@ impl AddCommand {
 
 				println!(
 					"added wally {name_str}@{} to {dependency_key}",
-					package_id.v_id().version()
+					v_id.version()
 				);
 			}
 			DependencySpecifiers::Git(spec) => {

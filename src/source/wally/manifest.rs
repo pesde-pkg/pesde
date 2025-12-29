@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use crate::{
 	manifest::{Alias, DependencyType, errors, target::TargetKind},
-	names::wally::WallyPackageName,
 	source::{specifiers::DependencySpecifiers, wally::specifier::WallyDependencySpecifier},
 };
 use semver::{Version, VersionReq};
@@ -29,7 +28,6 @@ impl Realm {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct WallyPackage {
-	pub name: WallyPackageName,
 	pub version: Version,
 	pub registry: url::Url,
 	pub realm: Realm,
@@ -75,25 +73,24 @@ impl WallyManifest {
 	/// Get all dependencies from the manifest
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
 	pub fn all_dependencies(
-		&self,
+		&mut self,
 	) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::AllDependenciesError>
 	{
 		let mut all_deps = BTreeMap::new();
 
 		for (deps, ty) in [
-			(&self.dependencies, DependencyType::Standard),
-			(&self.server_dependencies, DependencyType::Standard),
-			(&self.dev_dependencies, DependencyType::Dev),
+			(&mut self.dependencies, DependencyType::Standard),
+			(&mut self.server_dependencies, DependencyType::Standard),
+			(&mut self.dev_dependencies, DependencyType::Dev),
 		] {
-			for (alias, spec) in deps {
-				let mut spec = spec.clone();
+			while let Some((alias, mut spec)) = deps.pop_first() {
 				spec.index = self.package.registry.to_string();
 
 				if all_deps
 					.insert(alias.clone(), (DependencySpecifiers::Wally(spec), ty))
 					.is_some()
 				{
-					return Err(errors::AllDependenciesError::AliasConflict(alias.clone()));
+					return Err(errors::AllDependenciesError::AliasConflict(alias));
 				}
 			}
 		}

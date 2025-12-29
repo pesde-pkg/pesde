@@ -6,7 +6,7 @@ use crate::{
 	source::{
 		PackageSources, ResolveResult,
 		fs::PackageFs,
-		ids::{PackageId, VersionId},
+		ids::VersionId,
 		path::pkg_ref::PathPackageRef,
 		refs::PackageRefs,
 		specifiers::DependencySpecifiers,
@@ -94,16 +94,14 @@ impl PackageSource for PathPackageSource {
 			.collect::<Result<_, errors::ResolveError>>()?;
 
 		Ok((
+			PackageSources::Path(*self),
+			PackageRefs::Path(PathPackageRef {
+				path: specifier.path.clone(),
+			}),
 			BTreeMap::from([(
-				PackageId::new(
-					PackageSources::Path(*self),
-					PackageRefs::Path(PathPackageRef {
-						path: specifier.path.clone(),
-					}),
-					VersionId::new(
-						/* TODO */ Version::new(0, 1, 0),
-						manifest.target.kind(),
-					),
+				VersionId::new(
+					/* TODO */ Version::new(0, 1, 0),
+					manifest.target.kind(),
 				),
 				dependencies,
 			)]),
@@ -115,7 +113,7 @@ impl PackageSource for PathPackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		pkg_ref: &Self::Ref,
-		options: &DownloadOptions<R>,
+		options: &DownloadOptions<'_, R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let DownloadOptions { reporter, .. } = options;
 		let manifest = deser_manifest(&pkg_ref.path).await?;
@@ -132,7 +130,7 @@ impl PackageSource for PathPackageSource {
 	async fn get_target(
 		&self,
 		pkg_ref: &Self::Ref,
-		_options: &GetTargetOptions,
+		_options: &GetTargetOptions<'_>,
 	) -> Result<Target, Self::GetTargetError> {
 		let manifest = deser_manifest(&pkg_ref.path).await?;
 

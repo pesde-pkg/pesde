@@ -433,7 +433,7 @@ impl Project {
 									&GetTargetOptions {
 										project,
 										path: install_path,
-										version_id: Arc::new(id.v_id().clone()),
+										version_id: id.v_id(),
 										engines,
 									},
 								)

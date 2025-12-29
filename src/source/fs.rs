@@ -119,7 +119,7 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin, P: AsRef<Path>
 }
 
 async fn package_fs_cas(
-	entries: BTreeMap<RelativePathBuf, FsEntry>,
+	entries: &BTreeMap<RelativePathBuf, FsEntry>,
 	destination: &Path,
 	cas_dir_path: &Path,
 	link: bool,
@@ -242,13 +242,7 @@ impl PackageFs {
 	) -> std::io::Result<()> {
 		match self {
 			PackageFs::Cas(entries) => {
-				package_fs_cas(
-					entries.clone(),
-					destination.as_ref(),
-					cas_path.as_ref(),
-					link,
-				)
-				.await
+				package_fs_cas(entries, destination.as_ref(), cas_path.as_ref(), link).await
 			}
 			PackageFs::Copy(src, target) => {
 				package_fs_copy(src, *target, destination.as_ref()).await

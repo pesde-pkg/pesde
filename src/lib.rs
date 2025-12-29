@@ -496,7 +496,7 @@ pub(crate) fn all_packages_dirs() -> HashSet<&'static str> {
 
 /// A git repo URL
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GixUrl(gix::Url);
+pub struct GixUrl(Arc<gix::Url>);
 ser_display_deser_fromstr!(GixUrl);
 
 impl GixUrl {
@@ -515,19 +515,13 @@ impl GixUrl {
 			url.path.truncate(len - b".git".len());
 		}
 		url.scheme = gix::url::Scheme::Https;
-		Self(url)
+		Self(url.into())
 	}
 
-	/// Returns the underlying [gix::Url] reference
+	/// Returns the underlying [Arc] containing a [gix::Url]
 	#[must_use]
-	pub fn as_url(&self) -> &gix::Url {
+	pub fn inner(&self) -> &Arc<gix::Url> {
 		&self.0
-	}
-
-	/// Unwraps into the underlying [gix::Url]
-	#[must_use]
-	pub fn into_url(self) -> gix::Url {
-		self.0
 	}
 }
 

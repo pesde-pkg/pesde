@@ -8,7 +8,7 @@ use crate::{
 		IGNORED_DIRS, IGNORED_FILES, PackageSources, ResolveResult,
 		fs::{FsEntry, PackageFs, store_in_cas},
 		git_index::{GitBasedSource, read_file, root_tree},
-		ids::{PackageId, VersionId},
+		ids::VersionId,
 		refs::PackageRefs,
 		traits::{
 			DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
@@ -81,13 +81,13 @@ impl WallyPackageSource {
 	}
 
 	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.as_url().to_bstring().to_vec()
+		self.repo_url.inner().to_bstring().to_vec()
 	}
 
 	/// Reads the config file
 	#[instrument(skip_all, ret(level = "trace"), level = "debug")]
 	pub async fn config(&self, project: &Project) -> Result<WallyIndexConfig, errors::ConfigError> {
-		let repo_url = self.repo_url.clone().into_url();
+		let repo_url = self.repo_url.clone();
 		let path = self.path(project);
 
 		spawn_blocking(move || {
@@ -118,7 +118,7 @@ impl WallyPackageSource {
 			let (scope, name) = pkg_name.as_str();
 
 			read_file(&tree, [scope, name])
-				.map_err(|e| errors::ResolveError::Read(pkg_name.to_string(), Box::new(e)))
+				.map_err(|e| errors::ResolveError::Read(pkg_name, Box::new(e)))
 		})
 		.await
 		.unwrap()
@@ -159,17 +159,15 @@ impl PackageSource for WallyPackageSource {
 				specifier.name
 			);
 			let config = self.config(project).await.map_err(Box::new)?;
+			let refresh_options = RefreshOptions {
+				project: project.clone(),
+			};
 
 			for url in config.fallback_registries {
 				let source = WallyPackageSource::new(url);
 
 				match refreshed_sources
-					.refresh(
-						&PackageSources::Wally(source.clone()),
-						&RefreshOptions {
-							project: project.clone(),
-						},
-					)
+					.refresh(&PackageSources::Wally(source.clone()), &refresh_options)
 					.await
 				{
 					Ok(()) => {}
@@ -186,11 +184,7 @@ impl PackageSource for WallyPackageSource {
 						break;
 					}
 					Ok(None) => {
-						tracing::debug!(
-							"{} not found in {}",
-							specifier.name,
-							source.repo_url.as_url()
-						);
+						tracing::debug!("{} not found in {}", specifier.name, source.repo_url);
 					}
 					Err(e) => return Err(e),
 				}
@@ -198,43 +192,40 @@ impl PackageSource for WallyPackageSource {
 		}
 
 		let Some(string) = string else {
-			return Err(errors::ResolveError::NotFound(specifier.name.to_string()));
+			return Err(errors::ResolveError::NotFound(specifier.name.clone()));
 		};
 
 		let entries: Vec<WallyManifest> = string
 			.lines()
 			.map(serde_json::from_str)
 			.collect::<Result<_, _>>()
-			.map_err(|e| errors::ResolveError::Parse(specifier.name.to_string(), e))?;
+			.map_err(|e| errors::ResolveError::Parse(specifier.name.clone(), e))?;
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
-		Ok((
-			entries
-				.into_iter()
-				.filter(|manifest| version_matches(&specifier.version, &manifest.package.version))
-				.map(|manifest| {
-					let dependencies = manifest.all_dependencies().map_err(|e| {
-						errors::ResolveError::AllDependencies(specifier.to_string(), e)
-					})?;
+		let versions = entries
+			.into_iter()
+			.filter(|manifest| version_matches(&specifier.version, &manifest.package.version))
+			.map(|mut manifest| {
+				let dependencies = manifest.all_dependencies().map_err(|e| {
+					errors::ResolveError::AllDependencies(specifier.name.clone(), e)
+				})?;
 
-					Ok((
-						PackageId::new(
-							PackageSources::Wally(WallyPackageSource {
-								repo_url: index_url.clone(),
-							}),
-							PackageRefs::Wally(WallyPackageRef {
-								name: manifest.package.name,
-							}),
-							VersionId::new(
-								manifest.package.version,
-								manifest.package.realm.to_target(),
-							),
-						),
-						dependencies,
-					))
-				})
-				.collect::<Result<_, errors::ResolveError>>()?,
+				Ok((
+					VersionId::new(manifest.package.version, manifest.package.realm.to_target()),
+					dependencies,
+				))
+			})
+			.collect::<Result<_, errors::ResolveError>>()?;
+
+		Ok((
+			PackageSources::Wally(WallyPackageSource {
+				repo_url: index_url,
+			}),
+			PackageRefs::Wally(WallyPackageRef {
+				name: specifier.name.clone(),
+			}),
+			versions,
 			BTreeSet::new(),
 		))
 	}
@@ -243,7 +234,7 @@ impl PackageSource for WallyPackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		pkg_ref: &Self::Ref,
-		options: &DownloadOptions<R>,
+		options: &DownloadOptions<'_, R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let DownloadOptions {
 			project,
@@ -362,7 +353,7 @@ impl PackageSource for WallyPackageSource {
 	async fn get_target(
 		&self,
 		_pkg_ref: &Self::Ref,
-		options: &GetTargetOptions,
+		options: &GetTargetOptions<'_>,
 	) -> Result<Target, Self::GetTargetError> {
 		get_target(options).await.map_err(Into::into)
 	}
@@ -380,7 +371,7 @@ pub struct WallyIndexConfig {
 pub mod errors {
 	use thiserror::Error;
 
-	use crate::source::git_index::errors::ReadFile;
+	use crate::{GixUrl, names::wally::WallyPackageName, source::git_index::errors::ReadFile};
 
 	/// Errors that can occur when resolving a package from a Wally package source
 	#[derive(Debug, Error)]
@@ -396,20 +387,20 @@ pub mod errors {
 
 		/// Package not found in index
 		#[error("package {0} not found")]
-		NotFound(String),
+		NotFound(WallyPackageName),
 
 		/// Error reading file for package
 		#[error("error reading file for {0}")]
-		Read(String, #[source] Box<ReadFile>),
+		Read(WallyPackageName, #[source] Box<ReadFile>),
 
 		/// Error parsing file for package
 		#[error("error parsing file for {0}")]
-		Parse(String, #[source] serde_json::Error),
+		Parse(WallyPackageName, #[source] serde_json::Error),
 
 		/// Error parsing all dependencies
 		#[error("error parsing all dependencies for {0}")]
 		AllDependencies(
-			String,
+			WallyPackageName,
 			#[source] crate::manifest::errors::AllDependenciesError,
 		),
 
@@ -448,7 +439,7 @@ pub mod errors {
 
 		/// The config file is missing
 		#[error("missing config file for index at {0}")]
-		Missing(Box<gix::Url>),
+		Missing(Box<GixUrl>),
 	}
 
 	/// Errors that can occur when downloading a package from a Wally package source
