@@ -29,6 +29,7 @@ pub mod target;
 
 /// A package manifest
 #[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Manifest {
 	/// The description of the package
 	#[serde(default)]
@@ -80,9 +81,9 @@ pub struct Manifest {
 	/// The dev dependencies of the package
 	#[serde(default, deserialize_with = "crate::util::deserialize_no_dup_keys")]
 	pub dev_dependencies: BTreeMap<Alias, DependencySpecifiers>,
-	/// The user-defined fields of the package
-	#[serde(flatten)]
-	pub user_defined_fields: HashMap<String, toml::Value>,
+	/// An area for user-defined fields, which will always be ignored by pesde
+	#[serde(default)]
+	pub meta: HashMap<String, toml::Value>,
 }
 
 /// An alias of a dependency

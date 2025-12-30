@@ -1,6 +1,6 @@
 #![expect(deprecated)]
 use crate::{
-	GixUrl, MANIFEST_FILE_NAME, Project, deser_manifest,
+	GixUrl, MANIFEST_FILE_NAME, Project,
 	manifest::{Alias, DependencyType, Manifest, target::Target},
 	reporters::DownloadProgressReporter,
 	ser_display_deser_fromstr,
@@ -13,6 +13,7 @@ use crate::{
 			specifier::{GitDependencySpecifier, GitVersionSpecifier},
 		},
 		git_index::{GitBasedSource, read_file},
+		pesde::PesdeVersionedManifest,
 		refs::{PackageRefs, StructureKind},
 		specifiers::DependencySpecifiers,
 		traits::{
@@ -20,12 +21,14 @@ use crate::{
 		},
 	},
 	util::hash,
+	version_matches,
 };
 use fs_err::tokio as fs;
-use gix::{ObjectId, bstr::BStr, traverse::tree::Recorder};
+use gix::{ObjectId, traverse::tree::Recorder};
 use relative_path::RelativePathBuf;
-use semver::Version;
+use semver::{BuildMetadata, Version};
 use std::{
+	borrow::Cow,
 	collections::{BTreeMap, BTreeSet},
 	fmt::{Debug, Display},
 	hash::Hash,
@@ -82,7 +85,7 @@ impl GitPackageSource {
 	}
 
 	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.as_url().to_bstring().to_vec()
+		self.repo_url.to_string().into_bytes()
 	}
 }
 
@@ -162,12 +165,61 @@ impl PackageSource for GitPackageSource {
 		let (structure_kind, version_id, dependencies, tree_id) = spawn_blocking(move || {
 			let repo = gix::open(path)
 				.map_err(|e| errors::ResolveError::OpenRepo(repo_url.clone(), Box::new(e)))?;
-			let GitVersionSpecifier::Rev(rev_str) = &specifier.version_specifier else {
-				unimplemented!()
+			let (rev, version) = match specifier.version_specifier {
+				GitVersionSpecifier::Rev(rev_str) => (
+					repo.rev_parse_single(rev_str.as_bytes()).map_err(|e| {
+						errors::ResolveError::ParseRev(
+							rev_str.clone(),
+							repo_url.clone(),
+							Box::new(e),
+						)
+					})?,
+					None,
+				),
+				GitVersionSpecifier::VersionReq(req) => {
+					let prefix = if let Some(path) = &specifier.path {
+						Cow::Owned(format!("refs/tags/{path}/v"))
+					} else {
+						Cow::Borrowed("refs/tags/v")
+					};
+
+					let (mut refe, version) = repo
+						.references()
+						.map_err(|e| errors::ResolveError::RefIter(repo_url.clone(), Box::new(e)))?
+						.prefixed(prefix.as_ref())
+						.map_err(|e| errors::ResolveError::RefSetup(repo_url.clone(), Box::new(e)))?
+						.collect::<Result<Vec<_>, _>>()
+						.map_err(|e| errors::ResolveError::IterRefs(repo_url.clone(), e))?
+						.into_iter()
+						.filter_map(|r| {
+							str::from_utf8(
+								r.name().as_bstr().strip_prefix(prefix.as_bytes()).unwrap(),
+							)
+							.ok()
+							.and_then(|ver| Version::parse(ver).ok())
+							.map(|v| (r, v))
+						})
+						.filter(|(_, v)| version_matches(&req, v))
+						.max_by(|(_, v1), (_, v2)| v1.cmp(v2))
+						.ok_or_else(|| {
+							errors::ResolveError::NoMatchingVersion(
+								req.to_string(),
+								repo_url.clone(),
+							)
+						})?;
+
+					(
+						refe.peel_to_id().map_err(|e| {
+							errors::ResolveError::RevToId(
+								req.to_string(),
+								repo_url.clone(),
+								Box::new(e),
+							)
+						})?,
+						Some(version),
+					)
+				}
 			};
-			let rev = repo.rev_parse_single(BStr::new(rev_str)).map_err(|e| {
-				errors::ResolveError::ParseRev(rev_str.clone(), repo_url.clone(), Box::new(e))
-			})?;
 
 			// TODO: possibly use the search algorithm from src/main.rs to find the workspace root
 
@@ -197,17 +249,49 @@ impl PackageSource for GitPackageSource {
 			let manifest = match read_file(&tree, [MANIFEST_FILE_NAME])
 				.map_err(|e| errors::ResolveError::ReadManifest(repo_url.clone(), e))?
 			{
-				Some(m) => match toml::from_str::<Manifest>(&m) {
-					Ok(m) => Some(m),
-					Err(e) => {
-						return Err(errors::ResolveError::DeserManifest(repo_url.clone(), e));
+				Some(m) => {
+					if let Some(version) = version {
+						match toml::from_str::<Manifest>(&m) {
+							Ok(m) => Some((
+								transform_pesde_dependencies(&m, &repo_url)?,
+								VersionId::new(version, m.target.kind()),
+							)),
+							Err(e) => {
+								return Err(errors::ResolveError::DeserManifest(
+									repo_url.clone(),
+									e,
+								));
+							}
+						}
+					} else {
+						let manifest =
+							toml::from_str::<PesdeVersionedManifest>(&m).map_err(|e| {
+								errors::ResolveError::DeserManifest(repo_url.clone(), e)
+							})?;
+						let target = manifest.as_manifest().target.kind();
+						Some((
+							transform_pesde_dependencies(manifest.as_manifest(), &repo_url)?,
+							VersionId::new(
+								match manifest {
+									PesdeVersionedManifest::V1(m) => m.version,
+									PesdeVersionedManifest::V2(_) => Version {
+										major: 0,
+										minor: 0,
+										patch: 0,
+										pre: rev.to_string().parse().unwrap(),
+										build: BuildMetadata::EMPTY,
+									},
+								},
+								target,
+							),
+						))
 					}
-				},
+				}
 				None => None,
 			};
 
 			#[cfg(feature = "wally-compat")]
-			let Some(manifest) = manifest else {
+			let Some((dependencies, v_id)) = manifest else {
 				use crate::{
 					manifest::target::TargetKind,
 					source::wally::{
@@ -247,18 +331,13 @@ impl PackageSource for GitPackageSource {
 				));
 			};
 			#[cfg(not(feature = "wally-compat"))]
-			let Some(manifest) = manifest else {
+			let Some((dependencies, v_id)) = manifest else {
 				return Err(errors::ResolveError::NoManifest(repo_url.clone()));
 			};
 
-			let dependencies = transform_pesde_dependencies(&manifest, &repo_url)?;
-
 			Ok((
 				StructureKind::PesdeV1,
-				VersionId::new(
-					/* TODO */ Version::new(0, 1, 0),
-					manifest.target.kind(),
-				),
+				v_id,
 				dependencies,
 				tree.id.to_string(),
 			))
@@ -448,10 +527,21 @@ impl PackageSource for GitPackageSource {
 			panic!("wally-compat feature is not enabled, and package is a wally package");
 		}
 
-		deser_manifest(&options.path)
-			.await
-			.map(|m| m.target)
-			.map_err(Into::into)
+		let manifest: PesdeVersionedManifest = toml::from_str(
+			&fs::read_to_string(options.path.join(MANIFEST_FILE_NAME))
+				.await
+				.map_err(|e| {
+					errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Io(e))
+				})?,
+		)
+		.map_err(|e| {
+			errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Serde(
+				(*options.path).into(),
+				e,
+			))
+		})?;
+
+		Ok(manifest.into_manifest().target)
 	}
 }
 
@@ -477,6 +567,26 @@ pub mod errors {
 			GixUrl,
 			#[source] Box<gix::revision::spec::parse::single::Error>,
 		),
+
+		/// An error occurred creating reference iterator
+		#[error("error creating reference iterator for repository {0}")]
+		RefIter(GixUrl, #[source] Box<gix::reference::iter::Error>),
+
+		/// An error occurred setting up reference iterator
+		#[error("error setting up reference iterator for repository {0}")]
+		RefSetup(GixUrl, #[source] Box<gix::reference::iter::init::Error>),
+
+		/// An error occurred converting rev to object id
+		#[error("error converting rev to object id for repository {0}")]
+		RevToId(String, GixUrl, #[source] Box<gix::reference::peel::Error>),
+
+		/// An error occurred iterating references
+		#[error("error iterating references for repository {0}")]
+		IterRefs(GixUrl, #[source] Box<dyn std::error::Error + Send + Sync>),
+
+		/// No matching version was found
+		#[error("no matching version found for requirement {0} in repository {1}")]
+		NoMatchingVersion(String, GixUrl),
 
 		/// An error occurred parsing rev to object
 		#[error("error parsing rev to object for repository {0}")]

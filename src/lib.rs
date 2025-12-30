@@ -216,7 +216,10 @@ impl Project {
 			}
 		}
 		let mut manifest_guard = self.manifest.clone().write_owned().await;
-		let manifest = deser_manifest(self.package_dir()).await?;
+		let manifest = toml::from_str::<Manifest>(
+			&fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?,
+		)
+		.map_err(|e| errors::ManifestReadError::Serde(self.package_dir().into(), e))?;
 		*manifest_guard = Some(manifest);
 		Ok(OwnedRwLockReadGuard::map(manifest_guard.downgrade(), |m| {
 			m.as_ref().unwrap()
@@ -232,7 +235,9 @@ impl Project {
 			return Ok(None);
 		};
 
-		deser_manifest(workspace_dir).await.map(Some)
+		toml::from_str(&fs::read_to_string(workspace_dir.join(MANIFEST_FILE_NAME)).await?)
+			.map(Some)
+			.map_err(|e| errors::ManifestReadError::Serde(workspace_dir.into(), e))
 	}
 
 	/// Write the manifest file
@@ -282,7 +287,12 @@ format = {}
 		errors::WorkspaceMembersError,
 	> {
 		let dir = self.workspace_dir().unwrap_or(self.package_dir());
-		let manifest = deser_manifest(dir).await?;
+		let manifest: Manifest = toml::from_str(
+			&fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
+				.await
+				.map_err(errors::ManifestReadError::Io)?,
+		)
+		.map_err(|e| errors::ManifestReadError::Serde(dir.into(), e))?;
 
 		let members = matching_globs(
 			dir,
@@ -294,7 +304,12 @@ format = {}
 
 		Ok(try_stream! {
 			for path in members {
-				let manifest = deser_manifest(&path).await?;
+				let manifest = toml::from_str::<Manifest>(
+					&fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+						.await
+						.map_err(errors::ManifestReadError::Io)?,
+				)
+				.map_err(|e| errors::ManifestReadError::Serde(path.clone().into(), e))?;
 				yield (path, manifest);
 			}
 		})
@@ -390,11 +405,6 @@ impl RefreshedSources {
 			Ok(())
 		}
 	}
-}
-
-async fn deser_manifest(path: &Path) -> Result<Manifest, errors::ManifestReadError> {
-	let string = fs::read_to_string(path.join(MANIFEST_FILE_NAME)).await?;
-	toml::from_str(&string).map_err(|e| errors::ManifestReadError::Serde(path.into(), e))
 }
 
 /// Find the project & workspace directory roots
@@ -549,7 +559,7 @@ impl FromStr for GixUrl {
 
 impl Display for GixUrl {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		let url = self.0.to_bstring();
+		let url = self.as_url().to_bstring();
 		write!(
 			f,
 			"{}",

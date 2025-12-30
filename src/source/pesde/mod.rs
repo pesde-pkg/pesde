@@ -4,7 +4,7 @@ use relative_path::RelativePathBuf;
 use reqwest::header::{ACCEPT, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
 use std::{
-	collections::{BTreeMap, BTreeSet},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	fmt::{Debug, Display},
 	hash::Hash,
 	path::PathBuf,
@@ -18,7 +18,7 @@ use crate::{
 	GixUrl, Project,
 	engine::EngineKind,
 	manifest::{
-		Alias, DependencyType,
+		Alias, DependencyType, Manifest,
 		target::{Target, TargetKind},
 	},
 	names::PackageName,
@@ -37,7 +37,7 @@ use crate::{
 };
 use fs_err::tokio as fs;
 use futures::StreamExt as _;
-use semver::VersionReq;
+use semver::{Version, VersionReq};
 use tokio::{pin, task::spawn_blocking};
 use tracing::instrument;
 
@@ -88,7 +88,7 @@ impl PesdePackageSource {
 	}
 
 	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.as_url().to_bstring().to_vec()
+		self.repo_url.to_string().into_bytes()
 	}
 
 	/// Reads the config file
@@ -487,6 +487,49 @@ pub struct IndexFile {
 	/// The entries in the index file
 	#[serde(flatten)]
 	pub entries: BTreeMap<VersionId, IndexFileEntry>,
+}
+
+/// A pesde v1 (<0.8) manifest
+#[derive(Debug, Deserialize)]
+pub struct PesdeV1Manifest {
+	/// The version
+	pub version: Version,
+	/// The pesde v2-compatible fields
+	#[serde(flatten)]
+	pub manifest: Manifest,
+	/// Any extra fields
+	#[serde(flatten)]
+	pub user_defined_fields: HashMap<String, toml::Value>,
+}
+
+/// A manifest for either version of pesde
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum PesdeVersionedManifest {
+	/// [Manifest]
+	V2(Manifest),
+	/// [PesdeV1Manifest]
+	V1(PesdeV1Manifest),
+}
+
+impl PesdeVersionedManifest {
+	/// Returns the manifest
+	#[must_use]
+	pub fn as_manifest(&self) -> &Manifest {
+		match self {
+			Self::V1(m) => &m.manifest,
+			Self::V2(m) => m,
+		}
+	}
+
+	/// Returns the manifest
+	#[must_use]
+	pub fn into_manifest(self) -> Manifest {
+		match self {
+			Self::V1(m) => m.manifest,
+			Self::V2(m) => m,
+		}
+	}
 }
 
 /// Errors that can occur when interacting with the pesde package source

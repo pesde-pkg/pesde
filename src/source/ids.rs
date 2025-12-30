@@ -33,7 +33,7 @@ impl VersionId {
 	/// Returns this version ID as a string that can be used in the filesystem
 	#[must_use]
 	pub fn escaped(&self) -> String {
-		format!("{}+{}", self.0, self.1)
+		format!("{}+{}", self.version(), self.target())
 	}
 
 	/// The reverse of `escaped`
@@ -44,13 +44,13 @@ impl VersionId {
 	/// Access the parts of the version ID
 	#[must_use]
 	pub fn parts(&self) -> (&Version, TargetKind) {
-		(&self.0, self.1)
+		(self.version(), self.target())
 	}
 }
 
 impl Display for VersionId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{} {}", self.0, self.1)
+		write!(f, "{} {}", self.version(), self.target())
 	}
 }
 

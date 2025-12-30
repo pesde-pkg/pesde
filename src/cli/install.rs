@@ -251,8 +251,9 @@ pub async fn install(
 				#[expect(deprecated)]
 				{
 					use pesde::{
-						MANIFEST_FILE_NAME, engine::EngineKind, manifest::Manifest,
-						source::refs::PackageRefs, version_matches,
+						MANIFEST_FILE_NAME, engine::EngineKind,
+						source::pesde::PesdeVersionedManifest, source::refs::PackageRefs,
+						version_matches,
 					};
 
 					let manifest_target_kind = manifest.target.kind();
@@ -305,8 +306,12 @@ pub async fn install(
 											.await
 										{
 											Ok(manifest) => {
-												match toml::from_str::<Manifest>(&manifest) {
-													Ok(manifest) => manifest.engines,
+												match toml::from_str::<PesdeVersionedManifest>(
+													&manifest,
+												) {
+													Ok(manifest) => {
+														manifest.into_manifest().engines
+													}
 													Err(e) => {
 														return Err(e).context(
 															"failed to read package manifest",

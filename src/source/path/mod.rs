@@ -1,7 +1,7 @@
 #![expect(deprecated)]
 use crate::{
-	deser_manifest,
-	manifest::target::Target,
+	MANIFEST_FILE_NAME,
+	manifest::{Manifest, target::Target},
 	reporters::DownloadProgressReporter,
 	source::{
 		PackageSources, ResolveResult,
@@ -13,7 +13,8 @@ use crate::{
 		traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
 	},
 };
-use semver::Version;
+use fs_err::tokio as fs;
+use semver::{BuildMetadata, Prerelease, Version};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use tracing::instrument;
@@ -22,6 +23,16 @@ use tracing::instrument;
 pub mod pkg_ref;
 /// The path dependency specifier
 pub mod specifier;
+
+fn local_version() -> Version {
+	Version {
+		major: 0,
+		minor: 0,
+		patch: 0,
+		pre: Prerelease::new("pesde").unwrap(),
+		build: BuildMetadata::EMPTY,
+	}
+}
 
 /// The path package source
 #[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
@@ -43,7 +54,19 @@ impl PackageSource for PathPackageSource {
 	) -> Result<ResolveResult, Self::ResolveError> {
 		// let ResolveOptions { project, .. } = options;
 
-		let manifest = deser_manifest(&specifier.path).await?;
+		let manifest: Manifest = toml::from_str(
+			&fs::read_to_string(specifier.path.join(MANIFEST_FILE_NAME))
+				.await
+				.map_err(|e| {
+					errors::ResolveError::ManifestRead(crate::errors::ManifestReadError::Io(e))
+				})?,
+		)
+		.map_err(|e| {
+			errors::ResolveError::ManifestRead(crate::errors::ManifestReadError::Serde(
+				specifier.path.clone().into(),
+				e,
+			))
+		})?;
 
 		// let (path_package_dir, path_workspace_dir) = find_roots(specifier.path.clone()).await?;
 		// let path_project = Project::new(
@@ -99,10 +122,7 @@ impl PackageSource for PathPackageSource {
 				path: specifier.path.clone(),
 			}),
 			BTreeMap::from([(
-				VersionId::new(
-					/* TODO */ Version::new(0, 1, 0),
-					manifest.target.kind(),
-				),
+				VersionId::new(local_version(), manifest.target.kind()),
 				dependencies,
 			)]),
 			BTreeSet::new(),
@@ -116,7 +136,19 @@ impl PackageSource for PathPackageSource {
 		options: &DownloadOptions<'_, R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let DownloadOptions { reporter, .. } = options;
-		let manifest = deser_manifest(&pkg_ref.path).await?;
+		let manifest: Manifest = toml::from_str(
+			&fs::read_to_string(pkg_ref.path.join(MANIFEST_FILE_NAME))
+				.await
+				.map_err(|e| {
+					errors::DownloadError::ManifestRead(crate::errors::ManifestReadError::Io(e))
+				})?,
+		)
+		.map_err(|e| {
+			errors::DownloadError::ManifestRead(crate::errors::ManifestReadError::Serde(
+				pkg_ref.path.clone().into(),
+				e,
+			))
+		})?;
 
 		reporter.report_done();
 
@@ -132,7 +164,19 @@ impl PackageSource for PathPackageSource {
 		pkg_ref: &Self::Ref,
 		_options: &GetTargetOptions<'_>,
 	) -> Result<Target, Self::GetTargetError> {
-		let manifest = deser_manifest(&pkg_ref.path).await?;
+		let manifest: Manifest = toml::from_str(
+			&fs::read_to_string(pkg_ref.path.join(MANIFEST_FILE_NAME))
+				.await
+				.map_err(|e| {
+					errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Io(e))
+				})?,
+		)
+		.map_err(|e| {
+			errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Serde(
+				pkg_ref.path.clone().into(),
+				e,
+			))
+		})?;
 
 		Ok(manifest.target)
 	}

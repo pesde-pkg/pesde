@@ -57,9 +57,9 @@ impl Runtime {
 		script_path: &OsStr,
 		args: A,
 	) -> Command {
-		let mut command = Command::new(self.0.to_string());
+		let mut command = Command::new(self.kind().to_string());
 
-		match self.0 {
+		match self.kind() {
 			RuntimeKind::Lune => {
 				command.arg("run");
 				command.arg(script_path);
