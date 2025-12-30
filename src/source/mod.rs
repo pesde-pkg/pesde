@@ -7,10 +7,7 @@ use crate::{
 	reporters::DownloadProgressReporter,
 	ser_display_deser_fromstr,
 	source::{
-		fs::PackageFs,
-		ids::{PackageId, VersionId},
-		refs::PackageRefs,
-		specifiers::DependencySpecifiers,
+		fs::PackageFs, ids::VersionId, refs::PackageRefs, specifiers::DependencySpecifiers,
 		traits::*,
 	},
 };
