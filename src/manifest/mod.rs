@@ -10,6 +10,7 @@ use crate::{
 	ser_display_deser_fromstr,
 	source::specifiers::DependencySpecifiers,
 };
+#[cfg(feature = "patches")]
 use relative_path::RelativePathBuf;
 use semver::VersionReq;
 use serde::{Deserialize, Serialize};
@@ -61,7 +62,7 @@ pub struct Manifest {
 	/// The patches to apply to packages
 	#[cfg(feature = "patches")]
 	#[serde(default)]
-	pub patches: BTreeMap<PackageId, RelativePathBuf>,
+	pub patches: BTreeMap<Arc<PackageId>, RelativePathBuf>,
 	/// A list of globs pointing to workspace members' directories
 	#[serde(default)]
 	pub workspace_members: Vec<String>,

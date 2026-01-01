@@ -1,13 +1,11 @@
 use crate::{
-	LINK_LIB_NO_FILE_FOUND, Project, RefreshedSources, all_packages_dirs,
+	LINK_LIB_NO_FILE_FOUND, Project, RefreshedSources,
 	download::DownloadGraphOptions,
 	engine::runtime::Engines,
-	graph::{
-		DependencyGraph, DependencyGraphNode, DependencyGraphNodeWithTarget,
-		DependencyGraphWithTarget,
-	},
+	graph::{DependencyGraph, DependencyGraphNode},
 	linking::generator::get_file_types,
-	manifest::DependencyType,
+	manifest::{DependencyType, target::Target},
+	private_dir,
 	reporters::{DownloadsReporter, PatchesReporter},
 	source::{
 		ids::PackageId,
@@ -16,13 +14,14 @@ use crate::{
 };
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
+use relative_path::RelativePath;
 
 use std::{
-	collections::{BTreeSet, HashMap, VecDeque},
+	collections::{BTreeSet, HashMap, HashSet},
 	convert::Infallible,
 	future::{self, Future},
 	num::NonZeroUsize,
-	path::{Path, PathBuf},
+	path::Path,
 	sync::Arc,
 };
 use tokio::{
@@ -39,18 +38,10 @@ pub trait DownloadAndLinkHooks: Send + Sync {
 
 	/// Called after binary dependencies have been downloaded.
 	/// `aliases` contains all the aliases binaries are known by.
-	fn on_bins_downloaded(
+	fn on_bins_downloaded<'a>(
 		&self,
-		aliases: BTreeSet<&str>,
-	) -> impl Future<Output = Result<(), Self::Error>> + Send {
-		future::ready(Ok(()))
-	}
-
-	/// Called after all dependencies have been downloaded. The
-	/// `downloaded_graph` contains all downloaded packages.
-	fn on_all_downloaded(
-		&self,
-		graph: &DependencyGraphWithTarget,
+		importer: &RelativePath,
+		aliases: impl Iterator<Item = &'a str> + Send,
 	) -> impl Future<Output = Result<(), Self::Error>> + Send {
 		future::ready(Ok(()))
 	}
@@ -202,7 +193,7 @@ impl Project {
 		&self,
 		graph: &DependencyGraph,
 		options: DownloadAndLinkOptions<Reporter, Hooks>,
-	) -> Result<DependencyGraphWithTarget, errors::DownloadAndLinkError<Hooks::Error>>
+	) -> Result<HashMap<PackageId, Arc<Target>>, errors::DownloadAndLinkError<Hooks::Error>>
 	where
 		Reporter: DownloadsReporter + PatchesReporter + 'static,
 		Hooks: DownloadAndLinkHooks + 'static,
@@ -219,22 +210,22 @@ impl Project {
 		} = options;
 
 		let reqwest = reqwest.clone();
-		let manifest = self.deser_manifest().await?;
 
 		if force {
-			async fn remove_dir(dir: PathBuf) -> std::io::Result<()> {
-				tracing::debug!("force deleting the `{}` folder", dir.display());
+			let mut tasks = graph
+				.importers
+				.keys()
+				.map(|importer| {
+					let dependencies_dir = private_dir(self, importer).join("dependencies");
 
-				match fs::remove_dir_all(dir).await {
-					Ok(()) => Ok(()),
-					Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-					Err(e) => Err(e),
-				}
-			}
-
-			let mut tasks = all_packages_dirs()
-				.into_iter()
-				.map(|folder| remove_dir(self.package_dir().join(folder)))
+					async move {
+						match fs::remove_dir_all(&dependencies_dir).await {
+							Ok(_) => Ok(()),
+							Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+							Err(e) => Err(e),
+						}
+					}
+				})
 				.collect::<JoinSet<_>>();
 
 			while let Some(task) = tasks.join_next().await {
@@ -252,142 +243,152 @@ impl Project {
 				download_graph_options = download_graph_options.reporter(reporter);
 			}
 
-			let correct_deps = if matches!(install_dependencies_mode, InstallDependenciesMode::All)
-			{
-				graph.clone()
-			} else {
-				let mut queue = graph
-					.iter()
-					.filter(|(_, node)| {
-						node.direct
-							.as_ref()
-							.is_some_and(|(_, _, ty)| install_dependencies_mode.fits(*ty))
-					})
-					.collect::<VecDeque<_>>();
+			let mut importer_deps = HashMap::<PackageId, HashSet<Arc<RelativePath>>>::new();
+			for (importer, dependencies) in &graph.importers {
+				let mut queue = dependencies
+					.values()
+					.filter(|(_, _, ty)| install_dependencies_mode.fits(*ty))
+					.map(|(id, _, _)| id.clone())
+					.collect::<Vec<_>>();
+				let mut visited = HashSet::new();
 
-				let mut correct_deps = DependencyGraph::new();
-				while let Some((id, node)) = queue.pop_front() {
-					if correct_deps.insert(id.clone(), node.clone()).is_some() {
-						// prevent an infinite loop with recursive dependencies
-						continue;
+				while let Some(pkg_id) = queue.pop() {
+					if visited.insert(pkg_id.clone())
+						&& let Some(node) = graph.nodes.get(&pkg_id)
+					{
+						for dep_id in node.dependencies.values() {
+							queue.push(dep_id.clone());
+						}
 					}
-
-					node.dependencies
-						.values()
-						.filter_map(|id| graph.get(id).map(|node| (id, node)))
-						.for_each(|x| queue.push_back(x));
 				}
 
-				correct_deps
-			};
+				for id in visited {
+					importer_deps
+						.entry(id)
+						.or_default()
+						.insert(importer.clone());
+				}
+			}
 
-			let mut downloaded_graph = HashMap::new();
+			let mut downloaded_packages = HashMap::<PackageId, HashSet<Arc<RelativePath>>>::new();
 
 			let graph_to_download = if force {
-				correct_deps
+				importer_deps
 			} else {
-				let mut tasks = correct_deps
+				let mut tasks = importer_deps
 					.into_iter()
-					.map(|(id, node)| {
-						let container_folder: Arc<Path> = node
-							.container_folder_from_project(&id, self, manifest.target.kind())
-							.into();
-
+					.flat_map(|(id, importers)| {
+						importers
+							.into_iter()
+							.map(move |importer| (importer, id.clone()))
+					})
+					.map(|(importer, id)| {
+						let dependency_dir = private_dir(self, &importer)
+							.join("dependencies")
+							.join(DependencyGraphNode::container_dir_top_level(&id));
 						async move {
-							return (
-								// force local packages to be updated
-								if id.pkg_ref().is_local() {
-									None
-								} else {
-									fs::metadata(&container_folder)
-										.await
-										.is_ok()
-										.then_some(container_folder)
-								},
-								id,
-								node,
-							);
+							if id.pkg_ref().is_local() {
+								return (importer, id, false);
+							}
+
+							(importer, id, fs::metadata(&dependency_dir).await.is_ok())
 						}
 					})
 					.collect::<JoinSet<_>>();
 
-				let mut graph_to_download = DependencyGraph::new();
+				let mut deps_to_download = HashMap::<PackageId, HashSet<Arc<RelativePath>>>::new();
 				while let Some(task) = tasks.join_next().await {
-					let (install_path, id, node) = task.unwrap();
-					if let Some(install_path) = install_path {
-						downloaded_graph.insert(id, (node, install_path));
+					let (importer, id, installed) = task.unwrap();
+					if installed {
+						downloaded_packages.entry(id).or_default().insert(importer);
 						continue;
 					}
 
-					graph_to_download.insert(id, node);
+					deps_to_download.entry(id).or_default().insert(importer);
 				}
 
-				graph_to_download
+				deps_to_download
 			};
 
 			let span = tracing::debug_span!("download");
 			let _guard = span.enter();
 
-			let downloaded =
-				self.download_graph(&graph_to_download, download_graph_options.clone())?;
+			let downloaded = self.download_graph(
+				graph_to_download.keys().cloned(),
+				download_graph_options.clone(),
+			)?;
 			pin!(downloaded);
 
 			let mut tasks = JoinSet::new();
 
-			while let Some((id, node, fs)) = downloaded.try_next().await? {
-				let container_folder =
-					node.container_folder_from_project(&id, self, manifest.target.kind());
+			while let Some((id, fs)) = downloaded.try_next().await? {
+				let fs = Arc::new(fs);
 
-				let project = self.clone();
+				for importer in &graph_to_download[&id] {
+					let container_dir = private_dir(self, importer)
+						.join("dependencies")
+						.join(DependencyGraphNode::container_dir_top_level(&id));
 
-				tasks.spawn(async move {
-					fs::create_dir_all(&container_folder).await?;
+					let importer = importer.clone();
+					let project = self.clone();
+					let id = id.clone();
+					let fs = fs.clone();
 
-					fs.write_to(&container_folder, project.cas_dir(), true)
-						.await
-						.map_err(errors::DownloadAndLinkError::<Hooks::Error>::from)?;
+					tasks.spawn(async move {
+						fs::create_dir_all(&container_dir).await?;
 
-					Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
-						id,
-						(node, container_folder.into()),
-					))
-				});
+						fs.write_to(&container_dir, project.cas_dir(), true)
+							.await
+							.map_err(errors::DownloadAndLinkError::<Hooks::Error>::from)?;
+
+						Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((id, importer))
+					});
+				}
 			}
 
 			while let Some(task) = tasks.join_next().await {
-				let (id, data) = task.unwrap()?;
-				downloaded_graph.insert(id, data);
+				let (id, importer) = task.unwrap()?;
+				downloaded_packages.entry(id).or_default().insert(importer);
 			}
 
 			#[cfg(feature = "patches")]
 			{
 				use crate::patches::apply_patch;
-				let mut tasks = manifest
+				let mut tasks = self
+					.clone()
+					.into_root_project()
+					.deser_manifest()
+					.await?
 					.patches
 					.iter()
 					.filter_map(|(id, patch_path)| {
-						downloaded_graph
-							.get(id)
-							.map(|(_, container_folder)| (id, container_folder.clone(), patch_path))
+						downloaded_packages.get(id).map(|importers| {
+							(
+								id,
+								importers,
+								Arc::<Path>::from(patch_path.to_path(self.root_dir())),
+							)
+						})
 					})
-					.map(|(id, container_folder, patch_path)| {
-						let id = id.clone();
-						let patch_path = patch_path.to_path(self.package_dir());
+					.flat_map(|(id, importers, patch_path)| {
+						importers
+							.iter()
+							.map(move |importer| (id.clone(), importer, patch_path.clone()))
+					})
+					.map(|(id, importer, patch_path)| {
+						let container_dir = private_dir(self, importer)
+							.join("dependencies")
+							.join(DependencyGraphNode::container_dir_top_level(&id));
 						let reporter = reporter.clone();
 
 						async move {
 							match reporter {
 								Some(reporter) => {
-									apply_patch(
-										&id,
-										container_folder,
-										&patch_path,
-										reporter.clone(),
-									)
-									.await
+									apply_patch(&id, container_dir, &patch_path, reporter.clone())
+										.await
 								}
 								None => {
-									apply_patch(&id, container_folder, &patch_path, ().into()).await
+									apply_patch(&id, container_dir, &patch_path, ().into()).await
 								}
 							}
 						}
@@ -399,35 +400,33 @@ impl Project {
 				}
 			}
 
-			downloaded_graph
+			downloaded_packages
 		};
 
-		let graph_download_data = graph_to_download
+		let (wally_graph_to_download, other_graph_to_download) = graph_to_download
 			.iter()
-			.map(|(id, (_, install_path))| (id.clone(), install_path.clone()))
-			.collect::<HashMap<_, _>>();
+			.partition::<HashMap<_, _>, _>(|(id, _)| id.pkg_ref().is_wally_package());
 
-		let (wally_graph_to_download, other_graph_to_download) =
-			graph_to_download
-				.into_iter()
-				.partition::<HashMap<_, _>, _>(|(id, _)| id.pkg_ref().is_wally_package());
-
-		let mut graph = DependencyGraphWithTarget::new();
+		let mut package_targets = HashMap::new();
 
 		let get_graph_targets =
-			async |graph: &mut DependencyGraphWithTarget,
-			       downloaded_graph: HashMap<PackageId, (DependencyGraphNode, Arc<Path>)>| {
+			async |package_targets: &mut HashMap<PackageId, Arc<Target>>,
+			       downloaded_graph: HashMap<&PackageId, &HashSet<Arc<RelativePath>>>| {
 				let mut tasks = downloaded_graph
 					.into_iter()
-					.map(|(id, (node, install_path))| {
-						let source = id.source().clone();
-
-						let id = Arc::new(id);
+					.map(|(id, importers)| {
+						// importer does not matter here, as it is the same package being linked in different places
+						let install_path = private_dir(self, importers.iter().next().unwrap())
+							.join("dependencies")
+							.join(DependencyGraphNode::container_dir_top_level(id))
+							.into();
 						let project = self.clone();
 						let engines = engines.clone();
+						let id = id.clone();
 
 						async move {
-							let target = source
+							let target = id
+								.source()
 								.get_target(
 									id.pkg_ref(),
 									&GetTargetOptions {
@@ -439,86 +438,87 @@ impl Project {
 								)
 								.await?;
 
-							Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
-								Arc::into_inner(id).unwrap(),
-								DependencyGraphNodeWithTarget { target, node },
-							))
+							Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((id, target))
 						}
 					})
 					.collect::<JoinSet<_>>();
 
 				while let Some(task) = tasks.join_next().await {
-					let (id, node) = task.unwrap()?;
-					graph.insert(id, node);
+					let (id, target) = task.unwrap()?;
+					package_targets.insert(id, Arc::new(target));
 				}
 
 				Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>(())
 			};
 
 		// step 2. get targets for non Wally packages (Wally packages require the scripts packages to be downloaded first)
-		get_graph_targets(&mut graph, other_graph_to_download)
+		get_graph_targets(&mut package_targets, other_graph_to_download)
 			.instrument(tracing::debug_span!("get targets (non-wally)"))
 			.await?;
 
-		self.link(&graph, &manifest, &Default::default(), false)
+		self.link(graph, &package_targets, &Default::default())
 			.instrument(tracing::debug_span!("link (non-wally)"))
 			.await?;
 
 		if let Some(hooks) = &hooks {
-			let binary_packages = graph
+			let binary_packages = package_targets
 				.iter()
-				.filter_map(|(id, node)| node.target.bin_path().is_some().then_some(id))
+				.filter_map(|(id, target)| target.bin_path().is_some().then_some(id))
 				.collect::<BTreeSet<_>>();
 
-			let aliases = graph
-				.values()
-				.flat_map(|node| node.node.dependencies.iter())
-				.filter_map(|(alias, id)| binary_packages.contains(id).then_some(alias.as_str()))
-				.chain(
-					graph
-						.values()
-						.filter(|node| node.target.bin_path().is_some())
-						.filter_map(|node| node.node.direct.as_ref())
-						.map(|(alias, _, _)| alias.as_str()),
-				)
-				.collect::<BTreeSet<_>>();
+			for (importer, dependencies) in &graph.importers {
+				let aliases = dependencies
+					.iter()
+					.filter_map(|(alias, (id, _, _))| {
+						binary_packages.contains(id).then_some(alias.as_str())
+					})
+					// TODO: include all binary aliases from dependencies' dependencies
+					.collect::<BTreeSet<_>>();
 
-			hooks
-				.on_bins_downloaded(aliases)
-				.await
-				.map_err(errors::DownloadAndLinkError::Hook)?;
+				hooks
+					.on_bins_downloaded(importer, aliases.into_iter())
+					.await
+					.map_err(errors::DownloadAndLinkError::Hook)?;
+			}
 		}
 
 		// step 3. get targets for Wally packages
-		get_graph_targets(&mut graph, wally_graph_to_download)
+		get_graph_targets(&mut package_targets, wally_graph_to_download)
 			.instrument(tracing::debug_span!("get targets (wally)"))
 			.await?;
 
-		let mut tasks = graph_download_data
-			.into_iter()
-			.map(|(package_id, install_path)| {
+		let mut tasks = package_targets
+			.iter()
+			.map(|(package_id, target)| {
+				// importer does not matter here, as it is the same package being linked in different places
+				let install_path =
+					private_dir(self, graph_to_download[package_id].iter().next().unwrap())
+						.join("dependencies")
+						.join(DependencyGraphNode::container_dir_top_level(package_id));
+
 				let span =
 					tracing::info_span!("extract types", package_id = package_id.to_string());
 
-				let node = graph[&package_id].clone();
+				let package_id = package_id.clone();
+				let lib_path = target.lib_path().map(RelativePath::to_relative_path_buf);
 
 				async move {
-					let Some(lib_file) = node.target.lib_path() else {
+					let Some(lib_file) = lib_path else {
 						return Ok((package_id, vec![]));
 					};
 
 					let types = if lib_file.as_str() == LINK_LIB_NO_FILE_FOUND {
 						vec![]
 					} else {
-						let lib_file = lib_file.to_path(&install_path);
+						let lib_file = lib_file.to_path(install_path);
 
 						let contents =
 							match fs::read_to_string(&lib_file).await {
 								Ok(contents) => contents,
 								Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
 									return Err(errors::DownloadAndLinkError::<Hooks::Error>::LibFileNotFound(
-									lib_file.into_boxed_path(),
-								));
+										lib_file.into_boxed_path(),
+									));
 								}
 								Err(e) => return Err(e.into()),
 							};
@@ -538,30 +538,23 @@ impl Project {
 			})
 			.collect::<JoinSet<_>>();
 
-		let mut package_types = HashMap::<PackageId, Vec<String>>::default();
+		let mut package_types = HashMap::<PackageId, Arc<[String]>>::default();
 
 		while let Some(task) = tasks.join_next().await {
 			let (id, types) = task.unwrap()?;
-			package_types.insert(id, types);
+			package_types.insert(id, types.into());
 		}
 
 		// step 4. link ALL dependencies. do so with types
-		self.link(&graph, &manifest, &package_types, true)
+		self.link(graph, &package_targets, &package_types)
 			.instrument(tracing::debug_span!("link (all)"))
 			.await?;
 
-		if let Some(hooks) = &hooks {
-			hooks
-				.on_all_downloaded(&graph)
-				.await
-				.map_err(errors::DownloadAndLinkError::Hook)?;
-		}
-
 		if matches!(install_dependencies_mode, InstallDependenciesMode::Prod) || !force {
-			self.remove_unused(&graph).await?;
+			self.remove_unused(graph).await?;
 		}
 
-		Ok(graph)
+		Ok(package_targets)
 	}
 }
 

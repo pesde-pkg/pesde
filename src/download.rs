@@ -1,6 +1,5 @@
 use crate::{
 	Project, RefreshedSources,
-	graph::{DependencyGraph, DependencyGraphNode},
 	reporters::{DownloadProgressReporter as _, DownloadsReporter},
 	source::{
 		fs::PackageFs,
@@ -76,12 +75,10 @@ impl Project {
 	#[instrument(skip_all, level = "debug")]
 	pub(crate) fn download_graph<Reporter>(
 		&self,
-		graph: &DependencyGraph,
+		graph: impl Iterator<Item = PackageId>,
 		options: DownloadGraphOptions<Reporter>,
 	) -> Result<
-		impl Stream<
-			Item = Result<(PackageId, DependencyGraphNode, PackageFs), errors::DownloadGraphError>,
-		>,
+		impl Stream<Item = Result<(PackageId, PackageFs), errors::DownloadGraphError>>,
 		errors::DownloadGraphError,
 	>
 	where
@@ -97,8 +94,7 @@ impl Project {
 		let semaphore = Arc::new(Semaphore::new(network_concurrency.get()));
 
 		let mut tasks = graph
-			.iter()
-			.map(|(package_id, node)| {
+			.map(|package_id| {
 				let span = tracing::info_span!("download", package_id = package_id.to_string());
 
 				let project = self.clone();
@@ -106,15 +102,13 @@ impl Project {
 				let reporter = reporter.clone();
 				let refreshed_sources = refreshed_sources.clone();
 				let semaphore = semaphore.clone();
-				let package_id = Arc::new(package_id.clone());
-				let node = node.clone();
 
 				async move {
+					let _permit = semaphore.acquire().await;
+
 					let progress_reporter = reporter
 						.clone()
 						.map(|reporter| reporter.report_download(package_id.to_string()));
-
-					let _permit = semaphore.acquire().await;
 
 					if let Some(progress_reporter) = &progress_reporter {
 						progress_reporter.report_start();
@@ -164,7 +158,7 @@ impl Project {
 
 					tracing::debug!("downloaded");
 
-					Ok((Arc::into_inner(package_id).unwrap(), node, fs))
+					Ok((package_id, fs))
 				}
 				.instrument(span)
 			})

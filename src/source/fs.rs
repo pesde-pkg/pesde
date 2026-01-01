@@ -39,7 +39,7 @@ pub enum PackageFs {
 	/// A package stored in the CAS
 	Cas(BTreeMap<RelativePathBuf, FsEntry>),
 	/// A package that's to be copied
-	Copy(PathBuf, TargetKind),
+	Copy(PathBuf),
 }
 
 async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
@@ -170,11 +170,7 @@ async fn package_fs_cas(
 	Ok(())
 }
 
-async fn package_fs_copy(
-	src: &Path,
-	target: TargetKind,
-	destination: &Path,
-) -> std::io::Result<()> {
+async fn package_fs_copy(src: &Path, destination: &Path) -> std::io::Result<()> {
 	fs::create_dir_all(destination).await?;
 
 	let mut tasks = JoinSet::new();
@@ -194,7 +190,7 @@ async fn package_fs_copy(
 			}
 
 			for other_target in TargetKind::VARIANTS {
-				if target.packages_folder(*other_target) == file_name {
+				if other_target.packages_dir() == file_name {
 					continue 'entry;
 				}
 			}
@@ -244,9 +240,7 @@ impl PackageFs {
 			PackageFs::Cas(entries) => {
 				package_fs_cas(entries, destination.as_ref(), cas_path.as_ref(), link).await
 			}
-			PackageFs::Copy(src, target) => {
-				package_fs_copy(src, *target, destination.as_ref()).await
-			}
+			PackageFs::Copy(src) => package_fs_copy(src, destination.as_ref()).await,
 		}
 	}
 

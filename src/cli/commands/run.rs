@@ -6,32 +6,26 @@ use crate::cli::{
 use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
-use futures::{StreamExt as _, TryStreamExt as _};
 use pesde::{
-	MANIFEST_FILE_NAME, Project,
+	Project,
 	engine::runtime::Runtime,
-	errors::{ManifestReadError, WorkspaceMembersError},
+	graph::DependencyGraphNode,
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
-	manifest::{Alias, Manifest},
-	names::PackageName,
-	source::{
-		specifiers::DependencySpecifiers,
-		traits::{GetTargetOptions, PackageSource as _, RefreshOptions},
-	},
+	manifest::Alias,
+	private_dir,
+	source::traits::{GetTargetOptions, PackageSource as _, RefreshOptions},
 };
 use relative_path::{RelativePath, RelativePathBuf};
-use std::{
-	collections::HashSet, env::current_dir, ffi::OsString, io::Write as _, path::Path, sync::Arc,
-};
+use std::{env::current_dir, ffi::OsString, io::Write as _, path::Path, sync::Arc};
 
 #[derive(Debug, Args)]
 pub struct RunCommand {
 	/// The package name, script name, or path to a script to run
 	#[arg(index = 1)]
-	package_or_script: Option<String>,
+	package_or_script: String,
 
 	/// Arguments to pass to the script
-	#[arg(index = 2, last = true)]
+	#[arg(index = 2)]
 	args: Vec<OsString>,
 }
 
@@ -82,48 +76,18 @@ impl RunCommand {
 			command.exec_replace()
 		};
 
-		let Some(package_or_script) = self.package_or_script else {
-			if let Some(script_path) = manifest.target.bin_path() {
-				run(
-					compatible_runtime(manifest.target.kind(), &engines)?,
-					project.package_dir(),
-					&script_path.to_path(project.package_dir()),
-				)
-				.await;
-			}
-
-			anyhow::bail!("no package or script specified, and no bin path found in manifest")
-		};
-
 		let mut package_info = None;
 
-		if let Ok(pkg_name) = package_or_script.parse::<PackageName>() {
-			let graph = if let Some(lockfile) = up_to_date_lockfile(&project).await? {
-				lockfile.graph
-			} else {
-				anyhow::bail!("outdated lockfile, please run the install command first")
-			};
-
-			let mut versions = graph
-				.into_iter()
-				.filter(|(_, node)| {
-					node.direct.as_ref().is_some_and(
-						|(_, spec, _)| matches!(spec, DependencySpecifiers::Pesde(spec) if spec.name == pkg_name),
-					)
-				})
-				.collect::<Vec<_>>();
-
-			package_info = Some(match versions.len() {
-				0 => anyhow::bail!("package not found"),
-				1 => versions.pop().unwrap(),
-				_ => anyhow::bail!("multiple versions found. use the package's alias instead."),
-			});
-		} else if let Ok(alias) = package_or_script.parse::<Alias>() {
-			if let Some(lockfile) = up_to_date_lockfile(&project).await? {
+		if let Ok(alias) = self.package_or_script.parse::<Alias>() {
+			if let Some(mut lockfile) = up_to_date_lockfile(&project).await? {
+				let path: Arc<RelativePath> = project.path_from_root().into();
 				package_info = lockfile
 					.graph
-					.into_iter()
-					.find(|(_, node)| node.direct.as_ref().is_some_and(|(a, _, _)| alias == *a));
+					.importers
+					.remove(&path)
+					.context("failed to get importer from lockfile")?
+					.remove(&alias)
+					.map(|(id, _, _)| id);
 			} else {
 				eprintln!(
 					"{}",
@@ -134,17 +98,11 @@ impl RunCommand {
 			}
 		}
 
-		if let Some((id, node)) = package_info {
-			let container_folder = node.container_folder_from_project(
-				&id,
-				&project,
-				project
-					.deser_manifest()
-					.await
-					.context("failed to deserialize manifest")?
-					.target
-					.kind(),
-			);
+		if let Some(id) = package_info {
+			let dir = private_dir(&project, &project.path_from_root());
+			let container_dir = dir
+				.join("dependencies")
+				.join(DependencyGraphNode::container_dir_top_level(&id));
 
 			let source = id.source();
 			source
@@ -158,7 +116,7 @@ impl RunCommand {
 					id.pkg_ref(),
 					&GetTargetOptions {
 						project: project.clone(),
-						path: container_folder.as_path().into(),
+						path: container_dir.as_path().into(),
 						version_id: id.v_id(),
 						engines: engines.clone(),
 					},
@@ -169,13 +127,13 @@ impl RunCommand {
 				anyhow::bail!("package has no bin path");
 			};
 
-			let path = bin_path.to_path(&container_folder);
+			let path = bin_path.to_path(&container_dir);
 
 			run(compatible_runtime(target.kind(), &engines)?, &path, &path).await;
 		}
 
 		if let Ok(manifest) = project.deser_manifest().await
-			&& let Some(script) = manifest.scripts.get(&package_or_script)
+			&& let Some(script) = manifest.scripts.get(&self.package_or_script)
 		{
 			// let (runtime, script_path) =
 			// 	parse_script(script, &engines).context("failed to get script info")?;
@@ -188,76 +146,78 @@ impl RunCommand {
 			// .await;
 		}
 
-		let relative_path = RelativePathBuf::from(package_or_script);
+		let relative_path = RelativePathBuf::from(self.package_or_script);
 		let path = relative_path.to_path(project.package_dir());
 
 		if fs::metadata(&path).await.is_err() {
 			anyhow::bail!("path `{}` does not exist", path.display());
 		}
 
-		let workspace_dir = project
-			.workspace_dir()
-			.unwrap_or_else(|| project.package_dir());
+		unimplemented!();
 
-		let members = match project.workspace_members(false).await {
-			Ok(members) => members.boxed(),
-			Err(WorkspaceMembersError::ManifestParse(ManifestReadError::Io(e)))
-				if e.kind() == std::io::ErrorKind::NotFound =>
-			{
-				futures::stream::empty().boxed()
-			}
-			Err(e) => Err(e).context("failed to get workspace members")?,
-		};
+		// let workspace_dir = project
+		// 	.workspace_dir()
+		// 	.unwrap_or_else(|| project.package_dir());
 
-		let members = members
-			.then(|res| async {
-				fs::canonicalize(res.map_err(anyhow::Error::from)?.0)
-					.await
-					.map_err(anyhow::Error::from)
-			})
-			.chain(futures::stream::once(async {
-				fs::canonicalize(workspace_dir).await.map_err(Into::into)
-			}))
-			.try_collect::<HashSet<_>>()
-			.await
-			.context("failed to collect workspace members")?;
+		// let members = match project.workspace_members().await {
+		// 	Ok(members) => members.boxed(),
+		// 	Err(WorkspaceMembersError::ManifestParse(ManifestReadError::Io(e)))
+		// 		if e.kind() == std::io::ErrorKind::NotFound =>
+		// 	{
+		// 		futures::stream::empty().boxed()
+		// 	}
+		// 	Err(e) => Err(e).context("failed to get workspace members")?,
+		// };
+		//
+		// let members = members
+		// 	.then(|res| async {
+		// 		fs::canonicalize(res.map_err(anyhow::Error::from)?.0)
+		// 			.await
+		// 			.map_err(anyhow::Error::from)
+		// 	})
+		// 	.chain(futures::stream::once(async {
+		// 		fs::canonicalize(workspace_dir).await.map_err(Into::into)
+		// 	}))
+		// 	.try_collect::<HashSet<_>>()
+		// 	.await
+		// 	.context("failed to collect workspace members")?;
 
-		let root = 'finder: {
-			let mut current_path = path.clone();
-			loop {
-				let canonical_path = fs::canonicalize(&current_path)
-					.await
-					.context("failed to canonicalize parent")?;
+		// let root = 'finder: {
+		// 	let mut current_path = path.clone();
+		// 	loop {
+		// 		let canonical_path = fs::canonicalize(&current_path)
+		// 			.await
+		// 			.context("failed to canonicalize parent")?;
 
-				if members.contains(&canonical_path)
-					&& fs::metadata(canonical_path.join(MANIFEST_FILE_NAME))
-						.await
-						.is_ok()
-				{
-					break 'finder canonical_path;
-				}
+		// 		if members.contains(&canonical_path)
+		// 			&& fs::metadata(canonical_path.join(MANIFEST_FILE_NAME))
+		// 				.await
+		// 				.is_ok()
+		// 		{
+		// 			break 'finder canonical_path;
+		// 		}
 
-				if let Some(parent) = current_path.parent() {
-					current_path = parent.to_path_buf();
-				} else {
-					break;
-				}
-			}
+		// 		if let Some(parent) = current_path.parent() {
+		// 			current_path = parent.to_path_buf();
+		// 		} else {
+		// 			break;
+		// 		}
+		// 	}
 
-			project.package_dir().to_path_buf()
-		};
+		// 	project.package_dir().to_path_buf()
+		// };
 
-		let manifest = fs::read_to_string(root.join(MANIFEST_FILE_NAME))
-			.await
-			.context("failed to read manifest at root")?;
-		let manifest = toml::de::from_str::<Manifest>(&manifest)
-			.context("failed to deserialize manifest at root")?;
+		// let manifest = fs::read_to_string(root.join(MANIFEST_FILE_NAME))
+		// 	.await
+		// 	.context("failed to read manifest at root")?;
+		// let manifest = toml::de::from_str::<Manifest>(&manifest)
+		// 	.context("failed to deserialize manifest at root")?;
 
-		run(
-			compatible_runtime(manifest.target.kind(), &engines)?,
-			&root,
-			&path,
-		)
-		.await;
+		// run(
+		// 	compatible_runtime(manifest.target.kind(), &engines)?,
+		// 	&root,
+		// 	&path,
+		// )
+		// .await;
 	}
 }

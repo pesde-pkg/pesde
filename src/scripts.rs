@@ -1,4 +1,4 @@
-use crate::Project;
+use crate::{Project, private_dir};
 use std::{
 	convert::Infallible,
 	env::{join_paths, split_paths},
@@ -58,7 +58,7 @@ pub async fn execute_script<H: ExecuteScriptHooks>(
 		}
 	};
 
-	let mut paths = vec![project.bin_dir().to_path_buf()];
+	let mut paths = vec![private_dir(project, &project.path_from_root())];
 	if std::env::var("PESDE_IMPURE_SCRIPTS").is_ok_and(|s| !s.is_empty())
 		&& let Some(path) = std::env::var_os("PATH")
 	{

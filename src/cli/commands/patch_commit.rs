@@ -2,7 +2,7 @@ use crate::cli::up_to_date_lockfile;
 use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
-use pesde::{Project, patches::create_patch};
+use pesde::{Project, patches::create_patch, source::ids::PackageId};
 use std::{path::PathBuf, str::FromStr as _};
 
 #[derive(Debug, Args)]
@@ -20,7 +20,7 @@ impl PatchCommitCommand {
 			anyhow::bail!("outdated lockfile, please run the install command first")
 		};
 
-		let id = self
+		let id: PackageId = self
 			.directory
 			.parent()
 			.context("directory has no parent")?
@@ -31,7 +31,7 @@ impl PatchCommitCommand {
 			.parse()
 			.context("failed to parse package id")?;
 
-		graph.get(&id).context("package not found in graph")?;
+		graph.nodes.get(&id).context("package not found in graph")?;
 
 		let mut manifest = toml_edit::DocumentMut::from_str(
 			&project

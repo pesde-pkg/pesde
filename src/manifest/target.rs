@@ -54,10 +54,10 @@ impl TargetKind {
 		TargetKind::Luau,
 	];
 
-	/// The folder to store packages in for this target
+	/// The directory to store packages in for this target
 	/// self is the project's target, dependency is the target of the dependency
 	#[must_use]
-	pub fn packages_folder(self, dependency: Self) -> &'static str {
+	pub fn packages_dir(self) -> &'static str {
 		// the code below might seem better, but it's just going to create issues with users trying
 		// to use a build script, since imports would break between targets
 
@@ -65,7 +65,7 @@ impl TargetKind {
 		//     return "packages".to_string();
 		// }
 
-		match dependency {
+		match self {
 			Self::Luau => "luau_packages",
 			Self::Lune => "lune_packages",
 			Self::Roblox => "roblox_packages",

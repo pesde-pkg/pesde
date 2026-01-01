@@ -1,234 +1,139 @@
 use crate::{
-	PACKAGES_CONTAINER_NAME, Project, all_packages_dirs, graph::DependencyGraphWithTarget,
-	manifest::Alias, util::remove_empty_dir,
+	PACKAGES_CONTAINER_NAME, Project, graph::DependencyGraph, manifest::target::TargetKind,
+	private_dir, util::remove_empty_dir,
 };
 use fs_err::tokio as fs;
-use futures::FutureExt as _;
-use std::{
-	collections::HashSet,
-	path::{Component, Path, PathBuf},
-	sync::Arc,
-};
+use std::{collections::HashSet, path::Path, sync::Arc};
 use tokio::task::JoinSet;
-
-fn index_entry(
-	entry: &fs::DirEntry,
-	packages_index_dir: &Path,
-	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
-	used_paths: Arc<HashSet<PathBuf>>,
-	#[cfg(feature = "patches")] patched_packages: Arc<HashSet<PathBuf>>,
-) {
-	fn get_package_name_from_container(container: &Path) -> (bool, String) {
-		let Component::Normal(first_component) = container.components().next().unwrap() else {
-			panic!("invalid container path: `{}`", container.display());
-		};
-
-		let first_component = first_component.to_string_lossy();
-		let Some((name, _)) = first_component.split_once('@') else {
-			return (
-				false,
-				first_component.split_once('+').unwrap().1.to_string(),
-			);
-		};
-
-		(true, name.split_once('_').unwrap().1.to_string())
-	}
-
-	let path = entry.path();
-	let path_relative = path.strip_prefix(packages_index_dir).unwrap().to_path_buf();
-
-	#[cfg_attr(not(feature = "patches"), allow(unused_variables))]
-	let (is_wally, package_name) = get_package_name_from_container(&path_relative);
-
-	tasks.spawn(async move {
-		if is_wally {
-			#[cfg(not(feature = "wally-compat"))]
-			{
-				tracing::error!(
-					"found Wally package in index despite feature being disabled at `{}`",
-					path.display()
-				);
-			}
-			#[cfg(feature = "wally-compat")]
-			{
-				if used_paths.contains(&path_relative) {
-					#[cfg(feature = "patches")]
-					if !patched_packages.contains(&path_relative) {
-						crate::patches::remove_patch(path.join(package_name)).await?;
-					}
-				} else {
-					fs::remove_dir_all(path).await?;
-				}
-
-				return Ok(());
-			}
-		}
-
-		let mut tasks = JoinSet::<Result<_, errors::RemoveUnusedError>>::new();
-
-		let mut entries = fs::read_dir(&path).await?;
-		while let Some(entry) = entries.next_entry().await? {
-			let version = entry.file_name();
-			let path_relative = path_relative.join(&version);
-
-			if used_paths.contains(&path_relative) {
-				#[cfg(feature = "patches")]
-				if !patched_packages.contains(&path_relative) {
-					let path = entry.path().join(&package_name);
-					tasks.spawn(async {
-						crate::patches::remove_patch(path).await.map_err(Into::into)
-					});
-				}
-				continue;
-			}
-
-			let path = entry.path();
-			tasks.spawn(async { fs::remove_dir_all(path).await.map_err(Into::into) });
-		}
-
-		while let Some(task) = tasks.join_next().await {
-			task.unwrap()?;
-		}
-
-		remove_empty_dir(&path).await.map_err(Into::into)
-	});
-}
-
-fn packages_entry(
-	entry: fs::DirEntry,
-	tasks: &mut JoinSet<Result<(), errors::RemoveUnusedError>>,
-	expected_aliases: Arc<HashSet<Alias>>,
-) {
-	tasks.spawn(async move {
-		if entry.file_type().await?.is_dir() {
-			return Ok(());
-		}
-
-		let path = entry.path();
-		let name = path
-			.file_stem()
-			.unwrap()
-			.to_str()
-			.expect("non UTF-8 file name in packages folder");
-		let name = name.strip_suffix(".bin").unwrap_or(name);
-		let name = match name.parse::<Alias>() {
-			Ok(name) => name,
-			Err(e) => {
-				tracing::error!("invalid alias in packages folder: {e}");
-				return Ok(());
-			}
-		};
-
-		if !expected_aliases.contains(&name) {
-			fs::remove_file(path).await?;
-		}
-
-		Ok(())
-	});
-}
 
 impl Project {
 	/// Removes unused packages from the project
 	pub async fn remove_unused(
 		&self,
-		graph: &DependencyGraphWithTarget,
+		graph: &DependencyGraph,
 	) -> Result<(), errors::RemoveUnusedError> {
-		// let manifest = self.deser_manifest().await?;
-		// let used_paths = graph
-		// 	.iter()
-		// 	.map(|(id, node)| {
-		// 		node.node
-		// 			.container_folder(id)
-		// 			.parent()
-		// 			.unwrap()
-		// 			.to_path_buf()
-		// 	})
-		// 	.collect::<HashSet<_>>();
-		// let used_paths = Arc::new(used_paths);
-		// #[cfg(feature = "patches")]
-		// let patched_packages = manifest
-		// 	.patches
-		// 	.keys()
-		// 	.filter_map(|id| graph.get(id).map(|node| (id, node)))
-		// 	.map(|(id, node)| {
-		// 		node.node
-		// 			.container_folder(id)
-		// 			.parent()
-		// 			.unwrap()
-		// 			.to_path_buf()
-		// 	})
-		// 	.collect::<HashSet<_>>();
-		// #[cfg(feature = "patches")]
-		// let patched_packages = Arc::new(patched_packages);
+		let mut tasks = graph
+			.importers
+			.keys()
+			.flat_map(|importer| {
+				TargetKind::VARIANTS
+					.iter()
+					.map(|target| (importer.clone(), *target))
+			})
+			.map(|(importer, target)| {
+				let packages_dir: Arc<Path> = private_dir(self, &importer)
+					.join("dependencies")
+					.join(target.packages_dir())
+					.into();
 
-		// let mut tasks = all_packages_dirs()
-		// 	.into_iter()
-		// 	.map(|folder| {
-		// 		let packages_dir = self.package_dir().join(folder);
-		// 		let packages_index_dir = packages_dir.join(PACKAGES_CONTAINER_NAME);
-		// 		let used_paths = used_paths.clone();
-		// 		#[cfg(feature = "patches")]
-		// 		let patched_packages = patched_packages.clone();
+				let expected_aliases = graph.importers[&importer]
+					.keys()
+					.cloned()
+					.collect::<HashSet<_>>();
+				let mut queue = graph.importers[&importer]
+					.values()
+					.map(|(id, _, _)| id.clone())
+					.collect::<Vec<_>>();
+				let mut expected_ids = HashSet::new();
 
-		// 		let expected_aliases = graph
-		// 			.iter()
-		// 			.filter(|(id, _)| {
-		// 				manifest.target.kind().packages_folder(id.v_id().target()) == folder
-		// 			})
-		// 			.filter_map(|(_, node)| {
-		// 				node.node.direct.as_ref().map(|(alias, _, _)| alias.clone())
-		// 			})
-		// 			.collect::<HashSet<_>>();
-		// 		let expected_aliases = Arc::new(expected_aliases);
+				while let Some(pkg_id) = queue.pop() {
+					if expected_ids.insert(pkg_id.escaped())
+						&& let Some(node) = graph.nodes.get(&pkg_id)
+					{
+						for dep_id in node.dependencies.values() {
+							queue.push(dep_id.clone());
+						}
+					}
+				}
 
-		// 		async move {
-		// 			let mut index_entries = match fs::read_dir(&packages_index_dir).await {
-		// 				Ok(entries) => entries,
-		// 				Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-		// 				Err(e) => return Err(e.into()),
-		// 			};
-		// 			// we don't handle NotFound here because the upper level will handle it
-		// 			let mut packages_entries = fs::read_dir(&packages_dir).await?;
-		// 			let mut tasks = JoinSet::new();
+				async move {
+					let mut tasks = JoinSet::<Result<(), errors::RemoveUnusedError>>::new();
+					let index_dir: Arc<Path> = packages_dir.join(PACKAGES_CONTAINER_NAME).into();
 
-		// 			loop {
-		// 				tokio::select! {
-		// 					Some(entry) = index_entries.next_entry().map(Result::transpose) => {
-		// 						index_entry(
-		// 							&entry?,
-		// 							&packages_index_dir,
-		// 							&mut tasks,
-		// 							used_paths.clone(),
-		// 							#[cfg(feature = "patches")]
-		// 							patched_packages.clone(),
-		// 						);
-		// 					}
-		// 					Some(entry) = packages_entries.next_entry().map(Result::transpose) => {
-		// 						packages_entry(
-		// 							entry?,
-		// 							&mut tasks,
-		// 							expected_aliases.clone(),
-		// 						);
-		// 					}
-		// 					else => break,
-		// 				}
-		// 			}
+					{
+						let index_dir = index_dir.clone();
+						tasks.spawn(async move {
+							let mut read_dir = match fs::read_dir(&index_dir).await {
+								Ok(entries) => entries,
+								Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+								Err(e) => return Err(e.into()),
+							};
 
-		// 			while let Some(task) = tasks.join_next().await {
-		// 				task.unwrap()?;
-		// 			}
+							let mut tasks = JoinSet::new();
 
-		// 			remove_empty_dir(&packages_index_dir).await?;
-		// 			remove_empty_dir(&packages_dir).await?;
+							while let Some(entry) = read_dir.next_entry().await? {
+								let file_name = entry.file_name();
 
-		// 			Ok::<_, errors::RemoveUnusedError>(())
-		// 		}
-		// 	})
-		// 	.collect::<JoinSet<_>>();
+								if file_name
+									.to_str()
+									.is_some_and(|name| expected_ids.contains(name))
+								{
+									continue;
+								}
 
-		// while let Some(task) = tasks.join_next().await {
-		// 	task.unwrap()?;
-		// }
+								let path = entry.path();
+								tasks.spawn(async move { fs::remove_dir_all(path).await });
+							}
+
+							while let Some(task) = tasks.join_next().await {
+								task.unwrap()?;
+							}
+
+							Ok(())
+						});
+					}
+
+					{
+						let packages_dir = packages_dir.clone();
+						tasks.spawn(async move {
+							let mut read_dir = match fs::read_dir(&packages_dir).await {
+								Ok(entries) => entries,
+								Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+								Err(e) => return Err(e.into()),
+							};
+
+							let mut tasks = JoinSet::new();
+
+							while let Some(entry) = read_dir.next_entry().await? {
+								let file_name = entry.file_name();
+								if file_name == PACKAGES_CONTAINER_NAME {
+									continue;
+								}
+
+								if file_name.to_str().is_some_and(|name| {
+									name.parse()
+										.is_ok_and(|alias| expected_aliases.contains(&alias))
+								}) {
+									continue;
+								}
+
+								let path = entry.path();
+								tasks.spawn(async move { fs::remove_file(path).await });
+							}
+
+							while let Some(task) = tasks.join_next().await {
+								task.unwrap()?;
+							}
+
+							Ok(())
+						});
+					}
+
+					while let Some(task) = tasks.join_next().await {
+						task.unwrap()?;
+					}
+
+					remove_empty_dir(&index_dir).await?;
+					remove_empty_dir(&packages_dir).await?;
+
+					Ok::<_, errors::RemoveUnusedError>(())
+				}
+			})
+			.collect::<JoinSet<Result<(), errors::RemoveUnusedError>>>();
+
+		while let Some(task) = tasks.join_next().await {
+			task.unwrap()?;
+		}
 
 		Ok(())
 	}

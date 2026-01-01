@@ -1,7 +1,4 @@
-use crate::cli::{
-	install::{InstallOptions, install},
-	run_on_workspace_members,
-};
+use crate::cli::install::{InstallOptions, install};
 use clap::Args;
 use pesde::{Project, download_and_link::InstallDependenciesMode};
 use std::num::NonZeroUsize;
@@ -47,16 +44,7 @@ impl InstallCommand {
 			force: self.force,
 		};
 
-		install(&options, &project, reqwest.clone(), true).await?;
-
-		run_on_workspace_members(&project, |project| {
-			let reqwest = reqwest.clone();
-			async move {
-				install(&options, &project, reqwest, false).await?;
-				Ok(())
-			}
-		})
-		.await?;
+		install(&options, &project, reqwest.clone()).await?;
 
 		Ok(())
 	}

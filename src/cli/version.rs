@@ -210,7 +210,7 @@ pub async fn get_or_download_engine(
 	let path = path.join(version.to_string());
 	fs::create_dir_all(&path)
 		.await
-		.context("failed to create engine container folder")?;
+		.context("failed to create engine container directory")?;
 	let path = path
 		.join(source.expected_file_name())
 		.with_extension(std::env::consts::EXE_EXTENSION);
@@ -277,7 +277,7 @@ pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
 
 	fs::copy(with, &bin_exe_path)
 		.await
-		.context("failed to copy executable to bin folder")?;
+		.context("failed to copy executable to bin directory")?;
 
 	make_executable(&bin_exe_path).await?;
 

@@ -51,7 +51,7 @@ required-features = ["bin"]
 workspace = true
 
 [dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive", "rc"] }
 serde_json = "1.0.145"
 toml = "0.9.7"
 gix = { version = "0.76.0", default-features = false, features = [

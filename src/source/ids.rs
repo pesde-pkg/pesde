@@ -4,7 +4,7 @@ use crate::{
 	source::{PackageSources, refs::PackageRefs},
 };
 use semver::Version;
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, str::FromStr, sync::Arc};
 
 /// A version ID, which is a combination of a version and a target
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -71,32 +71,32 @@ impl FromStr for VersionId {
 
 /// A package ID, which is a combination of a name and a version ID
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct PackageId(PackageSources, PackageRefs, VersionId);
+pub struct PackageId(Arc<(PackageSources, PackageRefs, VersionId)>);
 ser_display_deser_fromstr!(PackageId);
 
 impl PackageId {
 	/// Creates a new package ID
 	#[must_use]
 	pub fn new(source: PackageSources, pkg_ref: PackageRefs, v_id: VersionId) -> Self {
-		PackageId(source, pkg_ref, v_id)
+		PackageId(Arc::new((source, pkg_ref, v_id)))
 	}
 
 	/// Accesses the package source
 	#[must_use]
 	pub fn source(&self) -> &PackageSources {
-		&self.0
+		&self.0.0
 	}
 
 	/// Accesses the package ref
 	#[must_use]
 	pub fn pkg_ref(&self) -> &PackageRefs {
-		&self.1
+		&self.0.1
 	}
 
 	/// Accesses the version id
 	#[must_use]
 	pub fn v_id(&self) -> &VersionId {
-		&self.2
+		&self.0.2
 	}
 
 	/// Returns a filesystem safe version of this id

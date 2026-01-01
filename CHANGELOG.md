@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Switch to croshet by @daimond113
+- Workspaces are now integrated more deeply - they're no longer treated as a simple "run on" wrapper by @daimond113
+- Patches now apply to an entire workspace and must be specified in the root by @daimond113
 
 ### Removed
 - Drop `build_files` ([RFC](https://github.com/pesde-pkg/pesde/issues/57)) by @daimond113

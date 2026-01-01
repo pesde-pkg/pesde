@@ -33,7 +33,7 @@ pub trait EngineSource: Debug {
 	/// The error type for downloading an engine from this source
 	type DownloadError: std::error::Error + Send + Sync + 'static;
 
-	/// Returns the folder to store the engine's versions in
+	/// Returns the directory to store the engine's versions in
 	fn directory(&self) -> PathBuf;
 
 	/// Returns the expected file name of the engine in the archive

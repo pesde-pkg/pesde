@@ -1,4 +1,4 @@
-use crate::graph::{DependencyTypeGraphNode, TypeGraph};
+use crate::graph::{DependencyTypeGraph, DependencyTypeGraphNode};
 #[expect(deprecated)]
 use crate::{
 	GixUrl, Project, RefreshedSources,
@@ -12,42 +12,14 @@ use crate::{
 		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
 	},
 };
-use std::collections::{HashMap, VecDeque, btree_map::Entry};
+use futures::StreamExt as _;
+use relative_path::RelativePath;
+use std::{
+	collections::{HashMap, VecDeque},
+	sync::Arc,
+};
+use tokio::pin;
 use tracing::{Instrument as _, instrument};
-
-fn insert_node(
-	graph: &mut DependencyGraph,
-	package_id: &PackageId,
-	mut node: DependencyGraphNode,
-	is_top_level: bool,
-) {
-	if !is_top_level && node.direct.take().is_some() {
-		tracing::debug!(
-			"tried to insert {package_id} as direct dependency from a non top-level context",
-		);
-	}
-
-	match graph.entry(package_id.clone()) {
-		Entry::Vacant(entry) => {
-			entry.insert(node);
-		}
-		Entry::Occupied(existing) => {
-			let current_node = existing.into_mut();
-
-			match (&current_node.direct, &node.direct) {
-				(Some(_), Some(_)) => {
-					tracing::warn!("duplicate direct dependency for {package_id}");
-				}
-
-				(None, Some(_)) => {
-					current_node.direct = node.direct;
-				}
-
-				(_, _) => {}
-			}
-		}
-	}
-}
 
 impl Project {
 	/// Create a dependency graph from the project's manifest
@@ -58,83 +30,85 @@ impl Project {
 	)]
 	pub async fn dependency_graph(
 		&self,
-		previous_graph: Option<&DependencyGraph>,
+		previous_graph: Option<DependencyGraph>,
 		refreshed_sources: RefreshedSources,
-		// used by `x` command - if true, specifier indices are expected to be URLs. will not do peer dependency checks
+		// used by `x` command - if true, specifier indices are expected to be URLs
 		is_published_package: bool,
-	) -> Result<(DependencyGraph, Option<TypeGraph>), Box<errors::DependencyGraphError>> {
-		let manifest = self
-			.deser_manifest()
-			.await
-			.map_err(|e| Box::new(e.into()))?;
+	) -> Result<(DependencyGraph, Option<DependencyTypeGraph>), errors::DependencyGraphError> {
+		let mut graph = DependencyGraph {
+			importers: Default::default(),
+			nodes: Default::default(),
+		};
 
-		let all_current_dependencies = manifest
-			.all_dependencies()
-			.map_err(|e| Box::new(e.into()))?;
+		let mut queue = VecDeque::new();
 
-		let mut all_specifiers = all_current_dependencies
-			.clone()
-			.into_iter()
-			.map(|(alias, (spec, ty))| ((spec, ty), alias))
-			.collect::<HashMap<_, _>>();
+		let members = self.workspace_members().await?;
+		pin!(members);
+		while let Some((importer, manifest)) = members.next().await.transpose()? {
+			let importer: Arc<RelativePath> = importer.into();
+			let manifest = Arc::new(manifest);
+			let importer_entry = graph.importers.entry(importer.clone()).or_default();
+			let all_current_dependencies = manifest.all_dependencies()?;
 
-		let mut graph = DependencyGraph::default();
+			let mut all_specifiers = all_current_dependencies
+				.clone()
+				.into_iter()
+				.map(|(alias, (spec, ty))| ((spec, ty), alias))
+				.collect::<HashMap<_, _>>();
 
-		if let Some(previous_graph) = previous_graph {
-			for (package_id, node) in previous_graph {
-				let Some((old_alias, specifier, source_ty)) = &node.direct else {
-					// this is not a direct dependency, will be added if it's still being used later
-					continue;
-				};
+			if let Some(previous_graph) = &previous_graph
+				&& let Some(previous_importer) = previous_graph.importers.get(&importer)
+			{
+				for (old_alias, (package_id, specifier, source_ty)) in previous_importer {
+					if specifier.is_local() {
+						// local dependencies must always be resolved fresh in case their FS changes
+						continue;
+					}
 
-				if specifier.is_local() {
-					// local dependencies must always be resolved fresh in case their FS changes
-					continue;
-				}
+					let Some(alias) = all_specifiers.remove(&(specifier.clone(), *source_ty))
+					else {
+						tracing::debug!(
+							"dependency {package_id} (old alias {old_alias}) from old dependency graph is no longer in the manifest",
+						);
+						continue;
+					};
 
-				let Some(alias) = all_specifiers.remove(&(specifier.clone(), *source_ty)) else {
-					tracing::debug!(
-						"dependency {package_id} (old alias {old_alias}) from old dependency graph is no longer in the manifest",
-					);
-					continue;
-				};
+					let span =
+						tracing::info_span!("resolve from old graph", alias = alias.as_str());
+					let _guard = span.enter();
 
-				let span = tracing::info_span!("resolve from old graph", alias = alias.as_str());
-				let _guard = span.enter();
+					let mut queue = previous_graph.nodes[package_id]
+						.dependencies
+						.iter()
+						.map(|(dep_alias, id)| (id, vec![alias.to_string(), dep_alias.to_string()]))
+						.collect::<VecDeque<_>>();
 
-				let mut queue = node
-					.dependencies
-					.iter()
-					.map(|(dep_alias, id)| (id, vec![alias.to_string(), dep_alias.to_string()]))
-					.collect::<VecDeque<_>>();
+					tracing::debug!("resolved {package_id} from old dependency graph");
 
-				tracing::debug!("resolved {package_id} from old dependency graph");
-				insert_node(
-					&mut graph,
-					package_id,
-					DependencyGraphNode {
-						direct: Some((alias.clone(), specifier.clone(), *source_ty)),
-						..node.clone()
-					},
-					true,
-				);
+					importer_entry
+						.insert(alias, (package_id.clone(), specifier.clone(), *source_ty));
 
-				while let Some((dep_id, path)) = queue.pop_front() {
-					let inner_span =
-						tracing::info_span!("resolve dependency", path = path.join(">"));
-					let _inner_guard = inner_span.enter();
+					graph
+						.nodes
+						.insert(package_id.clone(), previous_graph.nodes[package_id].clone());
 
-					if let Some(dep_node) = previous_graph.get(dep_id) {
+					while let Some((dep_id, path)) = queue.pop_front() {
+						let inner_span =
+							tracing::info_span!("resolve dependency", path = path.join(">"));
+						let _inner_guard = inner_span.enter();
+
 						tracing::debug!("resolved sub-dependency {dep_id}");
-						if graph.contains_key(dep_id) {
+						if graph.nodes.contains_key(dep_id) {
 							tracing::debug!(
 								"sub-dependency {dep_id} already resolved in new graph",
 							);
 							continue;
 						}
-						insert_node(&mut graph, dep_id, dep_node.clone(), false);
+						graph
+							.nodes
+							.insert(dep_id.clone(), previous_graph.nodes[dep_id].clone());
 
-						dep_node
+						previous_graph.nodes[dep_id]
 							.dependencies
 							.iter()
 							.map(|(alias, id)| {
@@ -147,17 +121,17 @@ impl Project {
 								)
 							})
 							.for_each(|dep| queue.push_back(dep));
-					} else {
-						tracing::warn!("dependency {dep_id} not found in previous graph");
 					}
 				}
 			}
-		}
 
-		let mut queue = all_specifiers
-			.into_iter()
-			.map(|((spec, ty), alias)| {
+			let all_current_dependencies = Arc::new(all_current_dependencies);
+
+			queue.extend(all_specifiers.into_iter().map(|((spec, ty), alias)| {
 				(
+					Some(importer.clone()),
+					manifest.clone(),
+					all_current_dependencies.clone(),
 					spec,
 					ty,
 					None::<PackageId>,
@@ -165,16 +139,31 @@ impl Project {
 					false,
 					manifest.target.kind(),
 				)
-			})
-			.collect::<VecDeque<_>>();
-		let mut type_graph = None::<TypeGraph>;
+			}));
+		}
 
 		let refresh_options = RefreshOptions {
 			project: self.clone(),
 		};
 
-		while let Some((specifier, ty, dependant, path, overridden, target)) = queue.pop_front() {
-			let type_graph = type_graph.get_or_insert_default();
+		let mut type_graph = None::<DependencyTypeGraph>;
+
+		while let Some((
+			importer,
+			manifest,
+			all_current_dependencies,
+			specifier,
+			ty,
+			dependant,
+			path,
+			overridden,
+			target,
+		)) = queue.pop_front()
+		{
+			let type_graph = type_graph.get_or_insert_with(|| DependencyTypeGraph {
+				importers: Default::default(),
+				nodes: Default::default(),
+			});
 
 			async {
 				let alias = path.last().unwrap();
@@ -240,10 +229,7 @@ impl Project {
 					}
 				};
 
-				refreshed_sources
-					.refresh(&source, &refresh_options)
-					.await
-					.map_err(|e| Box::new(e.into()))?;
+				refreshed_sources.refresh(&source, &refresh_options).await?;
 
 				let (source, pkg_ref, mut versions, suggestions) = source
 					.resolve(
@@ -255,10 +241,10 @@ impl Project {
 							loose_target: false,
 						},
 					)
-					.await
-					.map_err(|e| Box::new(e.into()))?;
+					.await?;
 
 				let Some((package_id, dependencies)) = graph
+					.nodes
 					.keys()
 					.filter(|package_id| {
 						*package_id.source() == source
@@ -278,57 +264,66 @@ impl Project {
 						})
 					})
 				else {
-					return Err(Box::new(errors::DependencyGraphError::NoMatchingVersion(
-						format!(
-							"{specifier} {target}{}",
-							if suggestions.is_empty() {
-								"".into()
-							} else {
-								format!(
-									" available targets: {}",
-									suggestions
-										.into_iter()
-										.map(|t| t.to_string())
-										.collect::<Vec<_>>()
-										.join(", ")
-								)
-							}
-						),
+					return Err(errors::DependencyGraphError::NoMatchingVersion(format!(
+						"{specifier} {target}{}",
+						if suggestions.is_empty() {
+							"".into()
+						} else {
+							format!(
+								" available targets: {}",
+								suggestions
+									.into_iter()
+									.map(|t| t.to_string())
+									.collect::<Vec<_>>()
+									.join(", ")
+							)
+						}
 					)));
 				};
 
+				if let Some(importer) = &importer {
+					graph
+						.importers
+						.entry(importer.clone())
+						.or_default()
+						.insert(alias.clone(), (package_id.clone(), specifier.clone(), ty));
+					type_graph
+						.importers
+						.entry(importer.clone())
+						.or_default()
+						.insert(alias.clone(), (package_id.clone(), specifier.clone()));
+				}
+
 				if let Some(dependant_id) = dependant {
 					graph
+						.nodes
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in graph")
 						.dependencies
 						.insert(alias.clone(), package_id.clone());
 					type_graph
+						.nodes
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in type graph")
 						.dependencies
 						.insert(alias.clone(), (package_id.clone(), ty));
 				}
 
-				if let Some(already_resolved) = graph.get_mut(&package_id) {
+				if graph.nodes.get_mut(&package_id).is_some() {
 					tracing::debug!("{package_id} already resolved");
-
-					if already_resolved.direct.is_none() && depth == 0 {
-						already_resolved.direct = Some((alias.clone(), specifier.clone(), ty));
-					}
 
 					return Ok(());
 				}
 
-				let node = DependencyGraphNode {
-					direct: (depth == 0).then(|| (alias.clone(), specifier.clone(), ty)),
-					dependencies: Default::default(),
-				};
-				insert_node(&mut graph, &package_id, node, depth == 0);
-				type_graph.insert(
+				graph.nodes.insert(
+					package_id.clone(),
+					DependencyGraphNode {
+						dependencies: Default::default(),
+					},
+				);
+				type_graph.nodes.insert(
 					package_id.clone(),
 					DependencyTypeGraphNode {
-						direct: (depth == 0).then(|| alias.clone()),
 						dependencies: Default::default(),
 					},
 				);
@@ -365,6 +360,9 @@ impl Project {
 					}
 
 					queue.push_back((
+						None,
+						manifest.clone(),
+						all_current_dependencies.clone(),
 						match overridden {
 							Some(OverrideSpecifier::Specifier(spec)) => spec.clone(),
 							Some(OverrideSpecifier::Alias(alias)) => all_current_dependencies
@@ -409,9 +407,9 @@ pub mod errors {
 	#[derive(Debug, Error)]
 	#[non_exhaustive]
 	pub enum DependencyGraphError {
-		/// An error occurred while deserializing the manifest
-		#[error("failed to deserialize manifest")]
-		ManifestRead(#[from] crate::errors::ManifestReadError),
+		/// An error occurred while accessing the workspace members
+		#[error("error accessing workspace members")]
+		WorkspaceMembers(#[from] crate::errors::WorkspaceMembersError),
 
 		/// An error occurred while reading all dependencies from the manifest
 		#[error("error getting all project dependencies")]

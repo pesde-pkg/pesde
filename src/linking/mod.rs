@@ -1,7 +1,9 @@
 use crate::{
 	PACKAGES_CONTAINER_NAME, Project,
-	graph::{DependencyGraphNode, DependencyGraphNodeWithTarget, DependencyGraphWithTarget},
-	manifest::{Alias, Manifest},
+	graph::{DependencyGraph, DependencyGraphNode},
+	linking::generator::LinkPaths,
+	manifest::{Manifest, target::Target},
+	private_dir,
 	source::{
 		fs::{cas_path, store_in_cas},
 		ids::PackageId,
@@ -9,9 +11,12 @@ use crate::{
 	},
 };
 use fs_err::tokio as fs;
+use futures::StreamExt as _;
+use relative_path::RelativePath;
 use std::{
 	collections::HashMap,
 	path::{Path, PathBuf},
+	sync::Arc,
 };
 use tokio::task::JoinSet;
 
@@ -44,186 +49,152 @@ async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std:
 impl Project {
 	pub(crate) async fn link(
 		&self,
-		graph: &DependencyGraphWithTarget,
-		manifest: &Manifest,
-		package_types: &HashMap<PackageId, Vec<String>>,
-		is_complete: bool,
+		graph: &DependencyGraph,
+		package_targets: &HashMap<PackageId, Arc<Target>>,
+		package_types: &HashMap<PackageId, Arc<[String]>>,
 	) -> Result<(), errors::LinkingError> {
-		let mut tasks = JoinSet::<Result<_, errors::LinkingError>>::new();
-		let mut link_files = |base_folder: &Path,
-		                      container_folder: &Path,
-		                      root_container_folder: &Path,
-		                      relative_container_folder: &Path,
-		                      node: &DependencyGraphNodeWithTarget,
-		                      package_id: &PackageId,
-		                      alias: &Alias|
-		 -> Result<(), errors::LinkingError> {
-			static NO_TYPES: Vec<String> = Vec::new();
-
-			if let Some(lib_file) = node.target.lib_path() {
-				let destination = base_folder.join(format!("{alias}.luau"));
-
-				let lib_module = generator::generate_lib_linking_module(
-					&generator::get_lib_require_path(
-						node.target.kind(),
-						base_folder,
-						lib_file,
-						container_folder,
-						package_id.pkg_ref().structure_kind(),
-						root_container_folder,
-						relative_container_folder,
-						manifest,
-					)?,
-					package_types.get(package_id).unwrap_or(&NO_TYPES),
-				);
-				let cas_dir = self.cas_dir().to_path_buf();
-
-				tasks.spawn(async move {
-					write_cas(destination, &cas_dir, &lib_module)
-						.await
-						.map_err(Into::into)
-				});
-			}
-
-			if let Some(bin_file) = node.target.bin_path() {
-				let destination = base_folder.join(format!("{alias}.bin.luau"));
-
-				let bin_module = generator::generate_bin_linking_module(
-					container_folder,
-					&generator::get_bin_require_path(base_folder, bin_file, container_folder),
-				);
-				let cas_dir = self.cas_dir().to_path_buf();
-
-				tasks.spawn(async move {
-					write_cas(destination, &cas_dir, &bin_module)
-						.await
-						.map_err(Into::into)
-				});
-			}
-
-			Ok(())
-		};
+		let mut importer_manifests = HashMap::<Arc<RelativePath>, Arc<Manifest>>::new();
+		let members = self.workspace_members().await?;
+		tokio::pin!(members);
+		while let Some((importer, manifest)) = members.next().await.transpose()? {
+			importer_manifests.insert(importer.into(), manifest.into());
+		}
 
 		let mut node_tasks = graph
+			.importers
 			.iter()
-			.map(|(id, node)| {
-				let base_folder = self
-					.package_dir()
-					.join(manifest.target.kind().packages_folder(id.v_id().target()));
+			.flat_map(|(importer, dependencies)| {
+				dependencies
+					.iter()
+					.filter(|(_, (id, _, _))| graph.nodes.contains_key(id))
+					.map(|(alias, (id, _, _))| {
+						let importer = importer.clone();
+						let dependencies_dir = private_dir(self, &importer)
+							.join("dependencies")
+							.join(id.v_id().target().packages_dir());
 
-				let id = id.clone();
-				let node = node.clone();
+						let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME)
+							.join(DependencyGraphNode::container_dir(id));
 
-				async move {
-					Ok::<_, errors::LinkingError>((
-						id,
-						node,
-						create_and_canonicalize(base_folder).await?,
-					))
-				}
+						(
+							importer,
+							alias.clone(),
+							id.clone(),
+							LinkPaths {
+								base_dir: dependencies_dir.clone(),
+								destination_dir: dependencies_dir.join(container_dir.clone()),
+								container_dir,
+								root_container_dir: dependencies_dir,
+							},
+						)
+					})
+					.chain(
+						dependencies
+							.values()
+							.filter_map(|(id, _, _)| graph.nodes.get(id).map(|node| (id, node)))
+							.flat_map(|(id, node)| {
+								node.dependencies
+									.iter()
+									.map(|(dep_alias, dep_id)| (id.clone(), dep_alias, dep_id))
+							})
+							.map(|(dependant_id, dep_alias, dep_id)| {
+								let importer = importer.clone();
+								let dependencies_dir =
+									private_dir(self, &importer).join("dependencies");
+
+								let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME)
+									.join(DependencyGraphNode::container_dir(dep_id));
+
+								(
+									importer,
+									dep_alias.clone(),
+									dep_id.clone(),
+									LinkPaths {
+										base_dir: dependencies_dir
+											.join(dependant_id.v_id().target().packages_dir())
+											.join(PACKAGES_CONTAINER_NAME)
+											.join(DependencyGraphNode::container_dir(&dependant_id))
+											.join(DependencyGraphNode::dependencies_dir(
+												&dependant_id,
+											)),
+										destination_dir: dependencies_dir
+											.join(dep_id.v_id().target().packages_dir())
+											.join(container_dir.clone()),
+										container_dir,
+										root_container_dir: dependencies_dir
+											.join(dependant_id.v_id().target().packages_dir()),
+									},
+								)
+							}),
+					)
+			})
+			.filter_map(|(importer, alias, id, paths)| {
+				let project = self.clone();
+				let target = package_targets.get(&id).cloned()?;
+				let manifest = importer_manifests[&importer].clone();
+				let types = package_types.get(&id).cloned();
+
+				Some(async move {
+					static NO_TYPES: [String; 0] = [];
+
+					let mut tasks = JoinSet::<Result<_, errors::LinkingError>>::new();
+
+					if target.lib_path().is_some() || target.bin_path().is_some() {
+						fs::create_dir_all(&paths.base_dir).await?;
+					}
+
+					if let Some(lib_file) = target.lib_path() {
+						let destination = paths.base_dir.join(format!("{alias}.luau"));
+
+						let lib_module = generator::generate_lib_linking_module(
+							&generator::get_lib_require_path(
+								target.kind(),
+								lib_file,
+								&paths,
+								id.pkg_ref().structure_kind(),
+								&manifest,
+							)?,
+							types.as_deref().unwrap_or(&NO_TYPES),
+						);
+						let cas_dir = project.cas_dir().to_path_buf();
+
+						tasks.spawn(async move {
+							write_cas(destination, &cas_dir, &lib_module)
+								.await
+								.map_err(Into::into)
+						});
+					}
+
+					if let Some(bin_file) = target.bin_path() {
+						let destination = paths.base_dir.join(format!("{alias}.bin.luau"));
+
+						let bin_module = generator::generate_bin_linking_module(
+							&paths.container_dir,
+							&generator::get_bin_require_path(
+								&paths.base_dir,
+								bin_file,
+								&paths.container_dir,
+							),
+						);
+						let cas_dir = project.cas_dir().to_path_buf();
+
+						tasks.spawn(async move {
+							write_cas(destination, &cas_dir, &bin_module)
+								.await
+								.map_err(Into::into)
+						});
+					}
+
+					while let Some(task) = tasks.join_next().await {
+						task.unwrap()?;
+					}
+
+					Ok::<_, errors::LinkingError>(())
+				})
 			})
 			.collect::<JoinSet<_>>();
 
-		let mut dependency_tasks = JoinSet::<Result<_, errors::LinkingError>>::new();
-
-		loop {
-			tokio::select! {
-				Some(res) = node_tasks.join_next() => {
-					let (package_id, node, base_folder) = res.unwrap()?;
-					let (node_container_folder, node_packages_folder) = {
-						let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
-
-						let container_folder =
-							packages_container_folder.join(node.node.container_folder(&package_id));
-
-						if let Some((alias, _, _)) = &node.node.direct {
-							link_files(
-								&base_folder,
-								&container_folder,
-								&base_folder,
-								container_folder.strip_prefix(&base_folder).unwrap(),
-								&node,
-								&package_id,
-								alias,
-							)?;
-						}
-
-						(container_folder, base_folder)
-					};
-
-					for (dep_alias, dep_id) in &node.node.dependencies {
-						let dep_id = dep_id.clone();
-						let dep_alias = dep_alias.clone();
-						let dep_node = graph.get(&dep_id).cloned();
-						let package_id = package_id.clone();
-						let node_container_folder = node_container_folder.clone();
-						let node_packages_folder = node_packages_folder.clone();
-						let package_dir = self.package_dir().to_path_buf();
-
-						dependency_tasks.spawn(async move {
-							let Some(dep_node) = dep_node else {
-								return if is_complete {
-									Err(errors::LinkingError::DependencyNotFound(
-										dep_id.to_string(),
-										package_id.to_string(),
-									))
-								} else {
-									Ok(None)
-								};
-							};
-
-							let base_folder = package_dir.join(
-								package_id
-									.v_id()
-									.target()
-									.packages_folder(dep_id.v_id().target()),
-							);
-							let linker_folder = node_container_folder.join(DependencyGraphNode::dependencies_dir(&package_id, dep_id.v_id().target()));
-
-							Ok(Some((
-								dep_node,
-								dep_id,
-								dep_alias,
-								create_and_canonicalize(base_folder).await?,
-								create_and_canonicalize(linker_folder).await?,
-								node_packages_folder,
-							)))
-						});
-					}
-				},
-				Some(res) = dependency_tasks.join_next() => {
-					let Some((
-						dependency_node,
-						dependency_id,
-						dependency_alias,
-						base_folder,
-						linker_folder,
-						node_packages_folder,
-					)) = res.unwrap()?
-					else {
-						continue;
-					};
-
-					let packages_container_folder = base_folder.join(PACKAGES_CONTAINER_NAME);
-
-					let container_folder = packages_container_folder
-						.join(dependency_node.node.container_folder(&dependency_id));
-
-					link_files(
-						&linker_folder,
-						&container_folder,
-						&node_packages_folder,
-						container_folder.strip_prefix(&base_folder).unwrap(),
-						&dependency_node,
-						&dependency_id,
-						&dependency_alias,
-					)?;
-				},
-				else => break,
-			}
-		}
-
-		while let Some(task) = tasks.join_next().await {
+		while let Some(task) = node_tasks.join_next().await {
 			task.unwrap()?;
 		}
 
@@ -243,12 +214,12 @@ pub mod errors {
 		#[error("error interacting with filesystem")]
 		Io(#[from] std::io::Error),
 
-		/// A dependency was not found
-		#[error("dependency `{0}` of `{1}` not found")]
-		DependencyNotFound(String, String),
-
 		/// An error occurred while getting the require path for a library
 		#[error("error getting require path for library")]
 		GetLibRequirePath(#[from] super::generator::errors::GetLibRequirePath),
+
+		/// An error occurred while getting the workspace members
+		#[error("error getting workspace members")]
+		WorkspaceMembers(#[from] crate::errors::WorkspaceMembersError),
 	}
 }

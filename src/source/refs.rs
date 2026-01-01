@@ -6,9 +6,9 @@ use crate::{ser_display_deser_fromstr, source::traits::PackageRef};
 /// A type of structure
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StructureKind {
-	/// Linker files in the parent of the folder containing the package's contents
+	/// Linker files in the parent of the directory containing the package's contents
 	Wally,
-	/// `packages` folders inside the package's content folder
+	/// `*_packages` directories inside the package's content directory
 	PesdeV1,
 }
 

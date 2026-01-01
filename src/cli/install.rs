@@ -1,32 +1,25 @@
 use crate::cli::{
-	dep_type_to_key,
 	reporters::{self, CliReporter},
-	resolve_overrides, run_on_workspace_members,
-	style::{ADDED_STYLE, REMOVED_STYLE, WARN_PREFIX},
+	resolve_overrides,
+	style::WARN_PREFIX,
 	up_to_date_lockfile,
 };
 use anyhow::Context as _;
-use console::style;
 use fs_err::tokio as fs;
 use pesde::{
 	Project, RefreshedSources,
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
-	graph::{DependencyGraph, TypeGraph},
+	graph::{DependencyGraph, DependencyTypeGraph},
 	lockfile::Lockfile,
-	manifest::DependencyType,
+	private_dir,
 	source::{PackageSources, refs::PackageRefs, traits::RefreshOptions},
 };
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	num::NonZeroUsize,
-	path::Path,
-	sync::Arc,
-	time::Instant,
-};
+use relative_path::RelativePath;
+use std::{num::NonZeroUsize, path::Path, sync::Arc, time::Instant};
 use tokio::task::JoinSet;
 
 pub struct InstallHooks {
-	pub bin_folder: std::path::PathBuf,
+	pub project: Project,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -36,7 +29,14 @@ pub struct InstallHooksError(#[from] anyhow::Error);
 impl DownloadAndLinkHooks for InstallHooks {
 	type Error = InstallHooksError;
 
-	async fn on_bins_downloaded(&self, aliases: BTreeSet<&str>) -> Result<(), Self::Error> {
+	async fn on_bins_downloaded<'a>(
+		&self,
+		importer: &RelativePath,
+		aliases: impl Iterator<Item = &'a str>,
+	) -> Result<(), Self::Error> {
+		let dir = private_dir(&self.project, importer);
+		let bin_dir = dir.join("bin");
+
 		let curr_exe: Arc<Path> = std::env::current_exe()
 			.context("failed to get current executable path")?
 			.as_path()
@@ -45,8 +45,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 		let mut tasks = aliases
 			.into_iter()
 			.map(|alias| {
-				let bin_exec_file = self
-					.bin_folder
+				let bin_exec_file = bin_dir
 					.join(alias)
 					.with_extension(std::env::consts::EXE_EXTENSION);
 				let curr_exe = curr_exe.clone();
@@ -85,7 +84,6 @@ pub async fn install(
 	options: &InstallOptions,
 	project: &Project,
 	reqwest: reqwest::Client,
-	is_root: bool,
 ) -> anyhow::Result<()> {
 	let start = Instant::now();
 
@@ -111,16 +109,12 @@ pub async fn install(
 	} else {
 		match project.deser_lockfile().await {
 			Ok(lockfile) => {
-				if lockfile.overrides != resolve_overrides(&manifest)? {
+				if lockfile.overrides == resolve_overrides(&manifest)? {
+					Some(lockfile)
+				} else {
 					tracing::debug!("overrides are different");
 					has_irrecoverable_changes = true;
 					None
-				} else if lockfile.target != manifest.target.kind() {
-					tracing::debug!("target kind is different");
-					has_irrecoverable_changes = true;
-					None
-				} else {
-					Some(lockfile)
 				}
 			}
 			Err(pesde::errors::LockfileReadError::Io(e))
@@ -150,7 +144,7 @@ pub async fn install(
 
 			let (graph, type_graph) = project
 				.dependency_graph(
-					old_graph.as_ref().filter(|_| options.use_lockfile),
+					old_graph.clone().filter(|_| options.use_lockfile),
 					refreshed_sources.clone(),
 					false,
 				)
@@ -163,6 +157,7 @@ pub async fn install(
 
 			#[expect(deprecated)]
 			let mut tasks = graph
+				.nodes
 				.keys()
 				.filter_map(|id| {
 					let PackageSources::Pesde(source) = id.source() else {
@@ -218,21 +213,12 @@ pub async fn install(
 				root_progress.set_message("download");
 				root_progress.set_style(reporters::root_progress_style_with_progress());
 
-				let bin_dir = project.bin_dir();
-				match fs::remove_dir_all(bin_dir).await {
-					Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-					e => e.context("failed to remove bin directory")?,
-				}
-				fs::create_dir_all(bin_dir)
-					.await
-					.context("failed to create bin directory")?;
-
 				let hooks = InstallHooks {
-					bin_folder: bin_dir.to_path_buf(),
+					project: project.clone(),
 				};
 
 				#[allow(unused_variables)]
-				let downloaded_graph = project
+				project
 					.download_and_link(
 						&graph,
 						DownloadAndLinkOptions::<CliReporter, InstallHooks>::new(reqwest.clone())
@@ -250,18 +236,13 @@ pub async fn install(
 				#[cfg(feature = "version-management")]
 				#[expect(deprecated)]
 				{
-					use pesde::{
-						MANIFEST_FILE_NAME, engine::EngineKind,
-						source::pesde::PesdeVersionedManifest, source::refs::PackageRefs,
-						version_matches,
-					};
+					use pesde::{engine::EngineKind, source::refs::PackageRefs, version_matches};
 
-					let manifest_target_kind = manifest.target.kind();
-					let mut tasks = downloaded_graph
-						.iter()
-						.map(|(id, node)| {
+					let mut tasks = graph
+						.nodes
+						.keys()
+						.map(|id| {
 							let id = id.clone();
-							let node = node.clone();
 							let project = project.clone();
 							let refreshed_sources = refreshed_sources.clone();
 
@@ -269,7 +250,10 @@ pub async fn install(
 								let engines = match id.pkg_ref() {
 									PackageRefs::Pesde(pkg_ref) => {
 										let PackageSources::Pesde(source) = id.source() else {
-											return Ok((id, Default::default()));
+											return Ok::<_, anyhow::Error>((
+												id,
+												Default::default(),
+											));
 										};
 
 										refreshed_sources
@@ -295,38 +279,38 @@ pub async fn install(
 									}
 									#[cfg(feature = "wally-compat")]
 									PackageRefs::Wally(_) => Default::default(),
-									_ => {
-										let path = node.node.container_folder_from_project(
-											&id,
-											&project,
-											manifest_target_kind,
-										);
+									// _ => {
+									// 	let path =
 
-										match fs::read_to_string(path.join(MANIFEST_FILE_NAME))
-											.await
-										{
-											Ok(manifest) => {
-												match toml::from_str::<PesdeVersionedManifest>(
-													&manifest,
-												) {
-													Ok(manifest) => {
-														manifest.into_manifest().engines
-													}
-													Err(e) => {
-														return Err(e).context(
-															"failed to read package manifest",
-														);
-													}
-												}
-											}
-											Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-												Default::default()
-											}
-											Err(e) => {
-												return Err(e)
-													.context("failed to read package manifest");
-											}
-										}
+									// 	match fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+									// 		.await
+									// 	{
+									// 		Ok(manifest) => {
+									// 			match toml::from_str::<PesdeVersionedManifest>(
+									// 				&manifest,
+									// 			) {
+									// 				Ok(manifest) => {
+									// 					manifest.into_manifest().engines
+									// 				}
+									// 				Err(e) => {
+									// 					return Err(e).context(
+									// 						"failed to read package manifest",
+									// 					);
+									// 				}
+									// 			}
+									// 		}
+									// 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+									// 			Default::default()
+									// 		}
+									// 		Err(e) => {
+									// 			return Err(e)
+									// 				.context("failed to read package manifest");
+									// 		}
+									// 	}
+									// }
+									_ => {
+										// TODO
+										return Ok::<_, anyhow::Error>((id, Default::default()));
 									}
 								};
 
@@ -365,33 +349,22 @@ pub async fn install(
 			root_progress.reset();
 			root_progress.set_message("finish");
 
-			let new_lockfile = Lockfile {
-				target: manifest.target.kind(),
-				overrides,
-
-				graph,
-
-				workspace: run_on_workspace_members(project, |_| async { Ok(()) }).await?,
-			};
+			let new_lockfile = Lockfile { overrides, graph };
 
 			project
 				.write_lockfile(&new_lockfile)
 				.await
 				.context("failed to write lockfile")?;
 
-			anyhow::Ok((new_lockfile, old_graph.unwrap_or_default()))
+			anyhow::Ok((new_lockfile, old_graph))
 		})
 		.await?;
 
 	let elapsed = start.elapsed();
 
-	if is_root {
-		println!();
-	}
-
 	print_package_diff(
 		&format!("{}:", manifest.target),
-		&old_graph,
+		old_graph,
 		&new_lockfile.graph,
 	);
 
@@ -402,183 +375,193 @@ pub async fn install(
 }
 
 /// Prints the difference between two graphs.
-pub fn print_package_diff(prefix: &str, old_graph: &DependencyGraph, new_graph: &DependencyGraph) {
-	let mut old_pkg_map = BTreeMap::new();
-	let mut old_direct_pkg_map = BTreeMap::new();
-	let mut new_pkg_map = BTreeMap::new();
-	let mut new_direct_pkg_map = BTreeMap::new();
+pub fn print_package_diff(
+	prefix: &str,
+	old_graph: Option<DependencyGraph>,
+	new_graph: &DependencyGraph,
+) {
+	// TODO
+	return;
+	// let mut old_pkg_map = BTreeMap::new();
+	// let mut old_direct_pkg_map = BTreeMap::new();
+	// let mut new_pkg_map = BTreeMap::new();
+	// let mut new_direct_pkg_map = BTreeMap::new();
 
-	for (id, node) in old_graph {
-		old_pkg_map.insert(id, node);
-		if node.direct.is_some() {
-			old_direct_pkg_map.insert(id, node);
-		}
-	}
+	// if let Some(old_graph) = old_graph {
+	// 	for (id, node) in old_graph {
+	// 		old_pkg_map.insert(id, node);
+	// 		if node.direct.is_some() {
+	// 			old_direct_pkg_map.insert(id, node);
+	// 		}
+	// 	}
+	// }
 
-	for (id, node) in new_graph {
-		new_pkg_map.insert(id, node);
-		if node.direct.is_some() {
-			new_direct_pkg_map.insert(id, node);
-		}
-	}
+	// for (id, node) in new_graph {
+	// 	new_pkg_map.insert(id, node);
+	// 	if node.direct.is_some() {
+	// 		new_direct_pkg_map.insert(id, node);
+	// 	}
+	// }
 
-	let added_pkgs = new_pkg_map
-		.iter()
-		.filter(|(key, _)| !old_pkg_map.contains_key(*key))
-		.map(|(key, &node)| (key, node))
-		.collect::<Vec<_>>();
-	let removed_pkgs = old_pkg_map
-		.iter()
-		.filter(|(key, _)| !new_pkg_map.contains_key(*key))
-		.map(|(key, &node)| (key, node))
-		.collect::<Vec<_>>();
-	let added_direct_pkgs = new_direct_pkg_map
-		.iter()
-		.filter(|(key, _)| !old_direct_pkg_map.contains_key(*key))
-		.map(|(key, &node)| (key, node))
-		.collect::<Vec<_>>();
-	let removed_direct_pkgs = old_direct_pkg_map
-		.iter()
-		.filter(|(key, _)| !new_direct_pkg_map.contains_key(*key))
-		.map(|(key, &node)| (key, node))
-		.collect::<Vec<_>>();
+	// let added_pkgs = new_pkg_map
+	// 	.iter()
+	// 	.filter(|(key, _)| !old_pkg_map.contains_key(*key))
+	// 	.map(|(key, &node)| (key, node))
+	// 	.collect::<Vec<_>>();
+	// let removed_pkgs = old_pkg_map
+	// 	.iter()
+	// 	.filter(|(key, _)| !new_pkg_map.contains_key(*key))
+	// 	.map(|(key, &node)| (key, node))
+	// 	.collect::<Vec<_>>();
+	// let added_direct_pkgs = new_direct_pkg_map
+	// 	.iter()
+	// 	.filter(|(key, _)| !old_direct_pkg_map.contains_key(*key))
+	// 	.map(|(key, &node)| (key, node))
+	// 	.collect::<Vec<_>>();
+	// let removed_direct_pkgs = old_direct_pkg_map
+	// 	.iter()
+	// 	.filter(|(key, _)| !new_direct_pkg_map.contains_key(*key))
+	// 	.map(|(key, &node)| (key, node))
+	// 	.collect::<Vec<_>>();
 
-	let prefix = style(prefix).bold();
+	// let prefix = style(prefix).bold();
 
-	let no_changes = added_pkgs.is_empty()
-		&& removed_pkgs.is_empty()
-		&& added_direct_pkgs.is_empty()
-		&& removed_direct_pkgs.is_empty();
+	// let no_changes = added_pkgs.is_empty()
+	// 	&& removed_pkgs.is_empty()
+	// 	&& added_direct_pkgs.is_empty()
+	// 	&& removed_direct_pkgs.is_empty();
 
-	if no_changes {
-		println!("{prefix} already up to date");
-	} else {
-		let mut change_signs = [
-			(!added_pkgs.is_empty()).then(|| {
-				ADDED_STYLE
-					.apply_to(format!("+{}", added_pkgs.len()))
-					.to_string()
-			}),
-			(!removed_pkgs.is_empty()).then(|| {
-				REMOVED_STYLE
-					.apply_to(format!("-{}", removed_pkgs.len()))
-					.to_string()
-			}),
-		]
-		.into_iter()
-		.flatten()
-		.collect::<Vec<_>>()
-		.join(" ");
+	// if no_changes {
+	// 	println!("{prefix} already up to date");
+	// } else {
+	// 	let mut change_signs = [
+	// 		(!added_pkgs.is_empty()).then(|| {
+	// 			ADDED_STYLE
+	// 				.apply_to(format!("+{}", added_pkgs.len()))
+	// 				.to_string()
+	// 		}),
+	// 		(!removed_pkgs.is_empty()).then(|| {
+	// 			REMOVED_STYLE
+	// 				.apply_to(format!("-{}", removed_pkgs.len()))
+	// 				.to_string()
+	// 		}),
+	// 	]
+	// 	.into_iter()
+	// 	.flatten()
+	// 	.collect::<Vec<_>>()
+	// 	.join(" ");
 
-		let changes_empty = change_signs.is_empty();
-		if changes_empty {
-			change_signs = style("(no changes)").dim().to_string();
-		}
+	// 	let changes_empty = change_signs.is_empty();
+	// 	if changes_empty {
+	// 		change_signs = style("(no changes)").dim().to_string();
+	// 	}
 
-		println!("{prefix} {change_signs}");
+	// 	println!("{prefix} {change_signs}");
 
-		if !changes_empty {
-			println!(
-				"{}{}",
-				ADDED_STYLE.apply_to("+".repeat(added_pkgs.len())),
-				REMOVED_STYLE.apply_to("-".repeat(removed_pkgs.len()))
-			);
-		}
+	// 	if !changes_empty {
+	// 		println!(
+	// 			"{}{}",
+	// 			ADDED_STYLE.apply_to("+".repeat(added_pkgs.len())),
+	// 			REMOVED_STYLE.apply_to("-".repeat(removed_pkgs.len()))
+	// 		);
+	// 	}
 
-		let dependency_groups = added_direct_pkgs
-			.iter()
-			.map(|(key, node)| (true, key, node))
-			.chain(
-				removed_direct_pkgs
-					.iter()
-					.map(|(key, node)| (false, key, node)),
-			)
-			.filter_map(|(added, key, node)| {
-				node.direct.as_ref().map(|(_, _, ty)| (added, key, ty))
-			})
-			.fold(
-				BTreeMap::<DependencyType, BTreeSet<_>>::new(),
-				|mut map, (added, key, &ty)| {
-					map.entry(ty).or_default().insert((key, added));
-					map
-				},
-			);
+	// 	let dependency_groups = added_direct_pkgs
+	// 		.iter()
+	// 		.map(|(key, node)| (true, key, node))
+	// 		.chain(
+	// 			removed_direct_pkgs
+	// 				.iter()
+	// 				.map(|(key, node)| (false, key, node)),
+	// 		)
+	// 		.filter_map(|(added, key, node)| {
+	// 			node.direct.as_ref().map(|(_, _, ty)| (added, key, ty))
+	// 		})
+	// 		.fold(
+	// 			BTreeMap::<DependencyType, BTreeSet<_>>::new(),
+	// 			|mut map, (added, key, &ty)| {
+	// 				map.entry(ty).or_default().insert((key, added));
+	// 				map
+	// 			},
+	// 		);
 
-		for (ty, set) in dependency_groups {
-			println!();
-			println!(
-				"{}",
-				style(format!("{}:", dep_type_to_key(ty))).yellow().bold()
-			);
+	// 	for (ty, set) in dependency_groups {
+	// 		println!();
+	// 		println!(
+	// 			"{}",
+	// 			style(format!("{}:", dep_type_to_key(ty))).yellow().bold()
+	// 		);
 
-			for (id, added) in set {
-				println!(
-					"{} {}",
-					if added {
-						ADDED_STYLE.apply_to("+")
-					} else {
-						REMOVED_STYLE.apply_to("-")
-					},
-					style(id.v_id()).dim()
-				);
-			}
-		}
+	// 		for (id, added) in set {
+	// 			println!(
+	// 				"{} {}",
+	// 				if added {
+	// 					ADDED_STYLE.apply_to("+")
+	// 				} else {
+	// 					REMOVED_STYLE.apply_to("-")
+	// 				},
+	// 				style(id.v_id()).dim()
+	// 			);
+	// 		}
+	// 	}
 
-		println!();
-	}
+	// 	println!();
+	// }
 }
 
-pub fn check_peers_satisfied(graph: &TypeGraph) {
-	for (id, node) in graph {
-		let Some(alias) = &node.direct else {
-			continue;
-		};
+pub fn check_peers_satisfied(graph: &DependencyTypeGraph) {
+	// TODO
+	return;
+	// for (id, node) in graph {
+	// 	let Some(alias) = &node.direct else {
+	// 		continue;
+	// 	};
 
-		let mut queue = node
-			.dependencies
-			.iter()
-			.map(|(dep_alias, (dep_id, dep_ty))| (vec![(id, alias)], (dep_id, dep_alias), *dep_ty))
-			.collect::<Vec<_>>();
+	// 	let mut queue = node
+	// 		.dependencies
+	// 		.iter()
+	// 		.map(|(dep_alias, (dep_id, dep_ty))| (vec![(id, alias)], (dep_id, dep_alias), *dep_ty))
+	// 		.collect::<Vec<_>>();
 
-		while let Some((path, (dep_id, dep_alias), dep_ty)) = queue.pop() {
-			if dep_ty == DependencyType::Peer {
-				let mut iter = path
-					.iter()
-					.map(|(id, _)| id)
-					.rev()
-					// skip our parent since we're always going to be descendants of it
-					.skip(1)
-					.take(2);
+	// 	while let Some((path, (dep_id, dep_alias), dep_ty)) = queue.pop() {
+	// 		if dep_ty == DependencyType::Peer {
+	// 			let mut iter = path
+	// 				.iter()
+	// 				.map(|(id, _)| id)
+	// 				.rev()
+	// 				// skip our parent since we're always going to be descendants of it
+	// 				.skip(1)
+	// 				.take(2);
 
-				let satisfied = if iter.len() > 0 {
-					iter.any(|id| graph[id].dependencies.values().any(|(id, _)| id == dep_id))
-				} else {
-					graph.get(dep_id).is_some_and(|node| node.direct.is_some())
-				};
+	// 			let satisfied = if iter.len() > 0 {
+	// 				iter.any(|id| graph[id].dependencies.values().any(|(id, _)| id == dep_id))
+	// 			} else {
+	// 				graph.get(dep_id).is_some_and(|node| node.direct.is_some())
+	// 			};
 
-				if !satisfied {
-					eprintln!(
-						"{WARN_PREFIX}: peer dependency {}>{dep_alias} is not satisfied",
-						path.iter()
-							.map(|(_, alias)| alias.as_str())
-							.collect::<Vec<_>>()
-							.join(">"),
-					);
-				}
-			}
+	// 			if !satisfied {
+	// 				eprintln!(
+	// 					"{WARN_PREFIX}: peer dependency {}>{dep_alias} is not satisfied",
+	// 					path.iter()
+	// 						.map(|(_, alias)| alias.as_str())
+	// 						.collect::<Vec<_>>()
+	// 						.join(">"),
+	// 				);
+	// 			}
+	// 		}
 
-			queue.extend(graph[dep_id].dependencies.iter().map(
-				|(inner_dep_alias, (inner_dep_id, inner_dep_ty))| {
-					(
-						path.iter()
-							.copied()
-							.chain(std::iter::once((dep_id, dep_alias)))
-							.collect(),
-						(inner_dep_id, inner_dep_alias),
-						*inner_dep_ty,
-					)
-				},
-			));
-		}
-	}
+	// 		queue.extend(graph[dep_id].dependencies.iter().map(
+	// 			|(inner_dep_alias, (inner_dep_id, inner_dep_ty))| {
+	// 				(
+	// 					path.iter()
+	// 						.copied()
+	// 						.chain(std::iter::once((dep_id, dep_alias)))
+	// 						.collect(),
+	// 					(inner_dep_id, inner_dep_alias),
+	// 					*inner_dep_ty,
+	// 				)
+	// 			},
+	// 		));
+	// 	}
+	// }
 }

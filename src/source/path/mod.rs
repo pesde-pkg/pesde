@@ -136,26 +136,10 @@ impl PackageSource for PathPackageSource {
 		options: &DownloadOptions<'_, R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let DownloadOptions { reporter, .. } = options;
-		let manifest: Manifest = toml::from_str(
-			&fs::read_to_string(pkg_ref.path.join(MANIFEST_FILE_NAME))
-				.await
-				.map_err(|e| {
-					errors::DownloadError::ManifestRead(crate::errors::ManifestReadError::Io(e))
-				})?,
-		)
-		.map_err(|e| {
-			errors::DownloadError::ManifestRead(crate::errors::ManifestReadError::Serde(
-				pkg_ref.path.clone().into(),
-				e,
-			))
-		})?;
 
 		reporter.report_done();
 
-		Ok(PackageFs::Copy(
-			pkg_ref.path.clone(),
-			manifest.target.kind(),
-		))
+		Ok(PackageFs::Copy(pkg_ref.path.clone()))
 	}
 
 	#[instrument(skip_all, level = "debug")]

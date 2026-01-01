@@ -5,7 +5,7 @@
 
 use crate::{
 	lockfile::Lockfile,
-	manifest::{Manifest, target::TargetKind},
+	manifest::Manifest,
 	source::{
 		PackageSources,
 		traits::{PackageSource as _, RefreshOptions},
@@ -16,6 +16,7 @@ use async_stream::try_stream;
 use fs_err::tokio as fs;
 use futures::Stream;
 use gix::bstr::ByteSlice as _;
+use relative_path::{RelativePath, RelativePathBuf};
 use semver::{Version, VersionReq};
 use std::{
 	collections::{HashMap, HashSet},
@@ -119,7 +120,6 @@ struct ProjectShared {
 	workspace_dir: Option<PathBuf>,
 	data_dir: PathBuf,
 	cas_dir: PathBuf,
-	bin_dir: PathBuf,
 	auth_config: AuthConfig,
 }
 
@@ -147,11 +147,6 @@ impl Project {
 				workspace_dir: workspace_dir.map(|d| d.as_ref().to_path_buf()),
 				data_dir: data_dir.as_ref().to_path_buf(),
 				cas_dir: cas_dir.as_ref().to_path_buf(),
-				bin_dir: data_dir
-					.as_ref()
-					.join("projects")
-					.join(hash(package_dir.as_ref().as_os_str().as_encoded_bytes()))
-					.join("bin"),
 				auth_config,
 			}
 			.into(),
@@ -183,16 +178,43 @@ impl Project {
 		&self.shared.cas_dir
 	}
 
-	/// The bin directory
-	#[must_use]
-	pub fn bin_dir(&self) -> &Path {
-		&self.shared.bin_dir
-	}
-
 	/// The authentication configuration
 	#[must_use]
 	pub fn auth_config(&self) -> &AuthConfig {
 		&self.shared.auth_config
+	}
+
+	/// The directory in which the workspace resides, or the package directory if not in a workspace (or the workspace root)
+	#[must_use]
+	pub fn root_dir(&self) -> &Path {
+		self.workspace_dir().unwrap_or(self.package_dir())
+	}
+
+	/// The path from the root directory to the package directory
+	#[must_use]
+	pub fn path_from_root(&self) -> RelativePathBuf {
+		if let Some(workspace_dir) = &self.shared.workspace_dir {
+			RelativePathBuf::from_path(self.shared.package_dir.strip_prefix(workspace_dir).unwrap())
+				.unwrap()
+		} else {
+			RelativePathBuf::new()
+		}
+	}
+
+	/// The project at [the root directory](Self::root_dir)
+	#[must_use]
+	pub fn into_root_project(self) -> Self {
+		if let Some(workspace_dir) = &self.shared.workspace_dir {
+			Project::new(
+				workspace_dir,
+				None::<PathBuf>,
+				self.data_dir(),
+				self.cas_dir(),
+				self.auth_config().clone(),
+			)
+		} else {
+			self
+		}
 	}
 
 	/// Read the manifest file
@@ -224,20 +246,6 @@ impl Project {
 		Ok(OwnedRwLockReadGuard::map(manifest_guard.downgrade(), |m| {
 			m.as_ref().unwrap()
 		}))
-	}
-
-	/// Deserialize the manifest file of the workspace root
-	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
-	pub async fn deser_workspace_manifest(
-		&self,
-	) -> Result<Option<Manifest>, errors::ManifestReadError> {
-		let Some(workspace_dir) = self.workspace_dir() else {
-			return Ok(None);
-		};
-
-		toml::from_str(&fs::read_to_string(workspace_dir.join(MANIFEST_FILE_NAME)).await?)
-			.map(Some)
-			.map_err(|e| errors::ManifestReadError::Serde(workspace_dir.into(), e))
 	}
 
 	/// Write the manifest file
@@ -281,12 +289,11 @@ format = {}
 	#[instrument(skip(self), level = "debug")]
 	pub async fn workspace_members(
 		&self,
-		can_ref_self: bool,
 	) -> Result<
-		impl Stream<Item = Result<(PathBuf, Manifest), errors::WorkspaceMembersError>>,
+		impl Stream<Item = Result<(RelativePathBuf, Manifest), errors::WorkspaceMembersError>>,
 		errors::WorkspaceMembersError,
 	> {
-		let dir = self.workspace_dir().unwrap_or(self.package_dir());
+		let dir = self.root_dir();
 		let manifest: Manifest = toml::from_str(
 			&fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
 				.await
@@ -298,11 +305,13 @@ format = {}
 			dir,
 			manifest.workspace_members.iter().map(String::as_str),
 			false,
-			can_ref_self,
+			false,
 		)
 		.await?;
 
 		Ok(try_stream! {
+			yield (RelativePathBuf::new(), manifest);
+
 			for path in members {
 				let manifest = toml::from_str::<Manifest>(
 					&fs::read_to_string(path.join(MANIFEST_FILE_NAME))
@@ -310,10 +319,25 @@ format = {}
 						.map_err(errors::ManifestReadError::Io)?,
 				)
 				.map_err(|e| errors::ManifestReadError::Serde(path.clone().into(), e))?;
-				yield (path, manifest);
+				yield (RelativePathBuf::from_path(path.strip_prefix(dir).unwrap()).unwrap(), manifest);
 			}
 		})
 	}
+}
+
+/// The directory in which private, that is, non-shared data (dependencies, bins, etc.) is stored
+#[must_use]
+pub fn private_dir(project: &Project, importer: &RelativePath) -> PathBuf {
+	project
+		.cas_dir()
+		.join("projects")
+		.join(hash(
+			importer
+				.to_path(project.root_dir())
+				.as_os_str()
+				.as_encoded_bytes(),
+		))
+		.join("private")
 }
 
 /// Gets all matching paths in a directory
@@ -492,16 +516,6 @@ pub async fn find_roots(
 #[must_use]
 pub fn version_matches(req: &VersionReq, version: &Version) -> bool {
 	*req == VersionReq::STAR || req.matches(version)
-}
-
-pub(crate) fn all_packages_dirs() -> HashSet<&'static str> {
-	let mut dirs = HashSet::new();
-	for target_kind_a in TargetKind::VARIANTS {
-		for target_kind_b in TargetKind::VARIANTS {
-			dirs.insert(target_kind_a.packages_folder(*target_kind_b));
-		}
-	}
-	dirs
 }
 
 /// A git repo URL

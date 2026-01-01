@@ -1,10 +1,8 @@
 #![allow(deprecated)]
 use crate::{
-	graph::DependencyGraph,
-	manifest::{overrides::OverrideKey, target::TargetKind},
+	graph::DependencyGraph, manifest::overrides::OverrideKey,
 	source::specifiers::DependencySpecifiers,
 };
-use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -14,18 +12,11 @@ pub const CURRENT_FORMAT: usize = 3;
 /// A lockfile
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Lockfile {
-	/// The target of the package
-	pub target: TargetKind,
 	/// The overrides of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
 
-	/// The workspace members
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub workspace: BTreeMap<RelativePathBuf, TargetKind>,
-
 	/// The graph of dependencies
-	#[serde(default, skip_serializing_if = "DependencyGraph::is_empty")]
 	pub graph: DependencyGraph,
 }
 

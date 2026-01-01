@@ -93,17 +93,17 @@ fn reset_repo(repo: &Repository) -> Result<(), git2::Error> {
 }
 
 /// Apply a patch to a dependency
-#[instrument(skip(container_folder, patch_path, reporter), level = "debug")]
+#[instrument(skip(container_dir, patch_path, reporter), level = "debug")]
 pub async fn apply_patch<Reporter>(
 	package_id: &PackageId,
-	container_folder: Arc<Path>,
+	container_dir: PathBuf,
 	patch_path: &Path,
 	reporter: Arc<Reporter>,
 ) -> Result<(), errors::ApplyPatchError>
 where
 	Reporter: PatchesReporter + Send + Sync + 'static,
 {
-	let dot_git = container_folder.join(".git");
+	let dot_git = container_dir.join(".git");
 
 	tracing::debug!("applying patch");
 
@@ -121,7 +121,7 @@ where
 		.filter(|delta| matches!(delta.status(), git2::Delta::Modified))
 		.filter_map(|delta| delta.new_file().path())
 		.map(|path| {
-			let path = container_folder.join(path);
+			let path = container_dir.join(path);
 
 			async {
 				// prevent CAS corruption by the file being modified
@@ -145,11 +145,11 @@ where
 	spawn_blocking(move || {
 		#[allow(clippy::disallowed_methods)]
 		let repo = if dot_git.exists() {
-			let repo = Repository::open(&container_folder)?;
+			let repo = Repository::open(&container_dir)?;
 			reset_repo(&repo)?;
 			repo
 		} else {
-			setup_patches_repo(&container_folder)?
+			setup_patches_repo(&container_dir)?
 		};
 
 		repo.apply(&patch, ApplyLocation::WorkDir, None)
@@ -166,8 +166,8 @@ where
 
 /// Remove a patch from a dependency
 #[instrument(level = "debug")]
-pub async fn remove_patch(container_folder: PathBuf) -> Result<(), errors::ApplyPatchError> {
-	let dot_git = container_folder.join(".git");
+pub async fn remove_patch(container_dir: PathBuf) -> Result<(), errors::ApplyPatchError> {
+	let dot_git = container_dir.join(".git");
 
 	tracing::debug!("removing patch");
 
@@ -176,7 +176,7 @@ pub async fn remove_patch(container_folder: PathBuf) -> Result<(), errors::Apply
 	}
 
 	spawn_blocking(move || {
-		let repo = Repository::open(&container_folder)?;
+		let repo = Repository::open(&container_dir)?;
 		reset_repo(&repo)?;
 
 		Ok::<_, git2::Error>(())
