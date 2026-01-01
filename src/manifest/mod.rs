@@ -62,7 +62,7 @@ pub struct Manifest {
 	/// The patches to apply to packages
 	#[cfg(feature = "patches")]
 	#[serde(default)]
-	pub patches: BTreeMap<Arc<PackageId>, RelativePathBuf>,
+	pub patches: BTreeMap<PackageId, RelativePathBuf>,
 	/// A list of globs pointing to workspace members' directories
 	#[serde(default)]
 	pub workspace_members: Vec<String>,
