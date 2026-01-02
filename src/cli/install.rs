@@ -380,6 +380,7 @@ pub fn print_package_diff(
 	old_graph: Option<DependencyGraph>,
 	new_graph: &DependencyGraph,
 ) {
+	let old_graph = old_graph;
 	// TODO
 	return;
 	// let mut old_pkg_map = BTreeMap::new();

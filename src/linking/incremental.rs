@@ -27,7 +27,9 @@ impl Project {
 					.into();
 
 				let expected_aliases = graph.importers[&importer]
-					.keys()
+					.iter()
+					.filter(|(_, (id, _, _))| id.v_id().target() == target)
+					.map(|(alias, _)| alias)
 					.cloned()
 					.collect::<HashSet<_>>();
 				let mut queue = graph.importers[&importer]
@@ -37,7 +39,7 @@ impl Project {
 				let mut expected_ids = HashSet::new();
 
 				while let Some(pkg_id) = queue.pop() {
-					if expected_ids.insert(pkg_id.escaped())
+					if expected_ids.insert(pkg_id.clone())
 						&& let Some(node) = graph.nodes.get(&pkg_id)
 					{
 						for dep_id in node.dependencies.values() {
@@ -45,6 +47,12 @@ impl Project {
 						}
 					}
 				}
+
+				let expected_ids = expected_ids
+					.into_iter()
+					.filter(|id| id.v_id().target() == target)
+					.map(|id| id.escaped())
+					.collect::<HashSet<_>>();
 
 				async move {
 					let mut tasks = JoinSet::<Result<(), errors::RemoveUnusedError>>::new();

@@ -11,16 +11,17 @@ use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
 use relative_path::RelativePath;
 use tracing::instrument;
 
+/// Paths used for linking
 #[derive(Debug)]
-pub struct LinkPaths {
+pub struct LinkDirs {
 	/// the root directory of the packages, e.g. `/path/to/project/luau_packages` or `/path/to/project/luau_packages/.pesde/my+package/package/luau_packages`
-	pub base_dir: PathBuf,
+	pub base: PathBuf,
 	/// the directory in which the library is contained, e.g. `/path/to/project/luau_packages/.pesde/my+package/package`
-	pub destination_dir: PathBuf,
+	pub destination: PathBuf,
 	/// the root directory of the packages, e.g. `/path/to/project/luau_packages`
-	pub root_container_dir: PathBuf,
+	pub root_container: PathBuf,
 	/// Relative path used when linking Roblox places - appended to the place path. For example, `.pesde/my+package/package`
-	pub container_dir: PathBuf,
+	pub container: PathBuf,
 }
 
 struct TypeVisitor {
@@ -140,11 +141,11 @@ fn luau_style_path(path: &Path) -> String {
 pub fn get_lib_require_path(
 	target: TargetKind,
 	lib_file: &RelativePath,
-	paths: &LinkPaths,
+	dirs: &LinkDirs,
 	structure_kind: StructureKind,
 	project_manifest: &Manifest,
 ) -> Result<String, errors::GetLibRequirePath> {
-	let path = pathdiff::diff_paths(&paths.destination_dir, &paths.base_dir).unwrap();
+	let path = pathdiff::diff_paths(&dirs.destination, &dirs.base).unwrap();
 	tracing::debug!("diffed lib path: {}", path.display());
 	let path = match structure_kind {
 		StructureKind::Wally => path,
@@ -152,7 +153,7 @@ pub fn get_lib_require_path(
 	};
 
 	let (prefix, path) = match target.try_into() {
-		Ok(place_kind) if !paths.destination_dir.starts_with(&paths.root_container_dir) => (
+		Ok(place_kind) if !dirs.destination.starts_with(&dirs.root_container) => (
 			project_manifest
 				.place
 				.get(&place_kind)
@@ -161,8 +162,8 @@ pub fn get_lib_require_path(
 				))?
 				.as_str(),
 			match structure_kind {
-				StructureKind::Wally => Cow::Borrowed(&paths.container_dir),
-				StructureKind::PesdeV1 => Cow::Owned(lib_file.to_path(&paths.container_dir)),
+				StructureKind::Wally => Cow::Borrowed(&dirs.container),
+				StructureKind::PesdeV1 => Cow::Owned(lib_file.to_path(&dirs.container)),
 			},
 		),
 		Ok(_) if structure_kind == StructureKind::Wally => ("script.Parent", Cow::Owned(path)),

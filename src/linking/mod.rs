@@ -1,7 +1,7 @@
 use crate::{
 	PACKAGES_CONTAINER_NAME, Project,
 	graph::{DependencyGraph, DependencyGraphNode},
-	linking::generator::LinkPaths,
+	linking::generator::LinkDirs,
 	manifest::{Manifest, target::Target},
 	private_dir,
 	source::{
@@ -24,12 +24,6 @@ use tokio::task::JoinSet;
 pub mod generator;
 /// Incremental installs
 pub mod incremental;
-
-async fn create_and_canonicalize<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
-	let p = path.as_ref();
-	fs::create_dir_all(p).await?;
-	fs::canonicalize(p).await
-}
 
 async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
 	let hash = store_in_cas(cas_dir, contents.as_bytes()).await?;
@@ -80,11 +74,11 @@ impl Project {
 							importer,
 							alias.clone(),
 							id.clone(),
-							LinkPaths {
-								base_dir: dependencies_dir.clone(),
-								destination_dir: dependencies_dir.join(container_dir.clone()),
-								container_dir,
-								root_container_dir: dependencies_dir,
+							LinkDirs {
+								base: dependencies_dir.clone(),
+								destination: dependencies_dir.join(container_dir.clone()),
+								container: container_dir,
+								root_container: dependencies_dir,
 							},
 						)
 					})
@@ -109,26 +103,26 @@ impl Project {
 									importer,
 									dep_alias.clone(),
 									dep_id.clone(),
-									LinkPaths {
-										base_dir: dependencies_dir
+									LinkDirs {
+										base: dependencies_dir
 											.join(dependant_id.v_id().target().packages_dir())
 											.join(PACKAGES_CONTAINER_NAME)
 											.join(DependencyGraphNode::container_dir(&dependant_id))
 											.join(DependencyGraphNode::dependencies_dir(
 												&dependant_id,
 											)),
-										destination_dir: dependencies_dir
+										destination: dependencies_dir
 											.join(dep_id.v_id().target().packages_dir())
 											.join(container_dir.clone()),
-										container_dir,
-										root_container_dir: dependencies_dir
+										container: container_dir,
+										root_container: dependencies_dir
 											.join(dependant_id.v_id().target().packages_dir()),
 									},
 								)
 							}),
 					)
 			})
-			.filter_map(|(importer, alias, id, paths)| {
+			.filter_map(|(importer, alias, id, dirs)| {
 				let project = self.clone();
 				let target = package_targets.get(&id).cloned()?;
 				let manifest = importer_manifests[&importer].clone();
@@ -140,17 +134,17 @@ impl Project {
 					let mut tasks = JoinSet::<Result<_, errors::LinkingError>>::new();
 
 					if target.lib_path().is_some() || target.bin_path().is_some() {
-						fs::create_dir_all(&paths.base_dir).await?;
+						fs::create_dir_all(&dirs.base).await?;
 					}
 
 					if let Some(lib_file) = target.lib_path() {
-						let destination = paths.base_dir.join(format!("{alias}.luau"));
+						let destination = dirs.base.join(format!("{alias}.luau"));
 
 						let lib_module = generator::generate_lib_linking_module(
 							&generator::get_lib_require_path(
 								target.kind(),
 								lib_file,
-								&paths,
+								&dirs,
 								id.pkg_ref().structure_kind(),
 								&manifest,
 							)?,
@@ -166,15 +160,11 @@ impl Project {
 					}
 
 					if let Some(bin_file) = target.bin_path() {
-						let destination = paths.base_dir.join(format!("{alias}.bin.luau"));
+						let destination = dirs.base.join(format!("{alias}.bin.luau"));
 
 						let bin_module = generator::generate_bin_linking_module(
-							&paths.container_dir,
-							&generator::get_bin_require_path(
-								&paths.base_dir,
-								bin_file,
-								&paths.container_dir,
-							),
+							&dirs.container,
+							&generator::get_bin_require_path(&dirs.base, bin_file, &dirs.container),
 						);
 						let cas_dir = project.cas_dir().to_path_buf();
 
