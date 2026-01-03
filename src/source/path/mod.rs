@@ -24,7 +24,7 @@ pub mod pkg_ref;
 /// The path dependency specifier
 pub mod specifier;
 
-fn local_version() -> Version {
+pub(crate) fn local_version() -> Version {
 	Version {
 		major: 0,
 		minor: 0,

@@ -74,10 +74,10 @@ ser_display_deser_fromstr!(PackageSources);
 impl Display for PackageSources {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Pesde(source) => write!(f, "pesde+{source}"),
-			Self::Wally(source) => write!(f, "wally+{source}"),
-			Self::Git(source) => write!(f, "git+{source}"),
-			Self::Path(..) => write!(f, "path+"),
+			Self::Pesde(source) => write!(f, "pesde:{source}"),
+			Self::Wally(source) => write!(f, "wally:{source}"),
+			Self::Git(source) => write!(f, "git:{source}"),
+			Self::Path(..) => write!(f, "path"),
 		}
 	}
 }
@@ -86,15 +86,13 @@ impl FromStr for PackageSources {
 	type Err = errors::PackageSourcesFromStr;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let Some((discriminator, source)) = s.split_once('+') else {
-			return Err(Self::Err::InvalidFormat);
-		};
+		let (tag, source) = s.split_once(':').unwrap_or((s, ""));
 
-		Ok(match discriminator {
+		Ok(match tag {
 			"pesde" => Self::Pesde(source.parse()?),
 			"wally" => Self::Wally(source.parse()?),
 			"git" => Self::Git(source.parse()?),
-			"path" => Self::Path(path::PathPackageSource),
+			"path" if source.is_empty() => Self::Path(path::PathPackageSource),
 			_ => return Err(Self::Err::Unknown),
 		})
 	}
@@ -332,5 +330,41 @@ pub mod errors {
 		/// A path package source failed to get the target
 		#[error("error getting target for path package")]
 		Path(#[from] crate::source::path::errors::GetTargetError),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::source::path::PathPackageSource;
+
+	#[test]
+	fn serde_package_sources() {
+		let sources = [
+			(
+				PackageSources::Pesde("https://github.com/pesde-pkg/index".parse().unwrap()),
+				"pesde:github.com/pesde-pkg/index",
+			),
+			(
+				PackageSources::Wally("https://github.com/pesde-pkg/index".parse().unwrap()),
+				"wally:github.com/pesde-pkg/index",
+			),
+			(
+				PackageSources::Git("https://github.com/pesde-pkg/index".parse().unwrap()),
+				"git:github.com/pesde-pkg/index",
+			),
+			(PackageSources::Path(PathPackageSource), "path"),
+		];
+
+		for (source, serialized) in sources {
+			assert_eq!(source.to_string(), serialized);
+			assert_eq!(PackageSources::from_str(serialized).unwrap(), source);
+		}
+
+		assert_eq!(
+			PackageSources::from_str("path:").unwrap(),
+			PackageSources::Path(PathPackageSource)
+		);
+		assert!(PackageSources::from_str("path:foo").is_err());
 	}
 }
