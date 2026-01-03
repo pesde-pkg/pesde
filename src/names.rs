@@ -132,11 +132,6 @@ impl PackageNames {
 		}
 	}
 
-	/// The reverse of `escaped`
-	pub fn from_escaped(s: &str) -> Result<Self, errors::PackageNamesError> {
-		PackageNames::from_str(s.replacen('+', "/", 1).as_str())
-	}
-
 	/// Returns the scope of the package name
 	#[must_use]
 	pub fn scope(&self) -> &str {
@@ -163,7 +158,7 @@ impl Display for PackageNames {
 		match self {
 			PackageNames::Pesde(name) => write!(f, "{name}"),
 			#[cfg(feature = "wally-compat")]
-			PackageNames::Wally(name) => write!(f, "{name}"),
+			PackageNames::Wally(name) => write!(f, "wally#{name}"),
 		}
 	}
 }
@@ -209,8 +204,6 @@ pub mod wally {
 
 		fn from_str(s: &str) -> Result<Self, Self::Err> {
 			let (scope, name) = s
-				.strip_prefix("wally#")
-				.unwrap_or(s)
 				.split_once('/')
 				.ok_or_else(|| Self::Err::InvalidFormat(s.to_string()))?;
 
@@ -233,7 +226,7 @@ pub mod wally {
 
 	impl Display for WallyPackageName {
 		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-			write!(f, "wally#{}/{}", self.scope(), self.name())
+			write!(f, "{}/{}", self.scope(), self.name())
 		}
 	}
 
@@ -247,7 +240,7 @@ pub mod wally {
 		/// Returns the package name as a string suitable for use in the filesystem
 		#[must_use]
 		pub fn escaped(&self) -> String {
-			format!("wally#{}+{}", self.scope(), self.name())
+			format!("{}+{}", self.scope(), self.name())
 		}
 
 		/// Returns the scope of the package name

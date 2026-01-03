@@ -23,7 +23,7 @@ impl PackageRef for GitPackageRef {
 
 impl std::fmt::Display for GitPackageRef {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}:{}", self.tree_id, self.structure_kind)
+		write!(f, "{}+{}", self.tree_id, self.structure_kind)
 	}
 }
 
@@ -31,7 +31,7 @@ impl FromStr for GitPackageRef {
 	type Err = crate::source::refs::errors::GitPackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let Some((tree_id, structure_kind)) = s.split_once(':') else {
+		let Some((tree_id, structure_kind)) = s.split_once('+') else {
 			return Err(Self::Err::InvalidFormat);
 		};
 		Ok(GitPackageRef {

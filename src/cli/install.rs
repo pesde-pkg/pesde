@@ -1,11 +1,14 @@
 use crate::cli::{
+	dep_type_to_key,
 	reporters::{self, CliReporter},
 	resolve_overrides,
-	style::WARN_PREFIX,
+	style::{ADDED_STYLE, REMOVED_STYLE, WARN_PREFIX},
 	up_to_date_lockfile,
 };
 use anyhow::Context as _;
+use console::style;
 use fs_err::tokio as fs;
+use itertools::{EitherOrBoth, Itertools};
 use pesde::{
 	Project, RefreshedSources,
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
@@ -15,7 +18,15 @@ use pesde::{
 	source::{PackageSources, refs::PackageRefs, traits::RefreshOptions},
 };
 use relative_path::RelativePath;
-use std::{num::NonZeroUsize, path::Path, sync::Arc, time::Instant};
+use std::{
+	cmp::Ordering,
+	collections::{BTreeMap, BTreeSet},
+	fmt::Display,
+	num::NonZeroUsize,
+	path::Path,
+	sync::Arc,
+	time::Instant,
+};
 use tokio::task::JoinSet;
 
 pub struct InstallHooks {
@@ -136,7 +147,6 @@ pub async fn install(
 			let multi = multi;
 			let root_progress = root_progress;
 
-			root_progress.set_prefix(format!("{}: ", manifest.target));
 			root_progress.reset();
 			root_progress.set_message("resolve");
 
@@ -362,152 +372,102 @@ pub async fn install(
 
 	let elapsed = start.elapsed();
 
-	print_package_diff(
-		&format!("{}:", manifest.target),
-		old_graph,
-		&new_lockfile.graph,
-	);
+	print_install_summary(old_graph, new_lockfile.graph);
 
 	println!("done in {:.2}s", elapsed.as_secs_f64());
-	println!();
 
 	Ok(())
 }
 
-/// Prints the difference between two graphs.
-pub fn print_package_diff(
-	prefix: &str,
-	old_graph: Option<DependencyGraph>,
-	new_graph: &DependencyGraph,
-) {
-	let old_graph = old_graph;
-	// TODO
-	return;
-	// let mut old_pkg_map = BTreeMap::new();
-	// let mut old_direct_pkg_map = BTreeMap::new();
-	// let mut new_pkg_map = BTreeMap::new();
-	// let mut new_direct_pkg_map = BTreeMap::new();
+pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: DependencyGraph) {
+	let old_importers = old_graph
+		.map_or(BTreeMap::new(), |old_graph| old_graph.importers)
+		.into_iter();
+	let new_importers = new_graph.importers.into_iter();
 
-	// if let Some(old_graph) = old_graph {
-	// 	for (id, node) in old_graph {
-	// 		old_pkg_map.insert(id, node);
-	// 		if node.direct.is_some() {
-	// 			old_direct_pkg_map.insert(id, node);
-	// 		}
-	// 	}
-	// }
+	let importer_pairs = old_importers
+		.merge_join_by(new_importers, |(old_importer, _), (new_importer, _)| {
+			old_importer.cmp(new_importer)
+		})
+		.map(|m| match m {
+			EitherOrBoth::Both((importer, old), (_, new)) => (importer, old, new),
+			EitherOrBoth::Left((importer, old)) => (importer, old, BTreeMap::new()),
+			EitherOrBoth::Right((importer, new)) => (importer, BTreeMap::new(), new),
+		});
 
-	// for (id, node) in new_graph {
-	// 	new_pkg_map.insert(id, node);
-	// 	if node.direct.is_some() {
-	// 		new_direct_pkg_map.insert(id, node);
-	// 	}
-	// }
+	for (importer, old, new) in importer_pairs {
+		// TODO: populate ts
+		let peer_warnings: Vec<String> = vec![];
 
-	// let added_pkgs = new_pkg_map
-	// 	.iter()
-	// 	.filter(|(key, _)| !old_pkg_map.contains_key(*key))
-	// 	.map(|(key, &node)| (key, node))
-	// 	.collect::<Vec<_>>();
-	// let removed_pkgs = old_pkg_map
-	// 	.iter()
-	// 	.filter(|(key, _)| !new_pkg_map.contains_key(*key))
-	// 	.map(|(key, &node)| (key, node))
-	// 	.collect::<Vec<_>>();
-	// let added_direct_pkgs = new_direct_pkg_map
-	// 	.iter()
-	// 	.filter(|(key, _)| !old_direct_pkg_map.contains_key(*key))
-	// 	.map(|(key, &node)| (key, node))
-	// 	.collect::<Vec<_>>();
-	// let removed_direct_pkgs = old_direct_pkg_map
-	// 	.iter()
-	// 	.filter(|(key, _)| !new_direct_pkg_map.contains_key(*key))
-	// 	.map(|(key, &node)| (key, node))
-	// 	.collect::<Vec<_>>();
+		enum Change {
+			Added,
+			Removed,
+		}
 
-	// let prefix = style(prefix).bold();
+		let groups = new
+			.into_iter()
+			.merge_join_by(
+				old.into_iter(),
+				|(new_alias, (new_id, _, _)), (old_alias, (old_id, _, _))| {
+					new_alias.cmp(old_alias).then(if new_id == old_id {
+						Ordering::Equal
+					} else {
+						Ordering::Less
+					})
+				},
+			)
+			.filter_map(|m| match m {
+				EitherOrBoth::Both(_, _) => None,
+				EitherOrBoth::Left((alias, (id, _, ty))) => Some((ty, (Change::Added, alias, id))),
+				EitherOrBoth::Right((alias, (id, _, ty))) => {
+					Some((ty, (Change::Removed, alias, id)))
+				}
+			})
+			.into_group_map();
 
-	// let no_changes = added_pkgs.is_empty()
-	// 	&& removed_pkgs.is_empty()
-	// 	&& added_direct_pkgs.is_empty()
-	// 	&& removed_direct_pkgs.is_empty();
+		if groups.is_empty() && peer_warnings.is_empty() {
+			continue;
+		}
 
-	// if no_changes {
-	// 	println!("{prefix} already up to date");
-	// } else {
-	// 	let mut change_signs = [
-	// 		(!added_pkgs.is_empty()).then(|| {
-	// 			ADDED_STYLE
-	// 				.apply_to(format!("+{}", added_pkgs.len()))
-	// 				.to_string()
-	// 		}),
-	// 		(!removed_pkgs.is_empty()).then(|| {
-	// 			REMOVED_STYLE
-	// 				.apply_to(format!("-{}", removed_pkgs.len()))
-	// 				.to_string()
-	// 		}),
-	// 	]
-	// 	.into_iter()
-	// 	.flatten()
-	// 	.collect::<Vec<_>>()
-	// 	.join(" ");
+		println!(
+			"{}",
+			style(if importer.as_str().is_empty() {
+				"(root)"
+			} else {
+				importer.as_str()
+			})
+			.bold()
+		);
 
-	// 	let changes_empty = change_signs.is_empty();
-	// 	if changes_empty {
-	// 		change_signs = style("(no changes)").dim().to_string();
-	// 	}
+		for (ty, changes) in groups {
+			println!("  {}", style(dep_type_to_key(ty)).yellow().bold());
 
-	// 	println!("{prefix} {change_signs}");
+			for (change, alias, id) in changes {
+				let version = if let PackageSources::Path(_) = id.source() {
+					format_args!("")
+				} else {
+					format_args!(" v{}", id.v_id().version())
+				};
 
-	// 	if !changes_empty {
-	// 		println!(
-	// 			"{}{}",
-	// 			ADDED_STYLE.apply_to("+".repeat(added_pkgs.len())),
-	// 			REMOVED_STYLE.apply_to("-".repeat(removed_pkgs.len()))
-	// 		);
-	// 	}
+				let sign = match change {
+					Change::Added => ADDED_STYLE.apply_to("+"),
+					Change::Removed => REMOVED_STYLE.apply_to("-"),
+				};
 
-	// 	let dependency_groups = added_direct_pkgs
-	// 		.iter()
-	// 		.map(|(key, node)| (true, key, node))
-	// 		.chain(
-	// 			removed_direct_pkgs
-	// 				.iter()
-	// 				.map(|(key, node)| (false, key, node)),
-	// 		)
-	// 		.filter_map(|(added, key, node)| {
-	// 			node.direct.as_ref().map(|(_, _, ty)| (added, key, ty))
-	// 		})
-	// 		.fold(
-	// 			BTreeMap::<DependencyType, BTreeSet<_>>::new(),
-	// 			|mut map, (added, key, &ty)| {
-	// 				map.entry(ty).or_default().insert((key, added));
-	// 				map
-	// 			},
-	// 		);
+				println!(
+					"    {sign} {alias}{} {}",
+					style(version).cyan(),
+					style(&id).dim()
+				)
+			}
+		}
 
-	// 	for (ty, set) in dependency_groups {
-	// 		println!();
-	// 		println!(
-	// 			"{}",
-	// 			style(format!("{}:", dep_type_to_key(ty))).yellow().bold()
-	// 		);
+		println!();
 
-	// 		for (id, added) in set {
-	// 			println!(
-	// 				"{} {}",
-	// 				if added {
-	// 					ADDED_STYLE.apply_to("+")
-	// 				} else {
-	// 					REMOVED_STYLE.apply_to("-")
-	// 				},
-	// 				style(id.v_id()).dim()
-	// 			);
-	// 		}
-	// 	}
-
-	// 	println!();
-	// }
+		for msg in peer_warnings {
+			println!("{msg}")
+		}
+	}
 }
 
 pub fn check_peers_satisfied(graph: &DependencyTypeGraph) {

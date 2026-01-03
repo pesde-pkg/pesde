@@ -82,11 +82,11 @@ impl PackageRef for PackageRefs {
 impl Display for PackageRefs {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			PackageRefs::Pesde(pkg_ref) => write!(f, "pesde+{pkg_ref}"),
+			PackageRefs::Pesde(pkg_ref) => write!(f, "pesde:{pkg_ref}"),
 			#[cfg(feature = "wally-compat")]
-			PackageRefs::Wally(pkg_ref) => write!(f, "wally+{pkg_ref}"),
-			PackageRefs::Git(pkg_ref) => write!(f, "git+{pkg_ref}"),
-			PackageRefs::Path(pkg_ref) => write!(f, "path+{pkg_ref}"),
+			PackageRefs::Wally(pkg_ref) => write!(f, "wally:{pkg_ref}"),
+			PackageRefs::Git(pkg_ref) => write!(f, "git:{pkg_ref}"),
+			PackageRefs::Path(pkg_ref) => write!(f, "path:{pkg_ref}"),
 		}
 	}
 }
@@ -95,9 +95,7 @@ impl FromStr for PackageRefs {
 	type Err = errors::PackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let Some((source, pkg_ref)) = s.split_once('+') else {
-			return Err(Self::Err::InvalidFormat);
-		};
+		let (source, pkg_ref) = s.split_once(':').ok_or(Self::Err::InvalidFormat)?;
 
 		match source {
 			"pesde" => Ok(PackageRefs::Pesde(pkg_ref.parse()?)),
@@ -156,5 +154,37 @@ pub mod errors {
 		/// An error occurred while parsing a Git package reference
 		#[error("failed to parse Git package reference")]
 		GitPackageRef(#[from] GitPackageRefParseError),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn serde_package_refs() {
+		let refs = [
+			(
+				PackageRefs::Pesde("foo/bar".parse().unwrap()),
+				"pesde:foo/bar",
+			),
+			(
+				PackageRefs::Wally("foo/bar".parse().unwrap()),
+				"wally:foo/bar",
+			),
+			(
+				PackageRefs::Git("abcdef+pesde_v1".parse().unwrap()),
+				"git:abcdef+pesde_v1",
+			),
+			(
+				PackageRefs::Path("/dev/null".parse().unwrap()),
+				"path:/dev/null",
+			),
+		];
+
+		for (pkg_ref, serialized) in refs {
+			assert_eq!(pkg_ref.to_string(), serialized);
+			assert_eq!(PackageRefs::from_str(serialized).unwrap(), pkg_ref);
+		}
 	}
 }

@@ -2314,6 +2314,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2875,6 +2884,7 @@ dependencies = [
  "gix",
  "indicatif",
  "inquire",
+ "itertools 0.14.0",
  "jiff",
  "junction",
  "keyring",
@@ -4339,7 +4349,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d12a78aa0bab22d2f26ed1a96df7ab58e8a93506a3e20adb47c51a93b4e1357"
 dependencies = [
  "const_format",
- "itertools",
+ "itertools 0.11.0",
  "nom",
  "pori",
  "regex",

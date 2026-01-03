@@ -1,7 +1,13 @@
 use crate::{
 	manifest::target::TargetKind,
 	ser_display_deser_fromstr,
-	source::{PackageSources, refs::PackageRefs},
+	source::{
+		PackageSources,
+		errors::PackageSourcesFromStr,
+		ids::errors::VersionIdParseError,
+		path::{PathPackageSource, local_version},
+		refs::{PackageRefs, errors::PackageRefParseError},
+	},
 };
 use semver::Version;
 use std::{fmt::Display, str::FromStr, sync::Arc};
@@ -36,11 +42,6 @@ impl VersionId {
 		format!("{}+{}", self.version(), self.target())
 	}
 
-	/// The reverse of `escaped`
-	pub fn from_escaped(s: &str) -> Result<Self, errors::VersionIdParseError> {
-		VersionId::from_str(s.replacen('+', " ", 1).as_str())
-	}
-
 	/// Access the parts of the version ID
 	#[must_use]
 	pub fn parts(&self) -> (&Version, TargetKind) {
@@ -50,7 +51,7 @@ impl VersionId {
 
 impl Display for VersionId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{} {}", self.version(), self.target())
+		write!(f, "{}:{}", self.version(), self.target())
 	}
 }
 
@@ -58,9 +59,9 @@ impl FromStr for VersionId {
 	type Err = errors::VersionIdParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let Some((version, target)) = s.split_once(' ') else {
-			return Err(errors::VersionIdParseError::Malformed(s.to_string()));
-		};
+		let (version, target) = s
+			.split_once(':')
+			.ok_or(errors::VersionIdParseError::Malformed(s.to_string()))?;
 
 		let version = version.parse()?;
 		let target = target.parse()?;
@@ -124,7 +125,16 @@ impl Display for PackageId {
 			PackageRefs::Path(pkg_ref) => pkg_ref,
 		};
 
-		write!(f, "{}|{pkg_ref}|{}", self.source(), self.v_id())
+		if let PackageSources::Path(_) = self.source() {
+			write!(f, "{}:{pkg_ref}:{}", self.source(), self.v_id().target())
+		} else {
+			let v_id_sep = match self.source() {
+				PackageSources::Git(_) => '#',
+				_ => '@',
+			};
+
+			write!(f, "{}:{pkg_ref}{v_id_sep}{}", self.source(), self.v_id())
+		}
 	}
 }
 
@@ -132,26 +142,46 @@ impl FromStr for PackageId {
 	type Err = errors::PackageIdParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let mut stream = s.chars();
-		let source = stream
-			.by_ref()
-			.take_while(|c| *c != '|')
-			.collect::<String>();
-		let source = source.parse()?;
+		let (tag, s) = s.split_once(':').ok_or(Self::Err::InvalidFormat)?;
 
-		let pkg_ref = stream
-			.by_ref()
-			.take_while(|c| *c != '|')
-			.collect::<String>();
-		let pkg_ref = match source {
-			PackageSources::Pesde(_) => pkg_ref.parse().map(PackageRefs::Pesde)?,
-			PackageSources::Wally(_) => pkg_ref.parse().map(PackageRefs::Wally)?,
-			PackageSources::Git(_) => pkg_ref.parse().map(PackageRefs::Git)?,
-			// infallible
-			PackageSources::Path(_) => pkg_ref.parse().map(PackageRefs::Path).unwrap(),
+		let v_id_sep = match tag {
+			"git" => '#',
+			"path" => ':',
+			_ => '@',
+		};
+		let (s, v_id) = s.rsplit_once(v_id_sep).ok_or(Self::Err::InvalidFormat)?;
+
+		let (source, pkg_ref) = if tag == "path" {
+			("", s)
+		} else {
+			s.rsplit_once(':').ok_or(Self::Err::InvalidFormat)?
 		};
 
-		let v_id = stream.collect::<String>().parse()?;
+		let v_id = if tag == "path" {
+			VersionId(
+				local_version(),
+				v_id.parse().map_err(VersionIdParseError::Target)?,
+			)
+		} else {
+			v_id.parse()?
+		};
+
+		let source = match tag {
+			"pesde" => PackageSources::Pesde(source.parse().map_err(PackageSourcesFromStr::from)?),
+			"wally" => PackageSources::Wally(source.parse().map_err(PackageSourcesFromStr::from)?),
+			"git" => PackageSources::Git(source.parse().map_err(PackageSourcesFromStr::from)?),
+			"path" => PackageSources::Path(PathPackageSource),
+			_ => return Err(Self::Err::InvalidFormat),
+		};
+
+		let pkg_ref = match tag {
+			"pesde" => PackageRefs::Pesde(pkg_ref.parse().map_err(PackageRefParseError::from)?),
+			"wally" => PackageRefs::Wally(pkg_ref.parse().map_err(PackageRefParseError::from)?),
+			"git" => PackageRefs::Git(pkg_ref.parse().map_err(PackageRefParseError::from)?),
+			// infallible
+			"path" => PackageRefs::Path(pkg_ref.parse().unwrap()),
+			_ => return Err(Self::Err::InvalidFormat),
+		};
 
 		Ok(PackageId::new(source, pkg_ref, v_id))
 	}
@@ -182,25 +212,41 @@ pub mod errors {
 	#[derive(Debug, Error)]
 	#[non_exhaustive]
 	pub enum PackageIdParseError {
+		/// The format of the package ID is invalid
+		#[error("invalid package id format")]
+		InvalidFormat,
+
 		/// Parsing the source failed
 		#[error("error parsing package source")]
 		PackageSource(#[from] crate::source::errors::PackageSourcesFromStr),
 
-		/// Parsing the pesde package reference failed
-		#[error("error parsing package reference")]
-		PesdePackageRef(#[from] crate::names::errors::PackageNameError),
-
-		/// Parsing the Wally package reference failed
-		#[cfg(feature = "wally-compat")]
-		#[error("error parsing wally package reference")]
-		WallyPackageRef(#[from] crate::names::errors::WallyPackageNameError),
-
 		/// Parsing the Git package reference failed
 		#[error("error parsing git package reference")]
-		PackageRef(#[from] crate::source::refs::errors::GitPackageRefParseError),
+		PackageRef(#[from] crate::source::refs::errors::PackageRefParseError),
 
 		/// Parsing the VersionId failed
 		#[error("error parsing version id")]
 		VersionId(#[from] VersionIdParseError),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn serde_package_ids() {
+		let ids = [
+			"pesde:github.com/pesde-pkg/index:foo/bar@1.2.3:roblox",
+			"wally:github.com/pesde-pkg/index:foo/bar@1.2.3:lune",
+			"git:github.com/pesde-pkg/index:abcdef+pesde_v1#1.2.3:luau",
+			"path:/dev/null:luau",
+			"path:filename:with:colons:luau",
+		];
+
+		for serialized in ids {
+			let id: PackageId = dbg!(dbg!(serialized).parse()).unwrap();
+			assert_eq!(id.to_string(), serialized);
+		}
 	}
 }
