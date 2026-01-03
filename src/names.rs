@@ -203,6 +203,9 @@ pub mod wally {
 		type Err = errors::WallyPackageNameError;
 
 		fn from_str(s: &str) -> Result<Self, Self::Err> {
+			// backwards compatibility
+			let s = s.strip_prefix("wally#").unwrap_or(s);
+
 			let (scope, name) = s
 				.split_once('/')
 				.ok_or_else(|| Self::Err::InvalidFormat(s.to_string()))?;

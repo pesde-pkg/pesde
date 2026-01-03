@@ -57,8 +57,8 @@ impl DependencyGraphNode {
 /// A graph of [`DependencyType`]s, used for peer dependency warnings
 #[derive(Debug)]
 pub struct DependencyTypeGraph {
-	/// The importers in the graph. The current project is represented by `.`
-	pub importers: BTreeMap<Importer, BTreeMap<Alias, (PackageId, DependencySpecifiers)>>,
+	/// The importers in the graph
+	pub importers: BTreeMap<Importer, BTreeMap<Alias, PackageId>>,
 	/// The nodes in the graph
 	pub nodes: BTreeMap<PackageId, DependencyTypeGraphNode>,
 }

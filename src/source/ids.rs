@@ -60,7 +60,7 @@ impl FromStr for VersionId {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (version, target) = s
-			.split_once(':')
+			.split_once([':', ' '])
 			.ok_or(errors::VersionIdParseError::Malformed(s.to_string()))?;
 
 		let version = version.parse()?;
@@ -245,7 +245,7 @@ mod tests {
 		];
 
 		for serialized in ids {
-			let id: PackageId = dbg!(dbg!(serialized).parse()).unwrap();
+			let id: PackageId = serialized.parse().unwrap();
 			assert_eq!(id.to_string(), serialized);
 		}
 	}

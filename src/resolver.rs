@@ -291,7 +291,7 @@ impl Project {
 						.importers
 						.entry(importer.clone())
 						.or_default()
-						.insert(alias.clone(), (package_id.clone(), specifier.clone()));
+						.insert(alias.clone(), package_id.clone());
 				}
 
 				if let Some(dependant_id) = dependant {

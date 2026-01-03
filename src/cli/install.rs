@@ -8,24 +8,19 @@ use crate::cli::{
 use anyhow::Context as _;
 use console::style;
 use fs_err::tokio as fs;
-use itertools::{EitherOrBoth, Itertools};
+use itertools::{EitherOrBoth, Itertools as _};
 use pesde::{
 	Project, RefreshedSources,
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
 	graph::{DependencyGraph, DependencyTypeGraph},
 	lockfile::Lockfile,
+	manifest::DependencyType,
 	private_dir,
 	source::{PackageSources, refs::PackageRefs, traits::RefreshOptions},
 };
 use relative_path::RelativePath;
 use std::{
-	cmp::Ordering,
-	collections::{BTreeMap, BTreeSet},
-	fmt::Display,
-	num::NonZeroUsize,
-	path::Path,
-	sync::Arc,
-	time::Instant,
+	cmp::Ordering, collections::BTreeMap, num::NonZeroUsize, path::Path, sync::Arc, time::Instant,
 };
 use tokio::task::JoinSet;
 
@@ -142,7 +137,7 @@ pub async fn install(
 
 	let overrides = resolve_overrides(&manifest)?;
 
-	let (new_lockfile, old_graph) =
+	let (new_lockfile, old_graph, type_graph) =
 		reporters::run_with_reporter(|multi, root_progress, reporter| async {
 			let multi = multi;
 			let root_progress = root_progress;
@@ -160,10 +155,6 @@ pub async fn install(
 				)
 				.await
 				.context("failed to build dependency graph")?;
-
-			if let Some(type_graph) = type_graph {
-				check_peers_satisfied(&type_graph);
-			}
 
 			#[expect(deprecated)]
 			let mut tasks = graph
@@ -366,20 +357,24 @@ pub async fn install(
 				.await
 				.context("failed to write lockfile")?;
 
-			anyhow::Ok((new_lockfile, old_graph))
+			anyhow::Ok((new_lockfile, old_graph, type_graph))
 		})
 		.await?;
 
 	let elapsed = start.elapsed();
 
-	print_install_summary(old_graph, new_lockfile.graph);
+	print_install_summary(old_graph, new_lockfile.graph, type_graph.as_ref());
 
 	println!("done in {:.2}s", elapsed.as_secs_f64());
 
 	Ok(())
 }
 
-pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: DependencyGraph) {
+pub fn print_install_summary(
+	old_graph: Option<DependencyGraph>,
+	new_graph: DependencyGraph,
+	type_graph: Option<&DependencyTypeGraph>,
+) {
 	let old_importers = old_graph
 		.map_or(BTreeMap::new(), |old_graph| old_graph.importers)
 		.into_iter();
@@ -396,8 +391,76 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 		});
 
 	for (importer, old, new) in importer_pairs {
-		// TODO: populate ts
-		let peer_warnings: Vec<String> = vec![];
+		let mut peer_warnings = vec![];
+
+		if let Some(type_graph) = &type_graph {
+			for (alias, id) in &type_graph.importers[&importer] {
+				let Some(node) = type_graph.nodes.get(id) else {
+					continue;
+				};
+
+				let mut queue = node
+					.dependencies
+					.iter()
+					.map(|(dep_alias, (dep_id, dep_ty))| {
+						(vec![(id, alias)], (dep_id, dep_alias), *dep_ty)
+					})
+					.collect::<Vec<_>>();
+
+				while let Some((path, (dep_id, dep_alias), dep_ty)) = queue.pop() {
+					if dep_ty == DependencyType::Peer {
+						let mut iter = path
+							.iter()
+							.map(|(id, _)| id)
+							.rev()
+							// skip our parent since we're always going to be descendants of it
+							.skip(1)
+							.take(2);
+
+						let satisfied = if iter.len() > 0 {
+							iter.any(|id| {
+								new_graph.nodes[id]
+									.dependencies
+									.values()
+									.any(|id| id == dep_id)
+							})
+						} else {
+							type_graph.importers[&importer]
+								.iter()
+								.any(|(_, node_id)| node_id == dep_id)
+						};
+
+						if !satisfied {
+							peer_warnings.push(
+								style(format!(
+									"missing peer {}>{dep_alias}",
+									path.iter()
+										.map(|(_, alias)| alias.as_str())
+										.collect::<Vec<_>>()
+										.join(">"),
+								))
+								.red(),
+							);
+						}
+					}
+
+					if let Some(dep_node) = type_graph.nodes.get(dep_id) {
+						queue.extend(dep_node.dependencies.iter().map(
+							|(inner_dep_alias, (inner_dep_id, inner_dep_ty))| {
+								(
+									path.iter()
+										.copied()
+										.chain(std::iter::once((dep_id, dep_alias)))
+										.collect(),
+									(inner_dep_id, inner_dep_alias),
+									*inner_dep_ty,
+								)
+							},
+						));
+					}
+				}
+			}
+		}
 
 		enum Change {
 			Added,
@@ -458,71 +521,16 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 					"    {sign} {alias}{} {}",
 					style(version).cyan(),
 					style(&id).dim()
-				)
+				);
+			}
+		}
+
+		if !peer_warnings.is_empty() {
+			for msg in peer_warnings {
+				println!("  {msg}");
 			}
 		}
 
 		println!();
-
-		for msg in peer_warnings {
-			println!("{msg}")
-		}
 	}
-}
-
-pub fn check_peers_satisfied(graph: &DependencyTypeGraph) {
-	// TODO
-	return;
-	// for (id, node) in graph {
-	// 	let Some(alias) = &node.direct else {
-	// 		continue;
-	// 	};
-
-	// 	let mut queue = node
-	// 		.dependencies
-	// 		.iter()
-	// 		.map(|(dep_alias, (dep_id, dep_ty))| (vec![(id, alias)], (dep_id, dep_alias), *dep_ty))
-	// 		.collect::<Vec<_>>();
-
-	// 	while let Some((path, (dep_id, dep_alias), dep_ty)) = queue.pop() {
-	// 		if dep_ty == DependencyType::Peer {
-	// 			let mut iter = path
-	// 				.iter()
-	// 				.map(|(id, _)| id)
-	// 				.rev()
-	// 				// skip our parent since we're always going to be descendants of it
-	// 				.skip(1)
-	// 				.take(2);
-
-	// 			let satisfied = if iter.len() > 0 {
-	// 				iter.any(|id| graph[id].dependencies.values().any(|(id, _)| id == dep_id))
-	// 			} else {
-	// 				graph.get(dep_id).is_some_and(|node| node.direct.is_some())
-	// 			};
-
-	// 			if !satisfied {
-	// 				eprintln!(
-	// 					"{WARN_PREFIX}: peer dependency {}>{dep_alias} is not satisfied",
-	// 					path.iter()
-	// 						.map(|(_, alias)| alias.as_str())
-	// 						.collect::<Vec<_>>()
-	// 						.join(">"),
-	// 				);
-	// 			}
-	// 		}
-
-	// 		queue.extend(graph[dep_id].dependencies.iter().map(
-	// 			|(inner_dep_alias, (inner_dep_id, inner_dep_ty))| {
-	// 				(
-	// 					path.iter()
-	// 						.copied()
-	// 						.chain(std::iter::once((dep_id, dep_alias)))
-	// 						.collect(),
-	// 					(inner_dep_id, inner_dep_alias),
-	// 					*inner_dep_ty,
-	// 				)
-	// 			},
-	// 		));
-	// 	}
-	// }
 }
