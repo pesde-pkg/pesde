@@ -32,6 +32,7 @@ bin = [
     "dep:paste",
     "dep:windows-registry",
     "dep:windows",
+    "dep:base64",
     "gix/worktree-mutation",
     "fs-err/expose_original_error",
     "tokio/rt",
@@ -121,6 +122,7 @@ inquire = { version = "0.9.1", default-features = false, features = [
     "one-liners",
 ], optional = true }
 paste = { version = "1.0.15", optional = true }
+base64 = { version = "0.22.1", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-registry = { version = "0.6.1", optional = true }

@@ -1,5 +1,6 @@
 use crate::cli::up_to_date_lockfile;
 use anyhow::Context as _;
+use base64::Engine as _;
 use clap::Args;
 use fs_err::tokio as fs;
 use pesde::{Project, patches::create_patch, source::ids::PackageId};
@@ -20,16 +21,19 @@ impl PatchCommitCommand {
 			anyhow::bail!("outdated lockfile, please run the install command first")
 		};
 
-		let id: PackageId = self
+		let id = self
 			.directory
 			.parent()
 			.context("directory has no parent")?
 			.file_name()
 			.context("directory parent has no name")?
 			.to_str()
-			.context("directory parent name is not valid")?
-			.parse()
-			.context("failed to parse package id")?;
+			.context("directory parent name is not valid")?;
+		let id = base64::engine::general_purpose::URL_SAFE_NO_PAD
+			.decode(id)
+			.context("failed to decode packge id")?;
+		let id = std::str::from_utf8(&id).context("failed to parse package id as UTF-8")?;
+		let id = PackageId::from_str(id).context("failed to parse package id")?;
 
 		graph.nodes.get(&id).context("package not found in graph")?;
 

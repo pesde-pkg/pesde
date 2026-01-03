@@ -35,6 +35,7 @@ impl Project {
 		// used by `x` command - if true, specifier indices are expected to be URLs
 		is_published_package: bool,
 	) -> Result<(DependencyGraph, Option<DependencyTypeGraph>), errors::DependencyGraphError> {
+		// TODO: always recompute the type graph
 		let mut graph = DependencyGraph {
 			importers: Default::default(),
 			nodes: Default::default(),

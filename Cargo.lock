@@ -2873,6 +2873,7 @@ dependencies = [
  "async-compression",
  "async-stream",
  "async_zip",
+ "base64",
  "clap",
  "console",
  "croshet",

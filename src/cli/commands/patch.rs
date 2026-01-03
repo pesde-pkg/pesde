@@ -4,6 +4,7 @@ use crate::cli::{
 	up_to_date_lockfile,
 };
 use anyhow::Context as _;
+use base64::Engine as _;
 use clap::Args;
 use console::style;
 use fs_err::tokio as fs;
@@ -38,7 +39,7 @@ impl PatchCommand {
 		let directory = project
 			.data_dir()
 			.join("patches")
-			.join(id.to_string())
+			.join(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(id.to_string()))
 			.join(jiff::Timestamp::now().as_second().to_string());
 		fs::create_dir_all(&directory).await?;
 
