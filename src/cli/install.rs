@@ -372,15 +372,14 @@ pub async fn install(
 
 	let elapsed = start.elapsed();
 
-	print_package_diff(old_graph, new_lockfile.graph);
+	print_install_summary(old_graph, new_lockfile.graph);
 
 	println!("done in {:.2}s", elapsed.as_secs_f64());
 
 	Ok(())
 }
 
-/// Prints the difference between two graphs.
-pub fn print_package_diff(old_graph: Option<DependencyGraph>, new_graph: DependencyGraph) {
+pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: DependencyGraph) {
 	let old_importers = old_graph
 		.map_or(BTreeMap::new(), |old_graph| old_graph.importers)
 		.into_iter();
@@ -397,6 +396,9 @@ pub fn print_package_diff(old_graph: Option<DependencyGraph>, new_graph: Depende
 		});
 
 	for (importer, old, new) in importer_pairs {
+		// TODO: populate ts
+		let peer_warnings: Vec<String> = vec![];
+
 		enum Change {
 			Added,
 			Removed,
@@ -423,7 +425,7 @@ pub fn print_package_diff(old_graph: Option<DependencyGraph>, new_graph: Depende
 			})
 			.into_group_map();
 
-		if groups.is_empty() {
+		if groups.is_empty() && peer_warnings.is_empty() {
 			continue;
 		}
 
@@ -461,6 +463,10 @@ pub fn print_package_diff(old_graph: Option<DependencyGraph>, new_graph: Depende
 		}
 
 		println!();
+
+		for msg in peer_warnings {
+			println!("{msg}")
+		}
 	}
 }
 
