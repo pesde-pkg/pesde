@@ -217,6 +217,20 @@ impl Project {
 		}
 	}
 
+	/// The directory in which private, that is, non-shared data (dependencies, bins, etc.) is stored
+	#[must_use]
+	pub fn private_dir(&self, importer: &RelativePath) -> PathBuf {
+		self.cas_dir()
+			.join("projects")
+			.join(hash(
+				importer
+					.to_path(self.root_dir())
+					.as_os_str()
+					.as_encoded_bytes(),
+			))
+			.join("private")
+	}
+
 	/// Read the manifest file
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
 	pub async fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
@@ -323,21 +337,6 @@ format = {}
 			}
 		})
 	}
-}
-
-/// The directory in which private, that is, non-shared data (dependencies, bins, etc.) is stored
-#[must_use]
-pub fn private_dir(project: &Project, importer: &RelativePath) -> PathBuf {
-	project
-		.cas_dir()
-		.join("projects")
-		.join(hash(
-			importer
-				.to_path(project.root_dir())
-				.as_os_str()
-				.as_encoded_bytes(),
-		))
-		.join("private")
 }
 
 /// Gets all matching paths in a directory

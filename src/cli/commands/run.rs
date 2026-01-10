@@ -12,7 +12,6 @@ use pesde::{
 	graph::DependencyGraphNode,
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
 	manifest::Alias,
-	private_dir,
 	source::traits::{GetTargetOptions, PackageSource as _, RefreshOptions},
 };
 use relative_path::{RelativePath, RelativePathBuf};
@@ -99,7 +98,7 @@ impl RunCommand {
 		}
 
 		if let Some(id) = package_info {
-			let dir = private_dir(&project, &project.path_from_root());
+			let dir = project.private_dir(&project.path_from_root());
 			let container_dir = dir
 				.join("dependencies")
 				.join(DependencyGraphNode::container_dir_top_level(&id));

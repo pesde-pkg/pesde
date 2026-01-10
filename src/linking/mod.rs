@@ -3,7 +3,6 @@ use crate::{
 	graph::{DependencyGraph, DependencyGraphNode},
 	linking::generator::LinkDirs,
 	manifest::{Manifest, target::Target},
-	private_dir,
 	source::{
 		fs::{cas_path, store_in_cas},
 		ids::PackageId,
@@ -63,7 +62,8 @@ impl Project {
 					.filter(|(_, (id, _, _))| graph.nodes.contains_key(id))
 					.map(|(alias, (id, _, _))| {
 						let importer = importer.clone();
-						let dependencies_dir = private_dir(self, &importer)
+						let dependencies_dir = self
+							.private_dir(&importer)
 							.join("dependencies")
 							.join(id.v_id().target().packages_dir());
 
@@ -76,7 +76,7 @@ impl Project {
 							id.clone(),
 							LinkDirs {
 								base: dependencies_dir.clone(),
-								destination: dependencies_dir.join(container_dir.clone()),
+								destination: dependencies_dir.join(&container_dir),
 								container: container_dir,
 								root_container: dependencies_dir,
 							},
@@ -94,7 +94,7 @@ impl Project {
 							.map(|(dependant_id, dep_alias, dep_id)| {
 								let importer = importer.clone();
 								let dependencies_dir =
-									private_dir(self, &importer).join("dependencies");
+									self.private_dir(&importer).join("dependencies");
 
 								let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME)
 									.join(DependencyGraphNode::container_dir(dep_id));
@@ -113,7 +113,7 @@ impl Project {
 											)),
 										destination: dependencies_dir
 											.join(dep_id.v_id().target().packages_dir())
-											.join(container_dir.clone()),
+											.join(&container_dir),
 										container: container_dir,
 										root_container: dependencies_dir
 											.join(dependant_id.v_id().target().packages_dir()),

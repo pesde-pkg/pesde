@@ -1,6 +1,6 @@
 use crate::{
 	PACKAGES_CONTAINER_NAME, Project, graph::DependencyGraph, manifest::target::TargetKind,
-	private_dir, util::remove_empty_dir,
+	util::remove_empty_dir,
 };
 use fs_err::tokio as fs;
 use std::{collections::HashSet, path::Path, sync::Arc};
@@ -21,7 +21,8 @@ impl Project {
 					.map(|target| (importer.clone(), *target))
 			})
 			.map(|(importer, target)| {
-				let packages_dir: Arc<Path> = private_dir(self, &importer)
+				let packages_dir: Arc<Path> = self
+					.private_dir(&importer)
 					.join("dependencies")
 					.join(target.packages_dir())
 					.into();

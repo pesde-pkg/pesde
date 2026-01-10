@@ -15,7 +15,6 @@ use pesde::{
 	graph::{DependencyGraph, DependencyTypeGraph},
 	lockfile::Lockfile,
 	manifest::DependencyType,
-	private_dir,
 	source::{PackageSources, refs::PackageRefs, traits::RefreshOptions},
 };
 use relative_path::RelativePath;
@@ -40,7 +39,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 		importer: &RelativePath,
 		aliases: impl Iterator<Item = &'a str>,
 	) -> Result<(), Self::Error> {
-		let dir = private_dir(&self.project, importer);
+		let dir = self.project.private_dir(importer);
 		let bin_dir = dir.join("bin");
 
 		let curr_exe: Arc<Path> = std::env::current_exe()
