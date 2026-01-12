@@ -16,7 +16,7 @@ use futures::TryStreamExt as _;
 use relative_path::RelativePath;
 
 use std::{
-	collections::{BTreeSet, HashMap, HashSet},
+	collections::{HashMap, HashSet},
 	convert::Infallible,
 	future::{self, Future},
 	num::NonZeroUsize,
@@ -36,11 +36,11 @@ pub trait DownloadAndLinkHooks: Send + Sync {
 	type Error: std::error::Error + Send + Sync + 'static;
 
 	/// Called after binary dependencies have been downloaded.
-	/// `aliases` contains all the aliases binaries are known by.
+	/// `aliases` contains all the aliases binary dependencies of the importer are known under.
 	fn on_bins_downloaded<'a>(
 		&self,
 		importer: &RelativePath,
-		aliases: impl Iterator<Item = &'a str> + Send,
+		aliases: impl IntoIterator<Item = &'a str> + Send,
 	) -> impl Future<Output = Result<(), Self::Error>> + Send {
 		future::ready(Ok(()))
 	}
@@ -464,22 +464,19 @@ impl Project {
 			.await?;
 
 		if let Some(hooks) = &hooks {
-			let binary_packages = package_targets
-				.iter()
-				.filter_map(|(id, target)| target.bin_path().is_some().then_some(id))
-				.collect::<BTreeSet<_>>();
-
 			for (importer, dependencies) in &graph.importers {
 				let aliases = dependencies
 					.iter()
 					.filter_map(|(alias, (id, _, _))| {
-						binary_packages.contains(id).then_some(alias.as_str())
+						package_targets
+							.get(id)
+							.is_some_and(|t| t.bin_path().is_some())
+							.then_some(alias.as_str())
 					})
-					// TODO: include all binary aliases from dependencies' dependencies
-					.collect::<BTreeSet<_>>();
+					.collect::<HashSet<_>>();
 
 				hooks
-					.on_bins_downloaded(importer, aliases.into_iter())
+					.on_bins_downloaded(importer, aliases)
 					.await
 					.map_err(errors::DownloadAndLinkError::Hook)?;
 			}

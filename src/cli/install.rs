@@ -25,6 +25,7 @@ use tokio::task::JoinSet;
 
 pub struct InstallHooks {
 	pub project: Project,
+	pub global_binaries: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -37,8 +38,12 @@ impl DownloadAndLinkHooks for InstallHooks {
 	async fn on_bins_downloaded<'a>(
 		&self,
 		importer: &RelativePath,
-		aliases: impl Iterator<Item = &'a str>,
+		aliases: impl IntoIterator<Item = &'a str>,
 	) -> Result<(), Self::Error> {
+		if !self.global_binaries {
+			return Ok(());
+		}
+
 		let dir = self.project.private_dir(importer);
 		let bin_dir = dir.join("bin");
 
@@ -213,17 +218,20 @@ pub async fn install(
 				root_progress.set_message("download");
 				root_progress.set_style(reporters::root_progress_style_with_progress());
 
-				let hooks = InstallHooks {
-					project: project.clone(),
-				};
-
-				#[allow(unused_variables)]
 				project
 					.download_and_link(
 						&graph,
 						DownloadAndLinkOptions::<CliReporter, InstallHooks>::new(reqwest.clone())
 							.reporter(reporter)
-							.hooks(hooks)
+							.hooks(InstallHooks {
+								project: project.clone(),
+								#[cfg(feature = "global-binary-linker-support")]
+								global_binaries: crate::cli::config::read_config()
+									.await?
+									.global_binaries,
+								#[cfg(not(feature = "global-binary-linker-support"))]
+								global_binaries: false,
+							})
 							.refreshed_sources(refreshed_sources.clone())
 							.install_dependencies_mode(options.install_dependencies_mode)
 							.network_concurrency(options.network_concurrency)
