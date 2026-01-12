@@ -434,55 +434,55 @@ impl PartialOrd for DocEntry {
 }
 
 /// The entry in a package's index file
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct IndexFileEntry {
 	/// The target for this package
 	pub target: Target,
 	/// When this package was published
 	pub published_at: jiff::Timestamp,
 	/// The engines this package supports
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	#[serde(default)]
 	pub engines: BTreeMap<EngineKind, VersionReq>,
 
 	/// The description of this package
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(default)]
 	pub description: Option<String>,
 	/// The license of this package
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(default)]
 	pub license: Option<String>,
 	/// The authors of this package
-	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	#[serde(default)]
 	pub authors: Vec<String>,
 	/// The repository of this package
-	#[serde(default, skip_serializing_if = "Option::is_none")]
+	#[serde(default)]
 	pub repository: Option<url::Url>,
 
 	/// The documentation for this package
-	#[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+	#[serde(default)]
 	pub docs: BTreeSet<DocEntry>,
 
 	/// Whether this version is yanked
-	#[serde(default, skip_serializing_if = "std::ops::Not::not")]
+	#[serde(default)]
 	pub yanked: bool,
 
 	/// The dependencies of this package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	#[serde(default)]
 	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 }
 
 /// The package metadata in the index file
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct IndexMetadata {
 	/// Whether this package is deprecated
-	#[serde(default, skip_serializing_if = "String::is_empty")]
+	#[serde(default)]
 	pub deprecated: String,
 }
 
 /// The index file for a package
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct IndexFile {
 	/// Any package-wide metadata
-	#[serde(default, skip_serializing_if = "crate::util::is_default")]
+	#[serde(default)]
 	pub meta: IndexMetadata,
 	/// The entries in the index file
 	#[serde(flatten)]

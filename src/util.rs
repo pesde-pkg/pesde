@@ -15,10 +15,6 @@ pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
 	format!("{:x}", Sha256::digest(struc.as_ref()))
 }
 
-pub fn is_default<T: Default + Eq>(t: &T) -> bool {
-	t == &T::default()
-}
-
 #[must_use]
 pub fn no_build_metadata(version: &Version) -> Version {
 	let mut version = version.clone();
