@@ -3,7 +3,7 @@
 use crate::{GixUrl, Project, source::traits::RefreshOptions};
 use fs_err::tokio as fs;
 use gix::remote::Direction;
-use std::{convert::Infallible, fmt::Debug};
+use std::fmt::Debug;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 
@@ -22,7 +22,7 @@ pub trait GitBasedSource {
 
 		if fs::metadata(&path).await.is_ok() {
 			spawn_blocking(move || {
-				let repo = match gix::open(&path) {
+				let repo = match gix::open_opts(&path, gix::open::Options::isolated()) {
 					Ok(repo) => repo,
 					Err(e) => return Err(errors::RefreshError::Open(path, Box::new(e))),
 				};
@@ -65,10 +65,16 @@ pub trait GitBasedSource {
 		fs::create_dir_all(&path).await?;
 
 		spawn_blocking(move || {
-			gix::prepare_clone_bare::<gix::Url, Infallible>(repo_url.as_url().clone(), &path)
-				.map_err(|e| errors::RefreshError::Clone(repo_url.clone(), Box::new(e)))?
-				.fetch_only(gix::progress::Discard, &false.into())
-				.map_err(|e| errors::RefreshError::Fetch(repo_url.clone(), Box::new(e)))
+			gix::clone::PrepareFetch::new(
+				repo_url.as_url().clone(),
+				path,
+				gix::create::Kind::Bare,
+				gix::create::Options::default(),
+				gix::open::Options::isolated(),
+			)
+			.map_err(|e| errors::RefreshError::Clone(repo_url.clone(), Box::new(e)))?
+			.fetch_only(gix::progress::Discard, &false.into())
+			.map_err(|e| errors::RefreshError::Fetch(repo_url.clone(), Box::new(e)))
 		})
 		.await
 		.unwrap()

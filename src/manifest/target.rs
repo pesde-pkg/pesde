@@ -95,20 +95,12 @@ pub enum Target {
 		/// The path to the lib export file
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		lib: Option<RelativePathBuf>,
-		/// The files to include in the sync tool's config
-		#[cfg(not(feature = "bin"))]
-		#[serde(default)]
-		build_files: BTreeSet<String>,
 	},
 	/// A Roblox server target
 	RobloxServer {
 		/// The path to the lib export file
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		lib: Option<RelativePathBuf>,
-		/// The files to include in the sync tool's config
-		#[cfg(not(feature = "bin"))]
-		#[serde(default)]
-		build_files: BTreeSet<String>,
 	},
 	/// A Lune target
 	Lune {
