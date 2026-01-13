@@ -222,16 +222,6 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 	}
 }
 
-pub fn shift_project_dir(project: &Project, pkg_dir: PathBuf) -> Project {
-	Project::new(
-		pkg_dir,
-		Some(project.package_dir()),
-		project.data_dir(),
-		project.cas_dir(),
-		project.auth_config().clone(),
-	)
-}
-
 pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 	if let Err(err) = result {
 		eprintln!(

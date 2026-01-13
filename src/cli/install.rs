@@ -400,8 +400,13 @@ pub fn print_install_summary(
 	for (importer, old, new) in importer_pairs {
 		let mut peer_warnings = vec![];
 
-		if let Some(type_graph) = &type_graph {
-			for (alias, id) in &type_graph.importers[&importer] {
+		if let Some((type_graph, dependencies)) = &type_graph.and_then(|type_graph| {
+			type_graph
+				.importers
+				.get(&importer)
+				.map(|dependencies| (type_graph, dependencies))
+		}) {
+			for (alias, id) in *dependencies {
 				let Some(node) = type_graph.nodes.get(id) else {
 					continue;
 				};
@@ -432,9 +437,7 @@ pub fn print_install_summary(
 									.any(|id| id == dep_id)
 							})
 						} else {
-							type_graph.importers[&importer]
-								.iter()
-								.any(|(_, node_id)| node_id == dep_id)
+							dependencies.iter().any(|(_, node_id)| node_id == dep_id)
 						};
 
 						if !satisfied {
