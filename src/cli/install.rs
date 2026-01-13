@@ -225,11 +225,11 @@ pub async fn install(
 							.reporter(reporter)
 							.hooks(InstallHooks {
 								project: project.clone(),
-								#[cfg(feature = "global-binary-linker-support")]
+								#[cfg(feature = "global-binaries")]
 								global_binaries: crate::cli::config::read_config()
 									.await?
 									.global_binaries,
-								#[cfg(not(feature = "global-binary-linker-support"))]
+								#[cfg(not(feature = "global-binaries"))]
 								global_binaries: false,
 							})
 							.refreshed_sources(refreshed_sources.clone())

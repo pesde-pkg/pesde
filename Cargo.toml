@@ -42,7 +42,7 @@ bin = [
 wally-compat = []
 patches = ["dep:git2"]
 version-management = ["bin"]
-global-binary-linker-support = []
+global-binaries = []
 
 [[bin]]
 name = "pesde"
