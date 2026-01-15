@@ -113,11 +113,11 @@ impl AddCommand {
 					(source, specifier)
 				}
 			},
-			AnyPackageIdentifier::Url((url, rev)) => (
+			AnyPackageIdentifier::Git((url, ver)) => (
 				PackageSources::Git(GitPackageSource::new(url.clone())),
 				DependencySpecifiers::Git(GitDependencySpecifier {
 					repo: url.clone(),
-					version_specifier: GitVersionSpecifier::Rev(rev.clone()),
+					version_specifier: ver.clone(),
 					path: None,
 				}),
 			),
@@ -190,7 +190,7 @@ impl AddCommand {
 			Some(alias) => alias,
 			None => match &self.name {
 				AnyPackageIdentifier::PackageName(versioned) => versioned.0.name().to_string(),
-				AnyPackageIdentifier::Url((url, _)) => url
+				AnyPackageIdentifier::Git((url, _)) => url
 					.as_url()
 					.path
 					.to_string()

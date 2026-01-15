@@ -17,7 +17,9 @@ use pesde::{
 		target::TargetKind,
 	},
 	names::PackageNames,
-	source::{ids::VersionId, specifiers::DependencySpecifiers},
+	source::{
+		git::specifier::GitVersionSpecifier, ids::VersionId, specifiers::DependencySpecifiers,
+	},
 };
 use relative_path::RelativePath;
 use semver::Version;
@@ -195,7 +197,7 @@ impl VersionedPackageName {
 #[derive(Debug, Clone)]
 enum AnyPackageIdentifier<V: FromStr = VersionId, N: FromStr = PackageNames> {
 	PackageName(VersionedPackageName<V, N>),
-	Url((GixUrl, String)),
+	Git((GixUrl, GitVersionSpecifier)),
 	Path(PathBuf),
 }
 
@@ -205,17 +207,23 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 	type Err = anyhow::Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		if let Some(s) = s.strip_prefix("gh#") {
-			let s = format!("https://github.com/{s}");
-			let (repo, rev) = s.split_once('#').context("missing revision")?;
-
-			Ok(AnyPackageIdentifier::Url((repo.parse()?, rev.to_string())))
-		} else if let Some(rest) = s.strip_prefix("path:") {
+		if let Some(rest) = s.strip_prefix("path:") {
 			Ok(AnyPackageIdentifier::Path(rest.into()))
 		} else if s.contains(':') {
-			let (url, rev) = s.split_once('#').context("missing revision")?;
+			let (repo, ver) = match s.split_once('#') {
+				Some((repo, rev)) => (repo, GitVersionSpecifier::Rev(rev.to_string())),
+				None => match s.split_once('@') {
+					Some((repo, req)) => (
+						repo,
+						GitVersionSpecifier::VersionReq(
+							req.parse().context("failed to parse version requirement")?,
+						),
+					),
+					None => anyhow::bail!("invalid format. expected url separated by # or @"),
+				},
+			};
 
-			Ok(AnyPackageIdentifier::Url((url.parse()?, rev.to_string())))
+			Ok(AnyPackageIdentifier::Git((repo.parse()?, ver)))
 		} else {
 			Ok(AnyPackageIdentifier::PackageName(s.parse()?))
 		}
