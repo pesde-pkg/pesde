@@ -294,7 +294,7 @@ impl PruneCommand {
 		let mut removed_packages = 0usize;
 
 		'entry: for (path, fs) in cas_entries {
-			let PackageFs::Cas(entries) = fs else {
+			let PackageFs::Cached(entries) = fs else {
 				continue;
 			};
 

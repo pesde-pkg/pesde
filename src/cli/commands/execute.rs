@@ -166,7 +166,7 @@ impl ExecuteCommand {
 					.await
 					.context("failed to write package contents")?;
 
-				let graph = project
+				let mut graph = project
 					.dependency_graph(None, refreshed_sources.clone(), true)
 					.await
 					.context("failed to build dependency graph")?
@@ -183,7 +183,7 @@ impl ExecuteCommand {
 
 				project
 					.download_and_link(
-						&graph,
+						&mut graph,
 						DownloadAndLinkOptions::<CliReporter<Stderr>, ()>::new(reqwest.clone())
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources)

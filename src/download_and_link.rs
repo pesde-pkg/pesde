@@ -7,6 +7,7 @@ use crate::{
 	manifest::{DependencyType, target::Target},
 	reporters::{DownloadsReporter, PatchesReporter},
 	source::{
+		fs::{FsEntry, PackageFs},
 		ids::PackageId,
 		traits::{GetTargetOptions, PackageSource as _},
 	},
@@ -14,6 +15,7 @@ use crate::{
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
 use relative_path::RelativePath;
+use sha2::Digest as _;
 
 use std::{
 	collections::{HashMap, HashSet},
@@ -183,6 +185,7 @@ impl Clone for DownloadAndLinkOptions {
 
 impl Project {
 	/// Downloads a graph of dependencies and links them in the correct order
+	/// Fills the DependencyGraphNode::checksum field
 	#[instrument(
 		skip_all,
 		fields(install_dependencies = debug(options.install_dependencies_mode)),
@@ -190,7 +193,7 @@ impl Project {
 	)]
 	pub async fn download_and_link<Reporter, Hooks>(
 		&self,
-		graph: &DependencyGraph,
+		graph: &mut DependencyGraph,
 		options: DownloadAndLinkOptions<Reporter, Hooks>,
 	) -> Result<HashMap<PackageId, Arc<Target>>, errors::DownloadAndLinkError<Hooks::Error>>
 	where
@@ -322,6 +325,23 @@ impl Project {
 			let mut tasks = JoinSet::new();
 
 			while let Some((id, fs)) = downloaded.try_next().await? {
+				if let PackageFs::Cached(entries) = &fs {
+					let mut checksum = sha2::Sha256::new();
+					for (path, entry) in entries {
+						checksum.update(path.as_str());
+						match entry {
+							FsEntry::Directory => checksum.update(b"directory"),
+							FsEntry::File(hash) => checksum.update(hash),
+						}
+					}
+					let checksum = checksum.finalize();
+					let checksum = format!("{checksum:x}");
+					let node = graph.nodes.get_mut(&id).unwrap();
+					if !node.checksum.is_empty() && node.checksum != checksum {
+						return Err(errors::DownloadAndLinkError::BadChecksum(id));
+					}
+					node.checksum = checksum;
+				}
 				let fs = Arc::new(fs);
 
 				for importer in &graph_to_download[&id] {
@@ -564,6 +584,8 @@ pub mod errors {
 
 	use thiserror::Error;
 
+	use crate::source::ids::PackageId;
+
 	/// An error that can occur when downloading and linking dependencies
 	#[derive(Debug, Error)]
 	#[non_exhaustive]
@@ -604,5 +626,9 @@ pub mod errors {
 		/// The library file was not found
 		#[error("library file at `{0}` not found")]
 		LibFileNotFound(Box<Path>),
+
+		/// The checksum of the package is mismatched
+		#[error("invalid checksum for `{0}`")]
+		BadChecksum(PackageId),
 	}
 }

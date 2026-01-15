@@ -320,6 +320,8 @@ impl Project {
 					package_id.clone(),
 					DependencyGraphNode {
 						dependencies: Default::default(),
+						// will be filled out later, we don't have this information at this step
+						checksum: Default::default(),
 					},
 				);
 				type_graph.nodes.insert(

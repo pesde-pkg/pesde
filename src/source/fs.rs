@@ -33,11 +33,11 @@ pub enum FsEntry {
 
 /// A package's file system
 #[derive(Debug, Clone, Serialize, Deserialize)]
-// don't need to differentiate between CAS and non-CAS, since non-CAS won't be serialized
+// don't need to differentiate between Cached and non-Cached, since non-Cached won't be serialized
 #[serde(untagged)]
 pub enum PackageFs {
-	/// A package stored in the CAS
-	Cas(BTreeMap<RelativePathBuf, FsEntry>),
+	/// A package stored in the CAS, meaning it is cached
+	Cached(BTreeMap<RelativePathBuf, FsEntry>),
 	/// A package that's to be copied
 	Copy(PathBuf),
 }
@@ -237,7 +237,7 @@ impl PackageFs {
 		link: bool,
 	) -> std::io::Result<()> {
 		match self {
-			PackageFs::Cas(entries) => {
+			PackageFs::Cached(entries) => {
 				package_fs_cas(entries, destination.as_ref(), cas_path.as_ref(), link).await
 			}
 			PackageFs::Copy(src) => package_fs_copy(src, destination.as_ref()).await,
@@ -251,7 +251,7 @@ impl PackageFs {
 		file_hash: H,
 		cas_dir_path: P,
 	) -> Option<String> {
-		if !matches!(self, PackageFs::Cas(_)) {
+		if !matches!(self, PackageFs::Cached(_)) {
 			return None;
 		}
 

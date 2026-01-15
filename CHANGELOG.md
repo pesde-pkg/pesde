@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Add support for decentralised packages ([RFC](https://github.com/pesde-pkg/pesde/issues/59)) by @daimond113
 - Add toggle for generating global binary linkers by @daimond113
+- Add checksums to packages by @daimond113
 
 ### Changed
 - Switch to croshet by @daimond113

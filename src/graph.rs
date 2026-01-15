@@ -29,6 +29,9 @@ pub struct DependencyGraphNode {
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub dependencies: BTreeMap<Alias, PackageId>,
+	/// The checksum of the package
+	#[serde(default, skip_serializing_if = "String::is_empty")]
+	pub checksum: String,
 }
 
 impl DependencyGraphNode {

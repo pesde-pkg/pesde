@@ -151,7 +151,7 @@ pub async fn install(
 
 			let old_graph = lockfile.map(|lockfile| lockfile.graph);
 
-			let (graph, type_graph) = project
+			let (mut graph, type_graph) = project
 				.dependency_graph(
 					old_graph.clone().filter(|_| options.use_lockfile),
 					refreshed_sources.clone(),
@@ -220,7 +220,7 @@ pub async fn install(
 
 				project
 					.download_and_link(
-						&graph,
+						&mut graph,
 						DownloadAndLinkOptions::<CliReporter, InstallHooks>::new(reqwest.clone())
 							.reporter(reporter)
 							.hooks(InstallHooks {
