@@ -127,41 +127,38 @@ async fn package_fs_cas(
 	let mut tasks = entries
 		.iter()
 		.map(|(path, entry)| {
-			let destination = destination.to_path_buf();
-			let cas_dir_path = cas_dir_path.to_path_buf();
+			let cas_file_path = match &entry {
+				FsEntry::File(hash) => Some(cas_path(hash, cas_dir_path)),
+				FsEntry::Directory => None,
+			};
 			let path = path.to_path(destination);
-			let entry = entry.clone();
 
 			async move {
-				match entry {
-					FsEntry::File(hash) => {
-						if let Some(parent) = path.parent() {
-							fs::create_dir_all(parent).await?;
-						}
+				let Some(cas_file_path) = cas_file_path else {
+					fs::create_dir_all(path).await?;
+					return Ok(());
+				};
 
-						let cas_file_path = cas_path(&hash, &cas_dir_path);
-
-						if link {
-							match fs::remove_file(&path).await {
-								Ok(()) => (),
-								Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
-								Err(e) => return Err(e),
-							}
-							fs::hard_link(cas_file_path, path).await?;
-						} else {
-							fs::copy(cas_file_path, &path).await?;
-							set_readonly(&path, false).await?;
-						}
-					}
-					FsEntry::Directory => {
-						fs::create_dir_all(path).await?;
-					}
+				if let Some(parent) = path.parent() {
+					fs::create_dir_all(parent).await?;
 				}
 
-				Ok::<_, std::io::Error>(())
+				if link {
+					match fs::remove_file(&path).await {
+						Ok(_) => {}
+						Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+						Err(e) => return Err(e),
+					}
+					fs::hard_link(cas_file_path, path).await?;
+				} else {
+					fs::copy(cas_file_path, &path).await?;
+					set_readonly(&path, false).await?;
+				}
+
+				Ok(())
 			}
 		})
-		.collect::<JoinSet<_>>();
+		.collect::<JoinSet<Result<_, std::io::Error>>>();
 
 	while let Some(task) = tasks.join_next().await {
 		task.unwrap()?;
@@ -189,8 +186,8 @@ async fn package_fs_copy(src: &Path, destination: &Path) -> std::io::Result<()> 
 				continue;
 			}
 
-			for other_target in TargetKind::VARIANTS {
-				if other_target.packages_dir() == file_name {
+			for target in TargetKind::VARIANTS {
+				if target.packages_dir() == file_name {
 					continue 'entry;
 				}
 			}
@@ -230,10 +227,10 @@ async fn package_fs_copy(src: &Path, destination: &Path) -> std::io::Result<()> 
 impl PackageFs {
 	/// Write the package to the given destination
 	#[instrument(skip(self), level = "debug")]
-	pub async fn write_to<P: AsRef<Path> + Debug, Q: AsRef<Path> + Debug>(
+	pub async fn write_to(
 		&self,
-		destination: P,
-		cas_path: Q,
+		destination: impl AsRef<Path> + Debug,
+		cas_path: impl AsRef<Path> + Debug,
 		link: bool,
 	) -> std::io::Result<()> {
 		match self {
@@ -242,20 +239,5 @@ impl PackageFs {
 			}
 			PackageFs::Copy(src) => package_fs_copy(src, destination.as_ref()).await,
 		}
-	}
-
-	/// Returns the contents of the file with the given hash
-	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
-	pub async fn read_file<P: AsRef<Path> + Debug, H: AsRef<str> + Debug>(
-		&self,
-		file_hash: H,
-		cas_dir_path: P,
-	) -> Option<String> {
-		if !matches!(self, PackageFs::Cached(_)) {
-			return None;
-		}
-
-		let cas_file_path = cas_path(file_hash.as_ref(), cas_dir_path.as_ref());
-		fs::read_to_string(cas_file_path).await.ok()
 	}
 }
