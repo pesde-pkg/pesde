@@ -218,7 +218,8 @@ impl Project {
 				.importers
 				.keys()
 				.map(|importer| {
-					let dependencies_dir = self.private_dir(importer).join("dependencies");
+					let dependencies_dir =
+						importer.to_path(self.private_dir()).join("dependencies");
 
 					async move {
 						match fs::remove_dir_all(&dependencies_dir).await {
@@ -285,8 +286,8 @@ impl Project {
 							.map(move |importer| (importer, id.clone()))
 					})
 					.map(|(importer, id)| {
-						let dependency_dir = self
-							.private_dir(&importer)
+						let dependency_dir = importer
+							.to_path(self.private_dir())
 							.join("dependencies")
 							.join(DependencyGraphNode::container_dir_top_level(&id));
 						async move {
@@ -345,8 +346,8 @@ impl Project {
 				let fs = Arc::new(fs);
 
 				for importer in &graph_to_download[&id] {
-					let container_dir = self
-						.private_dir(importer)
+					let container_dir = importer
+						.to_path(self.private_dir())
 						.join("dependencies")
 						.join(DependencyGraphNode::container_dir_top_level(&id));
 
@@ -397,8 +398,8 @@ impl Project {
 							.map(move |importer| (id.clone(), importer, patch_path.clone()))
 					})
 					.map(|(id, importer, patch_path)| {
-						let container_dir = self
-							.private_dir(importer)
+						let container_dir = importer
+							.to_path(self.private_dir())
 							.join("dependencies")
 							.join(DependencyGraphNode::container_dir_top_level(&id));
 						let reporter = reporter.clone();
@@ -438,8 +439,11 @@ impl Project {
 					.into_iter()
 					.map(|(id, importers)| {
 						// importer does not matter here, as it is the same package being linked in different places
-						let install_path = self
-							.private_dir(importers.iter().next().unwrap())
+						let install_path = importers
+							.iter()
+							.next()
+							.unwrap()
+							.to_path(self.private_dir())
 							.join("dependencies")
 							.join(DependencyGraphNode::container_dir_top_level(id))
 							.into();
@@ -511,8 +515,11 @@ impl Project {
 			.iter()
 			.map(|(package_id, target)| {
 				// importer does not matter here, as it is the same package being linked in different places
-				let install_path = self
-					.private_dir(graph_to_download[package_id].iter().next().unwrap())
+				let install_path = graph_to_download[package_id]
+					.iter()
+					.next()
+					.unwrap()
+					.to_path(self.private_dir())
 					.join("dependencies")
 					.join(DependencyGraphNode::container_dir_top_level(package_id));
 
