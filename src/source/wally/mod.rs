@@ -164,6 +164,13 @@ impl PackageSource for WallyPackageSource {
 			};
 
 			for url in config.fallback_registries {
+				let url = match url.parse() {
+					Ok(u) => u,
+					Err(e) => {
+						tracing::warn!("invalid fallback registry URL {url}: {e}");
+						continue;
+					}
+				};
 				let source = WallyPackageSource::new(url);
 
 				match refreshed_sources
@@ -364,7 +371,7 @@ impl PackageSource for WallyPackageSource {
 pub struct WallyIndexConfig {
 	api: url::Url,
 	#[serde(default)]
-	fallback_registries: Vec<GixUrl>,
+	fallback_registries: Vec<String>,
 }
 
 /// Errors that can occur when interacting with a Wally package source

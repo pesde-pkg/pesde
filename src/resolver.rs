@@ -212,8 +212,7 @@ impl Project {
 							specifier
 								.index
 								.as_str()
-								.try_into()
-								.map(GixUrl::new)
+								.parse()
 								// specifiers in indices store the index url in this field
 								.unwrap()
 						};
