@@ -3,6 +3,7 @@ use crate::{
 	MANIFEST_FILE_NAME,
 	manifest::{Manifest, target::Target},
 	reporters::DownloadProgressReporter,
+	ser_display_deser_fromstr,
 	source::{
 		PackageSources, ResolveResult,
 		fs::PackageFs,
@@ -14,9 +15,16 @@ use crate::{
 	},
 };
 use fs_err::tokio as fs;
+use relative_path::RelativePathBuf;
 use semver::{BuildMetadata, Prerelease, Version};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+	borrow::Cow,
+	collections::{BTreeMap, BTreeSet},
+	fmt::Display,
+	path::PathBuf,
+	str::FromStr,
+};
 use tracing::instrument;
 
 /// The path package reference
@@ -31,6 +39,36 @@ pub(crate) fn local_version() -> Version {
 		patch: 0,
 		pre: Prerelease::new("pesde").unwrap(),
 		build: BuildMetadata::EMPTY,
+	}
+}
+
+/// The path for a path dependency specifier
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RelativeOrAbsolutePath {
+	/// A relative path
+	Relative(RelativePathBuf),
+	/// An absolute path
+	Absolute(PathBuf),
+}
+ser_display_deser_fromstr!(RelativeOrAbsolutePath);
+
+impl Display for RelativeOrAbsolutePath {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			RelativeOrAbsolutePath::Relative(rel_path) => write!(f, "{}", rel_path.display()),
+			RelativeOrAbsolutePath::Absolute(abs_path) => write!(f, "{}", abs_path.display()),
+		}
+	}
+}
+
+impl FromStr for RelativeOrAbsolutePath {
+	type Err = std::convert::Infallible;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(RelativePathBuf::from_path(s).map_or_else(
+			|_| RelativeOrAbsolutePath::Absolute(PathBuf::from(s)),
+			RelativeOrAbsolutePath::Relative,
+		))
 	}
 }
 
@@ -50,20 +88,25 @@ impl PackageSource for PathPackageSource {
 	async fn resolve(
 		&self,
 		specifier: &Self::Specifier,
-		_options: &ResolveOptions,
+		options: &ResolveOptions,
 	) -> Result<ResolveResult, Self::ResolveError> {
-		// let ResolveOptions { project, .. } = options;
+		let ResolveOptions { project, .. } = options;
 
-		let manifest: Manifest = toml::from_str(
-			&fs::read_to_string(specifier.path.join(MANIFEST_FILE_NAME))
-				.await
-				.map_err(|e| {
-					errors::ResolveError::ManifestRead(crate::errors::ManifestReadError::Io(e))
-				})?,
-		)
-		.map_err(|e| {
+		let path = match &specifier.path {
+			RelativeOrAbsolutePath::Relative(rel_path) => {
+				Cow::Owned(rel_path.to_path(project.package_dir()))
+			}
+			RelativeOrAbsolutePath::Absolute(abs_path) => Cow::Borrowed(abs_path.as_path()),
+		};
+
+		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+			.await
+			.map_err(|e| {
+				errors::ResolveError::ManifestRead(crate::errors::ManifestReadError::Io(e))
+			})?;
+		let manifest: Manifest = toml::from_str(&manifest).map_err(|e| {
 			errors::ResolveError::ManifestRead(crate::errors::ManifestReadError::Serde(
-				specifier.path.clone().into(),
+				path.clone().into(),
 				e,
 			))
 		})?;
@@ -90,7 +133,7 @@ impl PackageSource for PathPackageSource {
 							.ok_or_else(|| {
 								errors::ResolveError::IndexNotFound(
 									spec.index.clone(),
-									specifier.path.clone(),
+									path.clone().into(),
 								)
 							})?
 							.to_string();
@@ -103,7 +146,7 @@ impl PackageSource for PathPackageSource {
 							.ok_or_else(|| {
 								errors::ResolveError::IndexNotFound(
 									spec.index.clone(),
-									specifier.path.clone(),
+									path.clone().into(),
 								)
 							})?
 							.to_string();
@@ -135,29 +178,41 @@ impl PackageSource for PathPackageSource {
 		pkg_ref: &Self::Ref,
 		options: &DownloadOptions<'_, R>,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let DownloadOptions { reporter, .. } = options;
+		let DownloadOptions {
+			reporter, project, ..
+		} = options;
 
 		reporter.report_done();
 
-		Ok(PackageFs::Copy(pkg_ref.path.clone()))
+		Ok(PackageFs::Copy(match &pkg_ref.path {
+			RelativeOrAbsolutePath::Relative(rel_path) => rel_path.to_path(project.package_dir()),
+			RelativeOrAbsolutePath::Absolute(abs_path) => abs_path.clone(),
+		}))
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn get_target(
 		&self,
 		pkg_ref: &Self::Ref,
-		_options: &GetTargetOptions<'_>,
+		options: &GetTargetOptions<'_>,
 	) -> Result<Target, Self::GetTargetError> {
-		let manifest: Manifest = toml::from_str(
-			&fs::read_to_string(pkg_ref.path.join(MANIFEST_FILE_NAME))
-				.await
-				.map_err(|e| {
-					errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Io(e))
-				})?,
-		)
-		.map_err(|e| {
+		let GetTargetOptions { project, .. } = options;
+
+		let path = match &pkg_ref.path {
+			RelativeOrAbsolutePath::Relative(rel_path) => {
+				Cow::Owned(rel_path.to_path(project.package_dir()))
+			}
+			RelativeOrAbsolutePath::Absolute(abs_path) => Cow::Borrowed(abs_path.as_path()),
+		};
+
+		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+			.await
+			.map_err(|e| {
+				errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Io(e))
+			})?;
+		let manifest: Manifest = toml::from_str(&manifest).map_err(|e| {
 			errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Serde(
-				pkg_ref.path.clone().into(),
+				path.into_owned().into(),
 				e,
 			))
 		})?;

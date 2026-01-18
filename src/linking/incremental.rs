@@ -21,8 +21,8 @@ impl Project {
 					.map(|target| (importer.clone(), *target))
 			})
 			.map(|(importer, target)| {
-				let packages_dir: Arc<Path> = self
-					.private_dir(&importer)
+				let packages_dir: Arc<Path> = importer
+					.to_path(self.private_dir())
 					.join("dependencies")
 					.join(target.packages_dir())
 					.into();

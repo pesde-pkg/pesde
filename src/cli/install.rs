@@ -44,7 +44,7 @@ impl DownloadAndLinkHooks for InstallHooks {
 			return Ok(());
 		}
 
-		let dir = self.project.private_dir(importer);
+		let dir = importer.to_path(self.project.private_dir());
 		let bin_dir = dir.join("bin");
 
 		let curr_exe: Arc<Path> = std::env::current_exe()

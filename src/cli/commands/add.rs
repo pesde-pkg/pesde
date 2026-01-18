@@ -18,7 +18,7 @@ use pesde::{
 			GitPackageSource,
 			specifier::{GitDependencySpecifier, GitVersionSpecifier},
 		},
-		path::{PathPackageSource, specifier::PathDependencySpecifier},
+		path::{PathPackageSource, RelativeOrAbsolutePath, specifier::PathDependencySpecifier},
 		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
 		specifiers::DependencySpecifiers,
 		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
@@ -197,10 +197,15 @@ impl AddCommand {
 					.split('/')
 					.next_back()
 					.map_or_else(|| url.as_url().path.to_string(), ToString::to_string),
-				AnyPackageIdentifier::Path(path) => path
-					.file_name()
-					.map(|s| s.to_string_lossy().to_string())
-					.expect("path has no file name"),
+				AnyPackageIdentifier::Path(path) => match path {
+					RelativeOrAbsolutePath::Relative(path) => {
+						path.file_name().map(ToString::to_string)
+					}
+					RelativeOrAbsolutePath::Absolute(path) => {
+						path.file_name().map(|s| s.to_string_lossy().to_string())
+					}
+				}
+				.expect("path has no file name"),
 			}
 			.parse()
 			.context("auto-generated alias is invalid. use --alias to specify one")?,
@@ -261,9 +266,9 @@ impl AddCommand {
 				);
 			}
 			DependencySpecifiers::Path(spec) => {
-				field["path"] = toml_edit::value(spec.path.to_string_lossy().to_string());
+				field["path"] = toml_edit::value(spec.path.to_string());
 
-				println!("added path {} to {dependency_key}", spec.path.display());
+				println!("added path {} to {dependency_key}", spec.path);
 			}
 		}
 

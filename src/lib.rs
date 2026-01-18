@@ -16,7 +16,7 @@ use async_stream::try_stream;
 use fs_err::tokio as fs;
 use futures::Stream;
 use gix::bstr::ByteSlice as _;
-use relative_path::{RelativePath, RelativePathBuf};
+use relative_path::RelativePathBuf;
 use semver::{Version, VersionReq};
 use std::{
 	collections::{HashMap, HashSet},
@@ -118,6 +118,7 @@ impl AuthConfig {
 struct ProjectShared {
 	package_dir: PathBuf,
 	workspace_dir: Option<PathBuf>,
+	private_dir: PathBuf,
 	data_dir: PathBuf,
 	cas_dir: PathBuf,
 	auth_config: AuthConfig,
@@ -141,12 +142,23 @@ impl Project {
 		cas_dir: impl AsRef<Path>,
 		auth_config: AuthConfig,
 	) -> Self {
+		let package_dir = package_dir.as_ref().to_path_buf();
+		let workspace_dir = workspace_dir.map(|d| d.as_ref().to_path_buf());
+		let cas_dir = cas_dir.as_ref().to_path_buf();
+
 		Project {
 			shared: ProjectShared {
-				package_dir: package_dir.as_ref().to_path_buf(),
-				workspace_dir: workspace_dir.map(|d| d.as_ref().to_path_buf()),
+				private_dir: cas_dir.join("projects").join(hash(
+					workspace_dir
+						.as_deref()
+						.unwrap_or(&package_dir)
+						.as_os_str()
+						.as_encoded_bytes(),
+				)),
+				package_dir,
+				workspace_dir,
+				cas_dir,
 				data_dir: data_dir.as_ref().to_path_buf(),
-				cas_dir: cas_dir.as_ref().to_path_buf(),
 				auth_config,
 			}
 			.into(),
@@ -164,6 +176,12 @@ impl Project {
 	#[must_use]
 	pub fn workspace_dir(&self) -> Option<&Path> {
 		self.shared.workspace_dir.as_deref()
+	}
+
+	/// The directory in which private, that is, non-shared data (dependencies, bins, etc.) is stored
+	#[must_use]
+	pub fn private_dir(&self) -> &Path {
+		&self.shared.private_dir
 	}
 
 	/// The directory to store general-purpose data
@@ -215,20 +233,6 @@ impl Project {
 		} else {
 			self
 		}
-	}
-
-	/// The directory in which private, that is, non-shared data (dependencies, bins, etc.) is stored
-	#[must_use]
-	pub fn private_dir(&self, importer: &RelativePath) -> PathBuf {
-		self.cas_dir()
-			.join("projects")
-			.join(hash(
-				importer
-					.to_path(self.root_dir())
-					.as_os_str()
-					.as_encoded_bytes(),
-			))
-			.join("private")
 	}
 
 	/// Read the manifest file

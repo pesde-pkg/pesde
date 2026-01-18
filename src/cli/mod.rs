@@ -18,7 +18,8 @@ use pesde::{
 	},
 	names::PackageNames,
 	source::{
-		git::specifier::GitVersionSpecifier, ids::VersionId, specifiers::DependencySpecifiers,
+		git::specifier::GitVersionSpecifier, ids::VersionId, path::RelativeOrAbsolutePath,
+		specifiers::DependencySpecifiers,
 	},
 };
 use relative_path::RelativePath;
@@ -198,7 +199,7 @@ impl VersionedPackageName {
 enum AnyPackageIdentifier<V: FromStr = VersionId, N: FromStr = PackageNames> {
 	PackageName(VersionedPackageName<V, N>),
 	Git((GixUrl, GitVersionSpecifier)),
-	Path(PathBuf),
+	Path(RelativeOrAbsolutePath),
 }
 
 impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<anyhow::Error>>
@@ -208,7 +209,7 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		if let Some(rest) = s.strip_prefix("path:") {
-			Ok(AnyPackageIdentifier::Path(rest.into()))
+			Ok(AnyPackageIdentifier::Path(rest.parse().unwrap()))
 		} else if s.contains(':') {
 			let (repo, ver) = match s.split_once('#') {
 				Some((repo, rev)) => (repo, GitVersionSpecifier::Rev(rev.to_string())),

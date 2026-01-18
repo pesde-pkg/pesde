@@ -98,7 +98,7 @@ impl RunCommand {
 		}
 
 		if let Some(id) = package_info {
-			let dir = project.private_dir(&project.path_from_root());
+			let dir = project.path_from_root().to_path(project.private_dir());
 			let container_dir = dir
 				.join("dependencies")
 				.join(DependencyGraphNode::container_dir_top_level(&id));

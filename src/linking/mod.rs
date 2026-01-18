@@ -62,8 +62,8 @@ impl Project {
 					.filter(|(_, (id, _, _))| graph.nodes.contains_key(id))
 					.map(|(alias, (id, _, _))| {
 						let importer = importer.clone();
-						let dependencies_dir = self
-							.private_dir(&importer)
+						let dependencies_dir = importer
+							.to_path(self.private_dir())
 							.join("dependencies")
 							.join(id.v_id().target().packages_dir());
 
@@ -94,7 +94,7 @@ impl Project {
 							.map(|(dependant_id, dep_alias, dep_id)| {
 								let importer = importer.clone();
 								let dependencies_dir =
-									self.private_dir(&importer).join("dependencies");
+									importer.to_path(self.private_dir()).join("dependencies");
 
 								let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME)
 									.join(DependencyGraphNode::container_dir(dep_id));

@@ -74,8 +74,8 @@ pub(crate) fn cas_path(hash: &str, cas_dir: &Path) -> PathBuf {
 	cas_dir.join(prefix).join(rest)
 }
 
-pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin, P: AsRef<Path>>(
-	cas_dir: P,
+pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
+	cas_dir: impl AsRef<Path>,
 	mut contents: R,
 ) -> std::io::Result<String> {
 	let tmp_dir = cas_dir.as_ref().join(".tmp");
@@ -127,7 +127,7 @@ async fn package_fs_cas(
 	let mut tasks = entries
 		.iter()
 		.map(|(path, entry)| {
-			let cas_file_path = match &entry {
+			let cas_file_path = match entry {
 				FsEntry::File(hash) => Some(cas_path(hash, cas_dir_path)),
 				FsEntry::Directory => None,
 			};
