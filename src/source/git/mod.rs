@@ -13,6 +13,7 @@ use crate::{
 			specifier::{GitDependencySpecifier, GitVersionSpecifier},
 		},
 		git_index::{GitBasedSource, read_file},
+		path::RelativeOrAbsolutePath,
 		pesde::PesdeVersionedManifest,
 		refs::{PackageRefs, StructureKind},
 		specifiers::DependencySpecifiers,
@@ -20,7 +21,7 @@ use crate::{
 			DownloadOptions, GetTargetOptions, PackageRef as _, RefreshOptions, ResolveOptions,
 		},
 	},
-	util::hash,
+	util::{hash, simplify_path},
 	version_matches,
 };
 use fs_err::tokio as fs;
@@ -90,6 +91,7 @@ impl GitPackageSource {
 }
 
 fn transform_pesde_dependencies(
+	project: &Project,
 	manifest: &Manifest,
 	repo_url: &GixUrl,
 ) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
@@ -127,8 +129,17 @@ fn transform_pesde_dependencies(
 						.to_string();
 				}
 				DependencySpecifiers::Git(_) => {}
-				DependencySpecifiers::Path(_) => {
-					return Err(errors::ResolveError::Path(repo_url.clone()));
+				DependencySpecifiers::Path(specifier) => {
+					if let RelativeOrAbsolutePath::Relative(path) = &specifier.path
+						&& simplify_path(&path.to_path(project.package_dir()))
+							.starts_with(project.package_dir())
+					{
+					} else if std::env::var("PESDE_IMPURE_GIT_DEP_PATHS")
+						.is_ok_and(|s| !s.is_empty())
+					{
+					} else {
+						return Err(errors::ResolveError::Path(repo_url.clone()));
+					}
 				}
 			}
 
@@ -161,6 +172,7 @@ impl PackageSource for GitPackageSource {
 		let path = self.path(project);
 		let repo_url = self.repo_url.clone();
 		let specifier = specifier.clone();
+		let project = project.clone();
 
 		let (structure_kind, version_id, dependencies, tree_id) = spawn_blocking(move || {
 			let repo = gix::open(path)
@@ -253,7 +265,7 @@ impl PackageSource for GitPackageSource {
 					if let Some(version) = version {
 						match toml::from_str::<Manifest>(&m) {
 							Ok(m) => Some((
-								transform_pesde_dependencies(&m, &repo_url)?,
+								transform_pesde_dependencies(&project, &m, &repo_url)?,
 								VersionId::new(version, m.target.kind()),
 							)),
 							Err(e) => {
@@ -270,7 +282,11 @@ impl PackageSource for GitPackageSource {
 							})?;
 						let target = manifest.as_manifest().target.kind();
 						Some((
-							transform_pesde_dependencies(manifest.as_manifest(), &repo_url)?,
+							transform_pesde_dependencies(
+								&project,
+								manifest.as_manifest(),
+								&repo_url,
+							)?,
 							VersionId::new(
 								match manifest {
 									PesdeVersionedManifest::V1(m) => m.version,
@@ -654,8 +670,10 @@ pub mod errors {
 		#[error("no lockfile found in repository {0}")]
 		NoLockfile(GixUrl),
 
-		/// The package depends on a path package
-		#[error("the package {0} depends on a path package")]
+		/// The package depends on a path package that escapes the repository
+		#[error(
+			"the package {0} depends on a path package that escapes the repository. use PESDE_IMPURE_GIT_DEP_PATHS to override"
+		)]
 		Path(GixUrl),
 	}
 

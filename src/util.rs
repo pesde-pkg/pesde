@@ -8,7 +8,7 @@ use sha2::{Digest as _, Sha256};
 use std::{
 	collections::BTreeMap,
 	fmt::{Display, Formatter},
-	path::{Path, PathBuf},
+	path::{Component, Path, PathBuf},
 };
 
 pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
@@ -141,4 +141,19 @@ pub async fn symlink_dir(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
 		.await
 		.unwrap()
 	}
+}
+
+#[must_use]
+pub fn simplify_path(path: &Path) -> PathBuf {
+	let mut result = PathBuf::new();
+	for component in path.components() {
+		match component {
+			Component::CurDir => {}
+			Component::ParentDir => {
+				result.pop();
+			}
+			_ => result.push(component),
+		}
+	}
+	result
 }

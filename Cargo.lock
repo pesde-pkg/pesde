@@ -601,7 +601,8 @@ dependencies = [
 [[package]]
 name = "croshet"
 version = "0.1.0"
-source = "git+https://github.com/pesde-pkg/croshet?rev=1cf15b770a6bce7d2f3d3de8b09b9240962e2a94#1cf15b770a6bce7d2f3d3de8b09b9240962e2a94"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f2ee1fafd042da4a07f355fe3050c05f7402e78d97d9f53843ecbd694340a8"
 dependencies = [
  "anyhow",
  "async-trait",
