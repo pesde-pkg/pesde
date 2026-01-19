@@ -1,4 +1,5 @@
 use crate::{manifest::Alias, ser_display_deser_fromstr, source::specifiers::DependencySpecifiers};
+use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
 use std::{
 	fmt::{Display, Formatter},
@@ -39,15 +40,8 @@ impl Display for OverrideKey {
 			"{}",
 			self.0
 				.iter()
-				.map(|overrides| {
-					overrides
-						.iter()
-						.map(Alias::as_str)
-						.collect::<Vec<_>>()
-						.join(">")
-				})
-				.collect::<Vec<_>>()
-				.join(",")
+				.map(|overrides| { overrides.iter().map(Alias::as_str).format(">") })
+				.format(",")
 		)
 	}
 }

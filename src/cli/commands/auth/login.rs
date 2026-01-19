@@ -126,13 +126,10 @@ impl LoginCommand {
 			let response = reqwest
 				.post(Url::parse_with_params(
 					"https://github.com/login/oauth/access_token",
-					&[
+					[
+						("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
 						("client_id", &client_id),
 						("device_code", &response.device_code),
-						(
-							"grant_type",
-							&"urn:ietf:params:oauth:grant-type:device_code".to_string(),
-						),
 					],
 				)?)
 				.header(ACCEPT, "application/json")
@@ -197,13 +194,13 @@ impl LoginCommand {
 			token
 		};
 
-		set_token(&index_url, Some(&token)).await?;
+		set_token(&index_url, Some(token.clone())).await?;
 
 		// Also save the token for GitHub API requests if we authenticated via GitHub OAuth
 		if !token_given {
 			let tokens = get_tokens().await?;
 			if !tokens.contains_key(&GITHUB_URL) {
-				set_token(&GITHUB_URL, Some(&token)).await?;
+				set_token(&GITHUB_URL, Some(token)).await?;
 			}
 		}
 

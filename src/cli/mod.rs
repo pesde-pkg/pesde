@@ -3,6 +3,7 @@ use crate::cli::{
 	style::{ERROR_STYLE, INFO_STYLE, WARN_STYLE},
 };
 use anyhow::Context as _;
+use itertools::Itertools as _;
 use pesde::{
 	AuthConfig, DEFAULT_INDEX_NAME, GixUrl, Project,
 	engine::{
@@ -334,21 +335,10 @@ async fn get_executable_version(engine: EngineKind) -> anyhow::Result<Option<Ver
 	match parse() {
 		Ok(version) => Ok(Some(version)),
 		Err(err) => {
-			let mut cause = vec![];
-			let mut source = err.source();
-			while let Some(err) = source {
-				cause.push(format!("\t- {err}"));
-				source = err.source();
-			}
+			let cause = std::iter::successors(err.source(), |err| err.source())
+				.format_with("", |err, f| f(&format_args!("\n\t- {err}")));
 
-			tracing::error!(
-				"failed to extract {engine} version:\n{err}{}",
-				if cause.is_empty() {
-					"".to_string()
-				} else {
-					"\n".to_string() + &cause.join("\n")
-				}
-			);
+			tracing::error!("failed to extract {engine} version:\n{err}{cause}");
 			Ok(None)
 		}
 	}

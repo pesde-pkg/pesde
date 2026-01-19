@@ -134,7 +134,11 @@ pub async fn symlink_dir(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
 			junction::create(&src, &dst).map_err(|e| {
 				std::io::Error::new(
 					e.kind(),
-					format!("failed to create junction from `{src:?}` to `{dst:?}`"),
+					format!(
+						"failed to create junction from `{}` to `{}`",
+						src.display(),
+						dst.display()
+					),
 				)
 			})
 		})

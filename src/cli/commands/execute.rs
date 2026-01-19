@@ -130,7 +130,7 @@ impl ExecuteCommand {
 				);
 
 				let mut file = source
-					.read_index_file(&self.package.0, &project)
+					.read_index_file(self.package.0, &project)
 					.await
 					.context("failed to read package index file")?
 					.context("package doesn't exist on the index")?;

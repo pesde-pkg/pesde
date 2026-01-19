@@ -96,14 +96,12 @@ impl AuthConfig {
 	/// Set the tokens
 	/// Panics if the `AuthConfig` is shared
 	#[must_use]
-	pub fn with_tokens<I: IntoIterator<Item = (GixUrl, S)>, S: AsRef<str>>(
+	pub fn with_tokens<I: IntoIterator<Item = (GixUrl, impl Into<String>)>>(
 		mut self,
 		tokens: I,
 	) -> Self {
-		Arc::get_mut(&mut self.shared).unwrap().tokens = tokens
-			.into_iter()
-			.map(|(url, s)| (url, s.as_ref().to_string()))
-			.collect();
+		Arc::get_mut(&mut self.shared).unwrap().tokens =
+			tokens.into_iter().map(|(url, s)| (url, s.into())).collect();
 		self
 	}
 
@@ -256,10 +254,9 @@ impl Project {
 			}
 		}
 		let mut manifest_guard = self.manifest.clone().write_owned().await;
-		let manifest = toml::from_str::<Manifest>(
-			&fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?,
-		)
-		.map_err(|e| errors::ManifestReadError::Serde(self.package_dir().into(), e))?;
+		let manifest = fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?;
+		let manifest = toml::from_str::<Manifest>(&manifest)
+			.map_err(|e| errors::ManifestReadError::Serde(self.package_dir().into(), e))?;
 		*manifest_guard = Some(manifest);
 		Ok(OwnedRwLockReadGuard::map(manifest_guard.downgrade(), |m| {
 			m.as_ref().unwrap()
@@ -312,12 +309,11 @@ format = {}
 		errors::WorkspaceMembersError,
 	> {
 		let dir = self.root_dir();
-		let manifest: Manifest = toml::from_str(
-			&fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
-				.await
-				.map_err(errors::ManifestReadError::Io)?,
-		)
-		.map_err(|e| errors::ManifestReadError::Serde(dir.into(), e))?;
+		let manifest = fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
+			.await
+			.map_err(errors::ManifestReadError::Io)?;
+		let manifest: Manifest = toml::from_str(&manifest)
+			.map_err(|e| errors::ManifestReadError::Serde(dir.into(), e))?;
 
 		let members = matching_globs(
 			dir,
@@ -331,12 +327,11 @@ format = {}
 			yield (RelativePathBuf::new(), manifest);
 
 			for path in members {
-				let manifest = toml::from_str::<Manifest>(
-					&fs::read_to_string(path.join(MANIFEST_FILE_NAME))
-						.await
-						.map_err(errors::ManifestReadError::Io)?,
-				)
-				.map_err(|e| errors::ManifestReadError::Serde(path.clone().into(), e))?;
+				let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
+					.await
+					.map_err(errors::ManifestReadError::Io)?;
+				let manifest = toml::from_str::<Manifest>(&manifest)
+					.map_err(|e| errors::ManifestReadError::Serde(path.clone().into(), e))?;
 				yield (RelativePathBuf::from_path(path.strip_prefix(dir).unwrap()).unwrap(), manifest);
 			}
 		})

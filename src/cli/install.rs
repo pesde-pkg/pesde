@@ -188,7 +188,7 @@ pub async fn install(
 							.context("failed to refresh source")?;
 
 						let file = source
-							.read_index_file(&name, &project)
+							.read_index_file(name.clone(), &project)
 							.await
 							.context("failed to read package index file")?
 							.context("package not found in index")?;
@@ -275,7 +275,7 @@ pub async fn install(
 											.context("failed to refresh source")?;
 
 										let mut file = source
-											.read_index_file(&pkg_ref.name, &project)
+											.read_index_file(pkg_ref.name.clone(), &project)
 											.await
 											.context("failed to read package index file")?
 											.context("package not found in index")?;
@@ -444,10 +444,7 @@ pub fn print_install_summary(
 							peer_warnings.push(
 								style(format!(
 									"missing peer {}>{dep_alias}",
-									path.iter()
-										.map(|(_, alias)| alias.as_str())
-										.collect::<Vec<_>>()
-										.join(">"),
+									path.iter().map(|(_, alias)| alias.as_str()).format(">"),
 								))
 								.red(),
 							);

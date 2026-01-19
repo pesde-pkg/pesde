@@ -138,7 +138,8 @@ impl Project {
 					}
 
 					if let Some(lib_file) = target.lib_path() {
-						let destination = dirs.base.join(format!("{alias}.luau"));
+						let destination =
+							dirs.base.join(alias.as_str()).with_added_extension("luau");
 
 						let lib_module = generator::generate_lib_linking_module(
 							&generator::get_lib_require_path(
@@ -160,7 +161,10 @@ impl Project {
 					}
 
 					if let Some(bin_file) = target.bin_path() {
-						let destination = dirs.base.join(format!("{alias}.bin.luau"));
+						let destination = dirs
+							.base
+							.join(alias.as_str())
+							.with_added_extension("bin.luau");
 
 						let bin_module = generator::generate_bin_linking_module(
 							&dirs.container,

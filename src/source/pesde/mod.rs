@@ -114,11 +114,10 @@ impl PesdePackageSource {
 	/// Reads the index file of a package
 	pub async fn read_index_file(
 		&self,
-		name: &PackageName,
+		name: PackageName,
 		project: &Project,
 	) -> Result<Option<IndexFile>, errors::ReadIndexFileError> {
 		let path = self.path(project);
-		let name = name.clone();
 
 		spawn_blocking(move || {
 			let (scope, name) = name.as_str();
@@ -165,8 +164,9 @@ impl PackageSource for PesdePackageSource {
 			..
 		} = options;
 
-		let Some(IndexFile { entries, .. }) =
-			self.read_index_file(&specifier.name, project).await?
+		let Some(IndexFile { entries, .. }) = self
+			.read_index_file(specifier.name.clone(), project)
+			.await?
 		else {
 			return Err(errors::ResolveError::NotFound(specifier.name.clone()));
 		};
@@ -327,7 +327,7 @@ impl PackageSource for PesdePackageSource {
 		options: &GetTargetOptions<'_>,
 	) -> Result<Target, Self::GetTargetError> {
 		let Some(IndexFile { mut entries, .. }) = self
-			.read_index_file(&pkg_ref.name, &options.project)
+			.read_index_file(pkg_ref.name.clone(), &options.project)
 			.await?
 		else {
 			return Err(errors::GetTargetError::NotFound(pkg_ref.name.clone()));

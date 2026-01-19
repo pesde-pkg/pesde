@@ -8,6 +8,7 @@ use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{AuthConfig, Project, engine::EngineKind, find_roots};
 use std::{
+	fmt::Display,
 	io,
 	path::{Path, PathBuf},
 	str::FromStr as _,
@@ -183,13 +184,21 @@ async fn run() -> anyhow::Result<()> {
 		.await
 		.context("failed to find project root")?;
 
-	tracing::trace!(
-		"project root: {}\nworkspace root: {}",
-		project_root_dir.display(),
-		project_workspace_dir
-			.as_ref()
-			.map_or_else(|| "none".to_string(), |p| p.display().to_string())
-	);
+	{
+		let display;
+		let workspace: &dyn Display = match &project_workspace_dir {
+			None => &"none",
+			Some(s) => {
+				display = s.display();
+				&display
+			}
+		};
+
+		tracing::trace!(
+			"project root: {}\nworkspace root: {workspace}",
+			project_root_dir.display(),
+		);
+	}
 
 	let reqwest = reqwest::Client::builder()
 		.user_agent(concat!(

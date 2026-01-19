@@ -215,7 +215,7 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
 					async move {
 						let hash_entry = hash_entry.context("failed to read hash dir entry")?;
 						let hash = hash_entry.file_name();
-						let hash = hash.to_str().expect("non-UTF-8 hash").to_string();
+						let hash = hash.to_str().expect("non-UTF-8 hash");
 						let hash = format!("{prefix}{hash}");
 
 						let path = hash_entry.path();

@@ -9,6 +9,7 @@ use crate::{
 use anyhow::Context as _;
 use console::Style;
 use fs_err::tokio as fs;
+use itertools::Itertools as _;
 use jiff::SignedDuration;
 use pesde::{
 	AuthConfig,
@@ -98,30 +99,28 @@ pub async fn check_for_updates(
 	}
 
 	let alert_style = Style::new().yellow();
-	let changelog = format!("{}/releases/tag/v{version}", env!("CARGO_PKG_REPOSITORY"));
+	let changelog = format_args!("{}/releases/tag/v{version}", env!("CARGO_PKG_REPOSITORY"));
 
 	let messages = [
-		format!(
+		format_args!(
 			"{} {} → {}",
 			alert_style.apply_to("update available!").bold(),
 			REMOVED_STYLE.apply_to(current_version),
 			ADDED_STYLE.apply_to(version_no_metadata)
 		),
-		format!(
+		format_args!(
 			"run {} to upgrade",
 			CLI_STYLE.apply_to(concat!("`", env!("CARGO_BIN_NAME"), " self-upgrade`")),
 		),
-		"".to_string(),
-		format!("changelog: {}", URL_STYLE.apply_to(changelog)),
+		format_args!(""),
+		format_args!("changelog: {}", URL_STYLE.apply_to(changelog)),
 	];
 
 	let column = alert_style.apply_to("┃");
 
 	let message = messages
 		.into_iter()
-		.map(|s| format!("{column}  {s}"))
-		.collect::<Vec<_>>()
-		.join("\n");
+		.format_with("\n", |s, f| f(&format_args!("{column}  {s}")));
 
 	eprintln!("\n{message}\n");
 

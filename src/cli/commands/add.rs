@@ -3,6 +3,7 @@ use std::str::FromStr as _;
 
 use anyhow::Context as _;
 use clap::Args;
+use itertools::Itertools as _;
 use semver::VersionReq;
 
 use crate::cli::{
@@ -160,11 +161,7 @@ impl AddCommand {
 				} else {
 					format!(
 						". available targets: {}",
-						suggestions
-							.into_iter()
-							.map(|t| t.to_string())
-							.collect::<Vec<_>>()
-							.join(", ")
+						suggestions.into_iter().format(", ")
 					)
 				}
 			);

@@ -68,10 +68,10 @@ pub async fn set_tokens(tokens: Tokens) -> anyhow::Result<()> {
 	write_config(&config).await
 }
 
-pub async fn set_token(repo: &GixUrl, token: Option<&str>) -> anyhow::Result<()> {
+pub async fn set_token(repo: &GixUrl, token: Option<String>) -> anyhow::Result<()> {
 	let mut tokens = get_tokens().await?;
 	if let Some(token) = token {
-		tokens.insert(repo.clone(), token.to_string());
+		tokens.insert(repo.clone(), token);
 	} else {
 		tokens.remove(repo);
 	}

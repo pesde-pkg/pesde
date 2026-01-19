@@ -216,7 +216,7 @@ impl InitCommand {
 					.context("scripts package not found")?;
 
 				let mut file = source
-					.read_index_file(&scripts_pkg_name, &project)
+					.read_index_file(scripts_pkg_name.clone(), &project)
 					.await
 					.context("failed to read scripts package index file")?
 					.context("scripts package not found in index")?;

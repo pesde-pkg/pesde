@@ -107,10 +107,9 @@ impl WallyPackageSource {
 	pub(crate) async fn read_index_file(
 		&self,
 		project: &Project,
-		name: &WallyPackageName,
+		pkg_name: WallyPackageName,
 	) -> Result<Option<String>, errors::ResolveError> {
 		let path = self.path(project);
-		let pkg_name = name.clone();
 
 		spawn_blocking(move || {
 			let repo = gix::open(&path).map_err(Box::new)?;
@@ -150,7 +149,9 @@ impl PackageSource for WallyPackageSource {
 			..
 		} = options;
 
-		let mut string = self.read_index_file(project, &specifier.name).await?;
+		let mut string = self
+			.read_index_file(project, specifier.name.clone())
+			.await?;
 		let mut index_url = self.repo_url.clone();
 
 		if string.is_none() {
@@ -184,7 +185,10 @@ impl PackageSource for WallyPackageSource {
 					Err(e) => panic!("unexpected error: {e:?}"),
 				}
 
-				match source.read_index_file(project, &specifier.name).await {
+				match source
+					.read_index_file(project, specifier.name.clone())
+					.await
+				{
 					Ok(Some(res)) => {
 						string = Some(res);
 						index_url = source.repo_url;

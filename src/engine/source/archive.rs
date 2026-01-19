@@ -2,6 +2,7 @@ use futures::StreamExt as _;
 use ouroboros::self_referencing;
 use std::{
 	collections::BTreeSet,
+	fmt::Display,
 	path::{Path, PathBuf},
 	pin::Pin,
 	str::FromStr,
@@ -15,13 +16,26 @@ use tokio_util::compat::Compat;
 
 /// The kind of encoding used for the archive
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum EncodingKind {
 	/// Gzip
 	Gzip,
+	/// Plain (no encoding)
+	Plain,
+}
+
+impl Display for EncodingKind {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			EncodingKind::Gzip => write!(f, "gzip"),
+			EncodingKind::Plain => write!(f, "plain"),
+		}
+	}
 }
 
 /// The kind of archive
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum ArchiveKind {
 	/// Tar
 	Tar,
@@ -29,8 +43,17 @@ pub enum ArchiveKind {
 	Zip,
 }
 
+impl Display for ArchiveKind {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			ArchiveKind::Tar => write!(f, "tar"),
+			ArchiveKind::Zip => write!(f, "zip"),
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct ArchiveInfo(ArchiveKind, Option<EncodingKind>);
+pub(crate) struct ArchiveInfo(ArchiveKind, EncodingKind);
 
 impl FromStr for ArchiveInfo {
 	type Err = errors::ArchiveInfoFromStrError;
@@ -39,15 +62,15 @@ impl FromStr for ArchiveInfo {
 		let parts = s.split('.').collect::<Vec<_>>();
 
 		Ok(match &*parts {
-			[.., "tar", "gz"] => ArchiveInfo(ArchiveKind::Tar, Some(EncodingKind::Gzip)),
-			[.., "tar"] => ArchiveInfo(ArchiveKind::Tar, None),
+			[.., "tar", "gz"] => ArchiveInfo(ArchiveKind::Tar, EncodingKind::Gzip),
+			[.., "tar"] => ArchiveInfo(ArchiveKind::Tar, EncodingKind::Plain),
 			[.., "zip", "gz"] => {
 				return Err(errors::ArchiveInfoFromStrError::Unsupported(
 					ArchiveKind::Zip,
-					Some(EncodingKind::Gzip),
+					EncodingKind::Gzip,
 				));
 			}
-			[.., "zip"] => ArchiveInfo(ArchiveKind::Zip, None),
+			[.., "zip"] => ArchiveInfo(ArchiveKind::Zip, EncodingKind::Plain),
 			_ => return Err(errors::ArchiveInfoFromStrError::Invalid(s.to_string())),
 		})
 	}
@@ -174,10 +197,8 @@ impl Archive {
 				use async_compression::tokio::bufread as decoders;
 
 				let reader = match encoding {
-					Some(EncodingKind::Gzip) => {
-						TarReader::Gzip(decoders::GzipDecoder::new(self.reader))
-					}
-					None => TarReader::Plain(self.reader),
+					EncodingKind::Gzip => TarReader::Gzip(decoders::GzipDecoder::new(self.reader)),
+					EncodingKind::Plain => TarReader::Plain(self.reader),
 				};
 
 				let mut archive = tokio_tar::Archive::new(reader);
@@ -291,8 +312,8 @@ pub mod errors {
 		Invalid(String),
 
 		/// The archive type is not supported. E.g. `{name}.zip.gz`
-		#[error("archive type {0:?} with encoding {1:?} is not supported")]
-		Unsupported(super::ArchiveKind, Option<super::EncodingKind>),
+		#[error("archive type `{0}` with encoding `{1}` is not supported")]
+		Unsupported(super::ArchiveKind, super::EncodingKind),
 	}
 
 	/// Errors that can occur when finding an executable in an archive

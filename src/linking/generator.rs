@@ -1,5 +1,6 @@
 use std::{
 	borrow::Cow,
+	fmt::Display,
 	path::{Component, Path, PathBuf},
 };
 
@@ -8,6 +9,7 @@ use crate::{
 	source::refs::StructureKind,
 };
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
+use itertools::Itertools as _;
 use relative_path::RelativePath;
 use tracing::instrument;
 
@@ -30,33 +32,36 @@ struct TypeVisitor {
 
 impl Visitor for TypeVisitor {
 	fn visit_exported_type_declaration(&mut self, node: &ExportedTypeDeclaration) {
-		let name = node.type_declaration().type_name().to_string();
+		let name = node.type_declaration().type_name();
 
-		let (declaration_generics, generics) =
-			if let Some(declaration) = node.type_declaration().generics() {
-				let mut declaration_generics = vec![];
-				let mut generics = vec![];
+		let mut declaration_generics: Vec<&dyn Display> = vec![];
+		let mut generics: Vec<&dyn Display> = vec![];
 
-				for generic in declaration.generics() {
-					declaration_generics.push(generic.to_string());
+		if let Some(declaration) = node.type_declaration().generics() {
+			for generic in declaration.generics() {
+				declaration_generics.push(generic);
 
-					if generic.default_type().is_some() {
-						generics.push(generic.parameter().to_string());
-					} else {
-						generics.push(generic.to_string());
-					}
+				if generic.default_type().is_some() {
+					generics.push(generic.parameter());
+				} else {
+					generics.push(generic);
 				}
+			}
+		}
 
-				(
-					format!("<{}>", declaration_generics.join(", ")),
-					format!("<{}>", generics.join(", ")),
-				)
-			} else {
-				("".to_string(), "".to_string())
-			};
+		let declaration_generics = if declaration_generics.is_empty() {
+			format_args!("")
+		} else {
+			format_args!("<{}>", declaration_generics.into_iter().format(", "))
+		};
+		let generics = if generics.is_empty() {
+			format_args!("")
+		} else {
+			format_args!("<{}>", generics.into_iter().format(", "))
+		};
 
 		self.types.push(format!(
-			"export type {name}{declaration_generics} = module.{name}{generics}\n"
+			"export type {name}{declaration_generics} = module.{name}{generics}"
 		));
 	}
 }
@@ -68,9 +73,7 @@ pub(crate) fn get_file_types(file: &str) -> Vec<String> {
 			tracing::error!(
 				"failed to parse file to extract types:\n{}",
 				err.into_iter()
-					.map(|err| format!("\t- {err}"))
-					.collect::<Vec<_>>()
-					.join("\n")
+					.format_with("\n", |err, f| f(&format_args!("\t- {err}")))
 			);
 
 			return vec![];
@@ -88,15 +91,9 @@ pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
 	path: &str,
 	types: I,
 ) -> String {
-	let mut output = format!("local module = require({path})\n");
+	let types = types.into_iter().format_with("\n", |ty, f| f(&ty.as_ref()));
 
-	for ty in types {
-		output.push_str(ty.as_ref());
-	}
-
-	output.push_str("return module");
-
-	output
+	format!("local module = require({path})\n{types}\nreturn module")
 }
 
 fn luau_style_path(path: &Path) -> String {
@@ -109,29 +106,27 @@ fn luau_style_path(path: &Path) -> String {
 				.chain(std::iter::repeat(None)),
 		)
 		.filter_map(|(ct, next_ct)| match ct {
-			Component::CurDir => Some(".".to_string()),
-			Component::ParentDir => Some("..".to_string()),
+			Component::CurDir => Some(".".into()),
+			Component::ParentDir => Some("..".into()),
 			Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
 				let str = part.to_string_lossy();
 
 				Some(
-					(if next_ct.is_some() {
-						&str
+					if next_ct.is_none()
+						&& let Some(str) = str.strip_suffix(".luau").or(str.strip_suffix(".lua"))
+					{
+						Cow::Owned(str.to_string())
 					} else {
-						str.strip_suffix(".luau")
-							.or_else(|| str.strip_suffix(".lua"))
-							.unwrap_or(&str)
-					})
-					.to_string(),
+						str
+					},
 				)
 			}
 			_ => None,
 		})
-		.collect::<Vec<_>>()
-		.join("/");
+		.format("/");
 
 	let require = format!("./{path}");
-	format!("{require:?}")
+	format!(r#""{}""#, require.escape_default())
 }
 
 // This function should be simplified (especially to reduce the number of arguments),
@@ -162,7 +157,7 @@ pub fn get_lib_require_path(
 				))?
 				.as_str(),
 			match structure_kind {
-				StructureKind::Wally => Cow::Borrowed(&dirs.container),
+				StructureKind::Wally => Cow::Borrowed(dirs.container.as_path()),
 				StructureKind::PesdeV1 => Cow::Owned(lib_file.to_path(&dirs.container)),
 			},
 		),
@@ -179,35 +174,39 @@ pub fn get_lib_require_path(
 				.chain(std::iter::repeat(None)),
 		)
 		.filter_map(|(component, next_comp)| match component {
-			Component::ParentDir => Some(".Parent".to_string()),
+			Component::ParentDir => Some(Cow::Borrowed(".Parent")),
 			Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
 				let str = part.to_string_lossy();
 
-				Some(format!(
-					":FindFirstChild({:?})",
-					if next_comp.is_some() {
-						&str
-					} else {
-						str.strip_suffix(".luau")
-							.or_else(|| str.strip_suffix(".lua"))
-							.unwrap_or(&str)
-					}
-				))
+				Some(
+					format!(
+						":FindFirstChild({})",
+						if next_comp.is_some() {
+							&str
+						} else {
+							str.strip_suffix(".luau")
+								.or(str.strip_suffix(".lua"))
+								.unwrap_or(&str)
+						}
+						.escape_debug()
+					)
+					.into(),
+				)
 			}
 			_ => None,
 		})
-		.collect::<String>();
+		.format("");
 
 	Ok(format!("{prefix}{path}"))
 }
 
 /// Generate a linking module for a binary
 #[must_use]
-pub fn generate_bin_linking_module<P: AsRef<Path>>(package_root: P, require_path: &str) -> String {
+pub fn generate_bin_linking_module(package_root: &Path, require_path: &str) -> String {
 	format!(
-		r"_G.PESDE_ROOT = {:?}
-return require({require_path})",
-		package_root.as_ref().to_string_lossy()
+		r#"_G.PESDE_ROOT = "{}"
+return require({require_path})"#,
+		package_root.to_string_lossy().escape_default()
 	)
 }
 

@@ -13,6 +13,7 @@ use crate::{
 	},
 };
 use futures::StreamExt as _;
+use itertools::Itertools as _;
 use relative_path::RelativePath;
 use std::{
 	collections::{HashMap, VecDeque},
@@ -81,7 +82,7 @@ impl Project {
 					let mut queue = previous_graph.nodes[package_id]
 						.dependencies
 						.iter()
-						.map(|(dep_alias, id)| (id, vec![alias.to_string(), dep_alias.to_string()]))
+						.map(|(dep_alias, id)| (id, vec![alias.clone(), dep_alias.clone()]))
 						.collect::<VecDeque<_>>();
 
 					tracing::debug!("resolved {package_id} from old dependency graph");
@@ -95,7 +96,7 @@ impl Project {
 
 					while let Some((dep_id, path)) = queue.pop_front() {
 						let inner_span =
-							tracing::info_span!("resolve dependency", path = path.join(">"));
+							tracing::info_span!("resolve dependency", path = path.iter().join(">"));
 						let _inner_guard = inner_span.enter();
 
 						tracing::debug!("resolved sub-dependency {dep_id}");
@@ -117,7 +118,7 @@ impl Project {
 									id,
 									path.iter()
 										.cloned()
-										.chain(std::iter::once(alias.to_string()))
+										.chain(std::iter::once(alias.clone()))
 										.collect(),
 								)
 							})
@@ -271,11 +272,7 @@ impl Project {
 						} else {
 							format!(
 								" available targets: {}",
-								suggestions
-									.into_iter()
-									.map(|t| t.to_string())
-									.collect::<Vec<_>>()
-									.join(", ")
+								suggestions.into_iter().format(", ")
 							)
 						}
 					)));
@@ -356,8 +353,7 @@ impl Project {
 							path.iter()
 								.map(Alias::as_str)
 								.chain(std::iter::once(dependency_alias.as_str()))
-								.collect::<Vec<_>>()
-								.join(">"),
+								.format(">"),
 						);
 					}
 
@@ -391,7 +387,7 @@ impl Project {
 			}
 			.instrument(tracing::info_span!(
 				"resolve new/changed",
-				path = path.iter().map(Alias::as_str).collect::<Vec<_>>().join(">")
+				path = path.iter().map(Alias::as_str).join(">")
 			))
 			.await?;
 		}
