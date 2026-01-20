@@ -20,6 +20,7 @@ use crate::{
 use fs_err::tokio as fs;
 use gix::{bstr::BStr, traverse::tree::Recorder, ObjectId, Url};
 use relative_path::RelativePathBuf;
+use semver::{BuildMetadata, Version};
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	fmt::Debug,
@@ -234,6 +235,13 @@ impl PackageSource for GitPackageSource {
 			} else {
 				root_tree.clone()
 			};
+			let version = Version {
+				major: 0,
+				minor: 0,
+				patch: 0,
+				build: BuildMetadata::EMPTY,
+				pre: tree.id.to_string().parse().unwrap(),
+			};
 
 			let manifest = match read_file(&tree, [MANIFEST_FILE_NAME])
 				.map_err(|e| errors::ResolveError::ReadManifest(Box::new(repo_url.clone()), e))?
@@ -285,7 +293,7 @@ impl PackageSource for GitPackageSource {
 				return Ok((
 					PackageNames::Wally(manifest.package.name),
 					VersionId(
-						manifest.package.version,
+						version,
 						match manifest.package.realm {
 							Realm::Shared => TargetKind::Roblox,
 							Realm::Server => TargetKind::RobloxServer,
@@ -306,7 +314,7 @@ impl PackageSource for GitPackageSource {
 
 			Ok((
 				PackageNames::Pesde(manifest.name),
-				VersionId(manifest.version, manifest.target.kind()),
+				VersionId(version, manifest.target.kind()),
 				dependencies,
 				tree.id.to_string(),
 			))
