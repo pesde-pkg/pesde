@@ -25,6 +25,8 @@ impl SelfInstallCommand {
 		#[cfg(windows)]
 		{
 			if !self.skip_add_to_path {
+				use std::env::{join_paths, split_paths};
+
 				use crate::cli::style::WARN_STYLE;
 				use anyhow::Context as _;
 				use windows_registry::CURRENT_USER;
@@ -33,12 +35,14 @@ impl SelfInstallCommand {
 					.create("Environment")
 					.context("failed to open Environment key")?;
 				let path = env.get_string("Path").context("failed to get Path value")?;
+				let mut path = split_paths(&path).collect::<Vec<_>>();
 
-				let exists = path.split(';').any(|part| part == bin_dir);
+				let exists = path.iter().any(|part| part == bin_dir);
 
 				if !exists {
-					let new_path = format!("{path};{bin_dir}");
-					env.set_string("Path", &new_path)
+					path.push(bin_dir.into());
+					let new_path = join_paths(path).context("failed to join paths")?;
+					env.set_hstring("Path", &new_path.into())
 						.context("failed to set Path value")?;
 
 					println!(
