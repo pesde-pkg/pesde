@@ -177,7 +177,7 @@ impl PackageSource for GitPackageSource {
 		let (structure_kind, version_id, dependencies, tree_id) = spawn_blocking(move || {
 			let repo = gix::open(path)
 				.map_err(|e| errors::ResolveError::OpenRepo(repo_url.clone(), Box::new(e)))?;
-			let (rev, version) = match specifier.version_specifier {
+			let (rev, resolved_version) = match specifier.version_specifier {
 				GitVersionSpecifier::Rev(rev_str) => (
 					repo.rev_parse_single(rev_str.as_bytes()).map_err(|e| {
 						errors::ResolveError::ParseRev(
@@ -258,15 +258,23 @@ impl PackageSource for GitPackageSource {
 				root_tree
 			};
 
+			let tree_version = || Version {
+				major: 0,
+				minor: 0,
+				patch: 0,
+				build: BuildMetadata::EMPTY,
+				pre: tree.id.to_string().parse().unwrap(),
+			};
+
 			let manifest = match read_file(&tree, [MANIFEST_FILE_NAME])
 				.map_err(|e| errors::ResolveError::ReadManifest(repo_url.clone(), e))?
 			{
 				Some(m) => {
-					if let Some(version) = version {
+					if let Some(resolved_version) = resolved_version {
 						match toml::from_str::<Manifest>(&m) {
 							Ok(m) => Some((
 								transform_pesde_dependencies(&project, &m, &repo_url)?,
-								VersionId::new(version, m.target.kind()),
+								VersionId::new(resolved_version, m.target.kind()),
 							)),
 							Err(e) => {
 								return Err(errors::ResolveError::DeserManifest(
@@ -280,26 +288,13 @@ impl PackageSource for GitPackageSource {
 							toml::from_str::<PesdeVersionedManifest>(&m).map_err(|e| {
 								errors::ResolveError::DeserManifest(repo_url.clone(), e)
 							})?;
-						let target = manifest.as_manifest().target.kind();
 						Some((
 							transform_pesde_dependencies(
 								&project,
 								manifest.as_manifest(),
 								&repo_url,
 							)?,
-							VersionId::new(
-								match manifest {
-									PesdeVersionedManifest::V1(m) => m.version,
-									PesdeVersionedManifest::V2(_) => Version {
-										major: 0,
-										minor: 0,
-										patch: 0,
-										pre: rev.to_string().parse().unwrap(),
-										build: BuildMetadata::EMPTY,
-									},
-								},
-								target,
-							),
+							VersionId::new(tree_version(), manifest.as_manifest().target.kind()),
 						))
 					}
 				}
@@ -336,7 +331,7 @@ impl PackageSource for GitPackageSource {
 				return Ok((
 					StructureKind::Wally,
 					VersionId::new(
-						manifest.package.version,
+						tree_version(),
 						match manifest.package.realm {
 							Realm::Shared => TargetKind::Roblox,
 							Realm::Server => TargetKind::RobloxServer,
