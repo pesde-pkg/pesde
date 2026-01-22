@@ -32,7 +32,9 @@ impl FromStr for GitPackageRef {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let Some((tree_id, structure_kind)) = s.split_once('+') else {
-			return Err(Self::Err::InvalidFormat);
+			return Err(
+				crate::source::refs::errors::GitPackageRefParseErrorKind::InvalidFormat.into(),
+			);
 		};
 		Ok(GitPackageRef {
 			tree_id: tree_id.to_string(),

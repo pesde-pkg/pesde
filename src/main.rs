@@ -229,9 +229,15 @@ async fn run() -> anyhow::Result<()> {
 			break 'engines;
 		};
 
-		let req = match project.deser_manifest().await {
+		let req = match project
+			.deser_manifest()
+			.await
+			.map_err(pesde::errors::ManifestReadError::into_inner)
+		{
 			Ok(manifest) => manifest.engines.get(&engine).cloned(),
-			Err(pesde::errors::ManifestReadError::Io(e)) if e.kind() == io::ErrorKind::NotFound => {
+			Err(pesde::errors::ManifestReadErrorKind::Io(e))
+				if e.kind() == io::ErrorKind::NotFound =>
+			{
 				None
 			}
 			Err(e) => return Err(e.into()),

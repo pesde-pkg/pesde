@@ -8,7 +8,7 @@ use clap::Args;
 use inquire::validator::Validation;
 use pesde::{
 	DEFAULT_INDEX_NAME, Project, RefreshedSources,
-	errors::ManifestReadError,
+	errors::ManifestReadErrorKind,
 	manifest::{DependencyType, target::TargetKind},
 	names::PackageName,
 	source::{
@@ -42,11 +42,15 @@ impl Display for PackageNameOrCustom {
 
 impl InitCommand {
 	pub async fn run(self, project: Project) -> anyhow::Result<()> {
-		match project.read_manifest().await {
+		match project
+			.read_manifest()
+			.await
+			.map_err(pesde::errors::ManifestReadError::into_inner)
+		{
 			Ok(_) => {
 				anyhow::bail!("project already initialized");
 			}
-			Err(ManifestReadError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {}
+			Err(ManifestReadErrorKind::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {}
 			Err(e) => return Err(e.into()),
 		}
 

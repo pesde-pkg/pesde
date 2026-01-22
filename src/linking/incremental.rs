@@ -153,8 +153,9 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when removing unused packages
-	#[derive(Debug, Error)]
-	pub enum RemoveUnusedError {
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = RemoveUnusedError))]
+	pub enum RemoveUnusedErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),

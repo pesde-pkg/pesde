@@ -26,7 +26,7 @@ impl FromStr for OverrideKey {
 			.collect::<Result<Vec<Vec<Alias>>, _>>()?;
 
 		if overrides.is_empty() {
-			return Err(errors::OverrideKeyFromStr::Empty);
+			return Err(errors::OverrideKeyFromStrKind::Empty.into());
 		}
 
 		Ok(Self(overrides))
@@ -61,9 +61,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when parsing an override key
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = OverrideKeyFromStr))]
 	#[non_exhaustive]
-	pub enum OverrideKeyFromStr {
+	pub enum OverrideKeyFromStrKind {
 		/// The override key is empty
 		#[error("empty override key")]
 		Empty,

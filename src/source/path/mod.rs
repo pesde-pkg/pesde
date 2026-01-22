@@ -1,6 +1,7 @@
 #![expect(deprecated)]
 use crate::{
 	MANIFEST_FILE_NAME,
+	errors::{ManifestReadError, ManifestReadErrorKind},
 	manifest::{Manifest, target::Target},
 	reporters::DownloadProgressReporter,
 	ser_display_deser_fromstr,
@@ -102,13 +103,14 @@ impl PackageSource for PathPackageSource {
 		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
 			.await
 			.map_err(|e| {
-				errors::ResolveError::ManifestRead(crate::errors::ManifestReadError::Io(e))
+				errors::ResolveErrorKind::ManifestRead(
+					crate::errors::ManifestReadErrorKind::Io(e).into(),
+				)
 			})?;
 		let manifest: Manifest = toml::from_str(&manifest).map_err(|e| {
-			errors::ResolveError::ManifestRead(crate::errors::ManifestReadError::Serde(
-				path.clone().into(),
-				e,
-			))
+			errors::ResolveErrorKind::ManifestRead(
+				crate::errors::ManifestReadErrorKind::Serde(path.clone().into(), e).into(),
+			)
 		})?;
 
 		// let (path_package_dir, path_workspace_dir) = find_roots(specifier.path.clone()).await?;
@@ -131,7 +133,7 @@ impl PackageSource for PathPackageSource {
 							.indices
 							.get(&spec.index)
 							.ok_or_else(|| {
-								errors::ResolveError::IndexNotFound(
+								errors::ResolveErrorKind::IndexNotFound(
 									spec.index.clone(),
 									path.clone().into(),
 								)
@@ -144,7 +146,7 @@ impl PackageSource for PathPackageSource {
 							.wally_indices
 							.get(&spec.index)
 							.ok_or_else(|| {
-								errors::ResolveError::IndexNotFound(
+								errors::ResolveErrorKind::IndexNotFound(
 									spec.index.clone(),
 									path.clone().into(),
 								)
@@ -207,14 +209,9 @@ impl PackageSource for PathPackageSource {
 
 		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
 			.await
-			.map_err(|e| {
-				errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Io(e))
-			})?;
+			.map_err(|e| ManifestReadError::from(ManifestReadErrorKind::Io(e)))?;
 		let manifest: Manifest = toml::from_str(&manifest).map_err(|e| {
-			errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Serde(
-				path.into_owned().into(),
-				e,
-			))
+			ManifestReadError::from(ManifestReadErrorKind::Serde(path.into_owned(), e))
 		})?;
 
 		Ok(manifest.target)
@@ -228,14 +225,16 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when refreshing the path package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = RefreshError))]
 	#[non_exhaustive]
-	pub enum RefreshError {}
+	pub enum RefreshErrorKind {}
 
 	/// Errors that can occur when resolving a path package
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ResolveError))]
 	#[non_exhaustive]
-	pub enum ResolveError {
+	pub enum ResolveErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),
@@ -262,18 +261,20 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when downloading a path package
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DownloadError))]
 	#[non_exhaustive]
-	pub enum DownloadError {
+	pub enum DownloadErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),
 	}
 
 	/// Errors that can occur when getting the target of a path package
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GetTargetError))]
 	#[non_exhaustive]
-	pub enum GetTargetError {
+	pub enum GetTargetErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),

@@ -93,7 +93,7 @@ impl FromStr for PackageSources {
 			"wally" => Self::Wally(source.parse()?),
 			"git" => Self::Git(source.parse()?),
 			"path" if source.is_empty() => Self::Path(path::PathPackageSource),
-			_ => return Err(Self::Err::Unknown),
+			_ => return Err(errors::PackageSourcesFromStrKind::Unknown.into()),
 		})
 	}
 }
@@ -111,18 +111,19 @@ impl PackageSource for PackageSources {
 			PackageSources::Pesde(source) => source
 				.refresh(options)
 				.await
-				.map_err(Self::RefreshError::Pesde),
+				.map_err(errors::RefreshErrorKind::Pesde),
 			#[cfg(feature = "wally-compat")]
 			PackageSources::Wally(source) => source
 				.refresh(options)
 				.await
-				.map_err(Self::RefreshError::Wally),
+				.map_err(errors::RefreshErrorKind::Wally),
 			PackageSources::Git(source) => source
 				.refresh(options)
 				.await
-				.map_err(Self::RefreshError::Git),
+				.map_err(errors::RefreshErrorKind::Git),
 			PackageSources::Path(source) => source.refresh(options).await.map_err(Into::into),
 		}
+		.map_err(Into::into)
 	}
 
 	async fn resolve(
@@ -148,7 +149,7 @@ impl PackageSource for PackageSources {
 				source.resolve(specifier, options).await.map_err(Into::into)
 			}
 
-			_ => Err(errors::ResolveError::Mismatch),
+			_ => Err(errors::ResolveErrorKind::Mismatch.into()),
 		}
 	}
 
@@ -175,7 +176,7 @@ impl PackageSource for PackageSources {
 				source.download(pkg_ref, options).await.map_err(Into::into)
 			}
 
-			_ => Err(errors::DownloadError::Mismatch),
+			_ => Err(errors::DownloadErrorKind::Mismatch.into()),
 		}
 	}
 
@@ -206,7 +207,7 @@ impl PackageSource for PackageSources {
 				.await
 				.map_err(Into::into),
 
-			_ => Err(errors::GetTargetError::Mismatch),
+			_ => Err(errors::GetTargetErrorKind::Mismatch.into()),
 		}
 	}
 }
@@ -216,9 +217,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that occur when parsing package sources from string
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = PackageSourcesFromStr))]
 	#[non_exhaustive]
-	pub enum PackageSourcesFromStr {
+	pub enum PackageSourcesFromStrKind {
 		/// The string has an invalid format
 		#[error("input string is not properly formatted")]
 		InvalidFormat,
@@ -233,9 +235,10 @@ pub mod errors {
 	}
 
 	/// Errors that occur when refreshing a package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = RefreshError))]
 	#[non_exhaustive]
-	pub enum RefreshError {
+	pub enum RefreshErrorKind {
 		/// A pesde package source failed to refresh
 		#[error("error refreshing pesde package source")]
 		Pesde(#[source] crate::source::git_index::errors::RefreshError),
@@ -255,9 +258,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when resolving a package
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ResolveError))]
 	#[non_exhaustive]
-	pub enum ResolveError {
+	pub enum ResolveErrorKind {
 		/// The dependency specifier does not match the source (if using the CLI, this is a bug - file an issue)
 		#[error("mismatched dependency specifier for source")]
 		Mismatch,
@@ -281,9 +285,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when downloading a package
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DownloadError))]
 	#[non_exhaustive]
-	pub enum DownloadError {
+	pub enum DownloadErrorKind {
 		/// The package ref does not match the source (if using the CLI, this is a bug - file an issue)
 		#[error("mismatched package ref for source")]
 		Mismatch,
@@ -307,9 +312,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when getting a package's target
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GetTargetError))]
 	#[non_exhaustive]
-	pub enum GetTargetError {
+	pub enum GetTargetErrorKind {
 		/// The package ref does not match the source (if using the CLI, this is a bug - file an issue)
 		#[error("mismatched package ref for source")]
 		Mismatch,

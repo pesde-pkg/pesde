@@ -4,7 +4,6 @@ use crate::{
 	source::{
 		PackageSources,
 		errors::PackageSourcesFromStr,
-		ids::errors::VersionIdParseError,
 		path::{PathPackageSource, local_version},
 		refs::{PackageRefs, errors::PackageRefParseError},
 	},
@@ -61,7 +60,7 @@ impl FromStr for VersionId {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (version, target) = s
 			.split_once([':', ' '])
-			.ok_or(errors::VersionIdParseError::Malformed(s.to_string()))?;
+			.ok_or(errors::VersionIdParseErrorKind::Malformed(s.to_string()))?;
 
 		let version = version.parse()?;
 		let target = target.parse()?;
@@ -142,25 +141,32 @@ impl FromStr for PackageId {
 	type Err = errors::PackageIdParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let (tag, s) = s.split_once(':').ok_or(Self::Err::InvalidFormat)?;
+		let (tag, s) = s
+			.split_once(':')
+			.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?;
 
 		let v_id_sep = match tag {
 			"git" => '#',
 			"path" => ':',
 			_ => '@',
 		};
-		let (s, v_id) = s.rsplit_once(v_id_sep).ok_or(Self::Err::InvalidFormat)?;
+		let (s, v_id) = s
+			.rsplit_once(v_id_sep)
+			.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?;
 
 		let (source, pkg_ref) = if tag == "path" {
 			("", s)
 		} else {
-			s.rsplit_once(':').ok_or(Self::Err::InvalidFormat)?
+			s.rsplit_once(':')
+				.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?
 		};
 
 		let v_id = if tag == "path" {
 			VersionId(
 				local_version(),
-				v_id.parse().map_err(VersionIdParseError::Target)?,
+				v_id.parse().map_err(|e| {
+					errors::VersionIdParseError::from(errors::VersionIdParseErrorKind::Target(e))
+				})?,
 			)
 		} else {
 			v_id.parse()?
@@ -171,7 +177,7 @@ impl FromStr for PackageId {
 			"wally" => PackageSources::Wally(source.parse().map_err(PackageSourcesFromStr::from)?),
 			"git" => PackageSources::Git(source.parse().map_err(PackageSourcesFromStr::from)?),
 			"path" => PackageSources::Path(PathPackageSource),
-			_ => return Err(Self::Err::InvalidFormat),
+			_ => return Err(errors::PackageIdParseErrorKind::InvalidFormat.into()),
 		};
 
 		let pkg_ref = match tag {
@@ -180,7 +186,7 @@ impl FromStr for PackageId {
 			"git" => PackageRefs::Git(pkg_ref.parse().map_err(PackageRefParseError::from)?),
 			// infallible
 			"path" => PackageRefs::Path(pkg_ref.parse().unwrap()),
-			_ => return Err(Self::Err::InvalidFormat),
+			_ => return Err(errors::PackageIdParseErrorKind::InvalidFormat.into()),
 		};
 
 		Ok(PackageId::new(source, pkg_ref, v_id))
@@ -192,9 +198,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when parsing a version ID
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = VersionIdParseError))]
 	#[non_exhaustive]
-	pub enum VersionIdParseError {
+	pub enum VersionIdParseErrorKind {
 		/// The version ID is malformed
 		#[error("malformed version id {0}")]
 		Malformed(String),
@@ -209,9 +216,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when parsing a package ID
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = PackageIdParseError))]
 	#[non_exhaustive]
-	pub enum PackageIdParseError {
+	pub enum PackageIdParseErrorKind {
 		/// The format of the package ID is invalid
 		#[error("invalid package id format")]
 		InvalidFormat,

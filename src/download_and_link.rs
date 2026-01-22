@@ -543,9 +543,7 @@ impl Project {
 							match fs::read_to_string(&lib_file).await {
 								Ok(contents) => contents,
 								Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-									return Err(errors::DownloadAndLinkError::<Hooks::Error>::LibFileNotFound(
-										lib_file.into_boxed_path(),
-									));
+									return Err(errors::DownloadAndLinkError::<Hooks::Error>::LibFileNotFound(lib_file));
 								}
 								Err(e) => return Err(e.into()),
 							};
@@ -587,7 +585,7 @@ impl Project {
 
 /// Errors that can occur when downloading and linking dependencies
 pub mod errors {
-	use std::path::Path;
+	use std::path::PathBuf;
 
 	use thiserror::Error;
 
@@ -632,7 +630,7 @@ pub mod errors {
 
 		/// The library file was not found
 		#[error("library file at `{0}` not found")]
-		LibFileNotFound(Box<Path>),
+		LibFileNotFound(PathBuf),
 
 		/// The checksum of the package is mismatched
 		#[error("invalid checksum for `{0}`")]

@@ -91,13 +91,13 @@ impl WallyPackageSource {
 		let path = self.path(project);
 
 		spawn_blocking(move || {
-			let repo = gix::open(&path).map_err(Box::new)?;
-			let tree = root_tree(&repo).map_err(Box::new)?;
-			let file = read_file(&tree, ["config.json"]).map_err(Box::new)?;
+			let repo = gix::open(&path)?;
+			let tree = root_tree(&repo)?;
+			let file = read_file(&tree, ["config.json"])?;
 
 			match file {
 				Some(s) => serde_json::from_str(&s).map_err(Into::into),
-				None => Err(errors::ConfigError::Missing(repo_url)),
+				None => Err(errors::ConfigErrorKind::Missing(repo_url).into()),
 			}
 		})
 		.await
@@ -112,12 +112,12 @@ impl WallyPackageSource {
 		let path = self.path(project);
 
 		spawn_blocking(move || {
-			let repo = gix::open(&path).map_err(Box::new)?;
-			let tree = root_tree(&repo).map_err(Box::new)?;
+			let repo = gix::open(&path)?;
+			let tree = root_tree(&repo)?;
 			let (scope, name) = pkg_name.as_str();
 
 			read_file(&tree, [scope, name])
-				.map_err(|e| errors::ResolveError::Read(pkg_name, Box::new(e)))
+				.map_err(|e| errors::ResolveErrorKind::Read(pkg_name, e).into())
 		})
 		.await
 		.unwrap()
@@ -159,7 +159,7 @@ impl PackageSource for WallyPackageSource {
 				"{} not found in Wally registry. searching in backup registries",
 				specifier.name
 			);
-			let config = self.config(project).await.map_err(Box::new)?;
+			let config = self.config(project).await?;
 			let refresh_options = RefreshOptions {
 				project: project.clone(),
 			};
@@ -177,10 +177,11 @@ impl PackageSource for WallyPackageSource {
 				match refreshed_sources
 					.refresh(&PackageSources::Wally(source.clone()), &refresh_options)
 					.await
+					.map_err(super::errors::RefreshError::into_inner)
 				{
 					Ok(()) => {}
-					Err(super::errors::RefreshError::Wally(e)) => {
-						return Err(errors::ResolveError::Refresh(Box::new(e)));
+					Err(super::errors::RefreshErrorKind::Wally(e)) => {
+						return Err(errors::ResolveErrorKind::Refresh(e).into());
 					}
 					Err(e) => panic!("unexpected error: {e:?}"),
 				}
@@ -203,14 +204,14 @@ impl PackageSource for WallyPackageSource {
 		}
 
 		let Some(string) = string else {
-			return Err(errors::ResolveError::NotFound(specifier.name.clone()));
+			return Err(errors::ResolveErrorKind::NotFound(specifier.name.clone()).into());
 		};
 
 		let entries: Vec<WallyManifest> = string
 			.lines()
 			.map(serde_json::from_str)
 			.collect::<Result<_, _>>()
-			.map_err(|e| errors::ResolveError::Parse(specifier.name.clone(), e))?;
+			.map_err(|e| errors::ResolveErrorKind::Parse(specifier.name.clone(), e))?;
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
@@ -219,7 +220,7 @@ impl PackageSource for WallyPackageSource {
 			.filter(|manifest| version_matches(&specifier.version, &manifest.package.version))
 			.map(|mut manifest| {
 				let dependencies = manifest.all_dependencies().map_err(|e| {
-					errors::ResolveError::AllDependencies(specifier.name.clone(), e)
+					errors::ResolveErrorKind::AllDependencies(specifier.name.clone(), e)
 				})?;
 
 				Ok((
@@ -255,7 +256,7 @@ impl PackageSource for WallyPackageSource {
 			..
 		} = options;
 
-		let config = self.config(project).await.map_err(Box::new)?;
+		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
 			.join("wally_index")
@@ -275,7 +276,7 @@ impl PackageSource for WallyPackageSource {
 				return toml::from_str::<PackageFs>(&s).map_err(Into::into);
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-			Err(e) => return Err(errors::DownloadError::ReadIndex(e)),
+			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
 		}
 
 		let (scope, name) = pkg_ref.name.as_str();
@@ -350,12 +351,12 @@ impl PackageSource for WallyPackageSource {
 		if let Some(parent) = index_file.parent() {
 			fs::create_dir_all(parent)
 				.await
-				.map_err(errors::DownloadError::WriteIndex)?;
+				.map_err(errors::DownloadErrorKind::WriteIndex)?;
 		}
 
 		fs::write(&index_file, toml::to_string(&fs)?)
 			.await
-			.map_err(errors::DownloadError::WriteIndex)?;
+			.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
 		Ok(fs)
 	}
@@ -385,16 +386,17 @@ pub mod errors {
 	use crate::{GixUrl, names::wally::WallyPackageName, source::git_index::errors::ReadFile};
 
 	/// Errors that can occur when resolving a package from a Wally package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ResolveError))]
 	#[non_exhaustive]
-	pub enum ResolveError {
+	pub enum ResolveErrorKind {
 		/// Error opening repository
 		#[error("error opening repository")]
-		Open(#[from] Box<gix::open::Error>),
+		Open(#[from] gix::open::Error),
 
 		/// Error getting tree
 		#[error("error getting tree")]
-		Tree(#[from] Box<crate::source::git_index::errors::TreeError>),
+		Tree(#[from] crate::source::git_index::errors::TreeError),
 
 		/// Package not found in index
 		#[error("package {0} not found")]
@@ -402,7 +404,7 @@ pub mod errors {
 
 		/// Error reading file for package
 		#[error("error reading file for {0}")]
-		Read(WallyPackageName, #[source] Box<ReadFile>),
+		Read(WallyPackageName, #[source] ReadFile),
 
 		/// Error parsing file for package
 		#[error("error parsing file for {0}")]
@@ -417,32 +419,33 @@ pub mod errors {
 
 		/// Error reading config file
 		#[error("error reading config file")]
-		Config(#[from] Box<ConfigError>),
+		Config(#[from] ConfigError),
 
 		/// Error refreshing backup registry source
 		#[error("error refreshing backup registry source")]
-		Refresh(#[from] Box<crate::source::git_index::errors::RefreshError>),
+		Refresh(#[from] crate::source::git_index::errors::RefreshError),
 
 		/// Error resolving package in backup registries
 		#[error("error resolving package in backup registries")]
-		BackupResolve(#[from] Box<ResolveError>),
+		BackupResolve(#[from] Box<ResolveErrorKind>),
 	}
 
 	/// Errors that can occur when reading the config file for a Wally package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ConfigError))]
 	#[non_exhaustive]
-	pub enum ConfigError {
+	pub enum ConfigErrorKind {
 		/// Error opening repository
 		#[error("error opening repository")]
-		Open(#[from] Box<gix::open::Error>),
+		Open(#[from] gix::open::Error),
 
 		/// Error getting tree
 		#[error("error getting tree")]
-		Tree(#[from] Box<crate::source::git_index::errors::TreeError>),
+		Tree(#[from] crate::source::git_index::errors::TreeError),
 
 		/// Error reading file
 		#[error("error reading config file")]
-		ReadFile(#[from] Box<ReadFile>),
+		ReadFile(#[from] ReadFile),
 
 		/// Error parsing config file
 		#[error("error parsing config file")]
@@ -454,12 +457,13 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when downloading a package from a Wally package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DownloadError))]
 	#[non_exhaustive]
-	pub enum DownloadError {
+	pub enum DownloadErrorKind {
 		/// Error reading index file
 		#[error("error reading config file")]
-		ReadFile(#[from] Box<ConfigError>),
+		ReadFile(#[from] ConfigError),
 
 		/// Error downloading package
 		#[error("error downloading package")]
@@ -495,9 +499,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when getting a target from a Wally package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GetTargetError))]
 	#[non_exhaustive]
-	pub enum GetTargetError {
+	pub enum GetTargetErrorKind {
 		/// Error getting target
 		#[error("error getting target")]
 		GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),

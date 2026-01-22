@@ -10,7 +10,7 @@ use pesde::{
 		EngineKind,
 		runtime::{Runtime, RuntimeKind},
 	},
-	errors::ManifestReadError,
+	errors::ManifestReadErrorKind,
 	lockfile::Lockfile,
 	manifest::{
 		DependencyType, Manifest,
@@ -107,9 +107,13 @@ pub fn resolve_overrides(
 #[instrument(skip(project), ret(level = "trace"), level = "debug")]
 pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Lockfile>> {
 	let manifest = project.deser_manifest().await?;
-	let lockfile = match project.deser_lockfile().await {
+	let lockfile = match project
+		.deser_lockfile()
+		.await
+		.map_err(pesde::errors::LockfileReadError::into_inner)
+	{
 		Ok(lockfile) => lockfile,
-		Err(pesde::errors::LockfileReadError::Io(e))
+		Err(pesde::errors::LockfileReadErrorKind::Io(e))
 			if e.kind() == std::io::ErrorKind::NotFound =>
 		{
 			return Ok(None);
@@ -269,8 +273,8 @@ pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result<GixUrl> {
 	let manifest = match project.deser_manifest().await {
 		Ok(manifest) => Some(manifest),
-		Err(e) => match e {
-			ManifestReadError::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+		Err(e) => match e.into_inner() {
+			ManifestReadErrorKind::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
 			e => return Err(e.into()),
 		},
 	};

@@ -33,7 +33,7 @@ impl FromStr for PackageName {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (scope, name) = s
 			.split_once('/')
-			.ok_or_else(|| Self::Err::InvalidFormat(s.to_string()))?;
+			.ok_or_else(|| errors::PackageNameErrorKind::InvalidFormat(s.to_string()))?;
 
 		for (reason, part) in [(ErrorReason::Scope, scope), (ErrorReason::Name, name)] {
 			let min_len = match reason {
@@ -43,24 +43,39 @@ impl FromStr for PackageName {
 
 			if !(min_len..=32).contains(&part.len()) {
 				return Err(match reason {
-					ErrorReason::Scope => Self::Err::InvalidScopeLength(part.to_string()),
-					ErrorReason::Name => Self::Err::InvalidNameLength(part.to_string()),
-				});
+					ErrorReason::Scope => {
+						errors::PackageNameErrorKind::InvalidScopeLength(part.to_string())
+					}
+					ErrorReason::Name => {
+						errors::PackageNameErrorKind::InvalidNameLength(part.to_string())
+					}
+				}
+				.into());
 			}
 
 			if part.chars().all(|c| c.is_ascii_digit()) {
-				return Err(Self::Err::OnlyDigits(reason, part.to_string()));
+				return Err(
+					errors::PackageNameErrorKind::OnlyDigits(reason, part.to_string()).into(),
+				);
 			}
 
 			if part.starts_with('_') || part.ends_with('_') {
-				return Err(Self::Err::PrePostfixUnderscore(reason, part.to_string()));
+				return Err(errors::PackageNameErrorKind::PrePostfixUnderscore(
+					reason,
+					part.to_string(),
+				)
+				.into());
 			}
 
 			if !part
 				.chars()
 				.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 			{
-				return Err(Self::Err::InvalidCharacters(reason, part.to_string()));
+				return Err(errors::PackageNameErrorKind::InvalidCharacters(
+					reason,
+					part.to_string(),
+				)
+				.into());
 			}
 		}
 
@@ -179,7 +194,7 @@ impl FromStr for PackageNames {
 		if let Ok(name) = PackageName::from_str(s) {
 			Ok(PackageNames::Pesde(name))
 		} else {
-			Err(errors::PackageNamesError::InvalidPackageName(s.to_string()))
+			Err(errors::PackageNamesErrorKind::InvalidPackageName(s.to_string()).into())
 		}
 	}
 }
@@ -208,18 +223,26 @@ pub mod wally {
 
 			let (scope, name) = s
 				.split_once('/')
-				.ok_or_else(|| Self::Err::InvalidFormat(s.to_string()))?;
+				.ok_or_else(|| errors::WallyPackageNameErrorKind::InvalidFormat(s.to_string()))?;
 
 			for (reason, part) in [(ErrorReason::Scope, scope), (ErrorReason::Name, name)] {
 				if part.is_empty() || part.len() > 64 {
-					return Err(Self::Err::InvalidLength(reason, part.to_string()));
+					return Err(errors::WallyPackageNameErrorKind::InvalidLength(
+						reason,
+						part.to_string(),
+					)
+					.into());
 				}
 
 				if !part
 					.chars()
 					.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 				{
-					return Err(Self::Err::InvalidCharacters(reason, part.to_string()));
+					return Err(errors::WallyPackageNameErrorKind::InvalidCharacters(
+						reason,
+						part.to_string(),
+					)
+					.into());
 				}
 			}
 
@@ -267,8 +290,9 @@ pub mod errors {
 	use crate::names::ErrorReason;
 
 	/// Errors that can occur when working with pesde package names
-	#[derive(Debug, Error)]
-	pub enum PackageNameError {
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = PackageNameError))]
+	pub enum PackageNameErrorKind {
 		/// The package name is not in the format `scope/name`
 		#[error("package name `{0}` is not in the format `scope/name`")]
 		InvalidFormat(String),
@@ -297,8 +321,9 @@ pub mod errors {
 	/// Errors that can occur when working with Wally package names
 	#[cfg(feature = "wally-compat")]
 	#[allow(clippy::enum_variant_names)]
-	#[derive(Debug, Error)]
-	pub enum WallyPackageNameError {
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = WallyPackageNameError))]
+	pub enum WallyPackageNameErrorKind {
 		/// The package name is not in the format `scope/name`
 		#[error("wally package name `{0}` is not in the format `scope/name`")]
 		InvalidFormat(String),
@@ -313,9 +338,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when working with package names
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = PackageNamesError))]
 	#[non_exhaustive]
-	pub enum PackageNamesError {
+	pub enum PackageNamesErrorKind {
 		/// The package name is invalid
 		#[error("invalid package name {0}")]
 		InvalidPackageName(String),

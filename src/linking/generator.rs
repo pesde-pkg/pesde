@@ -152,7 +152,7 @@ pub fn get_lib_require_path(
 			project_manifest
 				.place
 				.get(&place_kind)
-				.ok_or(errors::GetLibRequirePath::RobloxPlaceKindPathNotFound(
+				.ok_or(errors::GetLibRequirePathKind::RobloxPlaceKindPathNotFound(
 					place_kind,
 				))?
 				.as_str(),
@@ -230,9 +230,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// An error occurred while getting the require path for a library
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GetLibRequirePath))]
 	#[non_exhaustive]
-	pub enum GetLibRequirePath {
+	pub enum GetLibRequirePathKind {
 		/// The path for the RobloxPlaceKind could not be found
 		#[error("could not find the path for the RobloxPlaceKind {0}")]
 		RobloxPlaceKindPathNotFound(crate::manifest::target::RobloxPlaceKind),

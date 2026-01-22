@@ -40,7 +40,7 @@ impl FromStr for TargetKind {
 			"roblox_server" => Ok(Self::RobloxServer),
 			"lune" => Ok(Self::Lune),
 			"luau" => Ok(Self::Luau),
-			t => Err(errors::TargetKindFromStr::Unknown(t.to_string())),
+			t => Err(errors::TargetKindFromStrKind::Unknown(t.to_string()).into()),
 		}
 	}
 }
@@ -199,9 +199,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when parsing a target kind from a string
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = TargetKindFromStr))]
 	#[non_exhaustive]
-	pub enum TargetKindFromStr {
+	pub enum TargetKindFromStrKind {
 		/// The target kind is unknown
 		#[error("unknown target kind {0}")]
 		Unknown(String),

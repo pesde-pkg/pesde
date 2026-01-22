@@ -153,8 +153,7 @@ impl Project {
 								)
 								.await
 						}
-					}
-					.map_err(Box::new)?;
+					}?;
 
 					tracing::debug!("downloaded");
 
@@ -179,9 +178,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when downloading a graph
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DownloadGraphError))]
 	#[non_exhaustive]
-	pub enum DownloadGraphError {
+	pub enum DownloadGraphErrorKind {
 		/// An error occurred refreshing a package source
 		#[error("failed to refresh package source")]
 		RefreshFailed(#[from] crate::source::errors::RefreshError),
@@ -192,6 +192,6 @@ pub mod errors {
 
 		/// Error downloading a package
 		#[error("failed to download package")]
-		DownloadFailed(#[from] Box<crate::source::errors::DownloadError>),
+		DownloadFailed(#[from] crate::source::errors::DownloadError),
 	}
 }

@@ -256,7 +256,7 @@ impl Project {
 		let mut manifest_guard = self.manifest.clone().write_owned().await;
 		let manifest = fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?;
 		let manifest = toml::from_str::<Manifest>(&manifest)
-			.map_err(|e| errors::ManifestReadError::Serde(self.package_dir().into(), e))?;
+			.map_err(|e| errors::ManifestReadErrorKind::Serde(self.package_dir().into(), e))?;
 		*manifest_guard = Some(manifest);
 		Ok(OwnedRwLockReadGuard::map(manifest_guard.downgrade(), |m| {
 			m.as_ref().unwrap()
@@ -311,9 +311,10 @@ format = {}
 		let dir = self.root_dir();
 		let manifest = fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
 			.await
-			.map_err(errors::ManifestReadError::Io)?;
-		let manifest: Manifest = toml::from_str(&manifest)
-			.map_err(|e| errors::ManifestReadError::Serde(dir.into(), e))?;
+			.map_err(|e| errors::ManifestReadError::from(errors::ManifestReadErrorKind::Io(e)))?;
+		let manifest: Manifest = toml::from_str(&manifest).map_err(|e| {
+			errors::ManifestReadError::from(errors::ManifestReadErrorKind::Serde(dir.into(), e))
+		})?;
 
 		let members = matching_globs(
 			dir,
@@ -329,9 +330,9 @@ format = {}
 			for path in members {
 				let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
 					.await
-					.map_err(errors::ManifestReadError::Io)?;
+					.map_err(|e| errors::ManifestReadError::from(errors::ManifestReadErrorKind::Io(e)))?;
 				let manifest = toml::from_str::<Manifest>(&manifest)
-					.map_err(|e| errors::ManifestReadError::Serde(path.clone().into(), e))?;
+					.map_err(|e| errors::ManifestReadError::from(errors::ManifestReadErrorKind::Serde(path.clone(), e)))?;
 				yield (RelativePathBuf::from_path(path.strip_prefix(dir).unwrap()).unwrap(), manifest);
 			}
 		})
@@ -445,9 +446,10 @@ pub async fn find_roots(
 		manifest_file
 			.read_to_string(&mut manifest)
 			.await
-			.map_err(errors::ManifestReadError::Io)?;
-		let manifest: Manifest = toml::from_str(&manifest)
-			.map_err(|e| errors::ManifestReadError::Serde(path.into(), e))?;
+			.map_err(|e| errors::ManifestReadError::from(errors::ManifestReadErrorKind::Io(e)))?;
+		let manifest: Manifest = toml::from_str(&manifest).map_err(|e| {
+			errors::ManifestReadError::from(errors::ManifestReadErrorKind::Serde(path.into(), e))
+		})?;
 
 		if manifest.workspace_members.is_empty() {
 			return Ok(HashSet::new());
@@ -460,7 +462,7 @@ pub async fn find_roots(
 			false,
 		)
 		.await
-		.map_err(errors::FindRootsError::Globbing)
+		.map_err(|e| errors::FindRootsErrorKind::Globbing(e).into())
 	}
 
 	while let Some(path) = current_path {
@@ -475,7 +477,11 @@ pub async fn find_roots(
 		let mut manifest = match fs::File::open(path.join(MANIFEST_FILE_NAME)).await {
 			Ok(manifest) => manifest,
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-			Err(e) => return Err(errors::ManifestReadError::Io(e).into()),
+			Err(e) => {
+				return Err(
+					errors::ManifestReadError::from(errors::ManifestReadErrorKind::Io(e)).into(),
+				);
+			}
 		};
 
 		match (project_root.as_ref(), workspace_dir.as_ref()) {
@@ -553,7 +559,7 @@ impl FromStr for GixUrl {
 	fn from_str(mut s: &str) -> Result<Self, Self::Err> {
 		if s.contains("://") {
 			let Some(stripped) = s.strip_prefix("https://") else {
-				return Err(Self::Err::HasScheme);
+				return Err(errors::GixUrlErrorKind::HasScheme.into());
 			};
 
 			tracing::warn!(
@@ -582,26 +588,28 @@ impl Display for GixUrl {
 
 /// Errors that can occur when using the pesde library
 pub mod errors {
-	use std::path::Path;
+	use std::path::PathBuf;
 	use thiserror::Error;
 
 	/// Errors that can occur when reading the manifest file
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ManifestReadError))]
 	#[non_exhaustive]
-	pub enum ManifestReadError {
+	pub enum ManifestReadErrorKind {
 		/// An IO error occurred
 		#[error("io error reading manifest file")]
 		Io(#[from] std::io::Error),
 
 		/// An error occurred while deserializing the manifest file
 		#[error("error deserializing manifest file at {0}")]
-		Serde(Box<Path>, #[source] toml::de::Error),
+		Serde(PathBuf, #[source] toml::de::Error),
 	}
 
 	/// Errors that can occur when reading the lockfile
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = LockfileReadError))]
 	#[non_exhaustive]
-	pub enum LockfileReadError {
+	pub enum LockfileReadErrorKind {
 		/// An IO error occurred
 		#[error("io error reading lockfile")]
 		Io(#[from] std::io::Error),
@@ -612,9 +620,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when writing the lockfile
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = LockfileWriteError))]
 	#[non_exhaustive]
-	pub enum LockfileWriteError {
+	pub enum LockfileWriteErrorKind {
 		/// An IO error occurred
 		#[error("io error writing lockfile")]
 		Io(#[from] std::io::Error),
@@ -625,9 +634,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when finding workspace members
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = WorkspaceMembersError))]
 	#[non_exhaustive]
-	pub enum WorkspaceMembersError {
+	pub enum WorkspaceMembersErrorKind {
 		/// An error occurred parsing the manifest file
 		#[error("error parsing manifest file")]
 		ManifestParse(#[from] ManifestReadError),
@@ -642,9 +652,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when finding matching globs
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = MatchingGlobsError))]
 	#[non_exhaustive]
-	pub enum MatchingGlobsError {
+	pub enum MatchingGlobsErrorKind {
 		/// An error occurred interacting with the filesystem
 		#[error("error interacting with the filesystem")]
 		Io(#[from] std::io::Error),
@@ -655,9 +666,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when finding project roots
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = FindRootsError))]
 	#[non_exhaustive]
-	pub enum FindRootsError {
+	pub enum FindRootsErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] ManifestReadError),
@@ -668,8 +680,9 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when interacting with git URLs
-	#[derive(Debug, Error)]
-	pub enum GixUrlError {
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GixUrlError))]
+	pub enum GixUrlErrorKind {
 		/// An error occurred while parsing the git URL
 		#[error("error parsing git URL")]
 		Parse(#[from] gix::url::parse::Error),

@@ -201,9 +201,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur while linking dependencies
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = LinkingError))]
 	#[non_exhaustive]
-	pub enum LinkingError {
+	pub enum LinkingErrorKind {
 		/// An error occurred while interacting with the filesystem
 		#[error("error interacting with filesystem")]
 		Io(#[from] std::io::Error),

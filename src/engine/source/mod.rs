@@ -76,7 +76,7 @@ impl EngineSource for EngineSources {
 
 			// for the future
 			#[allow(unreachable_patterns)]
-			_ => Err(errors::DownloadError::Mismatch),
+			_ => Err(errors::DownloadErrorKind::Mismatch.into()),
 		}
 	}
 }
@@ -122,18 +122,20 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when resolving an engine
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ResolveError))]
 	#[non_exhaustive]
-	pub enum ResolveError {
+	pub enum ResolveErrorKind {
 		/// Failed to resolve the GitHub engine
 		#[error("failed to resolve github engine")]
 		GitHub(#[from] super::github::errors::ResolveError),
 	}
 
 	/// Errors that can occur when downloading an engine
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DownloadError))]
 	#[non_exhaustive]
-	pub enum DownloadError {
+	pub enum DownloadErrorKind {
 		/// Failed to download the GitHub engine
 		#[error("failed to download github engine")]
 		GitHub(#[from] super::github::errors::DownloadError),

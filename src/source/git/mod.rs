@@ -1,6 +1,7 @@
 #![expect(deprecated)]
 use crate::{
 	GixUrl, MANIFEST_FILE_NAME, Project,
+	errors::{ManifestReadError, ManifestReadErrorKind},
 	manifest::{Alias, DependencyType, Manifest, target::Target},
 	reporters::DownloadProgressReporter,
 	ser_display_deser_fromstr,
@@ -97,7 +98,7 @@ fn transform_pesde_dependencies(
 ) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
 	let dependencies = manifest
 		.all_dependencies()
-		.map_err(|e| errors::ResolveError::CollectDependencies(repo_url.clone(), e))?;
+		.map_err(|e| errors::ResolveErrorKind::CollectDependencies(repo_url.clone(), e))?;
 
 	dependencies
 		.into_iter()
@@ -108,7 +109,7 @@ fn transform_pesde_dependencies(
 						.indices
 						.get(&specifier.index)
 						.ok_or_else(|| {
-							errors::ResolveError::PesdeIndexNotFound(
+							errors::ResolveErrorKind::PesdeIndexNotFound(
 								specifier.index.clone(),
 								repo_url.clone(),
 							)
@@ -121,7 +122,7 @@ fn transform_pesde_dependencies(
 						.wally_indices
 						.get(&specifier.index)
 						.ok_or_else(|| {
-							errors::ResolveError::WallyIndexNotFound(
+							errors::ResolveErrorKind::WallyIndexNotFound(
 								specifier.index.clone(),
 								repo_url.clone(),
 							)
@@ -138,7 +139,7 @@ fn transform_pesde_dependencies(
 						.is_ok_and(|s| !s.is_empty())
 					{
 					} else {
-						return Err(errors::ResolveError::Path(repo_url.clone()));
+						return Err(errors::ResolveErrorKind::Path(repo_url.clone()).into());
 					}
 				}
 			}
@@ -174,17 +175,16 @@ impl PackageSource for GitPackageSource {
 		let specifier = specifier.clone();
 		let project = project.clone();
 
-		let (structure_kind, version_id, dependencies, tree_id) = spawn_blocking(move || {
+		let (structure_kind, version_id, dependencies, tree_id) = spawn_blocking::<
+			_,
+			Result<_, Self::ResolveError>,
+		>(move || {
 			let repo = gix::open(path)
-				.map_err(|e| errors::ResolveError::OpenRepo(repo_url.clone(), Box::new(e)))?;
+				.map_err(|e| errors::ResolveErrorKind::OpenRepo(repo_url.clone(), e))?;
 			let (rev, resolved_version) = match specifier.version_specifier {
 				GitVersionSpecifier::Rev(rev_str) => (
 					repo.rev_parse_single(rev_str.as_bytes()).map_err(|e| {
-						errors::ResolveError::ParseRev(
-							rev_str.clone(),
-							repo_url.clone(),
-							Box::new(e),
-						)
+						errors::ResolveErrorKind::ParseRev(rev_str.clone(), repo_url.clone(), e)
 					})?,
 					None,
 				),
@@ -197,11 +197,11 @@ impl PackageSource for GitPackageSource {
 
 					let (mut refe, version) = repo
 						.references()
-						.map_err(|e| errors::ResolveError::RefIter(repo_url.clone(), Box::new(e)))?
+						.map_err(|e| errors::ResolveErrorKind::RefIter(repo_url.clone(), e))?
 						.prefixed(prefix.as_ref())
-						.map_err(|e| errors::ResolveError::RefSetup(repo_url.clone(), Box::new(e)))?
+						.map_err(|e| errors::ResolveErrorKind::RefSetup(repo_url.clone(), e))?
 						.collect::<Result<Vec<_>, _>>()
-						.map_err(|e| errors::ResolveError::IterRefs(repo_url.clone(), e))?
+						.map_err(|e| errors::ResolveErrorKind::IterRefs(repo_url.clone(), e))?
 						.into_iter()
 						.filter_map(|r| {
 							str::from_utf8(
@@ -214,7 +214,7 @@ impl PackageSource for GitPackageSource {
 						.filter(|(_, v)| version_matches(&req, v))
 						.max_by(|(_, v1), (_, v2)| v1.cmp(v2))
 						.ok_or_else(|| {
-							errors::ResolveError::NoMatchingVersion(
+							errors::ResolveErrorKind::NoMatchingVersion(
 								req.to_string(),
 								repo_url.clone(),
 							)
@@ -222,11 +222,7 @@ impl PackageSource for GitPackageSource {
 
 					(
 						refe.peel_to_id().map_err(|e| {
-							errors::ResolveError::RevToId(
-								req.to_string(),
-								repo_url.clone(),
-								Box::new(e),
-							)
+							errors::ResolveErrorKind::RevToId(req.to_string(), repo_url.clone(), e)
 						})?,
 						Some(version),
 					)
@@ -237,23 +233,23 @@ impl PackageSource for GitPackageSource {
 
 			let root_tree = rev
 				.object()
-				.map_err(|e| errors::ResolveError::ParseRevToObject(repo_url.clone(), e))?
+				.map_err(|e| errors::ResolveErrorKind::ParseRevToObject(repo_url.clone(), e))?
 				.peel_to_tree()
-				.map_err(|e| errors::ResolveError::ParseObjectToTree(repo_url.clone(), e))?;
+				.map_err(|e| errors::ResolveErrorKind::ParseObjectToTree(repo_url.clone(), e))?;
 
 			let tree = if let Some(path) = &specifier.path {
 				root_tree
 					.lookup_entry_by_path(path.as_str())
 					.map_err(|e| {
-						errors::ResolveError::ReadTreeEntry(repo_url.clone(), path.clone(), e)
+						errors::ResolveErrorKind::ReadTreeEntry(repo_url.clone(), path.clone(), e)
 					})?
 					.ok_or_else(|| {
-						errors::ResolveError::NoEntryAtPath(repo_url.clone(), path.clone())
+						errors::ResolveErrorKind::NoEntryAtPath(repo_url.clone(), path.clone())
 					})?
 					.object()
-					.map_err(|e| errors::ResolveError::ParseEntryToObject(repo_url.clone(), e))?
+					.map_err(|e| errors::ResolveErrorKind::ParseEntryToObject(repo_url.clone(), e))?
 					.peel_to_tree()
-					.map_err(|e| errors::ResolveError::ParseObjectToTree(repo_url.clone(), e))?
+					.map_err(|e| errors::ResolveErrorKind::ParseObjectToTree(repo_url.clone(), e))?
 			} else {
 				root_tree
 			};
@@ -267,7 +263,7 @@ impl PackageSource for GitPackageSource {
 			};
 
 			let manifest = match read_file(&tree, [MANIFEST_FILE_NAME])
-				.map_err(|e| errors::ResolveError::ReadManifest(repo_url.clone(), e))?
+				.map_err(|e| errors::ResolveErrorKind::ReadManifest(repo_url.clone(), e))?
 			{
 				Some(m) => {
 					if let Some(resolved_version) = resolved_version {
@@ -277,16 +273,17 @@ impl PackageSource for GitPackageSource {
 								VersionId::new(resolved_version, m.target.kind()),
 							)),
 							Err(e) => {
-								return Err(errors::ResolveError::DeserManifest(
+								return Err(errors::ResolveErrorKind::DeserManifest(
 									repo_url.clone(),
 									e,
-								));
+								)
+								.into());
 							}
 						}
 					} else {
 						let manifest =
 							toml::from_str::<PesdeVersionedManifest>(&m).map_err(|e| {
-								errors::ResolveError::DeserManifest(repo_url.clone(), e)
+								errors::ResolveErrorKind::DeserManifest(repo_url.clone(), e)
 							})?;
 						Some((
 							transform_pesde_dependencies(
@@ -312,21 +309,23 @@ impl PackageSource for GitPackageSource {
 				};
 
 				let manifest = read_file(&tree, [WALLY_MANIFEST_FILE_NAME])
-					.map_err(|e| errors::ResolveError::ReadManifest(repo_url.clone(), e))?;
+					.map_err(|e| errors::ResolveErrorKind::ReadManifest(repo_url.clone(), e))?;
 
 				let Some(manifest) = manifest else {
-					return Err(errors::ResolveError::NoManifest(repo_url.clone()));
+					return Err(errors::ResolveErrorKind::NoManifest(repo_url.clone()).into());
 				};
 
 				let mut manifest = match toml::from_str::<WallyManifest>(&manifest) {
 					Ok(manifest) => manifest,
 					Err(e) => {
-						return Err(errors::ResolveError::DeserManifest(repo_url.clone(), e));
+						return Err(
+							errors::ResolveErrorKind::DeserManifest(repo_url.clone(), e).into()
+						);
 					}
 				};
-				let dependencies = manifest
-					.all_dependencies()
-					.map_err(|e| errors::ResolveError::CollectDependencies(repo_url.clone(), e))?;
+				let dependencies = manifest.all_dependencies().map_err(|e| {
+					errors::ResolveErrorKind::CollectDependencies(repo_url.clone(), e)
+				})?;
 
 				return Ok((
 					StructureKind::Wally,
@@ -343,7 +342,7 @@ impl PackageSource for GitPackageSource {
 			};
 			#[cfg(not(feature = "wally-compat"))]
 			let Some((dependencies, v_id)) = manifest else {
-				return Err(errors::ResolveError::NoManifest(repo_url.clone()));
+				return Err(errors::ResolveErrorKind::NoManifest(repo_url.clone()));
 			};
 
 			Ok((
@@ -394,40 +393,40 @@ impl PackageSource for GitPackageSource {
 				);
 				reporter.report_done();
 				return toml::from_str::<PackageFs>(&s)
-					.map_err(|e| errors::DownloadError::DeserializeFile(repo_url, e));
+					.map_err(|e| errors::DownloadErrorKind::DeserializeFile(repo_url, e).into());
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-			Err(e) => return Err(errors::DownloadError::Io(e)),
+			Err(e) => return Err(errors::DownloadErrorKind::Io(e).into()),
 		}
 
 		let path = self.path(project);
 		let tree_id = match pkg_ref.tree_id.parse::<ObjectId>() {
 			Ok(oid) => oid,
-			Err(e) => return Err(errors::DownloadError::ParseTreeId(repo_url, e)),
+			Err(e) => return Err(errors::DownloadErrorKind::ParseTreeId(repo_url, e).into()),
 		};
 
 		let records = spawn_blocking(move || {
 			let repo = gix::open(path)
-				.map_err(|e| errors::DownloadError::OpenRepo(repo_url.clone(), e))?;
+				.map_err(|e| errors::DownloadErrorKind::OpenRepo(repo_url.clone(), e))?;
 
 			let mut recorder = Recorder::default();
 
 			let object = match repo.find_object(tree_id) {
 				Ok(object) => object,
 				Err(e) => {
-					return Err(errors::DownloadError::OidToTree(tree_id, repo_url, e));
+					return Err(errors::DownloadErrorKind::OidToTree(tree_id, repo_url, e).into());
 				}
 			};
 
 			let tree = match object.peel_to_tree() {
 				Ok(tree) => tree,
 				Err(e) => {
-					return Err(errors::DownloadError::ParseObjectToTree(repo_url, e));
+					return Err(errors::DownloadErrorKind::ParseObjectToTree(repo_url, e).into());
 				}
 			};
 
 			if let Err(e) = tree.traverse().breadthfirst(&mut recorder) {
-				return Err(errors::DownloadError::TraverseTree(repo_url, e));
+				return Err(errors::DownloadErrorKind::TraverseTree(repo_url, e).into());
 			}
 
 			recorder
@@ -440,7 +439,7 @@ impl PackageSource for GitPackageSource {
 				})
 				.map(|entry| {
 					let mut object = repo.find_object(entry.oid).map_err(|e| {
-						errors::DownloadError::ParseOidToObject(entry.oid, repo_url.clone(), e)
+						errors::DownloadErrorKind::ParseOidToObject(entry.oid, repo_url.clone(), e)
 					})?;
 
 					Ok::<_, errors::DownloadError>((
@@ -513,10 +512,10 @@ impl PackageSource for GitPackageSource {
 		fs::write(
 			&index_file,
 			toml::to_string(&fs)
-				.map_err(|e| errors::DownloadError::SerializeIndex(self.repo_url.clone(), e))?,
+				.map_err(|e| errors::DownloadErrorKind::SerializeIndex(self.repo_url.clone(), e))?,
 		)
 		.await
-		.map_err(errors::DownloadError::Io)?;
+		.map_err(errors::DownloadErrorKind::Io)?;
 
 		reporter.report_done();
 
@@ -538,18 +537,11 @@ impl PackageSource for GitPackageSource {
 			panic!("wally-compat feature is not enabled, and package is a wally package");
 		}
 
-		let manifest: PesdeVersionedManifest = toml::from_str(
-			&fs::read_to_string(options.path.join(MANIFEST_FILE_NAME))
-				.await
-				.map_err(|e| {
-					errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Io(e))
-				})?,
-		)
-		.map_err(|e| {
-			errors::GetTargetError::ManifestRead(crate::errors::ManifestReadError::Serde(
-				(*options.path).into(),
-				e,
-			))
+		let manifest = fs::read_to_string(options.path.join(MANIFEST_FILE_NAME))
+			.await
+			.map_err(|e| ManifestReadError::from(ManifestReadErrorKind::Io(e)))?;
+		let manifest: PesdeVersionedManifest = toml::from_str(&manifest).map_err(|e| {
+			ManifestReadError::from(ManifestReadErrorKind::Serde((*options.path).into(), e))
 		})?;
 
 		Ok(manifest.into_manifest().target)
@@ -564,32 +556,33 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when resolving a package from a Git package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ResolveError))]
 	#[non_exhaustive]
-	pub enum ResolveError {
+	pub enum ResolveErrorKind {
 		/// An error occurred opening the Git repository
 		#[error("error opening Git repository for url {0}")]
-		OpenRepo(GixUrl, #[source] Box<gix::open::Error>),
+		OpenRepo(GixUrl, #[source] gix::open::Error),
 
 		/// An error occurred parsing rev
 		#[error("error parsing rev {0} for repository {1}")]
 		ParseRev(
 			String,
 			GixUrl,
-			#[source] Box<gix::revision::spec::parse::single::Error>,
+			#[source] gix::revision::spec::parse::single::Error,
 		),
 
 		/// An error occurred creating reference iterator
 		#[error("error creating reference iterator for repository {0}")]
-		RefIter(GixUrl, #[source] Box<gix::reference::iter::Error>),
+		RefIter(GixUrl, #[source] gix::reference::iter::Error),
 
 		/// An error occurred setting up reference iterator
 		#[error("error setting up reference iterator for repository {0}")]
-		RefSetup(GixUrl, #[source] Box<gix::reference::iter::init::Error>),
+		RefSetup(GixUrl, #[source] gix::reference::iter::init::Error),
 
 		/// An error occurred converting rev to object id
 		#[error("error converting rev to object id for repository {0}")]
-		RevToId(String, GixUrl, #[source] Box<gix::reference::peel::Error>),
+		RevToId(String, GixUrl, #[source] gix::reference::peel::Error),
 
 		/// An error occurred iterating references
 		#[error("error iterating references for repository {0}")]
@@ -673,9 +666,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when downloading a package from a Git package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DownloadError))]
 	#[non_exhaustive]
-	pub enum DownloadError {
+	pub enum DownloadErrorKind {
 		/// An error occurred deserializing a file
 		#[error("error deserializing file in repository {0}")]
 		DeserializeFile(GixUrl, #[source] toml::de::Error),
@@ -727,9 +721,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when getting a target from a Git package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GetTargetError))]
 	#[non_exhaustive]
-	pub enum GetTargetError {
+	pub enum GetTargetErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),

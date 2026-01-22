@@ -130,11 +130,11 @@ impl FromStr for Alias {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		if s.is_empty() {
-			return Err(errors::AliasFromStr::Empty);
+			return Err(errors::AliasFromStrKind::Empty.into());
 		}
 
 		if s.len() > 48 {
-			return Err(errors::AliasFromStr::TooLong(s.to_string()));
+			return Err(errors::AliasFromStrKind::TooLong(s.to_string()).into());
 		}
 
 		if matches!(
@@ -150,18 +150,18 @@ impl FromStr for Alias {
 			// The Cart runtime (#25)
 			| "cart"
 		) {
-			return Err(errors::AliasFromStr::Reserved(s.to_string()));
+			return Err(errors::AliasFromStrKind::Reserved(s.to_string()).into());
 		}
 
 		if !s
 			.chars()
 			.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 		{
-			return Err(errors::AliasFromStr::InvalidCharacters(s.to_string()));
+			return Err(errors::AliasFromStrKind::InvalidCharacters(s.to_string()).into());
 		}
 
 		if EngineKind::from_str(s).is_ok() {
-			return Err(errors::AliasFromStr::EngineName(s.to_string()));
+			return Err(errors::AliasFromStrKind::EngineName(s.to_string()).into());
 		}
 
 		Ok(Self(s.into()))
@@ -213,7 +213,9 @@ impl Manifest {
 		] {
 			for (alias, spec) in deps {
 				if all_deps.insert(alias.clone(), (spec.clone(), ty)).is_some() {
-					return Err(errors::AllDependenciesError::AliasConflict(alias.clone()));
+					return Err(
+						errors::AllDependenciesErrorKind::AliasConflict(alias.clone()).into(),
+					);
 				}
 			}
 		}
@@ -228,9 +230,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when parsing an alias from a string
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = AliasFromStr))]
 	#[non_exhaustive]
-	pub enum AliasFromStr {
+	pub enum AliasFromStrKind {
 		/// The alias is empty
 		#[error("the alias is empty")]
 		Empty,
@@ -253,9 +256,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when trying to get all dependencies from a manifest
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = AllDependenciesError))]
 	#[non_exhaustive]
-	pub enum AllDependenciesError {
+	pub enum AllDependenciesErrorKind {
 		/// Another specifier is already using the alias
 		#[error("another specifier is already using the alias {0}")]
 		AliasConflict(Alias),

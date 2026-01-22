@@ -65,13 +65,14 @@ impl FromStr for ArchiveInfo {
 			[.., "tar", "gz"] => ArchiveInfo(ArchiveKind::Tar, EncodingKind::Gzip),
 			[.., "tar"] => ArchiveInfo(ArchiveKind::Tar, EncodingKind::Plain),
 			[.., "zip", "gz"] => {
-				return Err(errors::ArchiveInfoFromStrError::Unsupported(
+				return Err(errors::ArchiveInfoFromStrErrorKind::Unsupported(
 					ArchiveKind::Zip,
 					EncodingKind::Gzip,
-				));
+				)
+				.into());
 			}
 			[.., "zip"] => ArchiveInfo(ArchiveKind::Zip, EncodingKind::Plain),
-			_ => return Err(errors::ArchiveInfoFromStrError::Invalid(s.to_string())),
+			_ => return Err(errors::ArchiveInfoFromStrErrorKind::Invalid(s.to_string()).into()),
 		})
 	}
 }
@@ -220,7 +221,7 @@ impl Archive {
 				}
 
 				let Some(candidate) = candidates.pop_last() else {
-					return Err(errors::FindExecutableError::ExecutableNotFound);
+					return Err(errors::FindExecutableErrorKind::ExecutableNotFound.into());
 				};
 
 				let mut entries = archive.entries()?;
@@ -265,7 +266,7 @@ impl Archive {
 				}
 
 				let Some(candidate) = candidates.pop_last() else {
-					return Err(errors::FindExecutableError::ExecutableNotFound);
+					return Err(errors::FindExecutableErrorKind::ExecutableNotFound.into());
 				};
 
 				for (i, entry) in archive.file().entries().iter().enumerate() {
@@ -295,7 +296,7 @@ impl Archive {
 			}
 		}
 
-		Err(errors::FindExecutableError::ExecutableNotFound)
+		Err(errors::FindExecutableErrorKind::ExecutableNotFound.into())
 	}
 }
 
@@ -304,9 +305,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when parsing archive info
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ArchiveInfoFromStrError))]
 	#[non_exhaustive]
-	pub enum ArchiveInfoFromStrError {
+	pub enum ArchiveInfoFromStrErrorKind {
 		/// The string is not a valid archive descriptor. E.g. `{name}.tar.gz`
 		#[error("string `{0}` is not a valid archive descriptor")]
 		Invalid(String),
@@ -317,9 +319,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when finding an executable in an archive
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = FindExecutableError))]
 	#[non_exhaustive]
-	pub enum FindExecutableError {
+	pub enum FindExecutableErrorKind {
 		/// The executable was not found in the archive
 		#[error("failed to find executable in archive")]
 		ExecutableNotFound,

@@ -142,9 +142,10 @@ pub mod errors {
 	use super::SourcemapGeneratorHooks;
 
 	/// Errors that can occur when finding the lib path
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GetTargetError))]
 	#[non_exhaustive]
-	pub enum GetTargetError {
+	pub enum GetTargetErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),

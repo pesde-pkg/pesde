@@ -98,13 +98,13 @@ impl PesdePackageSource {
 		let path = self.path(project);
 
 		spawn_blocking(move || {
-			let repo = gix::open(&path).map_err(Box::new)?;
-			let tree = root_tree(&repo).map_err(Box::new)?;
-			let file = read_file(&tree, ["config.toml"]).map_err(Box::new)?;
+			let repo = gix::open(&path)?;
+			let tree = root_tree(&repo)?;
+			let file = read_file(&tree, ["config.toml"])?;
 
 			match file {
 				Some(s) => toml::from_str(&s).map_err(Into::into),
-				None => Err(errors::ConfigError::Missing(repo_url)),
+				None => Err(errors::ConfigErrorKind::Missing(repo_url).into()),
 			}
 		})
 		.await
@@ -121,13 +121,13 @@ impl PesdePackageSource {
 
 		spawn_blocking(move || {
 			let (scope, name) = name.as_str();
-			let repo = gix::open(&path).map_err(Box::new)?;
-			let tree = root_tree(&repo).map_err(Box::new)?;
+			let repo = gix::open(&path)?;
+			let tree = root_tree(&repo)?;
 			let string = match read_file(&tree, [scope, name]) {
 				Ok(Some(s)) => s,
 				Ok(None) => return Ok(None),
 				Err(e) => {
-					return Err(errors::ReadIndexFileError::ReadFile(e));
+					return Err(errors::ReadIndexFileErrorKind::ReadFile(e).into());
 				}
 			};
 
@@ -168,7 +168,7 @@ impl PackageSource for PesdePackageSource {
 			.read_index_file(specifier.name.clone(), project)
 			.await?
 		else {
-			return Err(errors::ResolveError::NotFound(specifier.name.clone()));
+			return Err(errors::ResolveErrorKind::NotFound(specifier.name.clone()).into());
 		};
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
@@ -219,7 +219,7 @@ impl PackageSource for PesdePackageSource {
 			..
 		} = options;
 
-		let config = self.config(project).await.map_err(Box::new)?;
+		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
 			.join("index")
@@ -240,7 +240,7 @@ impl PackageSource for PesdePackageSource {
 				return toml::from_str::<PackageFs>(&s).map_err(Into::into);
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-			Err(e) => return Err(errors::DownloadError::ReadIndex(e)),
+			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
 		}
 
 		let url = config
@@ -272,17 +272,20 @@ impl PackageSource for PesdePackageSource {
 
 		let mut entries = BTreeMap::new();
 
-		let mut archive_entries = archive.entries().map_err(errors::DownloadError::Unpack)?;
+		let mut archive_entries = archive
+			.entries()
+			.map_err(errors::DownloadErrorKind::Unpack)?;
 
 		while let Some(entry) = archive_entries
 			.next()
 			.await
 			.transpose()
-			.map_err(errors::DownloadError::Unpack)?
+			.map_err(errors::DownloadErrorKind::Unpack)?
 		{
-			let path =
-				RelativePathBuf::from_path(entry.path().map_err(errors::DownloadError::Unpack)?)
-					.unwrap();
+			let path = RelativePathBuf::from_path(
+				entry.path().map_err(errors::DownloadErrorKind::Unpack)?,
+			)
+			.unwrap();
 			let name = path.file_name().unwrap_or("");
 
 			if entry.header().entry_type().is_dir() {
@@ -301,7 +304,7 @@ impl PackageSource for PesdePackageSource {
 
 			let hash = store_in_cas(project.cas_dir(), entry)
 				.await
-				.map_err(errors::DownloadError::Store)?;
+				.map_err(errors::DownloadErrorKind::Store)?;
 			entries.insert(path, FsEntry::File(hash));
 		}
 
@@ -310,12 +313,12 @@ impl PackageSource for PesdePackageSource {
 		if let Some(parent) = index_file.parent() {
 			fs::create_dir_all(parent)
 				.await
-				.map_err(errors::DownloadError::WriteIndex)?;
+				.map_err(errors::DownloadErrorKind::WriteIndex)?;
 		}
 
 		fs::write(&index_file, toml::to_string(&fs)?)
 			.await
-			.map_err(errors::DownloadError::WriteIndex)?;
+			.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
 		Ok(fs)
 	}
@@ -330,12 +333,12 @@ impl PackageSource for PesdePackageSource {
 			.read_index_file(pkg_ref.name.clone(), &options.project)
 			.await?
 		else {
-			return Err(errors::GetTargetError::NotFound(pkg_ref.name.clone()));
+			return Err(errors::GetTargetErrorKind::NotFound(pkg_ref.name.clone()).into());
 		};
 
 		let entry = entries
 			.remove(options.version_id)
-			.ok_or_else(|| errors::GetTargetError::NotFound(pkg_ref.name.clone()))?;
+			.ok_or_else(|| errors::GetTargetErrorKind::NotFound(pkg_ref.name.clone()))?;
 
 		Ok(entry.target)
 	}
@@ -543,20 +546,21 @@ pub mod errors {
 	};
 
 	/// Errors that can occur when reading an index file of a pesde package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ReadIndexFileError))]
 	#[non_exhaustive]
-	pub enum ReadIndexFileError {
+	pub enum ReadIndexFileErrorKind {
 		/// Error reading file
 		#[error("error reading file")]
 		ReadFile(#[from] ReadFile),
 
 		/// Error opening repository
 		#[error("error opening repository")]
-		Open(#[from] Box<gix::open::Error>),
+		Open(#[from] gix::open::Error),
 
 		/// Error getting tree
 		#[error("error getting tree")]
-		Tree(#[from] Box<TreeError>),
+		Tree(#[from] TreeError),
 
 		/// Error parsing file
 		#[error("error parsing file")]
@@ -564,9 +568,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when resolving a package from a pesde package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ResolveError))]
 	#[non_exhaustive]
-	pub enum ResolveError {
+	pub enum ResolveErrorKind {
 		/// Package not found in index
 		#[error("package `{0}` not found")]
 		NotFound(PackageName),
@@ -577,20 +582,21 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when reading the config file for a pesde package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ConfigError))]
 	#[non_exhaustive]
-	pub enum ConfigError {
+	pub enum ConfigErrorKind {
 		/// Error opening repository
 		#[error("error opening repository")]
-		Open(#[from] Box<gix::open::Error>),
+		Open(#[from] gix::open::Error),
 
 		/// Error getting tree
 		#[error("error getting tree")]
-		Tree(#[from] Box<TreeError>),
+		Tree(#[from] TreeError),
 
 		/// Error reading file
 		#[error("error reading config file")]
-		ReadFile(#[from] Box<ReadFile>),
+		ReadFile(#[from] ReadFile),
 
 		/// Error parsing config file
 		#[error("error parsing config file")]
@@ -602,12 +608,13 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when downloading a package from a pesde package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DownloadError))]
 	#[non_exhaustive]
-	pub enum DownloadError {
+	pub enum DownloadErrorKind {
 		/// Error reading index file
 		#[error("error reading config file")]
-		ReadFile(#[from] Box<ConfigError>),
+		ReadFile(#[from] ConfigError),
 
 		/// Error downloading package
 		#[error("error downloading package")]
@@ -639,9 +646,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when getting the target for a package from a pesde package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GetTargetError))]
 	#[non_exhaustive]
-	pub enum GetTargetError {
+	pub enum GetTargetErrorKind {
 		/// Error reading index file
 		#[error("error reading index file")]
 		ReadIndex(#[from] ReadIndexFileError),

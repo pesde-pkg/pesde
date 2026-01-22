@@ -90,7 +90,7 @@ impl WallyManifest {
 					.insert(alias.clone(), (DependencySpecifiers::Wally(spec), ty))
 					.is_some()
 				{
-					return Err(errors::AllDependenciesError::AliasConflict(alias));
+					return Err(errors::AllDependenciesErrorKind::AliasConflict(alias).into());
 				}
 			}
 		}

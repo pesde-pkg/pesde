@@ -24,36 +24,36 @@ pub trait GitBasedSource {
 			spawn_blocking(move || {
 				let repo = match gix::open_opts(&path, gix::open::Options::isolated()) {
 					Ok(repo) => repo,
-					Err(e) => return Err(errors::RefreshError::Open(path, Box::new(e))),
+					Err(e) => return Err(errors::RefreshErrorKind::Open(path, e).into()),
 				};
 				let remote = match repo.find_default_remote(Direction::Fetch) {
 					Some(Ok(remote)) => remote,
 					Some(Err(e)) => {
-						return Err(errors::RefreshError::GetDefaultRemote(path, Box::new(e)));
+						return Err(errors::RefreshErrorKind::GetDefaultRemote(path, e).into());
 					}
 					None => {
-						return Err(errors::RefreshError::NoDefaultRemote(path));
+						return Err(errors::RefreshErrorKind::NoDefaultRemote(path).into());
 					}
 				};
 
 				let connection = remote
 					.connect(Direction::Fetch)
-					.map_err(|e| errors::RefreshError::Connect(repo_url.clone(), Box::new(e)))?;
+					.map_err(|e| errors::RefreshErrorKind::Connect(repo_url.clone(), e))?;
 
-				let fetch =
-					match connection.prepare_fetch(gix::progress::Discard, Default::default()) {
-						Ok(fetch) => fetch,
-						Err(e) => {
-							return Err(errors::RefreshError::PrepareFetch(
-								repo_url.clone(),
-								Box::new(e),
-							));
-						}
-					};
+				let fetch = match connection
+					.prepare_fetch(gix::progress::Discard, Default::default())
+				{
+					Ok(fetch) => fetch,
+					Err(e) => {
+						return Err(
+							errors::RefreshErrorKind::PrepareFetch(repo_url.clone(), e).into()
+						);
+					}
+				};
 
 				match fetch.receive(gix::progress::Discard, &false.into()) {
-					Ok(_) => Ok(()),
-					Err(e) => Err(errors::RefreshError::Read(repo_url.clone(), Box::new(e))),
+					Ok(_) => Ok::<_, errors::RefreshError>(()),
+					Err(e) => Err(errors::RefreshErrorKind::Read(repo_url.clone(), e).into()),
 				}
 			})
 			.await
@@ -72,9 +72,13 @@ pub trait GitBasedSource {
 				gix::create::Options::default(),
 				gix::open::Options::isolated(),
 			)
-			.map_err(|e| errors::RefreshError::Clone(repo_url.clone(), Box::new(e)))?
+			.map_err(|e| {
+				errors::RefreshError::from(errors::RefreshErrorKind::Clone(repo_url.clone(), e))
+			})?
 			.fetch_only(gix::progress::Discard, &false.into())
-			.map_err(|e| errors::RefreshError::Fetch(repo_url.clone(), Box::new(e)))
+			.map_err(|e| {
+				errors::RefreshError::from(errors::RefreshErrorKind::Fetch(repo_url.clone(), e))
+			})
 		})
 		.await
 		.unwrap()
@@ -96,17 +100,17 @@ pub fn read_file<I: IntoIterator<Item = P> + Debug, P: ToString + PartialEq<gix:
 	})) {
 		Ok(Some(entry)) => entry,
 		Ok(None) => return Ok(None),
-		Err(e) => return Err(errors::ReadFile::Lookup(file_path_str, e)),
+		Err(e) => return Err(errors::ReadFileKind::Lookup(file_path_str, e).into()),
 	};
 
 	let object = match entry.object() {
 		Ok(object) => object,
-		Err(e) => return Err(errors::ReadFile::Lookup(file_path_str, e)),
+		Err(e) => return Err(errors::ReadFileKind::Lookup(file_path_str, e).into()),
 	};
 
 	let blob = object.into_blob();
 	let string = String::from_utf8(blob.data.clone())
-		.map_err(|e| errors::ReadFile::Utf8(file_path_str, e))?;
+		.map_err(|e| errors::ReadFileKind::Utf8(file_path_str, e))?;
 
 	Ok(Some(string))
 }
@@ -119,14 +123,14 @@ pub fn root_tree(repo: &gix::Repository) -> Result<gix::Tree<'_>, errors::TreeEr
 
 	let remote = match repo.find_default_remote(Direction::Fetch) {
 		Some(Ok(remote)) => remote,
-		Some(Err(e)) => return Err(errors::TreeError::GetDefaultRemote(path, Box::new(e))),
+		Some(Err(e)) => return Err(errors::TreeErrorKind::GetDefaultRemote(path, e).into()),
 		None => {
-			return Err(errors::TreeError::NoDefaultRemote(path));
+			return Err(errors::TreeErrorKind::NoDefaultRemote(path).into());
 		}
 	};
 
 	let Some(refspec) = remote.refspecs(Direction::Fetch).first() else {
-		return Err(errors::TreeError::NoRefSpecs(path));
+		return Err(errors::TreeErrorKind::NoRefSpecs(path).into());
 	};
 
 	let spec_ref = refspec.to_ref();
@@ -134,29 +138,29 @@ pub fn root_tree(repo: &gix::Repository) -> Result<gix::Tree<'_>, errors::TreeEr
 		Some(local) => local
 			.to_string()
 			.replace('*', repo.branch_names().first().unwrap_or(&"main")),
-		None => return Err(errors::TreeError::NoLocalRefSpec(path)),
+		None => return Err(errors::TreeErrorKind::NoLocalRefSpec(path).into()),
 	};
 
 	let reference = match repo.find_reference(&local_ref) {
 		Ok(reference) => reference,
-		Err(e) => return Err(errors::TreeError::NoReference(local_ref.clone(), e)),
+		Err(e) => return Err(errors::TreeErrorKind::NoReference(local_ref.clone(), e).into()),
 	};
 
 	let reference_name = reference.name().as_bstr().to_string();
 	let id = match reference.into_fully_peeled_id() {
 		Ok(id) => id,
-		Err(e) => return Err(errors::TreeError::CannotPeel(reference_name, e)),
+		Err(e) => return Err(errors::TreeErrorKind::CannotPeel(reference_name, e).into()),
 	};
 
 	let id_str = id.to_string();
 	let object = match id.object() {
 		Ok(object) => object,
-		Err(e) => return Err(errors::TreeError::CannotConvertToObject(id_str, e)),
+		Err(e) => return Err(errors::TreeErrorKind::CannotConvertToObject(id_str, e).into()),
 	};
 
 	match object.peel_to_tree() {
 		Ok(tree) => Ok(tree),
-		Err(e) => Err(errors::TreeError::CannotPeelToTree(id_str, e)),
+		Err(e) => Err(errors::TreeErrorKind::CannotPeelToTree(id_str, e).into()),
 	}
 }
 
@@ -169,16 +173,17 @@ pub mod errors {
 	use crate::GixUrl;
 
 	/// Errors that can occur when refreshing a git-based package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = RefreshError))]
 	#[non_exhaustive]
-	pub enum RefreshError {
+	pub enum RefreshErrorKind {
 		/// Error interacting with the filesystem
 		#[error("error interacting with the filesystem")]
 		Io(#[from] std::io::Error),
 
 		/// Error opening the repository
 		#[error("error opening repository at {0}")]
-		Open(PathBuf, #[source] Box<gix::open::Error>),
+		Open(PathBuf, #[source] gix::open::Error),
 
 		/// No default remote found in repository
 		#[error("no default remote found in repository at {0}")]
@@ -186,33 +191,34 @@ pub mod errors {
 
 		/// Error getting default remote from repository
 		#[error("error getting default remote from repository at {0}")]
-		GetDefaultRemote(PathBuf, #[source] Box<gix::remote::find::existing::Error>),
+		GetDefaultRemote(PathBuf, #[source] gix::remote::find::existing::Error),
 
 		/// Error connecting to remote repository
 		#[error("error connecting to remote repository at {0}")]
-		Connect(GixUrl, #[source] Box<gix::remote::connect::Error>),
+		Connect(GixUrl, #[source] gix::remote::connect::Error),
 
 		/// Error preparing fetch from remote repository
 		#[error("error preparing fetch from remote repository at {0}")]
-		PrepareFetch(GixUrl, #[source] Box<gix::remote::fetch::prepare::Error>),
+		PrepareFetch(GixUrl, #[source] gix::remote::fetch::prepare::Error),
 
 		/// Error reading from remote repository
 		#[error("error reading from remote repository at {0}")]
-		Read(GixUrl, #[source] Box<gix::remote::fetch::Error>),
+		Read(GixUrl, #[source] gix::remote::fetch::Error),
 
 		/// Error cloning repository
 		#[error("error cloning repository from {0}")]
-		Clone(GixUrl, #[source] Box<gix::clone::Error>),
+		Clone(GixUrl, #[source] gix::clone::Error),
 
 		/// Error fetching repository
 		#[error("error fetching repository from {0}")]
-		Fetch(GixUrl, #[source] Box<gix::clone::fetch::Error>),
+		Fetch(GixUrl, #[source] gix::clone::fetch::Error),
 	}
 
 	/// Errors that can occur when reading a git-based package source's tree
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = TreeError))]
 	#[non_exhaustive]
-	pub enum TreeError {
+	pub enum TreeErrorKind {
 		/// Error interacting with the filesystem
 		#[error("error interacting with the filesystem")]
 		Io(#[from] std::io::Error),
@@ -223,7 +229,7 @@ pub mod errors {
 
 		/// Error getting default remote from repository
 		#[error("error getting default remote from repository at {0}")]
-		GetDefaultRemote(PathBuf, #[source] Box<gix::remote::find::existing::Error>),
+		GetDefaultRemote(PathBuf, #[source] gix::remote::find::existing::Error),
 
 		/// Error getting refspec from remote repository
 		#[error("no refspecs found in repository at {0}")]
@@ -251,9 +257,10 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when reading a file from a git-based package source
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ReadFile))]
 	#[non_exhaustive]
-	pub enum ReadFile {
+	pub enum ReadFileKind {
 		/// Error looking up entry in tree
 		#[error("error looking up entry {0} in tree")]
 		Lookup(String, #[source] gix::object::find::existing::Error),

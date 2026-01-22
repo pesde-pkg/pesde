@@ -28,7 +28,7 @@ impl FromStr for StructureKind {
 		match s {
 			"wally" => Ok(StructureKind::Wally),
 			"pesde_v1" => Ok(StructureKind::PesdeV1),
-			_ => Err(errors::StructureKindParseError::UnknownKind(s.to_string())),
+			_ => Err(errors::StructureKindParseErrorKind::UnknownKind(s.to_string()).into()),
 		}
 	}
 }
@@ -95,14 +95,16 @@ impl FromStr for PackageRefs {
 	type Err = errors::PackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let (source, pkg_ref) = s.split_once(':').ok_or(Self::Err::InvalidFormat)?;
+		let (source, pkg_ref) = s
+			.split_once(':')
+			.ok_or(errors::PackageRefParseErrorKind::InvalidFormat)?;
 
 		match source {
 			"pesde" => Ok(PackageRefs::Pesde(pkg_ref.parse()?)),
 			"wally" => Ok(PackageRefs::Wally(pkg_ref.parse()?)),
 			"git" => Ok(PackageRefs::Git(pkg_ref.parse()?)),
 			"path" => Ok(PackageRefs::Path(pkg_ref.parse().unwrap())),
-			_ => Err(Self::Err::UnknownSource(source.to_string())),
+			_ => Err(errors::PackageRefParseErrorKind::UnknownSource(source.to_string()).into()),
 		}
 	}
 }
@@ -112,16 +114,18 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when parsing a structure kind
-	#[derive(Debug, Error)]
-	pub enum StructureKindParseError {
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = StructureKindParseError))]
+	pub enum StructureKindParseErrorKind {
 		/// The structure kind is unknown
 		#[error("unknown structure kind {0}")]
 		UnknownKind(String),
 	}
 
 	/// Errors that can occur when parsing a Git package reference
-	#[derive(Debug, Error)]
-	pub enum GitPackageRefParseError {
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GitPackageRefParseError))]
+	pub enum GitPackageRefParseErrorKind {
 		/// The format of the Git package reference is invalid
 		#[error("invalid Git package reference format")]
 		InvalidFormat,
@@ -132,8 +136,9 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when parsing a package reference
-	#[derive(Debug, Error)]
-	pub enum PackageRefParseError {
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = PackageRefParseError))]
+	pub enum PackageRefParseErrorKind {
 		/// The format of the package reference is invalid
 		#[error("invalid package reference format")]
 		InvalidFormat,

@@ -180,7 +180,7 @@ impl Project {
 								.indices
 								.get(&specifier.index)
 								.ok_or_else(|| {
-									errors::DependencyGraphError::IndexNotFound(
+									errors::DependencyGraphErrorKind::IndexNotFound(
 										specifier.index.clone(),
 									)
 								})?
@@ -204,7 +204,7 @@ impl Project {
 								.wally_indices
 								.get(&specifier.index)
 								.ok_or_else(|| {
-									errors::DependencyGraphError::WallyIndexNotFound(
+									errors::DependencyGraphErrorKind::WallyIndexNotFound(
 										specifier.index.clone(),
 									)
 								})?
@@ -265,17 +265,12 @@ impl Project {
 						})
 					})
 				else {
-					return Err(errors::DependencyGraphError::NoMatchingVersion(format!(
-						"{specifier} {target}{}",
-						if suggestions.is_empty() {
-							"".into()
-						} else {
-							format!(
-								" available targets: {}",
-								suggestions.into_iter().format(", ")
-							)
-						}
-					)));
+					return Err(errors::DependencyGraphErrorKind::NoMatchingVersion(
+						specifier,
+						target,
+						suggestions,
+					)
+					.into());
 				};
 
 				if let Some(importer) = &importer {
@@ -367,7 +362,7 @@ impl Project {
 								.get(alias)
 								.map(|(spec, _)| spec)
 								.ok_or_else(|| {
-									errors::DependencyGraphError::AliasNotFound(alias.clone())
+									errors::DependencyGraphErrorKind::AliasNotFound(alias.clone())
 								})?
 								.clone(),
 							None => dependency_spec,
@@ -383,7 +378,7 @@ impl Project {
 					));
 				}
 
-				Ok(())
+				Ok::<_, errors::DependencyGraphError>(())
 			}
 			.instrument(tracing::info_span!(
 				"resolve new/changed",
@@ -398,13 +393,20 @@ impl Project {
 
 /// Errors that can occur when resolving dependencies
 pub mod errors {
-	use crate::manifest::Alias;
+	use std::collections::BTreeSet;
+
+	use crate::{
+		manifest::{Alias, target::TargetKind},
+		source::specifiers::DependencySpecifiers,
+	};
+	use itertools::Itertools as _;
 	use thiserror::Error;
 
 	/// Errors that can occur when creating a dependency graph
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DependencyGraphError))]
 	#[non_exhaustive]
-	pub enum DependencyGraphError {
+	pub enum DependencyGraphErrorKind {
 		/// An error occurred while accessing the workspace members
 		#[error("error accessing workspace members")]
 		WorkspaceMembers(#[from] crate::errors::WorkspaceMembersError),
@@ -431,8 +433,8 @@ pub mod errors {
 		Resolve(#[from] crate::source::errors::ResolveError),
 
 		/// No matching version was found for a specifier
-		#[error("no matching version found for {0}")]
-		NoMatchingVersion(String),
+		#[error("no matching version found for {0} {1}{suggestions}", suggestions = if .2.is_empty() { String::new() } else { format!(" available targets {}", .2.iter().format(", ")) })]
+		NoMatchingVersion(DependencySpecifiers, TargetKind, BTreeSet<TargetKind>),
 
 		/// An alias for an override was not found in the manifest
 		#[error("alias `{0}` not found in manifest")]

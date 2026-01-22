@@ -33,8 +33,10 @@ pub fn parse_lockfile(lockfile: &str) -> Result<Lockfile, errors::ParseLockfileE
 
 	match format {
 		CURRENT_FORMAT => toml::de::from_str(lockfile).map_err(Into::into),
-		format if format < CURRENT_FORMAT => Err(errors::ParseLockfileError::TooOld(format)),
-		format => Err(errors::ParseLockfileError::TooNew(format)),
+		format if format < CURRENT_FORMAT => {
+			Err(errors::ParseLockfileErrorKind::TooOld(format).into())
+		}
+		format => Err(errors::ParseLockfileErrorKind::TooNew(format).into()),
 	}
 }
 
@@ -43,9 +45,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when parsing a lockfile
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ParseLockfileError))]
 	#[non_exhaustive]
-	pub enum ParseLockfileError {
+	pub enum ParseLockfileErrorKind {
 		/// The lockfile format is too new
 		#[error("lockfile format {} is too new. newest supported format: {}", .0, super::CURRENT_FORMAT)]
 		TooNew(usize),

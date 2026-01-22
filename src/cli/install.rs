@@ -117,7 +117,11 @@ pub async fn install(
 			file => file,
 		}
 	} else {
-		match project.deser_lockfile().await {
+		match project
+			.deser_lockfile()
+			.await
+			.map_err(pesde::errors::LockfileReadError::into_inner)
+		{
 			Ok(lockfile) => {
 				if lockfile.overrides == resolve_overrides(&manifest)? {
 					Some(lockfile)
@@ -127,7 +131,7 @@ pub async fn install(
 					None
 				}
 			}
-			Err(pesde::errors::LockfileReadError::Io(e))
+			Err(pesde::errors::LockfileReadErrorKind::Io(e))
 				if e.kind() == std::io::ErrorKind::NotFound =>
 			{
 				None

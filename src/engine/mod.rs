@@ -32,7 +32,7 @@ impl FromStr for EngineKind {
 		match s.to_lowercase().as_str() {
 			"pesde" => Ok(EngineKind::Pesde),
 			"lune" => Ok(EngineKind::Lune),
-			_ => Err(errors::EngineKindFromStrError::Unknown(s.to_string())),
+			_ => Err(errors::EngineKindFromStrErrorKind::Unknown(s.to_string()).into()),
 		}
 	}
 }
@@ -56,8 +56,9 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors which can occur while using the FromStr implementation of EngineKind
-	#[derive(Debug, Error)]
-	pub enum EngineKindFromStrError {
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = EngineKindFromStrError))]
+	pub enum EngineKindFromStrErrorKind {
 		/// The string isn't a recognized EngineKind
 		#[error("unknown engine kind {0}")]
 		Unknown(String),

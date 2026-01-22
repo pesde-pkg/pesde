@@ -112,7 +112,7 @@ impl EngineSource for GitHubEngineSource {
 					.iter()
 					.any(|name| asset.name.eq_ignore_ascii_case(name))
 			})
-			.ok_or(errors::DownloadError::AssetNotFound)?;
+			.ok_or(errors::DownloadErrorKind::AssetNotFound)?;
 
 		reporter.report_start();
 
@@ -139,18 +139,20 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when resolving a GitHub engine
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ResolveError))]
 	#[non_exhaustive]
-	pub enum ResolveError {
+	pub enum ResolveErrorKind {
 		/// Handling the request failed
 		#[error("failed to handle GitHub API request")]
 		Request(#[from] reqwest::Error),
 	}
 
 	/// Errors that can occur when downloading a GitHub engine
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DownloadError))]
 	#[non_exhaustive]
-	pub enum DownloadError {
+	pub enum DownloadErrorKind {
 		/// An asset for the current platform could not be found
 		#[error("failed to find asset for current platform")]
 		AssetNotFound,

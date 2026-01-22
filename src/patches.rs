@@ -111,7 +111,7 @@ where
 
 	let patch = fs::read(&patch_path)
 		.await
-		.map_err(errors::ApplyPatchError::PatchRead)?;
+		.map_err(errors::ApplyPatchErrorKind::PatchRead)?;
 	let patch = spawn_blocking(move || Diff::from_buffer(&patch))
 		.await
 		.unwrap()?;
@@ -134,7 +134,7 @@ where
 				fs::write(path, content).await?;
 				Ok(())
 			}
-			.map_err(errors::ApplyPatchError::File)
+			.map_err(|e| errors::ApplyPatchError::from(errors::ApplyPatchErrorKind::File(e)))
 		})
 		.collect::<JoinSet<_>>();
 
@@ -187,7 +187,7 @@ pub async fn remove_patch(container_dir: PathBuf) -> Result<(), errors::ApplyPat
 	match fs::remove_dir_all(&dot_git).await {
 		Ok(()) => (),
 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
-		Err(e) => return Err(errors::ApplyPatchError::File(e)),
+		Err(e) => return Err(errors::ApplyPatchErrorKind::File(e).into()),
 	}
 
 	tracing::debug!("patch removed");
@@ -200,9 +200,10 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when applying patches
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ApplyPatchError))]
 	#[non_exhaustive]
-	pub enum ApplyPatchError {
+	pub enum ApplyPatchErrorKind {
 		/// Error interacting with git
 		#[error("error interacting with git")]
 		Git(#[from] git2::Error),
