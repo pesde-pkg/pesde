@@ -247,12 +247,11 @@ impl Project {
 				let Some((package_id, dependencies)) = graph
 					.nodes
 					.keys()
-					.filter(|package_id| {
+					.rfind(|package_id| {
 						*package_id.source() == source
 							&& *package_id.pkg_ref() == pkg_ref
 							&& versions.contains_key(package_id.v_id())
 					})
-					.max()
 					.map(|package_id| {
 						(
 							package_id.clone(),
@@ -301,7 +300,7 @@ impl Project {
 						.insert(alias.clone(), (package_id.clone(), ty));
 				}
 
-				if graph.nodes.get_mut(&package_id).is_some() {
+				if graph.nodes.contains_key(&package_id) {
 					tracing::debug!("{package_id} already resolved");
 
 					return Ok(());

@@ -9,7 +9,7 @@ use crate::{
 	source::refs::StructureKind,
 };
 use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
-use itertools::Itertools as _;
+use itertools::{Itertools as _, Position};
 use relative_path::RelativePath;
 use tracing::instrument;
 
@@ -99,20 +99,15 @@ pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
 fn luau_style_path(path: &Path) -> String {
 	let path = path
 		.components()
-		.zip(
-			path.components()
-				.skip(1)
-				.map(Some)
-				.chain(std::iter::repeat(None)),
-		)
-		.filter_map(|(ct, next_ct)| match ct {
+		.with_position()
+		.filter_map(|(pos, ct)| match ct {
 			Component::CurDir => Some(".".into()),
 			Component::ParentDir => Some("..".into()),
 			Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
 				let str = part.to_string_lossy();
 
 				Some(
-					if next_ct.is_none()
+					if matches!(pos, Position::Last | Position::Only)
 						&& let Some(str) = str.strip_suffix(".luau").or(str.strip_suffix(".lua"))
 					{
 						Cow::Owned(str.to_string())
@@ -167,13 +162,8 @@ pub fn get_lib_require_path(
 
 	let path = path
 		.components()
-		.zip(
-			path.components()
-				.skip(1)
-				.map(Some)
-				.chain(std::iter::repeat(None)),
-		)
-		.filter_map(|(component, next_comp)| match component {
+		.with_position()
+		.filter_map(|(pos, component)| match component {
 			Component::ParentDir => Some(Cow::Borrowed(".Parent")),
 			Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
 				let str = part.to_string_lossy();
@@ -181,12 +171,12 @@ pub fn get_lib_require_path(
 				Some(
 					format!(
 						":FindFirstChild({})",
-						if next_comp.is_some() {
-							&str
-						} else {
+						if matches!(pos, Position::Last | Position::Only) {
 							str.strip_suffix(".luau")
 								.or(str.strip_suffix(".lua"))
 								.unwrap_or(&str)
+						} else {
+							&str
 						}
 						.escape_debug()
 					)
