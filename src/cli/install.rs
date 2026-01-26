@@ -397,9 +397,11 @@ pub fn print_install_summary(
 			old_importer.cmp(new_importer)
 		})
 		.map(|m| match m {
-			EitherOrBoth::Both((importer, old), (_, new)) => (importer, old, new),
-			EitherOrBoth::Left((importer, old)) => (importer, old, BTreeMap::new()),
-			EitherOrBoth::Right((importer, new)) => (importer, BTreeMap::new(), new),
+			EitherOrBoth::Both((importer, old), (_, new)) => {
+				(importer, old.dependencies, new.dependencies)
+			}
+			EitherOrBoth::Left((importer, old)) => (importer, old.dependencies, BTreeMap::new()),
+			EitherOrBoth::Right((importer, new)) => (importer, BTreeMap::new(), new.dependencies),
 		});
 
 	for (importer, old, new) in importer_pairs {

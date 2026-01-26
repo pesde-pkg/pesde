@@ -383,6 +383,7 @@ impl Project {
 					.subproject(Importer::root())
 					.deser_manifest()
 					.await?
+					.workspace
 					.patches
 					.iter()
 					.filter_map(|(id, patch_path)| {

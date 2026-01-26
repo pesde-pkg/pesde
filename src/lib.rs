@@ -27,7 +27,7 @@ use std::{
 };
 use tokio::{
 	io::AsyncReadExt as _,
-	sync::{OwnedRwLockReadGuard, RwLock},
+	sync::{Mutex, OwnedRwLockReadGuard, RwLock},
 };
 use tracing::instrument;
 use wax::Pattern as _;
@@ -129,8 +129,18 @@ impl Importer {
 
 	/// The path of this importer
 	#[must_use]
-	pub fn as_path(&self) -> &RelativePath {
+	fn as_path(&self) -> &RelativePath {
 		&self.0
+	}
+}
+
+impl Display for Importer {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		if self.as_path().as_str().is_empty() {
+			write!(f, "(root)")
+		} else {
+			write!(f, "{}", self.as_path())
+		}
 	}
 }
 
@@ -141,16 +151,14 @@ struct ProjectShared {
 	data_dir: PathBuf,
 	cas_dir: PathBuf,
 	auth_config: AuthConfig,
+	manifests: Mutex<HashMap<Importer, Arc<RwLock<Manifest>>>>,
 }
-
-type Manifests = HashMap<Importer, Manifest>;
 
 /// The main struct of the pesde library, representing a project
 /// Unlike `ProjectShared`, this struct is `Send` and `Sync` and is cheap to clone because it is `Arc`-backed
 #[derive(Debug, Clone)]
 pub struct Project {
 	shared: Arc<ProjectShared>,
-	manifests: Arc<RwLock<Manifests>>,
 }
 
 impl Project {
@@ -174,9 +182,9 @@ impl Project {
 				cas_dir,
 				data_dir: data_dir.into(),
 				auth_config,
+				manifests: Default::default(),
 			}
 			.into(),
-			manifests: Arc::new(RwLock::new(HashMap::new())),
 		}
 	}
 
@@ -310,32 +318,24 @@ impl Subproject {
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
 	pub async fn deser_manifest(
 		&self,
-	) -> Result<OwnedRwLockReadGuard<Manifests, Manifest>, errors::ManifestReadError> {
-		{
-			let manifests_guard = self.project().manifests.clone().read_owned().await;
-			if manifests_guard.get(self.importer()).is_some() {
-				return Ok(OwnedRwLockReadGuard::map(manifests_guard, |m| {
-					m.get(self.importer()).unwrap()
-				}));
-			}
+	) -> Result<OwnedRwLockReadGuard<Manifest>, errors::ManifestReadError> {
+		let mut manifests_guard = self.project().shared.manifests.lock().await;
+		if !manifests_guard.contains_key(self.importer()) {
+			let manifest = fs::read_to_string(self.dir().join(MANIFEST_FILE_NAME)).await?;
+			let manifest = toml::from_str::<Manifest>(&manifest)
+				.map_err(|e| errors::ManifestReadErrorKind::Serde(self.dir(), e))?;
+			manifests_guard.insert(self.importer().clone(), Arc::new(RwLock::new(manifest)));
 		}
-		let mut manifests_guard = self.project().manifests.clone().write_owned().await;
-		let manifest = fs::read_to_string(self.dir().join(MANIFEST_FILE_NAME)).await?;
-		let manifest = toml::from_str::<Manifest>(&manifest)
-			.map_err(|e| errors::ManifestReadErrorKind::Serde(self.dir(), e))?;
-		manifests_guard.insert(self.importer().clone(), manifest);
-		Ok(OwnedRwLockReadGuard::map(
-			manifests_guard.downgrade(),
-			|m| m.get(self.importer()).unwrap(),
-		))
+		Ok(manifests_guard[self.importer()].clone().read_owned().await)
 	}
 
 	/// Write the manifest file
 	#[instrument(skip(self, manifest), level = "debug")]
 	pub async fn write_manifest(&self, manifest: impl AsRef<[u8]>) -> Result<(), std::io::Error> {
 		self.project()
+			.shared
 			.manifests
-			.write()
+			.lock()
 			.await
 			.remove(self.importer());
 		fs::write(self.dir().join(MANIFEST_FILE_NAME), manifest.as_ref()).await
@@ -437,11 +437,11 @@ pub async fn find_roots(cwd: PathBuf) -> Result<(PathBuf, Importer), errors::Fin
 			errors::ManifestReadError::from(errors::ManifestReadErrorKind::Serde(path.into(), e))
 		})?;
 
-		if manifest.workspace_members.is_empty() {
+		if manifest.workspace.members.is_empty() {
 			return Ok(HashSet::new());
 		}
 
-		matching_globs(path, manifest.workspace_members.iter().map(String::as_str))
+		matching_globs(path, manifest.workspace.members.iter().map(String::as_str))
 			.await
 			.map_err(|e| errors::FindRootsErrorKind::Globbing(e).into())
 	}

@@ -2,12 +2,7 @@ use crate::GixUrl;
 #[cfg(feature = "patches")]
 use crate::source::ids::PackageId;
 use crate::{
-	engine::EngineKind,
-	manifest::{
-		overrides::{OverrideKey, OverrideSpecifier},
-		target::Target,
-	},
-	ser_display_deser_fromstr,
+	engine::EngineKind, manifest::target::Target, ser_display_deser_fromstr,
 	source::specifiers::DependencySpecifiers,
 };
 #[cfg(feature = "patches")]
@@ -23,8 +18,6 @@ use std::{
 };
 use tracing::instrument;
 
-/// Overrides
-pub mod overrides;
 /// Targets
 pub mod target;
 
@@ -38,6 +31,32 @@ pub struct ManifestIndices {
 	#[cfg(feature = "wally-compat")]
 	#[serde(default, rename = "wally_indices")]
 	pub wally: BTreeMap<String, GixUrl>,
+}
+
+/// A specifier for an override
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[serde(untagged)]
+pub enum OverrideSpecifier {
+	/// A specifier for a dependency
+	Specifier(DependencySpecifiers),
+	/// An alias for a dependency the current project depends on
+	Alias(Alias),
+}
+
+/// The `workspace` field of the manifest
+#[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ManifestWorkspace {
+	/// A list of globs pointing to workspace members' directories
+	#[serde(default)]
+	pub members: Vec<String>,
+	/// The patches to apply to packages
+	#[cfg(feature = "patches")]
+	#[serde(default)]
+	pub patches: BTreeMap<PackageId, RelativePathBuf>,
+	/// The overrides this workspace has
+	#[serde(default, skip_serializing)]
+	pub overrides: BTreeMap<PackageId, OverrideSpecifier>,
 }
 
 /// A package manifest
@@ -61,19 +80,11 @@ pub struct Manifest {
 	/// The indices this package uses
 	#[serde(flatten)]
 	pub indices: ManifestIndices,
-	/// The overrides this package has
-	#[serde(default, skip_serializing)]
-	pub overrides: BTreeMap<OverrideKey, OverrideSpecifier>,
 	/// The files to include in the package
 	#[serde(default)]
 	pub includes: Vec<String>,
-	/// The patches to apply to packages
-	#[cfg(feature = "patches")]
-	#[serde(default)]
-	pub patches: BTreeMap<PackageId, RelativePathBuf>,
-	/// A list of globs pointing to workspace members' directories
-	#[serde(default)]
-	pub workspace_members: Vec<String>,
+	/// The workspace configuration
+	pub workspace: ManifestWorkspace,
 	/// The Roblox place of this project
 	#[serde(default)]
 	pub place: BTreeMap<target::RobloxPlaceKind, String>,

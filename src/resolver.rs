@@ -2,7 +2,7 @@
 use crate::{
 	GixUrl, Project, RefreshedSources,
 	graph::{DependencyGraph, DependencyGraphNode},
-	manifest::{Alias, DependencyType, overrides::OverrideSpecifier},
+	manifest::{Alias, DependencyType},
 	source::{
 		PackageSources,
 		ids::PackageId,
@@ -12,18 +12,322 @@ use crate::{
 	},
 };
 use crate::{
-	Importer,
+	Importer, Subproject,
 	graph::{DependencyGraphImporter, DependencyTypeGraph, DependencyTypeGraphNode},
+	manifest::{ManifestIndices, OverrideSpecifier, target::TargetKind},
 	matching_globs,
 };
 use itertools::Itertools as _;
 use relative_path::RelativePath;
-use std::{
-	collections::{BTreeMap, HashMap, VecDeque},
-	sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use tokio::task::JoinSet;
 use tracing::{Instrument as _, instrument};
+
+fn specifier_to_source(
+	indices: Option<&ManifestIndices>,
+	specifier: &DependencySpecifiers,
+) -> Result<PackageSources, errors::DependencyGraphError> {
+	let source = match &specifier {
+		#[expect(deprecated)]
+		DependencySpecifiers::Pesde(specifier) => {
+			let index_url = if let Some(indices) = indices {
+				indices
+					.pesde
+					.get(&specifier.index)
+					.ok_or_else(|| {
+						errors::DependencyGraphErrorKind::IndexNotFound(specifier.index.clone())
+					})?
+					.clone()
+			} else {
+				specifier
+					.index
+					.as_str()
+					.try_into()
+					.map(GixUrl::new)
+					// specifiers in indices store the index url in this field
+					.unwrap()
+			};
+
+			PackageSources::Pesde(PesdePackageSource::new(index_url))
+		}
+		#[cfg(feature = "wally-compat")]
+		DependencySpecifiers::Wally(specifier) => {
+			let index_url = if let Some(indices) = indices {
+				indices
+					.wally
+					.get(&specifier.index)
+					.ok_or_else(|| {
+						errors::DependencyGraphErrorKind::WallyIndexNotFound(
+							specifier.index.clone(),
+						)
+					})?
+					.clone()
+			} else {
+				specifier
+					.index
+					.as_str()
+					.parse()
+					// specifiers in indices store the index url in this field
+					.unwrap()
+			};
+
+			PackageSources::Wally(crate::source::wally::WallyPackageSource::new(index_url))
+		}
+		DependencySpecifiers::Git(specifier) => PackageSources::Git(
+			crate::source::git::GitPackageSource::new(specifier.repo.clone()),
+		),
+		DependencySpecifiers::Path(_) => {
+			PackageSources::Path(crate::source::path::PathPackageSource)
+		}
+	};
+
+	Ok(source)
+}
+
+struct ResolveEntry {
+	subproject: Subproject,
+	specifier: DependencySpecifiers,
+	ty: DependencyType,
+	dependant: Option<PackageId>,
+	path: Vec<Alias>,
+	target: TargetKind,
+}
+
+async fn prepare_queue(
+	project: &Project,
+	graph: &mut DependencyGraph,
+	previous_graph: Option<DependencyGraph>,
+) -> Result<VecDeque<ResolveEntry>, errors::DependencyGraphError> {
+	let root_subproject = project.clone().subproject(Importer::root());
+	let root_manifest = root_subproject.deser_manifest().await?;
+	let root_dependencies = root_manifest.all_dependencies()?;
+
+	graph.overrides = root_manifest
+		.workspace
+		.overrides
+		.iter()
+		.map(|(id, spec)| {
+			Ok((
+				id.clone(),
+				match spec {
+					OverrideSpecifier::Alias(alias) => root_dependencies
+						.get(alias)
+						.ok_or_else(|| {
+							errors::DependencyGraphErrorKind::AliasNotFound(alias.clone())
+						})?
+						.0
+						.clone(),
+					OverrideSpecifier::Specifier(spec) => spec.clone(),
+				},
+			))
+		})
+		.collect::<Result<_, errors::DependencyGraphError>>()?;
+
+	let members = matching_globs(
+		project.dir(),
+		root_manifest.workspace.members.iter().map(String::as_str),
+	)
+	.await?;
+
+	let mut members = members
+		.into_iter()
+		.map(|path| {
+			project.clone().subproject(Importer::new(
+				RelativePath::from_path(path.strip_prefix(project.dir()).unwrap()).unwrap(),
+			))
+		})
+		.chain(std::iter::once(root_subproject.clone()))
+		.map(|subproject| async move {
+			let manifest = subproject.deser_manifest().await?;
+			Ok((subproject, manifest))
+		})
+		.collect::<JoinSet<Result<_, errors::DependencyGraphError>>>();
+
+	// TODO: handle this more efficiently
+	let previous_graph = previous_graph.filter(|previous| previous.overrides == graph.overrides);
+
+	let mut queue = VecDeque::<ResolveEntry>::new();
+
+	while let Some(res) = members.join_next().await {
+		let (subproject, manifest) = res.unwrap()?;
+		let all_current_dependencies = manifest.all_dependencies()?;
+
+		let importer_entry = graph
+			.importers
+			.entry(subproject.importer().clone())
+			.or_insert_with(|| DependencyGraphImporter {
+				dependencies: Default::default(),
+			});
+
+		let mut all_specifiers = all_current_dependencies
+			.clone()
+			.into_iter()
+			.map(|(alias, (spec, ty))| ((spec, ty), alias))
+			.collect::<HashMap<_, _>>();
+
+		if let Some(previous_graph) = &previous_graph
+			&& let Some(previous_importer) = previous_graph.importers.get(subproject.importer())
+		{
+			for (old_alias, (package_id, specifier, source_ty)) in &previous_importer.dependencies {
+				if specifier.is_local() {
+					// local dependencies must always be resolved fresh in case their FS changes
+					continue;
+				}
+
+				let Some(alias) = all_specifiers.remove(&(specifier.clone(), *source_ty)) else {
+					tracing::debug!(
+						"dependency {package_id} (old alias {old_alias}) from old dependency graph is no longer in the manifest",
+					);
+					continue;
+				};
+
+				let span = tracing::info_span!("resolve from old graph", alias = alias.as_str());
+				let _guard = span.enter();
+
+				let mut queue = previous_graph.nodes[package_id]
+					.dependencies
+					.iter()
+					.map(|(dep_alias, id)| (id, vec![alias.clone(), dep_alias.clone()]))
+					.collect::<VecDeque<_>>();
+
+				tracing::debug!("resolved {package_id} from old dependency graph");
+
+				importer_entry
+					.dependencies
+					.insert(alias, (package_id.clone(), specifier.clone(), *source_ty));
+
+				graph
+					.nodes
+					.insert(package_id.clone(), previous_graph.nodes[package_id].clone());
+
+				while let Some((dep_id, path)) = queue.pop_front() {
+					let inner_span =
+						tracing::info_span!("resolve dependency", path = path.iter().join(">"));
+					let _inner_guard = inner_span.enter();
+
+					tracing::debug!("resolved sub-dependency {dep_id}");
+					if graph.nodes.contains_key(dep_id) {
+						tracing::debug!("sub-dependency {dep_id} already resolved in new graph",);
+						continue;
+					}
+					graph
+						.nodes
+						.insert(dep_id.clone(), previous_graph.nodes[dep_id].clone());
+
+					previous_graph.nodes[dep_id]
+						.dependencies
+						.iter()
+						.map(|(alias, id)| {
+							(
+								id,
+								path.iter()
+									.cloned()
+									.chain(std::iter::once(alias.clone()))
+									.collect(),
+							)
+						})
+						.for_each(|dep| queue.push_back(dep));
+				}
+			}
+		}
+
+		queue.extend(
+			all_specifiers
+				.into_iter()
+				.map(|((spec, ty), alias)| ResolveEntry {
+					subproject: subproject.clone(),
+					specifier: spec,
+					ty,
+					dependant: None,
+					path: vec![alias],
+					target: manifest.target.kind(),
+				}),
+		);
+	}
+
+	Ok(queue)
+}
+
+type ResolveVersionData = (
+	PackageId,
+	BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
+);
+
+#[instrument]
+async fn resolve_version(
+	subproject: Subproject,
+	graph: &DependencyGraph,
+	refreshed_sources: &RefreshedSources,
+	pass_indices: bool,
+	specifier: &DependencySpecifiers,
+	target: TargetKind,
+) -> Result<ResolveVersionData, errors::DependencyGraphError> {
+	let mut manifest = None;
+
+	let mut inner = async |specifier: &DependencySpecifiers, pass_indices: bool| {
+		if pass_indices && manifest.is_none() {
+			manifest = Some(subproject.deser_manifest().await?);
+		}
+		let source = specifier_to_source(manifest.as_ref().map(|m| &m.indices), specifier)?;
+
+		refreshed_sources
+			.refresh(
+				&source,
+				&RefreshOptions {
+					project: subproject.project().clone(),
+				},
+			)
+			.await?;
+
+		let (source, pkg_ref, mut versions, suggestions) = source
+			.resolve(
+				specifier,
+				&ResolveOptions {
+					subproject: subproject.clone(),
+					target,
+					refreshed_sources: refreshed_sources.clone(),
+					loose_target: false,
+				},
+			)
+			.await?;
+
+		let Some((package_id, dependencies)) = graph
+			.nodes
+			.keys()
+			.rfind(|package_id| {
+				*package_id.source() == source
+					&& *package_id.pkg_ref() == pkg_ref
+					&& versions.contains_key(package_id.v_id())
+			})
+			.map(|package_id| {
+				(
+					package_id.clone(),
+					versions.remove(package_id.v_id()).unwrap(),
+				)
+			})
+			.or_else(|| {
+				versions.pop_last().map(|(v_id, dependencies)| {
+					(PackageId::new(source, pkg_ref, v_id), dependencies)
+				})
+			})
+		else {
+			return Err(errors::DependencyGraphErrorKind::NoMatchingVersion(
+				specifier.clone(),
+				target,
+				suggestions,
+			)
+			.into());
+		};
+
+		Ok::<_, errors::DependencyGraphError>((package_id, dependencies))
+	};
+
+	let (id, deps) = inner(specifier, pass_indices).await?;
+	if let Some(specifier) = graph.overrides.get(&id) {
+		return inner(specifier, true).await;
+	}
+	Ok((id, deps))
+}
 
 impl Project {
 	/// Create a dependency graph from the project's manifest
@@ -42,323 +346,54 @@ impl Project {
 		// TODO: always recompute the type graph
 		let mut graph = DependencyGraph {
 			importers: Default::default(),
+			overrides: Default::default(),
 			nodes: Default::default(),
 		};
 
-		let mut members = {
-			let manifest = self
-				.clone()
-				.subproject(Importer::root())
-				.deser_manifest()
-				.await?;
-			let members = matching_globs(
-				self.dir(),
-				manifest.workspace_members.iter().map(String::as_str),
-			)
-			.await?;
-
-			members
-				.into_iter()
-				.map(|path| {
-					self.clone().subproject(Importer::new(
-						RelativePath::from_path(path.strip_prefix(self.dir()).unwrap()).unwrap(),
-					))
-				})
-				.map(|subproject| async move {
-					let manifest = subproject.deser_manifest().await?;
-					Ok((subproject, manifest))
-				})
-				.collect::<JoinSet<Result<_, errors::DependencyGraphError>>>()
-		};
-
-		let mut queue = VecDeque::new();
-
-		while let Some(res) = members.join_next().await {
-			let (subproject, manifest) = res.unwrap()?;
-			let all_current_dependencies = manifest.all_dependencies()?;
-
-			let resolved_overrides = manifest
-				.overrides
-				.iter()
-				.map(|(key, spec)| {
-					Ok((
-						key.clone(),
-						match spec {
-							OverrideSpecifier::Specifier(spec) => spec.clone(),
-							OverrideSpecifier::Alias(alias) => all_current_dependencies
-								.get(alias)
-								.map(|(spec, _)| spec)
-								.ok_or_else(|| {
-									errors::DependencyGraphErrorKind::AliasNotFound(alias.clone())
-								})?
-								.clone(),
-						},
-					))
-				})
-				.collect::<Result<BTreeMap<_, _>, errors::DependencyGraphError>>()?;
-
-			let manifest_target_kind = manifest.target.kind();
-			let manifest_indices = Arc::new(manifest.indices.clone());
-			drop(manifest);
-
-			let importer_entry = graph
-				.importers
-				.entry(subproject.importer().clone())
-				.or_insert_with(|| DependencyGraphImporter {
-					dependencies: Default::default(),
-					overrides: resolved_overrides.clone(),
-				});
-
-			let mut all_specifiers = all_current_dependencies
-				.clone()
-				.into_iter()
-				.map(|(alias, (spec, ty))| ((spec, ty), alias))
-				.collect::<HashMap<_, _>>();
-
-			let previous = previous_graph
-				.as_ref()
-				.and_then(|graph| {
-					graph
-						.importers
-						.get(subproject.importer())
-						.map(|importer| (graph, importer))
-				})
-				.filter(|(_, importer)| resolved_overrides == importer.overrides);
-
-			let resolved_overrides = Arc::new(resolved_overrides);
-
-			if let Some((previous_graph, previous_importer)) = &previous {
-				for (old_alias, (package_id, specifier, source_ty)) in
-					&previous_importer.dependencies
-				{
-					if specifier.is_local() {
-						// local dependencies must always be resolved fresh in case their FS changes
-						continue;
-					}
-
-					let Some(alias) = all_specifiers.remove(&(specifier.clone(), *source_ty))
-					else {
-						tracing::debug!(
-							"dependency {package_id} (old alias {old_alias}) from old dependency graph is no longer in the manifest",
-						);
-						continue;
-					};
-
-					let span =
-						tracing::info_span!("resolve from old graph", alias = alias.as_str());
-					let _guard = span.enter();
-
-					let mut queue = previous_graph.nodes[package_id]
-						.dependencies
-						.iter()
-						.map(|(dep_alias, id)| (id, vec![alias.clone(), dep_alias.clone()]))
-						.collect::<VecDeque<_>>();
-
-					tracing::debug!("resolved {package_id} from old dependency graph");
-
-					importer_entry
-						.dependencies
-						.insert(alias, (package_id.clone(), specifier.clone(), *source_ty));
-
-					graph
-						.nodes
-						.insert(package_id.clone(), previous_graph.nodes[package_id].clone());
-
-					while let Some((dep_id, path)) = queue.pop_front() {
-						let inner_span =
-							tracing::info_span!("resolve dependency", path = path.iter().join(">"));
-						let _inner_guard = inner_span.enter();
-
-						tracing::debug!("resolved sub-dependency {dep_id}");
-						if graph.nodes.contains_key(dep_id) {
-							tracing::debug!(
-								"sub-dependency {dep_id} already resolved in new graph",
-							);
-							continue;
-						}
-						graph
-							.nodes
-							.insert(dep_id.clone(), previous_graph.nodes[dep_id].clone());
-
-						previous_graph.nodes[dep_id]
-							.dependencies
-							.iter()
-							.map(|(alias, id)| {
-								(
-									id,
-									path.iter()
-										.cloned()
-										.chain(std::iter::once(alias.clone()))
-										.collect(),
-								)
-							})
-							.for_each(|dep| queue.push_back(dep));
-					}
-				}
-			}
-
-			let all_current_dependencies = Arc::new(all_current_dependencies);
-
-			queue.extend(all_specifiers.into_iter().map(|((spec, ty), alias)| {
-				(
-					subproject.clone(),
-					manifest_indices.clone(),
-					all_current_dependencies.clone(),
-					resolved_overrides.clone(),
-					spec,
-					ty,
-					None::<PackageId>,
-					vec![alias],
-					false,
-					manifest_target_kind,
-				)
-			}));
-		}
-
-		let refresh_options = RefreshOptions {
-			project: self.clone(),
-		};
+		let mut queue = prepare_queue(self, &mut graph, previous_graph).await?;
 
 		let mut type_graph = None::<DependencyTypeGraph>;
 
-		while let Some((
-			subproject,
-			manifest_indices,
-			all_current_dependencies,
-			overrides,
-			specifier,
-			ty,
-			dependant,
-			path,
-			overridden,
-			target,
-		)) = queue.pop_front()
-		{
+		while let Some(entry) = queue.pop_front() {
 			let type_graph = type_graph.get_or_insert_with(|| DependencyTypeGraph {
 				importers: Default::default(),
 				nodes: Default::default(),
 			});
 
 			async {
-				let alias = path.last().unwrap();
-				let depth = path.len() - 1;
+				let alias = entry.path.last().unwrap();
+				let depth = entry.path.len() - 1;
 
-				tracing::debug!("resolving {specifier} ({ty:?})");
-				let source = match &specifier {
-					#[expect(deprecated)]
-					DependencySpecifiers::Pesde(specifier) => {
-						let index_url = if !is_published_package && (depth == 0 || overridden) {
-							manifest_indices
-								.pesde
-								.get(&specifier.index)
-								.ok_or_else(|| {
-									errors::DependencyGraphErrorKind::IndexNotFound(
-										specifier.index.clone(),
-									)
-								})?
-								.clone()
-						} else {
-							specifier
-								.index
-								.as_str()
-								.try_into()
-								.map(GixUrl::new)
-								// specifiers in indices store the index url in this field
-								.unwrap()
-						};
+				tracing::debug!("resolving {} ({:?})", entry.specifier, entry.ty);
 
-						PackageSources::Pesde(PesdePackageSource::new(index_url))
-					}
-					#[cfg(feature = "wally-compat")]
-					DependencySpecifiers::Wally(specifier) => {
-						let index_url = if !is_published_package && (depth == 0 || overridden) {
-							manifest_indices
-								.wally
-								.get(&specifier.index)
-								.ok_or_else(|| {
-									errors::DependencyGraphErrorKind::WallyIndexNotFound(
-										specifier.index.clone(),
-									)
-								})?
-								.clone()
-						} else {
-							specifier
-								.index
-								.as_str()
-								.parse()
-								// specifiers in indices store the index url in this field
-								.unwrap()
-						};
-
-						PackageSources::Wally(crate::source::wally::WallyPackageSource::new(
-							index_url,
-						))
-					}
-					DependencySpecifiers::Git(specifier) => PackageSources::Git(
-						crate::source::git::GitPackageSource::new(specifier.repo.clone()),
-					),
-					DependencySpecifiers::Path(_) => {
-						PackageSources::Path(crate::source::path::PathPackageSource)
-					}
-				};
-
-				refreshed_sources.refresh(&source, &refresh_options).await?;
-
-				let (source, pkg_ref, mut versions, suggestions) = source
-					.resolve(
-						&specifier,
-						&ResolveOptions {
-							subproject: subproject.clone(),
-							target,
-							refreshed_sources: refreshed_sources.clone(),
-							loose_target: false,
-						},
-					)
-					.await?;
-
-				let Some((package_id, dependencies)) = graph
-					.nodes
-					.keys()
-					.rfind(|package_id| {
-						*package_id.source() == source
-							&& *package_id.pkg_ref() == pkg_ref
-							&& versions.contains_key(package_id.v_id())
-					})
-					.map(|package_id| {
-						(
-							package_id.clone(),
-							versions.remove(package_id.v_id()).unwrap(),
-						)
-					})
-					.or_else(|| {
-						versions.pop_last().map(|(v_id, dependencies)| {
-							(PackageId::new(source, pkg_ref, v_id), dependencies)
-						})
-					})
-				else {
-					return Err(errors::DependencyGraphErrorKind::NoMatchingVersion(
-						specifier,
-						target,
-						suggestions,
-					)
-					.into());
-				};
+				let (package_id, dependencies) = resolve_version(
+					entry.subproject.clone(),
+					&graph,
+					&refreshed_sources,
+					!is_published_package && depth == 0,
+					&entry.specifier,
+					entry.target,
+				)
+				.await?;
 
 				if depth == 0 {
 					graph
 						.importers
-						.get_mut(subproject.importer())
+						.get_mut(entry.subproject.importer())
 						.unwrap()
 						.dependencies
-						.insert(alias.clone(), (package_id.clone(), specifier.clone(), ty));
+						.insert(
+							alias.clone(),
+							(package_id.clone(), entry.specifier.clone(), entry.ty),
+						);
 					type_graph
 						.importers
-						.entry(subproject.importer().clone())
+						.entry(entry.subproject.importer().clone())
 						.or_default()
 						.insert(alias.clone(), package_id.clone());
 				}
 
-				if let Some(dependant_id) = dependant {
+				if let Some(dependant_id) = entry.dependant {
 					graph
 						.nodes
 						.get_mut(&dependant_id)
@@ -370,7 +405,7 @@ impl Project {
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in type graph")
 						.dependencies
-						.insert(alias.clone(), (package_id.clone(), ty));
+						.insert(alias.clone(), (package_id.clone(), entry.ty));
 				}
 
 				if graph.nodes.contains_key(&package_id) {
@@ -402,50 +437,26 @@ impl Project {
 						continue;
 					}
 
-					let overridden = overrides.iter().find_map(|(key, spec)| {
-						key.0.iter().find_map(|override_path| {
-							// if the path up until the last element is the same as the current path,
-							// and the last element in the path is the dependency alias,
-							// then the specifier is to be overridden
-							(path.len() == override_path.len() - 1
-								&& path == override_path[..override_path.len() - 1]
-								&& override_path.last() == Some(&dependency_alias))
-							.then_some(spec)
-						})
-					});
-
-					if overridden.is_some() {
-						tracing::debug!(
-							"overridden specifier found for {} ({dependency_spec})",
-							path.iter()
-								.map(Alias::as_str)
-								.chain(std::iter::once(dependency_alias.as_str()))
-								.format(">"),
-						);
-					}
-
-					queue.push_back((
-						subproject.clone(),
-						manifest_indices.clone(),
-						all_current_dependencies.clone(),
-						overrides.clone(),
-						overridden.cloned().unwrap_or(dependency_spec),
-						dependency_ty,
-						Some(package_id.clone()),
-						path.iter()
+					queue.push_back(ResolveEntry {
+						subproject: entry.subproject.clone(),
+						specifier: dependency_spec,
+						ty: dependency_ty,
+						dependant: Some(package_id.clone()),
+						path: entry
+							.path
+							.iter()
 							.cloned()
 							.chain(std::iter::once(dependency_alias))
 							.collect(),
-						overridden.is_some(),
-						package_id.v_id().target(),
-					));
+						target: package_id.v_id().target(),
+					});
 				}
 
 				Ok::<_, errors::DependencyGraphError>(())
 			}
 			.instrument(tracing::info_span!(
 				"resolve new/changed",
-				path = path.iter().map(Alias::as_str).join(">")
+				path = entry.path.iter().map(Alias::as_str).join(">")
 			))
 			.await?;
 		}

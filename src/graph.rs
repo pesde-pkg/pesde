@@ -1,6 +1,6 @@
 use crate::{
 	Importer, PACKAGES_CONTAINER_NAME,
-	manifest::{Alias, DependencyType, overrides::OverrideKey},
+	manifest::{Alias, DependencyType},
 	source::{
 		ids::PackageId, refs::StructureKind, specifiers::DependencySpecifiers,
 		traits::PackageRef as _,
@@ -14,9 +14,6 @@ use std::{collections::BTreeMap, path::PathBuf};
 pub struct DependencyGraphImporter {
 	/// The dependencies of the importer
 	pub dependencies: BTreeMap<Alias, (PackageId, DependencySpecifiers, DependencyType)>,
-	/// The overrides of the importer
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
 }
 
 /// A graph of dependencies in a project
@@ -24,6 +21,8 @@ pub struct DependencyGraphImporter {
 pub struct DependencyGraph {
 	/// The importers in the graph
 	pub importers: BTreeMap<Importer, DependencyGraphImporter>,
+	/// The overrides in this workspace
+	pub overrides: BTreeMap<PackageId, DependencySpecifiers>,
 	/// The nodes in the graph
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub nodes: BTreeMap<PackageId, DependencyGraphNode>,
