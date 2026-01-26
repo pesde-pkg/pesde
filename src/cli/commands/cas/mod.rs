@@ -16,7 +16,10 @@ pub enum CasCommands {
 impl CasCommands {
 	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		match self {
-			CasCommands::Path(path) => path.run(subproject),
+			CasCommands::Path(path) => {
+				path.run(&subproject);
+				Ok(())
+			}
 			CasCommands::Prune(prune) => prune.run(subproject).await,
 		}
 	}

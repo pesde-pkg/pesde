@@ -5,9 +5,7 @@ use pesde::Subproject;
 pub struct PathCommand;
 
 impl PathCommand {
-	pub fn run(self, subproject: Subproject) -> anyhow::Result<()> {
+	pub fn run(self, subproject: &Subproject) {
 		println!("{}", subproject.project().cas_dir().display());
-
-		Ok(())
 	}
 }

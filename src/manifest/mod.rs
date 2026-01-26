@@ -44,18 +44,15 @@ pub enum OverrideSpecifier {
 }
 
 /// The `workspace` field of the manifest
-#[derive(Deserialize, Debug, Clone)]
-#[serde(deny_unknown_fields)]
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ManifestWorkspace {
 	/// A list of globs pointing to workspace members' directories
-	#[serde(default)]
 	pub members: Vec<String>,
 	/// The patches to apply to packages
 	#[cfg(feature = "patches")]
-	#[serde(default)]
 	pub patches: BTreeMap<PackageId, RelativePathBuf>,
 	/// The overrides this workspace has
-	#[serde(default, skip_serializing)]
 	pub overrides: BTreeMap<PackageId, OverrideSpecifier>,
 }
 
@@ -84,6 +81,7 @@ pub struct Manifest {
 	#[serde(default)]
 	pub includes: Vec<String>,
 	/// The workspace configuration
+	#[serde(default)]
 	pub workspace: ManifestWorkspace,
 	/// The Roblox place of this project
 	#[serde(default)]

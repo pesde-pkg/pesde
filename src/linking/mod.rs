@@ -6,6 +6,7 @@ use crate::{
 	source::{
 		fs::{cas_path, store_in_cas},
 		ids::PackageId,
+		refs::StructureKind,
 		traits::PackageRef as _,
 	},
 };
@@ -97,9 +98,12 @@ impl Project {
 											.join(dependant_id.v_id().target().packages_dir())
 											.join(PACKAGES_CONTAINER_NAME)
 											.join(DependencyGraphNode::container_dir(&dependant_id))
-											.join(DependencyGraphNode::dependencies_dir(
-												&dependant_id,
-											)),
+											.join(match dependant_id.pkg_ref().structure_kind() {
+												StructureKind::Wally => "..",
+												StructureKind::PesdeV1 => {
+													dep_id.v_id().target().packages_dir()
+												}
+											}),
 										destination: dependencies_dir
 											.join(dep_id.v_id().target().packages_dir())
 											.join(&container_dir),
@@ -159,7 +163,14 @@ impl Project {
 									&dirs,
 									id.pkg_ref().structure_kind(),
 									&*subproject.deser_manifest().await?,
-								)?,
+								)
+								.map_err(|e| {
+									errors::LinkingErrorKind::GetLibRequirePath(
+										id.clone(),
+										subproject.importer().clone(),
+										e,
+									)
+								})?,
 								types.as_deref().unwrap_or(&NO_TYPES),
 							);
 
@@ -190,6 +201,8 @@ impl Project {
 pub mod errors {
 	use thiserror::Error;
 
+	use crate::{Importer, source::ids::PackageId};
+
 	/// Errors that can occur while linking dependencies
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = LinkingError))]
@@ -200,8 +213,12 @@ pub mod errors {
 		Io(#[from] std::io::Error),
 
 		/// An error occurred while getting the require path for a library
-		#[error("error getting require path for library")]
-		GetLibRequirePath(#[from] super::generator::errors::GetLibRequirePath),
+		#[error("error getting require path for `{0}` in importer `{1}`")]
+		GetLibRequirePath(
+			PackageId,
+			Importer,
+			#[source] super::generator::errors::GetLibRequirePath,
+		),
 
 		/// Reading the manifest failed
 		#[error("error reading manifest")]

@@ -166,7 +166,7 @@ impl ExecuteCommand {
 					.context("failed to write package contents")?;
 
 				let mut graph = project
-					.dependency_graph(None, refreshed_sources.clone(), true)
+					.dependency_graph(None, &refreshed_sources, true)
 					.await
 					.context("failed to build dependency graph")?
 					.0;

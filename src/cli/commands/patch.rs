@@ -1,7 +1,7 @@
 use crate::cli::{
 	VersionedPackageName,
+	install::get_graph_strict,
 	style::{CLI_STYLE, INFO_STYLE, WARN_PREFIX},
-	up_to_date_lockfile,
 };
 use anyhow::Context as _;
 use base64::Engine as _;
@@ -9,7 +9,7 @@ use clap::Args;
 use console::style;
 use fs_err::tokio as fs;
 use pesde::{
-	MANIFEST_FILE_NAME, Subproject,
+	MANIFEST_FILE_NAME, Project, RefreshedSources,
 	patches::setup_patches_repo,
 	source::traits::{DownloadOptions, PackageSource as _},
 };
@@ -22,12 +22,9 @@ pub struct PatchCommand {
 }
 
 impl PatchCommand {
-	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
-		let graph = if let Some(lockfile) = up_to_date_lockfile(subproject.project()).await? {
-			lockfile.graph
-		} else {
-			anyhow::bail!("outdated lockfile, please run the install command first")
-		};
+	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+		let refreshed_sources = RefreshedSources::new();
+		let graph = get_graph_strict(&project, &refreshed_sources).await?;
 
 		let id = self.package.get(&graph)?;
 		if id.pkg_ref().is_local() {
@@ -36,8 +33,7 @@ impl PatchCommand {
 
 		let source = id.source();
 
-		let directory = subproject
-			.project()
+		let directory = project
 			.data_dir()
 			.join("patches")
 			.join(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(id.to_string()))
@@ -48,14 +44,14 @@ impl PatchCommand {
 			.download(
 				id.pkg_ref(),
 				&DownloadOptions {
-					project: subproject.project().clone(),
+					project: project.clone(),
 					reqwest,
 					reporter: ().into(),
 					version_id: id.v_id(),
 				},
 			)
 			.await?
-			.write_to(&directory, subproject.project().cas_dir(), false)
+			.write_to(&directory, project.cas_dir(), false)
 			.await
 			.context("failed to write package contents")?;
 

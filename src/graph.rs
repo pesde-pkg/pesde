@@ -1,10 +1,7 @@
 use crate::{
 	Importer, PACKAGES_CONTAINER_NAME,
 	manifest::{Alias, DependencyType},
-	source::{
-		ids::PackageId, refs::StructureKind, specifiers::DependencySpecifiers,
-		traits::PackageRef as _,
-	},
+	source::{ids::PackageId, specifiers::DependencySpecifiers},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
@@ -13,6 +10,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyGraphImporter {
 	/// The dependencies of the importer
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub dependencies: BTreeMap<Alias, (PackageId, DependencySpecifiers, DependencyType)>,
 }
 
@@ -22,6 +20,7 @@ pub struct DependencyGraph {
 	/// The importers in the graph
 	pub importers: BTreeMap<Importer, DependencyGraphImporter>,
 	/// The overrides in this workspace
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub overrides: BTreeMap<PackageId, DependencySpecifiers>,
 	/// The nodes in the graph
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -40,13 +39,6 @@ pub struct DependencyGraphNode {
 }
 
 impl DependencyGraphNode {
-	pub(crate) fn dependencies_dir(package_id: &PackageId) -> &'static str {
-		match package_id.pkg_ref().structure_kind() {
-			StructureKind::Wally => "..",
-			StructureKind::PesdeV1 => package_id.v_id().target().packages_dir(),
-		}
-	}
-
 	/// Returns the directory to store the contents of the package in
 	#[must_use]
 	pub fn container_dir(package_id: &PackageId) -> PathBuf {

@@ -93,7 +93,9 @@ impl PackageSource for PathPackageSource {
 		let ResolveOptions { subproject, .. } = options;
 
 		let path = match &specifier.path {
-			RelativeOrAbsolutePath::Relative(rel_path) => rel_path.to_path(subproject.dir()),
+			RelativeOrAbsolutePath::Relative(rel_path) => {
+				rel_path.to_path(subproject.project().dir())
+			}
 			RelativeOrAbsolutePath::Absolute(abs_path) => abs_path.clone(),
 		};
 

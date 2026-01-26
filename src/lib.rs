@@ -14,7 +14,7 @@ use crate::{
 };
 use fs_err::tokio as fs;
 use gix::bstr::ByteSlice as _;
-use relative_path::RelativePath;
+use relative_path::{RelativePath, RelativePathBuf};
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -127,6 +127,12 @@ impl Importer {
 		Self(RelativePath::new("").into())
 	}
 
+	/// Whether this importer is the root importer
+	#[must_use]
+	pub fn is_root(&self) -> bool {
+		self.as_path().as_str().is_empty()
+	}
+
 	/// The path of this importer
 	#[must_use]
 	fn as_path(&self) -> &RelativePath {
@@ -136,7 +142,7 @@ impl Importer {
 
 impl Display for Importer {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		if self.as_path().as_str().is_empty() {
+		if self.is_root() {
 			write!(f, "(root)")
 		} else {
 			write!(f, "{}", self.as_path())
@@ -449,7 +455,7 @@ pub async fn find_roots(cwd: PathBuf) -> Result<(PathBuf, Importer), errors::Fin
 	macro_rules! to_importer {
 		($project_root:ident, $workspace_root:ident) => {
 			Importer::new(
-				RelativePath::from_path($project_root.strip_prefix(&$workspace_root).unwrap())
+				RelativePathBuf::from_path($project_root.strip_prefix(&$workspace_root).unwrap())
 					.unwrap(),
 			)
 		};

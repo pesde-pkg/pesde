@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::cli::{
+	install::get_graph_loose,
 	style::{ADDED_STYLE, INFO_STYLE, REMOVED_STYLE, SUCCESS_STYLE},
-	up_to_date_lockfile,
 };
 use anyhow::Context as _;
 use clap::Args;
@@ -30,20 +30,13 @@ pub struct OutdatedCommand {
 
 impl OutdatedCommand {
 	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
-		let mut graph = match up_to_date_lockfile(subproject.project()).await? {
-			Some(file) => file.graph,
-			None => {
-				anyhow::bail!(
-					"lockfile is out of sync, run `{} install` to update it",
-					env!("CARGO_BIN_NAME")
-				);
-			}
-		};
+		let refreshed_sources = RefreshedSources::new();
+		let mut graph = get_graph_loose(subproject.project(), &refreshed_sources).await?;
 
 		let refreshed_sources = RefreshedSources::new();
 
 		let mut tasks =
-			if subproject.importer().as_path().as_str().is_empty() {
+			if subproject.importer().is_root() {
 				Either::Left(graph.importers.into_iter().map(|(importer, deps)| {
 					(subproject.project().clone().subproject(importer), deps)
 				}))
@@ -56,7 +49,7 @@ impl OutdatedCommand {
 						.into_iter(),
 				)
 			}
-			.map(|(subproject, current_deps)| {
+			.map(|(subproject, importer_data)| {
 				let refreshed_sources = refreshed_sources.clone();
 				async move {
 					let manifest = subproject
@@ -65,7 +58,8 @@ impl OutdatedCommand {
 						.context("failed to read manifest")?;
 					let manifest_target_kind = manifest.target.kind();
 
-					let mut tasks = current_deps
+					let mut tasks = importer_data
+						.dependencies
 						.into_iter()
 						.filter(|(_, (_, spec, _))| !spec.is_local())
 						.map(|(alias, (id, mut spec, _))| {
@@ -158,15 +152,7 @@ impl OutdatedCommand {
 		}
 
 		for (importer, updates) in importer_updates {
-			println!(
-				"{}",
-				style(if importer.as_path().as_str().is_empty() {
-					"(root)"
-				} else {
-					importer.as_path().as_str()
-				})
-				.bold()
-			);
+			println!("{}", style(importer).bold());
 
 			for (alias, (current_id, new_id)) in updates {
 				println!(

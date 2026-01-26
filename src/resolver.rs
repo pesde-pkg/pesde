@@ -18,7 +18,7 @@ use crate::{
 	matching_globs,
 };
 use itertools::Itertools as _;
-use relative_path::RelativePath;
+use relative_path::RelativePathBuf;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use tokio::task::JoinSet;
 use tracing::{Instrument as _, instrument};
@@ -93,10 +93,11 @@ struct ResolveEntry {
 	target: TargetKind,
 }
 
+#[instrument(skip_all, level = "debug")]
 async fn prepare_queue(
 	project: &Project,
 	graph: &mut DependencyGraph,
-	previous_graph: Option<DependencyGraph>,
+	previous_graph: Option<&DependencyGraph>,
 ) -> Result<VecDeque<ResolveEntry>, errors::DependencyGraphError> {
 	let root_subproject = project.clone().subproject(Importer::root());
 	let root_manifest = root_subproject.deser_manifest().await?;
@@ -133,7 +134,7 @@ async fn prepare_queue(
 		.into_iter()
 		.map(|path| {
 			project.clone().subproject(Importer::new(
-				RelativePath::from_path(path.strip_prefix(project.dir()).unwrap()).unwrap(),
+				RelativePathBuf::from_path(path.strip_prefix(project.dir()).unwrap()).unwrap(),
 			))
 		})
 		.chain(std::iter::once(root_subproject.clone()))
@@ -253,7 +254,7 @@ type ResolveVersionData = (
 	BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 );
 
-#[instrument]
+#[instrument(skip_all, level = "debug")]
 async fn resolve_version(
 	subproject: Subproject,
 	graph: &DependencyGraph,
@@ -338,11 +339,12 @@ impl Project {
 	)]
 	pub async fn dependency_graph(
 		&self,
-		previous_graph: Option<DependencyGraph>,
-		refreshed_sources: RefreshedSources,
+		previous_graph: Option<&DependencyGraph>,
+		refreshed_sources: &RefreshedSources,
 		// used by `x` command - if true, specifier indices are expected to be URLs
 		is_published_package: bool,
-	) -> Result<(DependencyGraph, Option<DependencyTypeGraph>), errors::DependencyGraphError> {
+	) -> Result<(DependencyGraph, Option<DependencyTypeGraph>, bool), errors::DependencyGraphError>
+	{
 		// TODO: always recompute the type graph
 		let mut graph = DependencyGraph {
 			importers: Default::default(),
@@ -351,15 +353,17 @@ impl Project {
 		};
 
 		let mut queue = prepare_queue(self, &mut graph, previous_graph).await?;
+		if queue.is_empty() {
+			tracing::debug!("dependency graph is up to date");
+			return Ok((graph, None, false));
+		}
 
-		let mut type_graph = None::<DependencyTypeGraph>;
+		let mut type_graph = DependencyTypeGraph {
+			importers: Default::default(),
+			nodes: Default::default(),
+		};
 
 		while let Some(entry) = queue.pop_front() {
-			let type_graph = type_graph.get_or_insert_with(|| DependencyTypeGraph {
-				importers: Default::default(),
-				nodes: Default::default(),
-			});
-
 			async {
 				let alias = entry.path.last().unwrap();
 				let depth = entry.path.len() - 1;
@@ -369,7 +373,7 @@ impl Project {
 				let (package_id, dependencies) = resolve_version(
 					entry.subproject.clone(),
 					&graph,
-					&refreshed_sources,
+					refreshed_sources,
 					!is_published_package && depth == 0,
 					&entry.specifier,
 					entry.target,
@@ -461,7 +465,7 @@ impl Project {
 			.await?;
 		}
 
-		Ok((graph, type_graph))
+		Ok((graph, Some(type_graph), true))
 	}
 }
 

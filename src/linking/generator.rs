@@ -170,7 +170,7 @@ pub fn get_lib_require_path(
 
 				Some(
 					format!(
-						":FindFirstChild({})",
+						r#":FindFirstChild("{}")"#,
 						if matches!(pos, Position::Last | Position::Only) {
 							str.strip_suffix(".luau")
 								.or(str.strip_suffix(".lua"))

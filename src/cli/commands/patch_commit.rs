@@ -1,10 +1,11 @@
-use crate::cli::up_to_date_lockfile;
 use anyhow::Context as _;
 use base64::Engine as _;
 use clap::Args;
 use fs_err::tokio as fs;
-use pesde::{Subproject, patches::create_patch, source::ids::PackageId};
+use pesde::{Importer, Project, RefreshedSources, patches::create_patch, source::ids::PackageId};
 use std::{path::PathBuf, str::FromStr as _};
+
+use crate::cli::install::get_graph_loose;
 
 #[derive(Debug, Args)]
 pub struct PatchCommitCommand {
@@ -14,12 +15,9 @@ pub struct PatchCommitCommand {
 }
 
 impl PatchCommitCommand {
-	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
-		let graph = if let Some(lockfile) = up_to_date_lockfile(subproject.project()).await? {
-			lockfile.graph
-		} else {
-			anyhow::bail!("outdated lockfile, please run the install command first")
-		};
+	pub async fn run(self, project: Project) -> anyhow::Result<()> {
+		let refreshed_sources = RefreshedSources::new();
+		let graph = get_graph_loose(&project, &refreshed_sources).await?;
 
 		let id = self
 			.directory
@@ -38,7 +36,9 @@ impl PatchCommitCommand {
 		graph.nodes.get(&id).context("package not found in graph")?;
 
 		let mut manifest = toml_edit::DocumentMut::from_str(
-			&subproject
+			&project
+				.clone()
+				.subproject(Importer::root())
 				.read_manifest()
 				.await
 				.context("failed to read manifest")?,
@@ -47,7 +47,7 @@ impl PatchCommitCommand {
 
 		let patch = create_patch(&self.directory).context("failed to create patch")?;
 
-		let patches_dir = subproject.dir().join("patches");
+		let patches_dir = project.dir().join("patches");
 		fs::create_dir_all(&patches_dir)
 			.await
 			.context("failed to create patches directory")?;
@@ -60,10 +60,12 @@ impl PatchCommitCommand {
 			.await
 			.context("failed to write patch file")?;
 
-		manifest["patches"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-			[&id.to_string()] = toml_edit::value(format!("patches/{patch_file_name}"));
+		manifest["workspace"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))["patches"]
+			.or_insert(toml_edit::Item::Table(toml_edit::Table::new()))[&id.to_string()] =
+			toml_edit::value(format!("patches/{patch_file_name}"));
 
-		subproject
+		project
+			.subproject(Importer::root())
 			.write_manifest(manifest.to_string())
 			.await
 			.context("failed to write manifest")?;

@@ -184,13 +184,8 @@ async fn run() -> anyhow::Result<()> {
 		.context("failed to find project root")?;
 
 	tracing::trace!(
-		"project directory: {}\nimporter: {}",
+		"project directory: {}\nimporter: {importer}",
 		project_dir.display(),
-		if importer.as_path().as_str().is_empty() {
-			"(root)"
-		} else {
-			importer.as_path().as_str()
-		}
 	);
 
 	let reqwest = reqwest::Client::builder()

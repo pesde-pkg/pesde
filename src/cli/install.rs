@@ -1,9 +1,7 @@
 use crate::cli::{
 	dep_type_to_key,
 	reporters::{self, CliReporter},
-	resolve_overrides,
 	style::{ADDED_STYLE, REMOVED_STYLE, WARN_PREFIX},
-	up_to_date_lockfile,
 };
 use anyhow::Context as _;
 use console::style;
@@ -89,6 +87,70 @@ pub struct InstallOptions {
 	pub force: bool,
 }
 
+async fn get_graph_internal(
+	project: &Project,
+	refreshed_sources: &RefreshedSources,
+	locked: bool,
+	use_lockfile: bool,
+) -> anyhow::Result<(
+	Option<DependencyGraph>,
+	DependencyGraph,
+	Option<DependencyTypeGraph>,
+)> {
+	let lockfile = if use_lockfile {
+		match project.deser_lockfile().await {
+			Ok(lockfile) => Some(lockfile),
+			Err(e) => {
+				if let pesde::errors::LockfileReadErrorKind::Io(e) = e.inner()
+					&& e.kind() == std::io::ErrorKind::NotFound
+				{
+					None
+				} else {
+					return Err(e.into());
+				}
+			}
+		}
+	} else {
+		None
+	};
+
+	let old_graph = lockfile.map(|lockfile| lockfile.graph);
+
+	let (graph, type_graph, updated) = project
+		.dependency_graph(old_graph.as_ref(), refreshed_sources, false)
+		.await
+		.context("failed to build dependency graph")?;
+
+	if updated && locked {
+		anyhow::bail!(
+			"lockfile is out of sync, run `{} install` without --locked to update it",
+			env!("CARGO_BIN_NAME")
+		);
+	}
+
+	Ok((old_graph, graph, type_graph))
+}
+
+/// Loose means that it doesn't have to be linked, only need it for the data
+pub async fn get_graph_loose(
+	project: &Project,
+	refreshed_sources: &RefreshedSources,
+) -> anyhow::Result<DependencyGraph> {
+	let (_, graph, _) = get_graph_internal(project, refreshed_sources, false, true).await?;
+
+	Ok(graph)
+}
+
+/// Strict means that it has to be unchanged (and so linked)
+pub async fn get_graph_strict(
+	project: &Project,
+	refreshed_sources: &RefreshedSources,
+) -> anyhow::Result<DependencyGraph> {
+	let (_, graph, _) = get_graph_internal(project, refreshed_sources, true, true).await?;
+
+	Ok(graph)
+}
+
 pub async fn install(
 	options: &InstallOptions,
 	project: &Project,
@@ -105,46 +167,8 @@ pub async fn install(
 		.await
 		.context("failed to read manifest")?;
 
-	let mut has_irrecoverable_changes = false;
-
-	let lockfile = if options.locked {
-		match up_to_date_lockfile(project).await? {
-			None => {
-				anyhow::bail!(
-					"lockfile is out of sync, run `{} install` to update it",
-					env!("CARGO_BIN_NAME")
-				);
-			}
-			file => file,
-		}
-	} else {
-		match project
-			.deser_lockfile()
-			.await
-			.map_err(pesde::errors::LockfileReadError::into_inner)
-		{
-			Ok(lockfile) => {
-				if lockfile.overrides == resolve_overrides(&manifest)? {
-					Some(lockfile)
-				} else {
-					tracing::debug!("overrides are different");
-					has_irrecoverable_changes = true;
-					None
-				}
-			}
-			Err(pesde::errors::LockfileReadErrorKind::Io(e))
-				if e.kind() == std::io::ErrorKind::NotFound =>
-			{
-				None
-			}
-			Err(e) => return Err(e.into()),
-		}
-	};
-
 	let resolved_engine_versions =
 		Arc::new(super::get_project_engines(&manifest, &reqwest, project.auth_config()).await?);
-
-	let overrides = resolve_overrides(&manifest)?;
 
 	let (new_lockfile, old_graph, type_graph) =
 		reporters::run_with_reporter(|multi, root_progress, reporter| async {
@@ -154,16 +178,13 @@ pub async fn install(
 			root_progress.reset();
 			root_progress.set_message("resolve");
 
-			let old_graph = lockfile.map(|lockfile| lockfile.graph);
-
-			let (mut graph, type_graph) = project
-				.dependency_graph(
-					old_graph.clone().filter(|_| options.use_lockfile),
-					refreshed_sources.clone(),
-					false,
-				)
-				.await
-				.context("failed to build dependency graph")?;
+			let (old_graph, mut graph, type_graph) = get_graph_internal(
+				project,
+				&refreshed_sources,
+				options.locked,
+				options.use_lockfile,
+			)
+			.await?;
 
 			#[expect(deprecated)]
 			let mut tasks = graph
@@ -240,7 +261,7 @@ pub async fn install(
 							.refreshed_sources(refreshed_sources.clone())
 							.install_dependencies_mode(options.install_dependencies_mode)
 							.network_concurrency(options.network_concurrency)
-							.force(options.force || has_irrecoverable_changes)
+							.force(options.force)
 							.engines(resolved_engine_versions.clone()),
 					)
 					.await
@@ -362,7 +383,7 @@ pub async fn install(
 			root_progress.reset();
 			root_progress.set_message("finish");
 
-			let new_lockfile = Lockfile { overrides, graph };
+			let new_lockfile = Lockfile { graph };
 
 			project
 				.write_lockfile(&new_lockfile)
@@ -506,15 +527,7 @@ pub fn print_install_summary(
 			continue;
 		}
 
-		println!(
-			"{}",
-			style(if importer.as_path().as_str().is_empty() {
-				"(root)"
-			} else {
-				importer.as_path().as_str()
-			})
-			.bold()
-		);
+		println!("{}", style(importer).bold());
 
 		for (ty, changes) in groups {
 			println!("  {}", style(dep_type_to_key(ty)).yellow().bold());

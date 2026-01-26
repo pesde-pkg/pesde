@@ -95,9 +95,9 @@ impl Subcommand {
 			Subcommand::List(list) => list.run(subproject).await,
 			Subcommand::Run(run) => run.run(subproject, reqwest).await,
 			#[cfg(feature = "patches")]
-			Subcommand::Patch(patch) => patch.run(subproject, reqwest).await,
+			Subcommand::Patch(patch) => patch.run(subproject.project().clone(), reqwest).await,
 			#[cfg(feature = "patches")]
-			Subcommand::PatchCommit(patch_commit) => patch_commit.run(subproject).await,
+			Subcommand::PatchCommit(patch_commit) => patch_commit.run(subproject.project().clone()).await,
 			Subcommand::Execute(execute) => execute.run(subproject, reqwest).await,
 			#[cfg(feature = "version-management")]
 			Subcommand::SelfInstall(self_install) => self_install.run().await,

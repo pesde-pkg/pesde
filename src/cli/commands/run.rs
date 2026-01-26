@@ -1,13 +1,11 @@
-#![expect(deprecated)]
 use crate::cli::{
-	ExecReplace as _, compatible_runtime, get_project_engines, style::WARN_STYLE,
-	up_to_date_lockfile,
+	ExecReplace as _, compatible_runtime, get_project_engines, install::get_graph_strict,
 };
 use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
 use pesde::{
-	Subproject,
+	RefreshedSources, Subproject,
 	engine::runtime::Runtime,
 	graph::DependencyGraphNode,
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
@@ -76,25 +74,19 @@ impl RunCommand {
 			command.exec_replace()
 		};
 
+		#[allow(clippy::useless_let_if_seq)]
 		let mut package_info = None;
 
 		if let Ok(alias) = self.package_or_script.parse::<Alias>() {
-			if let Some(mut lockfile) = up_to_date_lockfile(subproject.project()).await? {
-				package_info = lockfile
-					.graph
-					.importers
-					.remove(subproject.importer())
-					.context("failed to get importer from lockfile")?
-					.remove(&alias)
-					.map(|(id, _, _)| id);
-			} else {
-				eprintln!(
-					"{}",
-					WARN_STYLE.apply_to(
-						"outdated lockfile, please run the install command first to use an alias"
-					)
-				);
-			}
+			let refreshed_sources = RefreshedSources::new();
+			let mut graph = get_graph_strict(subproject.project(), &refreshed_sources).await?;
+			package_info = graph
+				.importers
+				.remove(subproject.importer())
+				.context("failed to get importer from lockfile")?
+				.dependencies
+				.remove(&alias)
+				.map(|(id, _, _)| id);
 		}
 
 		if let Some(id) = package_info {

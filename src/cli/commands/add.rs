@@ -66,6 +66,7 @@ impl AddCommand {
 				VersionedPackageName(PackageNames::Pesde(name), version) => {
 					let index = manifest
 						.indices
+						.pesde
 						.get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
 						.cloned();
 
@@ -91,7 +92,8 @@ impl AddCommand {
 				#[cfg(feature = "wally-compat")]
 				VersionedPackageName(PackageNames::Wally(name), version) => {
 					let index = manifest
-						.wally_indices
+						.indices
+						.wally
 						.get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
 						.cloned();
 
