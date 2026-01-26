@@ -8,7 +8,6 @@ use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{AuthConfig, Project, engine::EngineKind, find_roots};
 use std::{
-	fmt::Display,
 	io,
 	path::{Path, PathBuf},
 	str::FromStr as _,
@@ -180,25 +179,19 @@ async fn run() -> anyhow::Result<()> {
 		.with(fmt_layer)
 		.init();
 
-	let (project_root_dir, project_workspace_dir) = find_roots(cwd.clone())
+	let (project_dir, importer) = find_roots(cwd.clone())
 		.await
 		.context("failed to find project root")?;
 
-	{
-		let display;
-		let workspace: &dyn Display = match &project_workspace_dir {
-			None => &"none",
-			Some(s) => {
-				display = s.display();
-				&display
-			}
-		};
-
-		tracing::trace!(
-			"project root: {}\nworkspace root: {workspace}",
-			project_root_dir.display(),
-		);
-	}
+	tracing::trace!(
+		"project directory: {}\nimporter: {}",
+		project_dir.display(),
+		if importer.as_path().as_str().is_empty() {
+			"(root)"
+		} else {
+			importer.as_path().as_str()
+		}
+	);
 
 	let reqwest = reqwest::Client::builder()
 		.user_agent(concat!(
@@ -208,20 +201,20 @@ async fn run() -> anyhow::Result<()> {
 		))
 		.build()?;
 
-	let cas_dir = get_linkable_dir(&project_root_dir)
+	let cas_dir = get_linkable_dir(&project_dir)
 		.await
 		.join(PESDE_DIR)
 		.join("cas");
 
 	tracing::debug!("using cas dir in {}", cas_dir.display());
 
-	let project = Project::new(
-		project_root_dir,
-		project_workspace_dir,
+	let subproject = Project::new(
+		project_dir,
 		data_dir()?,
 		cas_dir,
 		AuthConfig::new().with_tokens(get_tokens().await?),
-	);
+	)
+	.subproject(importer);
 
 	#[cfg(feature = "version-management")]
 	'engines: {
@@ -229,7 +222,7 @@ async fn run() -> anyhow::Result<()> {
 			break 'engines;
 		};
 
-		let req = match project
+		let req = match subproject
 			.deser_manifest()
 			.await
 			.map_err(pesde::errors::ManifestReadError::into_inner)
@@ -258,7 +251,7 @@ async fn run() -> anyhow::Result<()> {
 			engine,
 			req.unwrap_or(semver::VersionReq::STAR),
 			().into(),
-			project.auth_config(),
+			subproject.project().auth_config(),
 		)
 		.await?
 		.0;
@@ -273,13 +266,13 @@ async fn run() -> anyhow::Result<()> {
 
 	#[cfg(feature = "version-management")]
 	display_err(
-		check_for_updates(&reqwest, project.auth_config()).await,
+		check_for_updates(&reqwest, subproject.project().auth_config()).await,
 		" while checking for updates",
 	);
 
 	let cli = Cli::parse();
 
-	cli.subcommand.run(project, reqwest).await
+	cli.subcommand.run(subproject, reqwest).await
 }
 
 #[tokio::main]

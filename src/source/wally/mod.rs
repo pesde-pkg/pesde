@@ -144,13 +144,13 @@ impl PackageSource for WallyPackageSource {
 		options: &ResolveOptions,
 	) -> Result<ResolveResult, Self::ResolveError> {
 		let ResolveOptions {
-			project,
+			subproject,
 			refreshed_sources,
 			..
 		} = options;
 
 		let mut string = self
-			.read_index_file(project, specifier.name.clone())
+			.read_index_file(subproject.project(), specifier.name.clone())
 			.await?;
 		let mut index_url = self.repo_url.clone();
 
@@ -159,9 +159,9 @@ impl PackageSource for WallyPackageSource {
 				"{} not found in Wally registry. searching in backup registries",
 				specifier.name
 			);
-			let config = self.config(project).await?;
+			let config = self.config(subproject.project()).await?;
 			let refresh_options = RefreshOptions {
-				project: project.clone(),
+				project: subproject.project().clone(),
 			};
 
 			for url in config.fallback_registries {
@@ -187,7 +187,7 @@ impl PackageSource for WallyPackageSource {
 				}
 
 				match source
-					.read_index_file(project, specifier.name.clone())
+					.read_index_file(subproject.project(), specifier.name.clone())
 					.await
 				{
 					Ok(Some(res)) => {

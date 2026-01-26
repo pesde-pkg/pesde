@@ -12,12 +12,11 @@ use crate::{
 	},
 	util::hash,
 };
-use async_stream::try_stream;
 use fs_err::tokio as fs;
-use futures::Stream;
 use gix::bstr::ByteSlice as _;
-use relative_path::RelativePathBuf;
+use relative_path::RelativePath;
 use semver::{Version, VersionReq};
+use serde::{Deserialize, Serialize};
 use std::{
 	collections::{HashMap, HashSet},
 	fmt::{Debug, Display, Formatter},
@@ -112,68 +111,79 @@ impl AuthConfig {
 	}
 }
 
+/// A workspace member. Can be empty for the root project.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Importer(Arc<RelativePath>);
+
+impl Importer {
+	pub(crate) fn new(path: impl Into<Arc<RelativePath>>) -> Self {
+		Self(path.into())
+	}
+
+	/// An importer pointing to the project root
+	#[must_use]
+	pub fn root() -> Self {
+		Self(RelativePath::new("").into())
+	}
+
+	/// The path of this importer
+	#[must_use]
+	pub fn as_path(&self) -> &RelativePath {
+		&self.0
+	}
+}
+
 #[derive(Debug)]
 struct ProjectShared {
-	package_dir: PathBuf,
-	workspace_dir: Option<PathBuf>,
+	dir: PathBuf,
 	private_dir: PathBuf,
 	data_dir: PathBuf,
 	cas_dir: PathBuf,
 	auth_config: AuthConfig,
 }
 
+type Manifests = HashMap<Importer, Manifest>;
+
 /// The main struct of the pesde library, representing a project
 /// Unlike `ProjectShared`, this struct is `Send` and `Sync` and is cheap to clone because it is `Arc`-backed
 #[derive(Debug, Clone)]
 pub struct Project {
 	shared: Arc<ProjectShared>,
-	manifest: Arc<RwLock<Option<Manifest>>>,
+	manifests: Arc<RwLock<Manifests>>,
 }
 
 impl Project {
 	/// Create a new `Project`
 	#[must_use]
 	pub fn new(
-		package_dir: impl AsRef<Path>,
-		workspace_dir: Option<impl AsRef<Path>>,
-		data_dir: impl AsRef<Path>,
-		cas_dir: impl AsRef<Path>,
+		dir: impl Into<PathBuf>,
+		data_dir: impl Into<PathBuf>,
+		cas_dir: impl Into<PathBuf>,
 		auth_config: AuthConfig,
 	) -> Self {
-		let package_dir = package_dir.as_ref().to_path_buf();
-		let workspace_dir = workspace_dir.map(|d| d.as_ref().to_path_buf());
-		let cas_dir = cas_dir.as_ref().to_path_buf();
+		let dir = dir.into();
+		let cas_dir = cas_dir.into();
 
 		Project {
 			shared: ProjectShared {
-				private_dir: cas_dir.join("projects").join(hash(
-					workspace_dir
-						.as_deref()
-						.unwrap_or(&package_dir)
-						.as_os_str()
-						.as_encoded_bytes(),
-				)),
-				package_dir,
-				workspace_dir,
+				private_dir: cas_dir
+					.join("projects")
+					.join(hash(dir.as_os_str().as_encoded_bytes())),
+				dir,
 				cas_dir,
-				data_dir: data_dir.as_ref().to_path_buf(),
+				data_dir: data_dir.into(),
 				auth_config,
 			}
 			.into(),
-			manifest: Arc::new(RwLock::new(None)),
+			manifests: Arc::new(RwLock::new(HashMap::new())),
 		}
 	}
 
-	/// The directory of the package
+	/// The directory of this project
 	#[must_use]
-	pub fn package_dir(&self) -> &Path {
-		&self.shared.package_dir
-	}
-
-	/// The directory of the workspace this package belongs to, if any
-	#[must_use]
-	pub fn workspace_dir(&self) -> Option<&Path> {
-		self.shared.workspace_dir.as_deref()
+	pub fn dir(&self) -> &Path {
+		&self.shared.dir
 	}
 
 	/// The directory in which private, that is, non-shared data (dependencies, bins, etc.) is stored
@@ -200,84 +210,21 @@ impl Project {
 		&self.shared.auth_config
 	}
 
-	/// The directory in which the workspace resides, or the package directory if not in a workspace (or the workspace root)
+	/// Create a subproject for an importer
 	#[must_use]
-	pub fn root_dir(&self) -> &Path {
-		self.workspace_dir().unwrap_or(self.package_dir())
-	}
-
-	/// The path from the root directory to the package directory
-	#[must_use]
-	pub fn path_from_root(&self) -> RelativePathBuf {
-		if let Some(workspace_dir) = &self.shared.workspace_dir {
-			RelativePathBuf::from_path(self.shared.package_dir.strip_prefix(workspace_dir).unwrap())
-				.unwrap()
-		} else {
-			RelativePathBuf::new()
+	pub fn subproject(self, importer: Importer) -> Subproject {
+		Subproject {
+			shared: Arc::new(SubprojectShared {
+				project: self,
+				importer,
+			}),
 		}
-	}
-
-	/// The project at [the root directory](Self::root_dir)
-	#[must_use]
-	pub fn into_root_project(self) -> Self {
-		if let Some(workspace_dir) = &self.shared.workspace_dir {
-			Project::new(
-				workspace_dir,
-				None::<PathBuf>,
-				self.data_dir(),
-				self.cas_dir(),
-				self.auth_config().clone(),
-			)
-		} else {
-			self
-		}
-	}
-
-	/// Read the manifest file
-	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
-	pub async fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
-		let string = fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?;
-		Ok(string)
-	}
-
-	/// Deserialize the manifest file
-	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
-	pub async fn deser_manifest(
-		&self,
-	) -> Result<OwnedRwLockReadGuard<Option<Manifest>, Manifest>, errors::ManifestReadError> {
-		{
-			let manifest_guard = self.manifest.clone().read_owned().await;
-			if manifest_guard.is_some() {
-				return Ok(OwnedRwLockReadGuard::map(manifest_guard, |m| {
-					m.as_ref().unwrap()
-				}));
-			}
-		}
-		let mut manifest_guard = self.manifest.clone().write_owned().await;
-		let manifest = fs::read_to_string(self.package_dir().join(MANIFEST_FILE_NAME)).await?;
-		let manifest = toml::from_str::<Manifest>(&manifest)
-			.map_err(|e| errors::ManifestReadErrorKind::Serde(self.package_dir().into(), e))?;
-		*manifest_guard = Some(manifest);
-		Ok(OwnedRwLockReadGuard::map(manifest_guard.downgrade(), |m| {
-			m.as_ref().unwrap()
-		}))
-	}
-
-	/// Write the manifest file
-	#[instrument(skip(self, manifest), level = "debug")]
-	pub async fn write_manifest(&self, manifest: impl AsRef<[u8]>) -> Result<(), std::io::Error> {
-		*self.manifest.write().await = None;
-		fs::write(
-			self.package_dir().join(MANIFEST_FILE_NAME),
-			manifest.as_ref(),
-		)
-		.await
 	}
 
 	/// Deserialize the lockfile
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
 	pub async fn deser_lockfile(&self) -> Result<Lockfile, errors::LockfileReadError> {
-		let string = fs::read_to_string(self.package_dir().join(LOCKFILE_FILE_NAME)).await?;
+		let string = fs::read_to_string(self.dir().join(LOCKFILE_FILE_NAME)).await?;
 		lockfile::parse_lockfile(&string).map_err(Into::into)
 	}
 
@@ -296,61 +243,113 @@ format = {}
 			lockfile::CURRENT_FORMAT
 		);
 
-		fs::write(self.package_dir().join(LOCKFILE_FILE_NAME), lockfile).await?;
+		fs::write(self.dir().join(LOCKFILE_FILE_NAME), lockfile).await?;
 		Ok(())
 	}
+}
 
-	/// Get the workspace members
-	#[instrument(skip(self), level = "debug")]
-	pub async fn workspace_members(
+#[derive(Debug)]
+struct SubprojectShared {
+	project: Project,
+	importer: Importer,
+}
+
+/// An importer within a [Project]
+#[derive(Debug, Clone)]
+pub struct Subproject {
+	shared: Arc<SubprojectShared>,
+}
+
+impl Subproject {
+	/// The parent project
+	#[must_use]
+	pub fn project(&self) -> &Project {
+		&self.shared.project
+	}
+
+	/// The importer path
+	#[must_use]
+	pub fn importer(&self) -> &Importer {
+		&self.shared.importer
+	}
+
+	/// The importer directory
+	#[must_use]
+	pub fn dir(&self) -> PathBuf {
+		self.importer().as_path().to_path(self.project().dir())
+	}
+
+	/// The private directory for this importer
+	#[must_use]
+	pub fn private_dir(&self) -> PathBuf {
+		self.importer()
+			.as_path()
+			.to_path(self.project().private_dir())
+	}
+
+	/// The dependencies directory
+	#[must_use]
+	pub fn dependencies_dir(&self) -> PathBuf {
+		self.private_dir().join("dependencies")
+	}
+
+	/// The bin directory
+	#[must_use]
+	pub fn bin_dir(&self) -> PathBuf {
+		self.private_dir().join("bin")
+	}
+
+	/// Read the manifest file
+	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
+	pub async fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {
+		let string = fs::read_to_string(self.dir().join(MANIFEST_FILE_NAME)).await?;
+		Ok(string)
+	}
+
+	/// Deserialize the manifest file
+	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
+	pub async fn deser_manifest(
 		&self,
-	) -> Result<
-		impl Stream<Item = Result<(RelativePathBuf, Manifest), errors::WorkspaceMembersError>>,
-		errors::WorkspaceMembersError,
-	> {
-		let dir = self.root_dir();
-		let manifest = fs::read_to_string(dir.join(MANIFEST_FILE_NAME))
-			.await
-			.map_err(|e| errors::ManifestReadError::from(errors::ManifestReadErrorKind::Io(e)))?;
-		let manifest: Manifest = toml::from_str(&manifest).map_err(|e| {
-			errors::ManifestReadError::from(errors::ManifestReadErrorKind::Serde(dir.into(), e))
-		})?;
-
-		let members = matching_globs(
-			dir,
-			manifest.workspace_members.iter().map(String::as_str),
-			false,
-			false,
-		)
-		.await?;
-
-		Ok(try_stream! {
-			yield (RelativePathBuf::new(), manifest);
-
-			for path in members {
-				let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
-					.await
-					.map_err(|e| errors::ManifestReadError::from(errors::ManifestReadErrorKind::Io(e)))?;
-				let manifest = toml::from_str::<Manifest>(&manifest)
-					.map_err(|e| errors::ManifestReadError::from(errors::ManifestReadErrorKind::Serde(path.clone(), e)))?;
-				yield (RelativePathBuf::from_path(path.strip_prefix(dir).unwrap()).unwrap(), manifest);
+	) -> Result<OwnedRwLockReadGuard<Manifests, Manifest>, errors::ManifestReadError> {
+		{
+			let manifests_guard = self.project().manifests.clone().read_owned().await;
+			if manifests_guard.get(self.importer()).is_some() {
+				return Ok(OwnedRwLockReadGuard::map(manifests_guard, |m| {
+					m.get(self.importer()).unwrap()
+				}));
 			}
-		})
+		}
+		let mut manifests_guard = self.project().manifests.clone().write_owned().await;
+		let manifest = fs::read_to_string(self.dir().join(MANIFEST_FILE_NAME)).await?;
+		let manifest = toml::from_str::<Manifest>(&manifest)
+			.map_err(|e| errors::ManifestReadErrorKind::Serde(self.dir(), e))?;
+		manifests_guard.insert(self.importer().clone(), manifest);
+		Ok(OwnedRwLockReadGuard::map(
+			manifests_guard.downgrade(),
+			|m| m.get(self.importer()).unwrap(),
+		))
+	}
+
+	/// Write the manifest file
+	#[instrument(skip(self, manifest), level = "debug")]
+	pub async fn write_manifest(&self, manifest: impl AsRef<[u8]>) -> Result<(), std::io::Error> {
+		self.project()
+			.manifests
+			.write()
+			.await
+			.remove(self.importer());
+		fs::write(self.dir().join(MANIFEST_FILE_NAME), manifest.as_ref()).await
 	}
 }
 
 /// Gets all matching paths in a directory
 #[instrument(ret, level = "trace")]
-pub async fn matching_globs<'a, P: AsRef<Path> + Debug, I: IntoIterator<Item = &'a str> + Debug>(
-	dir: P,
-	globs: I,
-	relative: bool,
-	can_ref_self: bool,
+pub async fn matching_globs<'a>(
+	dir: impl AsRef<Path> + Debug,
+	globs: impl IntoIterator<Item = &'a str> + Debug,
 ) -> Result<HashSet<PathBuf>, errors::MatchingGlobsError> {
-	let (negative_globs, mut positive_globs): (HashSet<&str>, _) =
+	let (negative_globs, positive_globs): (Vec<&str>, _) =
 		globs.into_iter().partition(|glob| glob.starts_with('!'));
-
-	let include_self = positive_globs.remove(".") && can_ref_self;
 
 	let negative_globs = wax::any(
 		negative_globs
@@ -361,20 +360,13 @@ pub async fn matching_globs<'a, P: AsRef<Path> + Debug, I: IntoIterator<Item = &
 	let positive_globs = wax::any(
 		positive_globs
 			.into_iter()
+			.filter(|glob| *glob != ".")
 			.map(wax::Glob::new)
 			.collect::<Result<Vec<_>, _>>()?,
 	)?;
 
 	let mut read_dirs = vec![fs::read_dir(dir.as_ref().to_path_buf()).await?];
 	let mut paths = HashSet::new();
-
-	if include_self {
-		paths.insert(if relative {
-			PathBuf::new()
-		} else {
-			dir.as_ref().to_path_buf()
-		});
-	}
 
 	while let Some(mut read_dir) = read_dirs.pop() {
 		while let Some(entry) = read_dir.next_entry().await? {
@@ -386,11 +378,7 @@ pub async fn matching_globs<'a, P: AsRef<Path> + Debug, I: IntoIterator<Item = &
 			let relative_path = path.strip_prefix(dir.as_ref()).unwrap();
 
 			if positive_globs.is_match(relative_path) && !negative_globs.is_match(relative_path) {
-				paths.insert(if relative {
-					relative_path.to_path_buf()
-				} else {
-					path.clone()
-				});
+				paths.insert(path);
 			}
 		}
 	}
@@ -431,9 +419,7 @@ impl RefreshedSources {
 }
 
 /// Find the project & workspace directory roots
-pub async fn find_roots(
-	cwd: PathBuf,
-) -> Result<(PathBuf, Option<PathBuf>), errors::FindRootsError> {
+pub async fn find_roots(cwd: PathBuf) -> Result<(PathBuf, Importer), errors::FindRootsError> {
 	let mut current_path = Some(cwd.clone());
 	let mut project_root = None::<PathBuf>;
 	let mut workspace_dir = None::<PathBuf>;
@@ -455,23 +441,28 @@ pub async fn find_roots(
 			return Ok(HashSet::new());
 		}
 
-		matching_globs(
-			path,
-			manifest.workspace_members.iter().map(String::as_str),
-			false,
-			false,
-		)
-		.await
-		.map_err(|e| errors::FindRootsErrorKind::Globbing(e).into())
+		matching_globs(path, manifest.workspace_members.iter().map(String::as_str))
+			.await
+			.map_err(|e| errors::FindRootsErrorKind::Globbing(e).into())
+	}
+
+	macro_rules! to_importer {
+		($project_root:ident, $workspace_root:ident) => {
+			Importer::new(
+				RelativePath::from_path($project_root.strip_prefix(&$workspace_root).unwrap())
+					.unwrap(),
+			)
+		};
 	}
 
 	while let Some(path) = current_path {
 		current_path = path.parent().map(Path::to_path_buf);
 
-		if workspace_dir.is_some()
+		if let Some(workspace_dir) = workspace_dir.as_deref()
 			&& let Some(project_root) = project_root
 		{
-			return Ok((project_root, workspace_dir));
+			let importer = to_importer!(project_root, workspace_dir);
+			return Ok((project_root, importer));
 		}
 
 		let mut manifest = match fs::File::open(path.join(MANIFEST_FILE_NAME)).await {
@@ -500,7 +491,8 @@ pub async fn find_roots(
 					.contains(&cwd)
 				{
 					// initializing a new member of a workspace
-					return Ok((cwd, Some(path)));
+					let importer = to_importer!(cwd, path);
+					return Ok((cwd, importer));
 				}
 
 				project_root = Some(path);
@@ -512,7 +504,10 @@ pub async fn find_roots(
 
 	// we mustn't expect the project root to be found, as that would
 	// disable the ability to run pesde in a non-project directory (for example to init it)
-	Ok((project_root.unwrap_or(cwd), workspace_dir))
+	let project_root = project_root.unwrap_or(cwd);
+	let workspace_root = workspace_dir.as_deref().unwrap_or(&project_root);
+	let importer = to_importer!(project_root, workspace_root);
+	Ok((project_root, importer))
 }
 
 /// Returns whether a version matches a version requirement
@@ -631,24 +626,6 @@ pub mod errors {
 		/// An error occurred while serializing the lockfile
 		#[error("error serializing lockfile")]
 		Serde(#[from] toml::ser::Error),
-	}
-
-	/// Errors that can occur when finding workspace members
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = WorkspaceMembersError))]
-	#[non_exhaustive]
-	pub enum WorkspaceMembersErrorKind {
-		/// An error occurred parsing the manifest file
-		#[error("error parsing manifest file")]
-		ManifestParse(#[from] ManifestReadError),
-
-		/// An error occurred interacting with the filesystem
-		#[error("error interacting with the filesystem")]
-		Io(#[from] std::io::Error),
-
-		/// An error occurred while globbing
-		#[error("error globbing")]
-		Globbing(#[from] MatchingGlobsError),
 	}
 
 	/// Errors that can occur when finding matching globs

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::{
 	ser_display_deser_fromstr,
 	source::{PackageRef, path::RelativeOrAbsolutePath, refs::StructureKind},
@@ -8,6 +10,9 @@ use crate::{
 pub struct PathPackageRef {
 	/// The path of the package
 	pub path: RelativeOrAbsolutePath,
+	/// The absolute path to the package
+	/// Only used internally and not user-visible
+	pub absolute_path: PathBuf,
 }
 ser_display_deser_fromstr!(PathPackageRef);
 
@@ -29,6 +34,7 @@ impl std::str::FromStr for PathPackageRef {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Ok(PathPackageRef {
 			path: s.parse().unwrap(),
+			absolute_path: PathBuf::new(),
 		})
 	}
 }

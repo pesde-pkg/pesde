@@ -1,23 +1,29 @@
 use crate::{
-	PACKAGES_CONTAINER_NAME,
-	manifest::{Alias, DependencyType},
+	Importer, PACKAGES_CONTAINER_NAME,
+	manifest::{Alias, DependencyType, overrides::OverrideKey},
 	source::{
 		ids::PackageId, refs::StructureKind, specifiers::DependencySpecifiers,
 		traits::PackageRef as _,
 	},
 };
-use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, path::PathBuf};
 
-type Importer = Arc<RelativePath>;
+/// A dependency graph importer
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DependencyGraphImporter {
+	/// The dependencies of the importer
+	pub dependencies: BTreeMap<Alias, (PackageId, DependencySpecifiers, DependencyType)>,
+	/// The overrides of the importer
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
+}
 
 /// A graph of dependencies in a project
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyGraph {
 	/// The importers in the graph
-	pub importers:
-		BTreeMap<Importer, BTreeMap<Alias, (PackageId, DependencySpecifiers, DependencyType)>>,
+	pub importers: BTreeMap<Importer, DependencyGraphImporter>,
 	/// The nodes in the graph
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub nodes: BTreeMap<PackageId, DependencyGraphNode>,

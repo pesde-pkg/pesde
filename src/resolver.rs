@@ -1,4 +1,3 @@
-use crate::graph::{DependencyTypeGraph, DependencyTypeGraphNode};
 #[expect(deprecated)]
 use crate::{
 	GixUrl, Project, RefreshedSources,
@@ -12,14 +11,18 @@ use crate::{
 		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
 	},
 };
-use futures::StreamExt as _;
+use crate::{
+	Importer,
+	graph::{DependencyGraphImporter, DependencyTypeGraph, DependencyTypeGraphNode},
+	matching_globs,
+};
 use itertools::Itertools as _;
 use relative_path::RelativePath;
 use std::{
-	collections::{HashMap, VecDeque},
+	collections::{BTreeMap, HashMap, VecDeque},
 	sync::Arc,
 };
-use tokio::pin;
+use tokio::task::JoinSet;
 use tracing::{Instrument as _, instrument};
 
 impl Project {
@@ -42,15 +45,69 @@ impl Project {
 			nodes: Default::default(),
 		};
 
+		let mut members = {
+			let manifest = self
+				.clone()
+				.subproject(Importer::root())
+				.deser_manifest()
+				.await?;
+			let members = matching_globs(
+				self.dir(),
+				manifest.workspace_members.iter().map(String::as_str),
+			)
+			.await?;
+
+			members
+				.into_iter()
+				.map(|path| {
+					self.clone().subproject(Importer::new(
+						RelativePath::from_path(path.strip_prefix(self.dir()).unwrap()).unwrap(),
+					))
+				})
+				.map(|subproject| async move {
+					let manifest = subproject.deser_manifest().await?;
+					Ok((subproject, manifest))
+				})
+				.collect::<JoinSet<Result<_, errors::DependencyGraphError>>>()
+		};
+
 		let mut queue = VecDeque::new();
 
-		let members = self.workspace_members().await?;
-		pin!(members);
-		while let Some((importer, manifest)) = members.next().await.transpose()? {
-			let importer: Arc<RelativePath> = importer.into();
-			let manifest = Arc::new(manifest);
-			let importer_entry = graph.importers.entry(importer.clone()).or_default();
+		while let Some(res) = members.join_next().await {
+			let (subproject, manifest) = res.unwrap()?;
 			let all_current_dependencies = manifest.all_dependencies()?;
+
+			let resolved_overrides = manifest
+				.overrides
+				.iter()
+				.map(|(key, spec)| {
+					Ok((
+						key.clone(),
+						match spec {
+							OverrideSpecifier::Specifier(spec) => spec.clone(),
+							OverrideSpecifier::Alias(alias) => all_current_dependencies
+								.get(alias)
+								.map(|(spec, _)| spec)
+								.ok_or_else(|| {
+									errors::DependencyGraphErrorKind::AliasNotFound(alias.clone())
+								})?
+								.clone(),
+						},
+					))
+				})
+				.collect::<Result<BTreeMap<_, _>, errors::DependencyGraphError>>()?;
+
+			let manifest_target_kind = manifest.target.kind();
+			let manifest_indices = Arc::new(manifest.indices.clone());
+			drop(manifest);
+
+			let importer_entry = graph
+				.importers
+				.entry(subproject.importer().clone())
+				.or_insert_with(|| DependencyGraphImporter {
+					dependencies: Default::default(),
+					overrides: resolved_overrides.clone(),
+				});
 
 			let mut all_specifiers = all_current_dependencies
 				.clone()
@@ -58,10 +115,22 @@ impl Project {
 				.map(|(alias, (spec, ty))| ((spec, ty), alias))
 				.collect::<HashMap<_, _>>();
 
-			if let Some(previous_graph) = &previous_graph
-				&& let Some(previous_importer) = previous_graph.importers.get(&importer)
-			{
-				for (old_alias, (package_id, specifier, source_ty)) in previous_importer {
+			let previous = previous_graph
+				.as_ref()
+				.and_then(|graph| {
+					graph
+						.importers
+						.get(subproject.importer())
+						.map(|importer| (graph, importer))
+				})
+				.filter(|(_, importer)| resolved_overrides == importer.overrides);
+
+			let resolved_overrides = Arc::new(resolved_overrides);
+
+			if let Some((previous_graph, previous_importer)) = &previous {
+				for (old_alias, (package_id, specifier, source_ty)) in
+					&previous_importer.dependencies
+				{
 					if specifier.is_local() {
 						// local dependencies must always be resolved fresh in case their FS changes
 						continue;
@@ -88,6 +157,7 @@ impl Project {
 					tracing::debug!("resolved {package_id} from old dependency graph");
 
 					importer_entry
+						.dependencies
 						.insert(alias, (package_id.clone(), specifier.clone(), *source_ty));
 
 					graph
@@ -131,15 +201,16 @@ impl Project {
 
 			queue.extend(all_specifiers.into_iter().map(|((spec, ty), alias)| {
 				(
-					Some(importer.clone()),
-					manifest.clone(),
+					subproject.clone(),
+					manifest_indices.clone(),
 					all_current_dependencies.clone(),
+					resolved_overrides.clone(),
 					spec,
 					ty,
 					None::<PackageId>,
 					vec![alias],
 					false,
-					manifest.target.kind(),
+					manifest_target_kind,
 				)
 			}));
 		}
@@ -151,9 +222,10 @@ impl Project {
 		let mut type_graph = None::<DependencyTypeGraph>;
 
 		while let Some((
-			importer,
-			manifest,
+			subproject,
+			manifest_indices,
 			all_current_dependencies,
+			overrides,
 			specifier,
 			ty,
 			dependant,
@@ -176,8 +248,8 @@ impl Project {
 					#[expect(deprecated)]
 					DependencySpecifiers::Pesde(specifier) => {
 						let index_url = if !is_published_package && (depth == 0 || overridden) {
-							manifest
-								.indices
+							manifest_indices
+								.pesde
 								.get(&specifier.index)
 								.ok_or_else(|| {
 									errors::DependencyGraphErrorKind::IndexNotFound(
@@ -200,8 +272,8 @@ impl Project {
 					#[cfg(feature = "wally-compat")]
 					DependencySpecifiers::Wally(specifier) => {
 						let index_url = if !is_published_package && (depth == 0 || overridden) {
-							manifest
-								.wally_indices
+							manifest_indices
+								.wally
 								.get(&specifier.index)
 								.ok_or_else(|| {
 									errors::DependencyGraphErrorKind::WallyIndexNotFound(
@@ -236,7 +308,7 @@ impl Project {
 					.resolve(
 						&specifier,
 						&ResolveOptions {
-							project: self.clone(),
+							subproject: subproject.clone(),
 							target,
 							refreshed_sources: refreshed_sources.clone(),
 							loose_target: false,
@@ -272,15 +344,16 @@ impl Project {
 					.into());
 				};
 
-				if let Some(importer) = &importer {
+				if depth == 0 {
 					graph
 						.importers
-						.entry(importer.clone())
-						.or_default()
+						.get_mut(subproject.importer())
+						.unwrap()
+						.dependencies
 						.insert(alias.clone(), (package_id.clone(), specifier.clone(), ty));
 					type_graph
 						.importers
-						.entry(importer.clone())
+						.entry(subproject.importer().clone())
 						.or_default()
 						.insert(alias.clone(), package_id.clone());
 				}
@@ -329,7 +402,7 @@ impl Project {
 						continue;
 					}
 
-					let overridden = manifest.overrides.iter().find_map(|(key, spec)| {
+					let overridden = overrides.iter().find_map(|(key, spec)| {
 						key.0.iter().find_map(|override_path| {
 							// if the path up until the last element is the same as the current path,
 							// and the last element in the path is the dependency alias,
@@ -352,20 +425,11 @@ impl Project {
 					}
 
 					queue.push_back((
-						None,
-						manifest.clone(),
+						subproject.clone(),
+						manifest_indices.clone(),
 						all_current_dependencies.clone(),
-						match overridden {
-							Some(OverrideSpecifier::Specifier(spec)) => spec.clone(),
-							Some(OverrideSpecifier::Alias(alias)) => all_current_dependencies
-								.get(alias)
-								.map(|(spec, _)| spec)
-								.ok_or_else(|| {
-									errors::DependencyGraphErrorKind::AliasNotFound(alias.clone())
-								})?
-								.clone(),
-							None => dependency_spec,
-						},
+						overrides.clone(),
+						overridden.cloned().unwrap_or(dependency_spec),
 						dependency_ty,
 						Some(package_id.clone()),
 						path.iter()
@@ -395,6 +459,7 @@ pub mod errors {
 	use std::collections::BTreeSet;
 
 	use crate::{
+		errors::MatchingGlobsError,
 		manifest::{Alias, target::TargetKind},
 		source::specifiers::DependencySpecifiers,
 	};
@@ -406,9 +471,13 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = DependencyGraphError))]
 	#[non_exhaustive]
 	pub enum DependencyGraphErrorKind {
-		/// An error occurred while accessing the workspace members
-		#[error("error accessing workspace members")]
-		WorkspaceMembers(#[from] crate::errors::WorkspaceMembersError),
+		/// Reading the manifest failed
+		#[error("error reading manifest")]
+		ManifestRead(#[from] crate::errors::ManifestReadError),
+
+		/// An error occurred while globbing
+		#[error("error globbing")]
+		Globbing(#[from] MatchingGlobsError),
 
 		/// An error occurred while reading all dependencies from the manifest
 		#[error("error getting all project dependencies")]

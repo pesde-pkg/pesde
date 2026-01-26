@@ -1,6 +1,6 @@
 use crate::cli::get_index;
 use clap::{Args, Subcommand};
-use pesde::Project;
+use pesde::Subproject;
 
 mod login;
 mod logout;
@@ -31,11 +31,11 @@ pub enum AuthCommands {
 }
 
 impl AuthSubcommand {
-	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
-		let index_url = get_index(&project, self.index.as_deref()).await?;
+	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
+		let index_url = get_index(&subproject, self.index.as_deref()).await?;
 
 		match self.command {
-			AuthCommands::Login(login) => login.run(index_url, project, reqwest).await,
+			AuthCommands::Login(login) => login.run(index_url, subproject, reqwest).await,
 			AuthCommands::Logout(logout) => logout.run(index_url).await,
 			AuthCommands::WhoAmI(whoami) => whoami.run(index_url, reqwest).await,
 			AuthCommands::Token(token) => token.run(index_url).await,

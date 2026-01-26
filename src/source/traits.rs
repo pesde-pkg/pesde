@@ -1,5 +1,5 @@
 use crate::{
-	Project, RefreshedSources,
+	Project, RefreshedSources, Subproject,
 	engine::runtime::Engines,
 	manifest::target::{Target, TargetKind},
 	reporters::DownloadProgressReporter,
@@ -31,8 +31,8 @@ pub struct RefreshOptions {
 /// Options for resolving a package
 #[derive(Debug, Clone)]
 pub struct ResolveOptions {
-	/// The project to resolve for
-	pub project: Project,
+	/// The subproject to resolve for
+	pub subproject: Subproject,
 	/// The target to resolve for
 	pub target: TargetKind,
 	/// The sources that have been refreshed

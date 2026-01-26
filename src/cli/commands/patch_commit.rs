@@ -3,7 +3,7 @@ use anyhow::Context as _;
 use base64::Engine as _;
 use clap::Args;
 use fs_err::tokio as fs;
-use pesde::{Project, patches::create_patch, source::ids::PackageId};
+use pesde::{Subproject, patches::create_patch, source::ids::PackageId};
 use std::{path::PathBuf, str::FromStr as _};
 
 #[derive(Debug, Args)]
@@ -14,8 +14,8 @@ pub struct PatchCommitCommand {
 }
 
 impl PatchCommitCommand {
-	pub async fn run(self, project: Project) -> anyhow::Result<()> {
-		let graph = if let Some(lockfile) = up_to_date_lockfile(&project).await? {
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
+		let graph = if let Some(lockfile) = up_to_date_lockfile(subproject.project()).await? {
 			lockfile.graph
 		} else {
 			anyhow::bail!("outdated lockfile, please run the install command first")
@@ -38,7 +38,7 @@ impl PatchCommitCommand {
 		graph.nodes.get(&id).context("package not found in graph")?;
 
 		let mut manifest = toml_edit::DocumentMut::from_str(
-			&project
+			&subproject
 				.read_manifest()
 				.await
 				.context("failed to read manifest")?,
@@ -47,7 +47,7 @@ impl PatchCommitCommand {
 
 		let patch = create_patch(&self.directory).context("failed to create patch")?;
 
-		let patches_dir = project.package_dir().join("patches");
+		let patches_dir = subproject.dir().join("patches");
 		fs::create_dir_all(&patches_dir)
 			.await
 			.context("failed to create patches directory")?;
@@ -63,7 +63,7 @@ impl PatchCommitCommand {
 		manifest["patches"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
 			[&id.to_string()] = toml_edit::value(format!("patches/{patch_file_name}"));
 
-		project
+		subproject
 			.write_manifest(manifest.to_string())
 			.await
 			.context("failed to write manifest")?;

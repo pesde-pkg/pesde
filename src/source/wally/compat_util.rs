@@ -1,13 +1,13 @@
 use std::{
 	io::{BufRead as _, BufReader, PipeReader, Read as _},
-	path::Path,
+	path::PathBuf,
 };
 
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 
 use crate::{
-	LINK_LIB_NO_FILE_FOUND, Project,
+	Importer, LINK_LIB_NO_FILE_FOUND, Project,
 	manifest::target::Target,
 	scripts::{ExecuteScriptHooks, SOURCEMAP_GENERATOR, execute_script},
 	source::{
@@ -88,15 +88,15 @@ impl ExecuteScriptHooks for SourcemapGeneratorHooks {
 }
 
 async fn find_lib_path(
-	project: &Project,
-	package_dir: &Path,
+	project: Project,
+	package_dir: PathBuf,
 ) -> Result<Option<RelativePathBuf>, errors::GetTargetError> {
 	let mut hooks = SourcemapGeneratorHooks::default();
 	let ran = execute_script(
 		SOURCEMAP_GENERATOR,
-		project,
+		&project.clone().subproject(Importer::root()),
 		&mut hooks,
-		vec![package_dir.into()],
+		vec![package_dir.into_os_string()],
 	)
 	.await?;
 	if !ran {
@@ -121,7 +121,7 @@ pub(crate) async fn get_target(
 ) -> Result<Target, errors::GetTargetError> {
 	let GetTargetOptions { project, path, .. } = options;
 
-	let lib = find_lib_path(project, path)
+	let lib = find_lib_path(project.clone(), path.to_path_buf())
 		.await?
 		.or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND)));
 

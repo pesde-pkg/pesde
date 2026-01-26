@@ -10,14 +10,13 @@ use console::style;
 use fs_err::tokio as fs;
 use itertools::{EitherOrBoth, Itertools as _};
 use pesde::{
-	Project, RefreshedSources,
+	Importer, Project, RefreshedSources,
 	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
 	graph::{DependencyGraph, DependencyTypeGraph},
 	lockfile::Lockfile,
 	manifest::DependencyType,
 	source::{PackageSources, refs::PackageRefs, traits::RefreshOptions},
 };
-use relative_path::RelativePath;
 use std::{
 	cmp::Ordering, collections::BTreeMap, num::NonZeroUsize, path::Path, sync::Arc, time::Instant,
 };
@@ -37,14 +36,14 @@ impl DownloadAndLinkHooks for InstallHooks {
 
 	async fn on_bins_downloaded<'a>(
 		&self,
-		importer: &RelativePath,
+		importer: &Importer,
 		aliases: impl IntoIterator<Item = &'a str>,
 	) -> Result<(), Self::Error> {
 		if !self.global_binaries {
 			return Ok(());
 		}
 
-		let dir = importer.to_path(self.project.private_dir());
+		let dir = self.project.clone().subproject(importer.clone()).dir();
 		let bin_dir = dir.join("bin");
 
 		let curr_exe: Arc<Path> = std::env::current_exe()
@@ -100,6 +99,8 @@ pub async fn install(
 	let refreshed_sources = RefreshedSources::new();
 
 	let manifest = project
+		.clone()
+		.subproject(Importer::root())
 		.deser_manifest()
 		.await
 		.context("failed to read manifest")?;
@@ -505,10 +506,10 @@ pub fn print_install_summary(
 
 		println!(
 			"{}",
-			style(if importer.as_str().is_empty() {
+			style(if importer.as_path().as_str().is_empty() {
 				"(root)"
 			} else {
-				importer.as_str()
+				importer.as_path().as_str()
 			})
 			.bold()
 		);

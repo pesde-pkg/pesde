@@ -1,10 +1,6 @@
 #![allow(deprecated)]
-use crate::{
-	graph::DependencyGraph, manifest::overrides::OverrideKey,
-	source::specifiers::DependencySpecifiers,
-};
+use crate::graph::DependencyGraph;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 /// The current format of the lockfile
 pub const CURRENT_FORMAT: usize = 3;
@@ -12,10 +8,6 @@ pub const CURRENT_FORMAT: usize = 3;
 /// A lockfile
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Lockfile {
-	/// The overrides of the package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub overrides: BTreeMap<OverrideKey, DependencySpecifiers>,
-
 	/// The graph of dependencies
 	pub graph: DependencyGraph,
 }

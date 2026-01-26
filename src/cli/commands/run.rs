@@ -7,7 +7,7 @@ use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
 use pesde::{
-	Project,
+	Subproject,
 	engine::runtime::Runtime,
 	graph::DependencyGraphNode,
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
@@ -29,17 +29,18 @@ pub struct RunCommand {
 }
 
 impl RunCommand {
-	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
-		let manifest = project
+	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
+		let manifest = subproject
 			.deser_manifest()
 			.await
 			.context("failed to deserialize manifest")?;
 
-		let engines =
-			Arc::new(get_project_engines(&manifest, &reqwest, project.auth_config()).await?);
+		let engines = Arc::new(
+			get_project_engines(&manifest, &reqwest, subproject.project().auth_config()).await?,
+		);
 
 		let run = async |runtime: Runtime, root: &Path, file_path: &Path| -> ! {
-			let tempdir = project.cas_dir().join(".tmp");
+			let tempdir = subproject.project().cas_dir().join(".tmp");
 			fs::create_dir_all(&tempdir)
 				.await
 				.expect("failed to create temporary directory");
@@ -78,12 +79,11 @@ impl RunCommand {
 		let mut package_info = None;
 
 		if let Ok(alias) = self.package_or_script.parse::<Alias>() {
-			if let Some(mut lockfile) = up_to_date_lockfile(&project).await? {
-				let path: Arc<RelativePath> = project.path_from_root().into();
+			if let Some(mut lockfile) = up_to_date_lockfile(subproject.project()).await? {
 				package_info = lockfile
 					.graph
 					.importers
-					.remove(&path)
+					.remove(subproject.importer())
 					.context("failed to get importer from lockfile")?
 					.remove(&alias)
 					.map(|(id, _, _)| id);
@@ -98,7 +98,7 @@ impl RunCommand {
 		}
 
 		if let Some(id) = package_info {
-			let dir = project.path_from_root().to_path(project.private_dir());
+			let dir = subproject.private_dir();
 			let container_dir = dir
 				.join("dependencies")
 				.join(DependencyGraphNode::container_dir_top_level(&id));
@@ -106,7 +106,7 @@ impl RunCommand {
 			let source = id.source();
 			source
 				.refresh(&RefreshOptions {
-					project: project.clone(),
+					project: subproject.project().clone(),
 				})
 				.await
 				.context("failed to refresh source")?;
@@ -114,7 +114,7 @@ impl RunCommand {
 				.get_target(
 					id.pkg_ref(),
 					&GetTargetOptions {
-						project: project.clone(),
+						project: subproject.project().clone(),
 						path: container_dir.as_path().into(),
 						version_id: id.v_id(),
 						engines: engines.clone(),
@@ -131,8 +131,8 @@ impl RunCommand {
 			run(compatible_runtime(target.kind(), &engines)?, &path, &path).await;
 		}
 
-		if let Ok(manifest) = project.deser_manifest().await
-			&& let Some(script) = manifest.scripts.get(&self.package_or_script)
+		if let Ok(manifest) = subproject.deser_manifest().await
+			&& let Some(_script) = manifest.scripts.get(&self.package_or_script)
 		{
 			// let (runtime, script_path) =
 			// 	parse_script(script, &engines).context("failed to get script info")?;
@@ -146,7 +146,7 @@ impl RunCommand {
 		}
 
 		let relative_path = RelativePathBuf::from(self.package_or_script);
-		let path = relative_path.to_path(project.package_dir());
+		let path = relative_path.to_path(subproject.dir());
 
 		if fs::metadata(&path).await.is_err() {
 			anyhow::bail!("path `{}` does not exist", path.display());

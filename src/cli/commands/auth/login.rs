@@ -13,7 +13,7 @@ use crate::cli::{
 	style::URL_STYLE,
 };
 use pesde::{
-	GixUrl, Project,
+	GixUrl, Subproject,
 	engine::source::github::GITHUB_URL,
 	source::{
 		pesde::PesdePackageSource,
@@ -58,7 +58,7 @@ impl LoginCommand {
 	pub async fn authenticate_device_flow(
 		&self,
 		index_url: GixUrl,
-		project: &Project,
+		subproject: &Subproject,
 		reqwest: &reqwest::Client,
 	) -> anyhow::Result<String> {
 		println!("logging in into {index_url}");
@@ -66,13 +66,13 @@ impl LoginCommand {
 		let source = PesdePackageSource::new(index_url);
 		source
 			.refresh(&RefreshOptions {
-				project: project.clone(),
+				project: subproject.project().clone(),
 			})
 			.await
 			.context("failed to refresh index")?;
 
 		let config = source
-			.config(project)
+			.config(subproject.project())
 			.await
 			.context("failed to read index config")?;
 		let Some(client_id) = config.github_oauth_client_id else {
@@ -169,14 +169,14 @@ impl LoginCommand {
 	pub async fn run(
 		self,
 		index_url: GixUrl,
-		project: Project,
+		subproject: Subproject,
 		reqwest: reqwest::Client,
 	) -> anyhow::Result<()> {
 		let token_given = self.token.is_some();
 		let token = match self.token {
 			Some(token) => token,
 			None => {
-				self.authenticate_device_flow(index_url.clone(), &project, &reqwest)
+				self.authenticate_device_flow(index_url.clone(), &subproject, &reqwest)
 					.await?
 			}
 		};

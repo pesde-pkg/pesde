@@ -9,7 +9,7 @@ use clap::Args;
 use console::style;
 use fs_err::tokio as fs;
 use pesde::{
-	MANIFEST_FILE_NAME, Project,
+	MANIFEST_FILE_NAME, Subproject,
 	patches::setup_patches_repo,
 	source::traits::{DownloadOptions, PackageSource as _},
 };
@@ -22,8 +22,8 @@ pub struct PatchCommand {
 }
 
 impl PatchCommand {
-	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
-		let graph = if let Some(lockfile) = up_to_date_lockfile(&project).await? {
+	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
+		let graph = if let Some(lockfile) = up_to_date_lockfile(subproject.project()).await? {
 			lockfile.graph
 		} else {
 			anyhow::bail!("outdated lockfile, please run the install command first")
@@ -36,7 +36,8 @@ impl PatchCommand {
 
 		let source = id.source();
 
-		let directory = project
+		let directory = subproject
+			.project()
 			.data_dir()
 			.join("patches")
 			.join(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(id.to_string()))
@@ -47,14 +48,14 @@ impl PatchCommand {
 			.download(
 				id.pkg_ref(),
 				&DownloadOptions {
-					project: project.clone(),
+					project: subproject.project().clone(),
 					reqwest,
 					reporter: ().into(),
 					version_id: id.v_id(),
 				},
 			)
 			.await?
-			.write_to(&directory, project.cas_dir(), false)
+			.write_to(&directory, subproject.project().cas_dir(), false)
 			.await
 			.context("failed to write package contents")?;
 

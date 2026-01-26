@@ -158,14 +158,14 @@ impl PackageSource for PesdePackageSource {
 		options: &ResolveOptions,
 	) -> Result<ResolveResult, Self::ResolveError> {
 		let ResolveOptions {
-			project,
+			subproject,
 			target: project_target,
 			loose_target,
 			..
 		} = options;
 
 		let Some(IndexFile { entries, .. }) = self
-			.read_index_file(specifier.name.clone(), project)
+			.read_index_file(specifier.name.clone(), subproject.project())
 			.await?
 		else {
 			return Err(errors::ResolveErrorKind::NotFound(specifier.name.clone()).into());

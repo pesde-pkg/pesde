@@ -11,7 +11,7 @@ use console::style;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::{
-	DEFAULT_INDEX_NAME, GixUrl, Project, RefreshedSources,
+	DEFAULT_INDEX_NAME, GixUrl, Importer, Project, RefreshedSources, Subproject,
 	download_and_link::{DownloadAndLinkOptions, InstallDependenciesMode},
 	linking::generator::{generate_bin_linking_module, get_bin_require_path},
 	manifest::target::TargetKind,
@@ -51,7 +51,7 @@ pub struct ExecuteCommand {
 }
 
 impl ExecuteCommand {
-	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
 		if !self.target.has_bin() {
 			anyhow::bail!("{} doesn't support bin exports!", self.target);
 		}
@@ -83,7 +83,7 @@ impl ExecuteCommand {
 					.refresh(
 						&PackageSources::Pesde(source.clone()),
 						&RefreshOptions {
-							project: project.clone(),
+							project: subproject.project().clone(),
 						},
 					)
 					.await
@@ -99,7 +99,7 @@ impl ExecuteCommand {
 							target: None,
 						},
 						&ResolveOptions {
-							project: project.clone(),
+							subproject: subproject.clone(),
 							target: self.target,
 							refreshed_sources: refreshed_sources.clone(),
 							loose_target: true,
@@ -114,7 +114,7 @@ impl ExecuteCommand {
 					);
 				};
 
-				let tmp_dir = project.cas_dir().join(".tmp");
+				let tmp_dir = subproject.project().cas_dir().join(".tmp");
 				fs::create_dir_all(&tmp_dir)
 					.await
 					.context("failed to create temporary directory")?;
@@ -123,10 +123,9 @@ impl ExecuteCommand {
 
 				let project = Project::new(
 					tempdir.path(),
-					None::<std::path::PathBuf>,
-					project.data_dir(),
-					project.cas_dir(),
-					project.auth_config().clone(),
+					subproject.project().data_dir(),
+					subproject.project().cas_dir(),
+					subproject.project().auth_config().clone(),
 				);
 
 				let mut file = source
@@ -193,6 +192,8 @@ impl ExecuteCommand {
 					.context("failed to download and link dependencies")?;
 
 				let manifest = project
+					.clone()
+					.subproject(Importer::root())
 					.deser_manifest()
 					.await
 					.context("failed to deserialize manifest")?;

@@ -1,6 +1,6 @@
 use crate::cli::install::{InstallOptions, install};
 use clap::Args;
-use pesde::{Project, download_and_link::InstallDependenciesMode};
+use pesde::{Subproject, download_and_link::InstallDependenciesMode};
 use std::num::NonZeroUsize;
 
 #[derive(Debug, Args, Copy, Clone)]
@@ -19,7 +19,7 @@ pub struct UpdateCommand {
 }
 
 impl UpdateCommand {
-	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
 		let options = InstallOptions {
 			locked: false,
 			install_dependencies_mode: InstallDependenciesMode::All,
@@ -29,7 +29,7 @@ impl UpdateCommand {
 			force: self.force,
 		};
 
-		install(&options, &project, reqwest.clone()).await?;
+		install(&options, subproject.project(), reqwest.clone()).await?;
 
 		Ok(())
 	}

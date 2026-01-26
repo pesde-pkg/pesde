@@ -1,13 +1,12 @@
 use clap::Args;
-use pesde::Project;
+use pesde::Subproject;
 
 #[derive(Debug, Args)]
 pub struct PathCommand;
 
 impl PathCommand {
-	#[allow(clippy::unnecessary_wraps, clippy::needless_pass_by_value)]
-	pub fn run(self, project: Project) -> anyhow::Result<()> {
-		println!("{}", project.cas_dir().display());
+	pub fn run(self, subproject: Subproject) -> anyhow::Result<()> {
+		println!("{}", subproject.project().cas_dir().display());
 
 		Ok(())
 	}

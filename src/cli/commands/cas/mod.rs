@@ -1,5 +1,5 @@
 use clap::Subcommand;
-use pesde::Project;
+use pesde::Subproject;
 
 mod path;
 mod prune;
@@ -14,10 +14,10 @@ pub enum CasCommands {
 }
 
 impl CasCommands {
-	pub async fn run(self, project: Project) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		match self {
-			CasCommands::Path(path) => path.run(project),
-			CasCommands::Prune(prune) => prune.run(project).await,
+			CasCommands::Path(path) => path.run(subproject),
+			CasCommands::Prune(prune) => prune.run(subproject).await,
 		}
 	}
 }

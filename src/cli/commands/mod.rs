@@ -1,4 +1,4 @@
-use pesde::Project;
+use pesde::Subproject;
 
 mod add;
 mod auth;
@@ -37,23 +37,23 @@ pub enum Subcommand {
 	/// Initializes a manifest file in the current directory
 	Init(init::InitCommand),
 
-	/// Adds a dependency to the project
+	/// Adds a dependency to the subproject
 	Add(add::AddCommand),
 
-	/// Removes a dependency from the project
+	/// Removes a dependency from the subproject
 	Remove(remove::RemoveCommand),
 
-	/// Installs all dependencies for the project
+	/// Installs all dependencies for the subproject
 	#[clap(name = "install", visible_alias = "i")]
 	Install(install::InstallCommand),
 
-	/// Updates the project's lockfile. Run install to apply changes
+	/// Updates the subproject's lockfile. Run install to apply changes
 	Update(update::UpdateCommand),
 
 	/// Checks for outdated dependencies
 	Outdated(outdated::OutdatedCommand),
 
-	/// Lists all dependencies in the project
+	/// Lists all dependencies in the subproject
 	List(list::ListCommand),
 
 	/// Runs a script, an executable package, or a file with Lune
@@ -67,7 +67,7 @@ pub enum Subcommand {
 	#[cfg(feature = "patches")]
 	PatchCommit(patch_commit::PatchCommitCommand),
 
-	/// Executes a binary package without needing to be run in a project directory
+	/// Executes a binary package without needing to be run in a subproject directory
 	#[clap(name = "x", visible_alias = "execute", visible_alias = "exec")]
 	Execute(execute::ExecuteCommand),
 
@@ -81,28 +81,32 @@ pub enum Subcommand {
 }
 
 impl Subcommand {
-	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
 		match self {
-			Subcommand::Auth(auth) => auth.run(project, reqwest).await,
+			Subcommand::Auth(auth) => auth.run(subproject, reqwest).await,
 			Subcommand::Config(config) => config.run().await,
-			Subcommand::Cas(cas) => cas.run(project).await,
-			Subcommand::Init(init) => init.run(project).await,
-			Subcommand::Add(add) => add.run(project).await,
-			Subcommand::Remove(remove) => remove.run(project).await,
-			Subcommand::Install(install) => install.run(project, reqwest).await,
-			Subcommand::Update(update) => update.run(project, reqwest).await,
-			Subcommand::Outdated(outdated) => outdated.run(project).await,
-			Subcommand::List(list) => list.run(project).await,
-			Subcommand::Run(run) => run.run(project, reqwest).await,
+			Subcommand::Cas(cas) => cas.run(subproject).await,
+			Subcommand::Init(init) => init.run(subproject).await,
+			Subcommand::Add(add) => add.run(subproject).await,
+			Subcommand::Remove(remove) => remove.run(subproject).await,
+			Subcommand::Install(install) => install.run(subproject, reqwest).await,
+			Subcommand::Update(update) => update.run(subproject, reqwest).await,
+			Subcommand::Outdated(outdated) => outdated.run(subproject).await,
+			Subcommand::List(list) => list.run(subproject).await,
+			Subcommand::Run(run) => run.run(subproject, reqwest).await,
 			#[cfg(feature = "patches")]
-			Subcommand::Patch(patch) => patch.run(project, reqwest).await,
+			Subcommand::Patch(patch) => patch.run(subproject, reqwest).await,
 			#[cfg(feature = "patches")]
-			Subcommand::PatchCommit(patch_commit) => patch_commit.run(project).await,
-			Subcommand::Execute(execute) => execute.run(project, reqwest).await,
+			Subcommand::PatchCommit(patch_commit) => patch_commit.run(subproject).await,
+			Subcommand::Execute(execute) => execute.run(subproject, reqwest).await,
 			#[cfg(feature = "version-management")]
 			Subcommand::SelfInstall(self_install) => self_install.run().await,
 			#[cfg(feature = "version-management")]
-			Subcommand::SelfUpgrade(self_upgrade) => self_upgrade.run(project, reqwest).await,
+			Subcommand::SelfUpgrade(self_upgrade) => {
+				self_upgrade
+					.run(subproject.project().clone(), reqwest)
+					.await
+			}
 		}
 	}
 }

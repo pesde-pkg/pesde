@@ -28,6 +28,18 @@ pub mod overrides;
 /// Targets
 pub mod target;
 
+/// Indices specified in a manifest
+#[derive(Deserialize, Debug, Clone)]
+pub struct ManifestIndices {
+	/// The indices to use for the package
+	#[serde(default, rename = "indices")]
+	pub pesde: BTreeMap<String, GixUrl>,
+	/// The indices to use for the package's Wally dependencies
+	#[cfg(feature = "wally-compat")]
+	#[serde(default, rename = "wally_indices")]
+	pub wally: BTreeMap<String, GixUrl>,
+}
+
 /// A package manifest
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -46,13 +58,9 @@ pub struct Manifest {
 	/// The scripts of the package
 	#[serde(default)]
 	pub scripts: BTreeMap<String, String>,
-	/// The indices to use for the package
-	#[serde(default)]
-	pub indices: BTreeMap<String, GixUrl>,
-	/// The indices to use for the package's wally dependencies
-	#[cfg(feature = "wally-compat")]
-	#[serde(default)]
-	pub wally_indices: BTreeMap<String, GixUrl>,
+	/// The indices this package uses
+	#[serde(flatten)]
+	pub indices: ManifestIndices,
 	/// The overrides this package has
 	#[serde(default, skip_serializing)]
 	pub overrides: BTreeMap<OverrideKey, OverrideSpecifier>,
