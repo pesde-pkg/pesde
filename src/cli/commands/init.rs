@@ -7,7 +7,7 @@ use anyhow::Context as _;
 use clap::Args;
 use inquire::validator::Validation;
 use pesde::{
-	DEFAULT_INDEX_NAME, Project, RefreshedSources,
+	DEFAULT_INDEX_NAME, RefreshedSources, Subproject,
 	errors::ManifestReadErrorKind,
 	manifest::{DependencyType, target::TargetKind},
 	names::PackageName,
@@ -41,8 +41,8 @@ impl Display for PackageNameOrCustom {
 }
 
 impl InitCommand {
-	pub async fn run(self, project: Project) -> anyhow::Result<()> {
-		match project
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
+		match subproject
 			.read_manifest()
 			.await
 			.map_err(pesde::errors::ManifestReadError::into_inner)
@@ -145,13 +145,13 @@ impl InitCommand {
 				.refresh(
 					&PackageSources::Pesde(source.clone()),
 					&RefreshOptions {
-						project: project.clone(),
+						project: subproject.project().clone(),
 					},
 				)
 				.await
 				.context("failed to refresh package source")?;
 			let config = source
-				.config(&project)
+				.config(subproject.project())
 				.await
 				.context("failed to get source config")?;
 
@@ -207,7 +207,7 @@ impl InitCommand {
 							target: None,
 						},
 						&ResolveOptions {
-							project: project.clone(),
+							subproject: subproject.clone(),
 							target: TargetKind::Luau,
 							refreshed_sources,
 							loose_target: true,
@@ -220,7 +220,7 @@ impl InitCommand {
 					.context("scripts package not found")?;
 
 				let mut file = source
-					.read_index_file(scripts_pkg_name.clone(), &project)
+					.read_index_file(scripts_pkg_name.clone(), subproject.project())
 					.await
 					.context("failed to read scripts package index file")?
 					.context("scripts package not found in index")?;
@@ -272,7 +272,7 @@ impl InitCommand {
 			}
 		}
 
-		project.write_manifest(manifest.to_string()).await?;
+		subproject.write_manifest(manifest.to_string()).await?;
 
 		println!(
 			"{}\n{}: run `install` to fully finish setup",

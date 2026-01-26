@@ -10,7 +10,7 @@ use crate::cli::{
 	AnyPackageIdentifier, VersionedPackageName, config::read_config, dep_type_to_key,
 };
 use pesde::{
-	DEFAULT_INDEX_NAME, Project, RefreshedSources,
+	DEFAULT_INDEX_NAME, RefreshedSources, Subproject,
 	manifest::{Alias, DependencyType, target::TargetKind},
 	names::PackageNames,
 	source::{
@@ -54,8 +54,8 @@ pub struct AddCommand {
 }
 
 impl AddCommand {
-	pub async fn run(self, project: Project) -> anyhow::Result<()> {
-		let manifest = project
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
+		let manifest = subproject
 			.deser_manifest()
 			.await
 			.context("failed to read manifest")?;
@@ -66,6 +66,7 @@ impl AddCommand {
 				VersionedPackageName(PackageNames::Pesde(name), version) => {
 					let index = manifest
 						.indices
+						.pesde
 						.get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
 						.cloned();
 
@@ -91,7 +92,8 @@ impl AddCommand {
 				#[cfg(feature = "wally-compat")]
 				VersionedPackageName(PackageNames::Wally(name), version) => {
 					let index = manifest
-						.wally_indices
+						.indices
+						.wally
 						.get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
 						.cloned();
 
@@ -134,7 +136,7 @@ impl AddCommand {
 			.refresh(
 				&source,
 				&RefreshOptions {
-					project: project.clone(),
+					project: subproject.project().clone(),
 				},
 			)
 			.await
@@ -144,7 +146,7 @@ impl AddCommand {
 			.resolve(
 				&specifier,
 				&ResolveOptions {
-					project: project.clone(),
+					subproject: subproject.clone(),
 					target: manifest.target.kind(),
 					refreshed_sources,
 					loose_target: false,
@@ -169,7 +171,7 @@ impl AddCommand {
 
 		let project_target = manifest.target.kind();
 		let mut manifest = toml_edit::DocumentMut::from_str(
-			&project
+			&subproject
 				.read_manifest()
 				.await
 				.context("failed to read manifest")?,
@@ -269,7 +271,7 @@ impl AddCommand {
 			}
 		}
 
-		project
+		subproject
 			.write_manifest(manifest.to_string())
 			.await
 			.context("failed to write manifest")?;

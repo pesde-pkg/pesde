@@ -1,4 +1,4 @@
-use crate::Project;
+use crate::Subproject;
 use std::{
 	convert::Infallible,
 	env::{join_paths, split_paths},
@@ -43,27 +43,22 @@ impl ExecuteScriptHooks for () {
 }
 
 /// Executes a script
-#[instrument(skip(project, hooks), level = "debug")]
+#[instrument(skip(subproject, hooks), level = "debug")]
 pub async fn execute_script<H: ExecuteScriptHooks>(
 	script_name: &str,
-	project: &Project,
+	subproject: &Subproject,
 	hooks: &mut H,
 	args: Vec<std::ffi::OsString>,
 ) -> Result<bool, errors::ExecuteScriptError<H>> {
 	let parsed_script = {
-		let manifest = project.deser_manifest().await?;
+		let manifest = subproject.deser_manifest().await?;
 		match manifest.scripts.get(script_name) {
 			Some(s) => croshet::parser::parse(s)?,
 			None => return Ok(false),
 		}
 	};
 
-	let mut paths = vec![
-		project
-			.path_from_root()
-			.to_path(project.private_dir())
-			.join("bin"),
-	];
+	let mut paths = vec![subproject.bin_dir()];
 	if std::env::var("PESDE_IMPURE_SCRIPTS").is_ok_and(|s| !s.is_empty())
 		&& let Some(path) = std::env::var_os("PATH")
 	{
@@ -77,7 +72,7 @@ pub async fn execute_script<H: ExecuteScriptHooks>(
 		croshet::execute(
 			parsed_script,
 			croshet::ExecuteOptionsBuilder::new()
-				.cwd(project.package_dir().to_path_buf())
+				.cwd(subproject.project().dir().to_path_buf())
 				.stdout(stdout)
 				.stderr(stderr)
 				.stdin(stdin)

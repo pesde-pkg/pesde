@@ -1,7 +1,7 @@
 use crate::cli::{
 	VersionedPackageName,
+	install::get_graph_strict,
 	style::{CLI_STYLE, INFO_STYLE, WARN_PREFIX},
-	up_to_date_lockfile,
 };
 use anyhow::Context as _;
 use base64::Engine as _;
@@ -9,7 +9,7 @@ use clap::Args;
 use console::style;
 use fs_err::tokio as fs;
 use pesde::{
-	MANIFEST_FILE_NAME, Project,
+	MANIFEST_FILE_NAME, Project, RefreshedSources,
 	patches::setup_patches_repo,
 	source::traits::{DownloadOptions, PackageSource as _},
 };
@@ -23,11 +23,8 @@ pub struct PatchCommand {
 
 impl PatchCommand {
 	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
-		let graph = if let Some(lockfile) = up_to_date_lockfile(&project).await? {
-			lockfile.graph
-		} else {
-			anyhow::bail!("outdated lockfile, please run the install command first")
-		};
+		let refreshed_sources = RefreshedSources::new();
+		let graph = get_graph_strict(&project, &refreshed_sources).await?;
 
 		let id = self.package.get(&graph)?;
 		if id.pkg_ref().is_local() {

@@ -1,6 +1,6 @@
 #![expect(deprecated)]
 use crate::{
-	GixUrl, MANIFEST_FILE_NAME, Project,
+	GixUrl, MANIFEST_FILE_NAME, Project, Subproject,
 	errors::{ManifestReadError, ManifestReadErrorKind},
 	manifest::{Alias, DependencyType, Manifest, target::Target},
 	reporters::DownloadProgressReporter,
@@ -92,7 +92,7 @@ impl GitPackageSource {
 }
 
 fn transform_pesde_dependencies(
-	project: &Project,
+	subproject: &Subproject,
 	manifest: &Manifest,
 	repo_url: &GixUrl,
 ) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
@@ -107,6 +107,7 @@ fn transform_pesde_dependencies(
 				DependencySpecifiers::Pesde(specifier) => {
 					specifier.index = manifest
 						.indices
+						.pesde
 						.get(&specifier.index)
 						.ok_or_else(|| {
 							errors::ResolveErrorKind::PesdeIndexNotFound(
@@ -119,7 +120,8 @@ fn transform_pesde_dependencies(
 				#[cfg(feature = "wally-compat")]
 				DependencySpecifiers::Wally(specifier) => {
 					specifier.index = manifest
-						.wally_indices
+						.indices
+						.wally
 						.get(&specifier.index)
 						.ok_or_else(|| {
 							errors::ResolveErrorKind::WallyIndexNotFound(
@@ -132,8 +134,8 @@ fn transform_pesde_dependencies(
 				DependencySpecifiers::Git(_) => {}
 				DependencySpecifiers::Path(specifier) => {
 					if let RelativeOrAbsolutePath::Relative(path) = &specifier.path
-						&& simplify_path(&path.to_path(project.package_dir()))
-							.starts_with(project.package_dir())
+						&& simplify_path(&path.to_path(subproject.dir()))
+							.starts_with(subproject.dir())
 					{
 					} else if std::env::var("PESDE_IMPURE_GIT_DEP_PATHS")
 						.is_ok_and(|s| !s.is_empty())
@@ -168,12 +170,12 @@ impl PackageSource for GitPackageSource {
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
 	) -> Result<ResolveResult, Self::ResolveError> {
-		let ResolveOptions { project, .. } = options;
+		let ResolveOptions { subproject, .. } = options;
 
-		let path = self.path(project);
+		let path = self.path(subproject.project());
 		let repo_url = self.repo_url.clone();
 		let specifier = specifier.clone();
-		let project = project.clone();
+		let subproject = subproject.clone();
 
 		let (structure_kind, version_id, dependencies, tree_id) = spawn_blocking::<
 			_,
@@ -269,7 +271,7 @@ impl PackageSource for GitPackageSource {
 					if let Some(resolved_version) = resolved_version {
 						match toml::from_str::<Manifest>(&m) {
 							Ok(m) => Some((
-								transform_pesde_dependencies(&project, &m, &repo_url)?,
+								transform_pesde_dependencies(&subproject, &m, &repo_url)?,
 								VersionId::new(resolved_version, m.target.kind()),
 							)),
 							Err(e) => {
@@ -287,7 +289,7 @@ impl PackageSource for GitPackageSource {
 							})?;
 						Some((
 							transform_pesde_dependencies(
-								&project,
+								&subproject,
 								manifest.as_manifest(),
 								&repo_url,
 							)?,

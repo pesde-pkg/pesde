@@ -20,7 +20,6 @@ use relative_path::RelativePathBuf;
 use semver::{BuildMetadata, Prerelease, Version};
 use serde::{Deserialize, Serialize};
 use std::{
-	borrow::Cow,
 	collections::{BTreeMap, BTreeSet},
 	fmt::Display,
 	path::PathBuf,
@@ -91,13 +90,13 @@ impl PackageSource for PathPackageSource {
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
 	) -> Result<ResolveResult, Self::ResolveError> {
-		let ResolveOptions { project, .. } = options;
+		let ResolveOptions { subproject, .. } = options;
 
 		let path = match &specifier.path {
 			RelativeOrAbsolutePath::Relative(rel_path) => {
-				Cow::Owned(rel_path.to_path(project.package_dir()))
+				rel_path.to_path(subproject.project().dir())
 			}
-			RelativeOrAbsolutePath::Absolute(abs_path) => Cow::Borrowed(abs_path.as_path()),
+			RelativeOrAbsolutePath::Absolute(abs_path) => abs_path.clone(),
 		};
 
 		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
@@ -109,7 +108,7 @@ impl PackageSource for PathPackageSource {
 			})?;
 		let manifest: Manifest = toml::from_str(&manifest).map_err(|e| {
 			errors::ResolveErrorKind::ManifestRead(
-				crate::errors::ManifestReadErrorKind::Serde(path.clone().into(), e).into(),
+				crate::errors::ManifestReadErrorKind::Serde(path.clone(), e).into(),
 			)
 		})?;
 
@@ -131,11 +130,12 @@ impl PackageSource for PathPackageSource {
 					DependencySpecifiers::Pesde(spec) => {
 						spec.index = manifest
 							.indices
+							.pesde
 							.get(&spec.index)
 							.ok_or_else(|| {
 								errors::ResolveErrorKind::IndexNotFound(
 									spec.index.clone(),
-									path.clone().into(),
+									path.clone(),
 								)
 							})?
 							.to_string();
@@ -143,12 +143,13 @@ impl PackageSource for PathPackageSource {
 					#[cfg(feature = "wally-compat")]
 					DependencySpecifiers::Wally(spec) => {
 						spec.index = manifest
-							.wally_indices
+							.indices
+							.wally
 							.get(&spec.index)
 							.ok_or_else(|| {
 								errors::ResolveErrorKind::IndexNotFound(
 									spec.index.clone(),
-									path.clone().into(),
+									path.clone(),
 								)
 							})?
 							.to_string();
@@ -165,6 +166,7 @@ impl PackageSource for PathPackageSource {
 			PackageSources::Path(*self),
 			PackageRefs::Path(PathPackageRef {
 				path: specifier.path.clone(),
+				absolute_path: path,
 			}),
 			BTreeMap::from([(
 				VersionId::new(local_version(), manifest.target.kind()),
@@ -180,38 +182,27 @@ impl PackageSource for PathPackageSource {
 		pkg_ref: &Self::Ref,
 		options: &DownloadOptions<'_, R>,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let DownloadOptions {
-			reporter, project, ..
-		} = options;
+		let DownloadOptions { reporter, .. } = options;
 
 		reporter.report_done();
 
-		Ok(PackageFs::Copy(match &pkg_ref.path {
-			RelativeOrAbsolutePath::Relative(rel_path) => rel_path.to_path(project.package_dir()),
-			RelativeOrAbsolutePath::Absolute(abs_path) => abs_path.clone(),
-		}))
+		// safety: path packages are always resolved freshly by the resolver, so the path is always set to a proper value
+		Ok(PackageFs::Copy(pkg_ref.absolute_path.clone()))
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn get_target(
 		&self,
-		pkg_ref: &Self::Ref,
+		_pkg_ref: &Self::Ref,
 		options: &GetTargetOptions<'_>,
 	) -> Result<Target, Self::GetTargetError> {
-		let GetTargetOptions { project, .. } = options;
-
-		let path = match &pkg_ref.path {
-			RelativeOrAbsolutePath::Relative(rel_path) => {
-				Cow::Owned(rel_path.to_path(project.package_dir()))
-			}
-			RelativeOrAbsolutePath::Absolute(abs_path) => Cow::Borrowed(abs_path.as_path()),
-		};
+		let GetTargetOptions { path, .. } = options;
 
 		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
 			.await
 			.map_err(|e| ManifestReadError::from(ManifestReadErrorKind::Io(e)))?;
 		let manifest: Manifest = toml::from_str(&manifest).map_err(|e| {
-			ManifestReadError::from(ManifestReadErrorKind::Serde(path.into_owned(), e))
+			ManifestReadError::from(ManifestReadErrorKind::Serde(path.to_path_buf(), e))
 		})?;
 
 		Ok(manifest.target)
@@ -250,10 +241,6 @@ pub mod errors {
 		/// Finding the package roots failed
 		#[error("failed to find package roots")]
 		FindRoots(#[from] crate::errors::FindRootsError),
-
-		/// Finding workspace members failed
-		#[error("failed to find workspace members")]
-		WorkspaceMembers(#[from] crate::errors::WorkspaceMembersError),
 
 		/// Workspace package not found
 		#[error("workspace package {0} {1} not found in package")]

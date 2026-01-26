@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 
 use crate::cli::{
+	install::get_graph_loose,
 	style::{ADDED_STYLE, INFO_STYLE, REMOVED_STYLE, SUCCESS_STYLE},
-	up_to_date_lockfile,
 };
 use anyhow::Context as _;
 use clap::Args;
 use console::style;
+use itertools::Either;
 use pesde::{
-	Project, RefreshedSources,
+	RefreshedSources, Subproject,
 	manifest::Alias,
 	source::{
 		git::specifier::GitVersionSpecifier,
@@ -28,103 +29,121 @@ pub struct OutdatedCommand {
 }
 
 impl OutdatedCommand {
-	pub async fn run(self, project: Project) -> anyhow::Result<()> {
-		let graph = match up_to_date_lockfile(&project).await? {
-			Some(file) => file.graph,
-			None => {
-				anyhow::bail!(
-					"lockfile is out of sync, run `{} install` to update it",
-					env!("CARGO_BIN_NAME")
-				);
-			}
-		};
-
-		let manifest = project
-			.deser_manifest()
-			.await
-			.context("failed to read manifest")?;
-		let manifest_target_kind = manifest.target.kind();
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
+		let refreshed_sources = RefreshedSources::new();
+		let mut graph = get_graph_loose(subproject.project(), &refreshed_sources).await?;
 
 		let refreshed_sources = RefreshedSources::new();
 
-		let mut tasks = graph
-			.importers
-			.into_iter()
-			.flat_map(|(importer, dependencies)| {
-				dependencies
-					.into_iter()
-					.map(move |(alias, (id, spec, _))| (importer.clone(), alias, id, spec))
-			})
-			.filter(|(_, _, _, spec)| !spec.is_local())
-			.map(|(importer, alias, id, mut spec)| {
-				let project = project.clone();
+		let mut tasks =
+			if subproject.importer().is_root() {
+				Either::Left(graph.importers.into_iter().map(|(importer, deps)| {
+					(subproject.project().clone().subproject(importer), deps)
+				}))
+			} else {
+				Either::Right(
+					graph
+						.importers
+						.remove(subproject.importer())
+						.map(|deps| (subproject, deps))
+						.into_iter(),
+				)
+			}
+			.map(|(subproject, importer_data)| {
 				let refreshed_sources = refreshed_sources.clone();
-				if !self.strict {
-					match &mut spec {
-						#[expect(deprecated)]
-						DependencySpecifiers::Pesde(spec) => {
-							spec.version = VersionReq::STAR;
-						}
-						#[cfg(feature = "wally-compat")]
-						DependencySpecifiers::Wally(spec) => {
-							spec.version = VersionReq::STAR;
-						}
-						DependencySpecifiers::Git(spec) => {
-							if matches!(spec.version_specifier, GitVersionSpecifier::VersionReq(_))
-							{
-								spec.version_specifier =
-									GitVersionSpecifier::VersionReq(VersionReq::STAR);
-							}
-						}
-						DependencySpecifiers::Path(_) => {}
-					}
-				}
 				async move {
-					refreshed_sources
-						.refresh(
-							id.source(),
-							&RefreshOptions {
-								project: project.clone(),
-							},
-						)
+					let manifest = subproject
+						.deser_manifest()
 						.await
-						.context("failed to refresh source")?;
+						.context("failed to read manifest")?;
+					let manifest_target_kind = manifest.target.kind();
 
-					let new_v_id = id
-						.source()
-						.resolve(
-							&spec,
-							&ResolveOptions {
-								project: project.clone(),
-								target: manifest_target_kind,
-								refreshed_sources: refreshed_sources.clone(),
-								loose_target: false,
-							},
-						)
-						.await
-						.context("failed to resolve package versions")?
-						.2
-						.pop_last()
-						.map(|(v_id, _)| v_id)
-						.with_context(|| format!("no versions of {spec} found"))?;
+					let mut tasks = importer_data
+						.dependencies
+						.into_iter()
+						.filter(|(_, (_, spec, _))| !spec.is_local())
+						.map(|(alias, (id, mut spec, _))| {
+							let subproject = subproject.clone();
+							let refreshed_sources = refreshed_sources.clone();
+							if !self.strict {
+								match &mut spec {
+									#[expect(deprecated)]
+									DependencySpecifiers::Pesde(spec) => {
+										spec.version = VersionReq::STAR;
+									}
+									#[cfg(feature = "wally-compat")]
+									DependencySpecifiers::Wally(spec) => {
+										spec.version = VersionReq::STAR;
+									}
+									DependencySpecifiers::Git(spec) => {
+										if matches!(
+											spec.version_specifier,
+											GitVersionSpecifier::VersionReq(_)
+										) {
+											spec.version_specifier =
+												GitVersionSpecifier::VersionReq(VersionReq::STAR);
+										}
+									}
+									DependencySpecifiers::Path(_) => {}
+								}
+							}
+							async move {
+								refreshed_sources
+									.refresh(
+										id.source(),
+										&RefreshOptions {
+											project: subproject.project().clone(),
+										},
+									)
+									.await
+									.context("failed to refresh source")?;
 
-					Ok(Some((importer, alias, id.v_id().clone(), new_v_id))
-						.filter(|(_, _, current_id, new_id)| current_id != new_id))
+								let new_v_id = id
+									.source()
+									.resolve(
+										&spec,
+										&ResolveOptions {
+											subproject: subproject.clone(),
+											target: manifest_target_kind,
+											refreshed_sources: refreshed_sources.clone(),
+											loose_target: false,
+										},
+									)
+									.await
+									.context("failed to resolve package versions")?
+									.2
+									.pop_last()
+									.map(|(v_id, _)| v_id)
+									.with_context(|| format!("no versions of {spec} found"))?;
+
+								Ok(Some((alias, id.v_id().clone(), new_v_id))
+									.filter(|(_, current_id, new_id)| current_id != new_id))
+							}
+						})
+						.collect::<JoinSet<Result<_, anyhow::Error>>>();
+
+					let mut updates = BTreeMap::<Alias, (VersionId, VersionId)>::new();
+					while let Some(task) = tasks.join_next().await {
+						let Some((alias, current_id, new_id)) = task.unwrap()? else {
+							continue;
+						};
+						updates.insert(alias, (current_id, new_id));
+					}
+
+					Ok::<_, anyhow::Error>((subproject.importer().clone(), updates))
 				}
 			})
 			.collect::<JoinSet<Result<_, anyhow::Error>>>();
 
-		let mut importer_updates = BTreeMap::<_, BTreeMap<Alias, (VersionId, VersionId)>>::new();
+		let mut importer_updates = BTreeMap::new();
 
 		while let Some(task) = tasks.join_next().await {
-			let Some((importer, alias, current_id, new_id)) = task.unwrap()? else {
+			let (importer, updates) = task.unwrap()?;
+			if updates.is_empty() {
 				continue;
-			};
+			}
 
-			importer_updates
-				.entry(importer)
-				.or_default()
-				.insert(alias, (current_id, new_id));
+			importer_updates.insert(importer, updates);
 		}
 
 		if importer_updates.is_empty() {
@@ -133,15 +152,7 @@ impl OutdatedCommand {
 		}
 
 		for (importer, updates) in importer_updates {
-			println!(
-				"{}",
-				style(if importer.as_str().is_empty() {
-					"(root)"
-				} else {
-					importer.as_str()
-				})
-				.bold()
-			);
+			println!("{}", style(importer).bold());
 
 			for (alias, (current_id, new_id)) in updates {
 				println!(

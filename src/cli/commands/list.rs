@@ -8,7 +8,7 @@ use crate::cli::{
 	style::{INFO_STYLE, SUCCESS_STYLE},
 };
 use pesde::{
-	Project,
+	Subproject,
 	manifest::{Alias, DependencyType},
 	source::specifiers::DependencySpecifiers,
 };
@@ -17,8 +17,8 @@ use pesde::{
 pub struct ListCommand;
 
 impl ListCommand {
-	pub async fn run(self, project: Project) -> anyhow::Result<()> {
-		let manifest = project
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
+		let manifest = subproject
 			.deser_manifest()
 			.await
 			.context("failed to read manifest")?;

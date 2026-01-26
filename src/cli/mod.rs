@@ -5,33 +5,18 @@ use crate::cli::{
 use anyhow::Context as _;
 use itertools::Itertools as _;
 use pesde::{
-	AuthConfig, DEFAULT_INDEX_NAME, GixUrl, Project,
+	AuthConfig, DEFAULT_INDEX_NAME, GixUrl, Subproject,
 	engine::{
 		EngineKind,
 		runtime::{Runtime, RuntimeKind},
 	},
 	errors::ManifestReadErrorKind,
-	lockfile::Lockfile,
-	manifest::{
-		DependencyType, Manifest,
-		overrides::{OverrideKey, OverrideSpecifier},
-		target::TargetKind,
-	},
+	manifest::{DependencyType, Manifest, target::TargetKind},
 	names::PackageNames,
-	source::{
-		git::specifier::GitVersionSpecifier, ids::VersionId, path::RelativeOrAbsolutePath,
-		specifiers::DependencySpecifiers,
-	},
+	source::{git::specifier::GitVersionSpecifier, ids::VersionId, path::RelativeOrAbsolutePath},
 };
-use relative_path::RelativePath;
 use semver::Version;
-use std::{
-	collections::{BTreeMap, HashMap, HashSet},
-	path::PathBuf,
-	str::FromStr,
-	sync::Arc,
-};
-use tracing::instrument;
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 pub mod auth;
 pub mod commands;
@@ -68,79 +53,6 @@ pub fn config_path() -> anyhow::Result<PathBuf> {
 
 pub fn data_dir() -> anyhow::Result<PathBuf> {
 	Ok(base_dir()?.join("data"))
-}
-
-pub fn resolve_overrides(
-	manifest: &Manifest,
-) -> anyhow::Result<BTreeMap<OverrideKey, DependencySpecifiers>> {
-	let mut dependencies = None;
-	let mut overrides = BTreeMap::new();
-
-	for (key, spec) in &manifest.overrides {
-		overrides.insert(
-			key.clone(),
-			match spec {
-				OverrideSpecifier::Specifier(spec) => spec,
-				OverrideSpecifier::Alias(alias) => {
-					if dependencies.is_none() {
-						dependencies = Some(
-							manifest
-								.all_dependencies()
-								.context("failed to get all dependencies")?,
-						);
-					}
-
-					&dependencies
-						.as_ref()
-						.and_then(|deps| deps.get(alias))
-						.with_context(|| format!("alias `{alias}` not found in manifest"))?
-						.0
-				}
-			}
-			.clone(),
-		);
-	}
-
-	Ok(overrides)
-}
-
-#[instrument(skip(project), ret(level = "trace"), level = "debug")]
-pub async fn up_to_date_lockfile(project: &Project) -> anyhow::Result<Option<Lockfile>> {
-	let manifest = project.deser_manifest().await?;
-	let lockfile = match project
-		.deser_lockfile()
-		.await
-		.map_err(pesde::errors::LockfileReadError::into_inner)
-	{
-		Ok(lockfile) => lockfile,
-		Err(pesde::errors::LockfileReadErrorKind::Io(e))
-			if e.kind() == std::io::ErrorKind::NotFound =>
-		{
-			return Ok(None);
-		}
-		Err(e) => return Err(e.into()),
-	};
-
-	if resolve_overrides(&manifest)? != lockfile.overrides {
-		tracing::debug!("overrides are different");
-		return Ok(None);
-	}
-
-	let path: Arc<RelativePath> = project.path_from_root().into();
-	let specs = lockfile.graph.importers[&path]
-		.values()
-		.map(|(_, spec, source_ty)| (spec, source_ty))
-		.collect::<HashSet<_>>();
-
-	let same_dependencies = manifest
-		.all_dependencies()
-		.context("failed to get all dependencies")?
-		.iter()
-		.all(|(_, (spec, ty))| specs.contains(&(spec, ty)));
-
-	tracing::debug!("dependencies are the same: {same_dependencies}");
-
-	Ok(same_dependencies.then_some(lockfile))
 }
 
 #[derive(Debug, Clone)]
@@ -270,8 +182,8 @@ pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 	}
 }
 
-pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result<GixUrl> {
-	let manifest = match project.deser_manifest().await {
+pub async fn get_index(subproject: &Subproject, index: Option<&str>) -> anyhow::Result<GixUrl> {
+	let manifest = match subproject.deser_manifest().await {
 		Ok(manifest) => Some(manifest),
 		Err(e) => match e.into_inner() {
 			ManifestReadErrorKind::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
@@ -296,6 +208,7 @@ pub async fn get_index(project: &Project, index: Option<&str>) -> anyhow::Result
 	manifest
 		.unwrap()
 		.indices
+		.pesde
 		.get(index_name)
 		.with_context(|| format!("index {index_name} not found in manifest"))
 		.cloned()

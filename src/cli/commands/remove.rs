@@ -8,7 +8,7 @@ use crate::cli::{
 	style::{INFO_STYLE, SUCCESS_STYLE},
 };
 use pesde::{
-	Project,
+	Subproject,
 	manifest::{Alias, DependencyType},
 };
 
@@ -20,9 +20,9 @@ pub struct RemoveCommand {
 }
 
 impl RemoveCommand {
-	pub async fn run(self, project: Project) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		let mut manifest = toml_edit::DocumentMut::from_str(
-			&project
+			&subproject
 				.read_manifest()
 				.await
 				.context("failed to read manifest")?,
@@ -42,7 +42,7 @@ impl RemoveCommand {
 			anyhow::bail!("package under alias `{}` not found in manifest", self.alias)
 		};
 
-		project
+		subproject
 			.write_manifest(manifest.to_string())
 			.await
 			.context("failed to write manifest")?;

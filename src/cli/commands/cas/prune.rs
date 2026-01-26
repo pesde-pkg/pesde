@@ -11,12 +11,11 @@ use clap::Args;
 use fs_err::tokio as fs;
 use futures::{FutureExt as _, Stream, StreamExt as _, future::BoxFuture};
 use pesde::{
-	Project,
+	Subproject,
 	source::fs::{FsEntry, PackageFs},
 };
 use std::{
 	collections::{HashMap, HashSet},
-	future::Future,
 	path::{Path, PathBuf},
 };
 use tokio::task::JoinSet;
@@ -95,23 +94,6 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 	anyhow::bail!("unsupported platform")
 }
 
-#[derive(Debug)]
-struct ExtendJoinSet<T: Send + 'static>(JoinSet<T>);
-
-impl<T: Send + 'static, F: Future<Output = T> + Send + 'static> Extend<F> for ExtendJoinSet<T> {
-	fn extend<I: IntoIterator<Item = F>>(&mut self, iter: I) {
-		for item in iter {
-			self.0.spawn(item);
-		}
-	}
-}
-
-impl<T: Send + 'static> Default for ExtendJoinSet<T> {
-	fn default() -> Self {
-		Self(JoinSet::new())
-	}
-}
-
 async fn discover_cas_packages(cas_dir: &Path) -> anyhow::Result<HashMap<PathBuf, PackageFs>> {
 	fn read_entry(
 		entry: fs::DirEntry,
@@ -129,9 +111,8 @@ async fn discover_cas_packages(cas_dir: &Path) -> anyhow::Result<HashMap<PathBuf
 					.map(|entry| async move {
 						read_entry(entry.context("failed to read inner cas index dir entry")?).await
 					})
-					.collect::<ExtendJoinSet<Result<_, anyhow::Error>>>()
-					.await
-					.0;
+					.collect::<JoinSet<Result<_, anyhow::Error>>>()
+					.await;
 
 				let mut res = HashMap::new();
 				while let Some(entry) = tasks.join_next().await {
@@ -165,9 +146,8 @@ async fn discover_cas_packages(cas_dir: &Path) -> anyhow::Result<HashMap<PathBuf
 				.map(|entry| async move {
 					read_entry(entry.context("failed to read cas index dir entry")?).await
 				})
-				.collect::<ExtendJoinSet<Result<_, anyhow::Error>>>()
-				.await
-				.0;
+				.collect::<JoinSet<Result<_, anyhow::Error>>>()
+				.await;
 
 			while let Some(task) = tasks.join_next().await {
 				res.extend(task.unwrap()?);
@@ -237,9 +217,8 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
 						Ok(Some(hash))
 					}
 				})
-				.collect::<ExtendJoinSet<Result<_, anyhow::Error>>>()
-				.await
-				.0;
+				.collect::<JoinSet<Result<_, anyhow::Error>>>()
+				.await;
 
 			let mut removed_hashes = HashSet::new();
 			while let Some(removed_hash) = tasks.join_next().await {
@@ -252,9 +231,8 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
 
 			Ok(Some(removed_hashes))
 		})
-		.collect::<ExtendJoinSet<Result<_, anyhow::Error>>>()
-		.await
-		.0;
+		.collect::<JoinSet<Result<_, anyhow::Error>>>()
+		.await;
 
 	while let Some(removed_hashes) = tasks.join_next().await {
 		let Some(removed_hashes) = removed_hashes.unwrap()? else {
@@ -268,7 +246,7 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
 }
 
 impl PruneCommand {
-	pub async fn run(self, project: Project) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		// CAS structure:
 		// /2 first chars of hash/rest of hash
 		// /index/hash/name/version/target
@@ -280,10 +258,10 @@ impl PruneCommand {
 			let root_progress = root_progress;
 			root_progress.reset();
 			root_progress.set_message("discover packages");
-			let cas_entries = discover_cas_packages(project.cas_dir()).await?;
+			let cas_entries = discover_cas_packages(subproject.project().cas_dir()).await?;
 			root_progress.reset();
 			root_progress.set_message("remove unused files");
-			let removed_hashes = remove_hashes(project.cas_dir()).await?;
+			let removed_hashes = remove_hashes(subproject.project().cas_dir()).await?;
 
 			Ok::<_, anyhow::Error>((cas_entries, removed_hashes))
 		})
@@ -304,7 +282,7 @@ impl PruneCommand {
 				};
 
 				if removed_hashes.contains(&hash) {
-					let cas_dir = project.cas_dir().to_path_buf();
+					let cas_dir = subproject.project().cas_dir().to_path_buf();
 					tasks.spawn(async move {
 						fs::remove_file(&path)
 							.await

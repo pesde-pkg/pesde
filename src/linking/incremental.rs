@@ -21,19 +21,21 @@ impl Project {
 					.map(|target| (importer.clone(), *target))
 			})
 			.map(|(importer, target)| {
-				let packages_dir: Arc<Path> = importer
-					.to_path(self.private_dir())
-					.join("dependencies")
+				let subproject = self.clone().subproject(importer.clone());
+				let packages_dir: Arc<Path> = subproject
+					.dependencies_dir()
 					.join(target.packages_dir())
 					.into();
 
 				let expected_aliases = graph.importers[&importer]
+					.dependencies
 					.iter()
 					.filter(|(_, (id, _, _))| id.v_id().target() == target)
 					.map(|(alias, _)| alias)
 					.cloned()
 					.collect::<HashSet<_>>();
 				let mut queue = graph.importers[&importer]
+					.dependencies
 					.values()
 					.map(|(id, _, _)| id.clone())
 					.collect::<Vec<_>>();

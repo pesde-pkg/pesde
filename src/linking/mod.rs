@@ -2,16 +2,15 @@ use crate::{
 	PACKAGES_CONTAINER_NAME, Project,
 	graph::{DependencyGraph, DependencyGraphNode},
 	linking::generator::LinkDirs,
-	manifest::{Manifest, target::Target},
+	manifest::target::Target,
 	source::{
 		fs::{cas_path, store_in_cas},
 		ids::PackageId,
+		refs::StructureKind,
 		traits::PackageRef as _,
 	},
 };
 use fs_err::tokio as fs;
-use futures::StreamExt as _;
-use relative_path::RelativePath;
 use std::{
 	collections::HashMap,
 	path::{Path, PathBuf},
@@ -46,32 +45,24 @@ impl Project {
 		package_targets: &HashMap<PackageId, Arc<Target>>,
 		package_types: &HashMap<PackageId, Arc<[String]>>,
 	) -> Result<(), errors::LinkingError> {
-		let mut importer_manifests = HashMap::<Arc<RelativePath>, Arc<Manifest>>::new();
-		let members = self.workspace_members().await?;
-		tokio::pin!(members);
-		while let Some((importer, manifest)) = members.next().await.transpose()? {
-			importer_manifests.insert(importer.into(), manifest.into());
-		}
-
 		let mut node_tasks = graph
 			.importers
 			.iter()
-			.flat_map(|(importer, dependencies)| {
-				dependencies
+			.flat_map(|(importer, data)| {
+				data.dependencies
 					.iter()
 					.filter(|(_, (id, _, _))| graph.nodes.contains_key(id))
 					.map(|(alias, (id, _, _))| {
-						let importer = importer.clone();
-						let dependencies_dir = importer
-							.to_path(self.private_dir())
-							.join("dependencies")
+						let subproject = self.clone().subproject(importer.clone());
+						let dependencies_dir = subproject
+							.dependencies_dir()
 							.join(id.v_id().target().packages_dir());
 
 						let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME)
 							.join(DependencyGraphNode::container_dir(id));
 
 						(
-							importer,
+							subproject,
 							alias.clone(),
 							id.clone(),
 							LinkDirs {
@@ -83,7 +74,7 @@ impl Project {
 						)
 					})
 					.chain(
-						dependencies
+						data.dependencies
 							.values()
 							.filter_map(|(id, _, _)| graph.nodes.get(id).map(|node| (id, node)))
 							.flat_map(|(id, node)| {
@@ -92,15 +83,14 @@ impl Project {
 									.map(|(dep_alias, dep_id)| (id.clone(), dep_alias, dep_id))
 							})
 							.map(|(dependant_id, dep_alias, dep_id)| {
-								let importer = importer.clone();
-								let dependencies_dir =
-									importer.to_path(self.private_dir()).join("dependencies");
+								let subproject = self.clone().subproject(importer.clone());
+								let dependencies_dir = subproject.dependencies_dir();
 
 								let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME)
 									.join(DependencyGraphNode::container_dir(dep_id));
 
 								(
-									importer,
+									subproject,
 									dep_alias.clone(),
 									dep_id.clone(),
 									LinkDirs {
@@ -108,9 +98,12 @@ impl Project {
 											.join(dependant_id.v_id().target().packages_dir())
 											.join(PACKAGES_CONTAINER_NAME)
 											.join(DependencyGraphNode::container_dir(&dependant_id))
-											.join(DependencyGraphNode::dependencies_dir(
-												&dependant_id,
-											)),
+											.join(match dependant_id.pkg_ref().structure_kind() {
+												StructureKind::Wally => "..",
+												StructureKind::PesdeV1 => {
+													dep_id.v_id().target().packages_dir()
+												}
+											}),
 										destination: dependencies_dir
 											.join(dep_id.v_id().target().packages_dir())
 											.join(&container_dir),
@@ -122,10 +115,8 @@ impl Project {
 							}),
 					)
 			})
-			.filter_map(|(importer, alias, id, dirs)| {
-				let project = self.clone();
+			.filter_map(|(subproject, alias, id, dirs)| {
 				let target = package_targets.get(&id).cloned()?;
-				let manifest = importer_manifests[&importer].clone();
 				let types = package_types.get(&id).cloned();
 
 				Some(async move {
@@ -135,29 +126,6 @@ impl Project {
 
 					if target.lib_path().is_some() || target.bin_path().is_some() {
 						fs::create_dir_all(&dirs.base).await?;
-					}
-
-					if let Some(lib_file) = target.lib_path() {
-						let destination =
-							dirs.base.join(alias.as_str()).with_added_extension("luau");
-
-						let lib_module = generator::generate_lib_linking_module(
-							&generator::get_lib_require_path(
-								target.kind(),
-								lib_file,
-								&dirs,
-								id.pkg_ref().structure_kind(),
-								&manifest,
-							)?,
-							types.as_deref().unwrap_or(&NO_TYPES),
-						);
-						let cas_dir = project.cas_dir().to_path_buf();
-
-						tasks.spawn(async move {
-							write_cas(destination, &cas_dir, &lib_module)
-								.await
-								.map_err(Into::into)
-						});
 					}
 
 					if let Some(bin_file) = target.bin_path() {
@@ -170,10 +138,43 @@ impl Project {
 							&dirs.container,
 							&generator::get_bin_require_path(&dirs.base, bin_file, &dirs.container),
 						);
-						let cas_dir = project.cas_dir().to_path_buf();
+						let cas_dir = subproject.project().cas_dir().to_path_buf();
 
 						tasks.spawn(async move {
 							write_cas(destination, &cas_dir, &bin_module)
+								.await
+								.map_err(Into::into)
+						});
+					}
+
+					if let Some(lib_file) = target.lib_path() {
+						let destination =
+							dirs.base.join(alias.as_str()).with_added_extension("luau");
+
+						let cas_dir = subproject.project().cas_dir().to_path_buf();
+						let lib_file = lib_file.to_relative_path_buf();
+						let target_kind = target.kind();
+
+						tasks.spawn(async move {
+							let lib_module = generator::generate_lib_linking_module(
+								&generator::get_lib_require_path(
+									target_kind,
+									&lib_file,
+									&dirs,
+									id.pkg_ref().structure_kind(),
+									&*subproject.deser_manifest().await?,
+								)
+								.map_err(|e| {
+									errors::LinkingErrorKind::GetLibRequirePath(
+										id.clone(),
+										subproject.importer().clone(),
+										e,
+									)
+								})?,
+								types.as_deref().unwrap_or(&NO_TYPES),
+							);
+
+							write_cas(destination, &cas_dir, &lib_module)
 								.await
 								.map_err(Into::into)
 						});
@@ -200,6 +201,8 @@ impl Project {
 pub mod errors {
 	use thiserror::Error;
 
+	use crate::{Importer, source::ids::PackageId};
+
 	/// Errors that can occur while linking dependencies
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = LinkingError))]
@@ -210,11 +213,15 @@ pub mod errors {
 		Io(#[from] std::io::Error),
 
 		/// An error occurred while getting the require path for a library
-		#[error("error getting require path for library")]
-		GetLibRequirePath(#[from] super::generator::errors::GetLibRequirePath),
+		#[error("error getting require path for `{0}` in importer `{1}`")]
+		GetLibRequirePath(
+			PackageId,
+			Importer,
+			#[source] super::generator::errors::GetLibRequirePath,
+		),
 
-		/// An error occurred while getting the workspace members
-		#[error("error getting workspace members")]
-		WorkspaceMembers(#[from] crate::errors::WorkspaceMembersError),
+		/// Reading the manifest failed
+		#[error("error reading manifest")]
+		ManifestRead(#[from] crate::errors::ManifestReadError),
 	}
 }

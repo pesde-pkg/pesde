@@ -1,6 +1,6 @@
 use crate::cli::install::{InstallOptions, install};
 use clap::Args;
-use pesde::{Project, download_and_link::InstallDependenciesMode};
+use pesde::{Subproject, download_and_link::InstallDependenciesMode};
 use std::num::NonZeroUsize;
 
 #[derive(Debug, Args, Copy, Clone)]
@@ -27,7 +27,7 @@ pub struct InstallCommand {
 }
 
 impl InstallCommand {
-	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
 		let install_dependencies_mode = match (self.prod, self.dev) {
 			(true, true) => anyhow::bail!("cannot have both prod and dev flags enabled"),
 			(true, false) => InstallDependenciesMode::Prod,
@@ -44,7 +44,7 @@ impl InstallCommand {
 			force: self.force,
 		};
 
-		install(&options, &project, reqwest.clone()).await?;
+		install(&options, subproject.project(), reqwest.clone()).await?;
 
 		Ok(())
 	}
