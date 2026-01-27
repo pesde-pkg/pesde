@@ -1,3 +1,5 @@
 # .git-blame-ignore-revs
 # Enabled the `hard_tabs` option in rustfmt.toml
 0ceb2f6653b12e8261533ef528d78e3dde7ed757
+# Switch to Item granularity
+70eef27a8232060229f61ad0e0885b9afabd6d3d
