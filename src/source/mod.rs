@@ -169,7 +169,7 @@ macro_rules! impls {
 
 					match source {
 						$(
-							stringify!($source:lower) => Ok(PackageRefs::$source(pkg_ref.parse().map_err(errors::PackageRefParseErrorKind::[< $source PackageRef >])?)),
+							stringify!([< $source:lower >]) => Ok(PackageRefs::$source(pkg_ref.parse().map_err(errors::PackageRefParseErrorKind::[< $source PackageRef >])?)),
 						)+
 						_ => Err(errors::PackageRefParseErrorKind::UnknownSource(source.to_string()).into()),
 					}
