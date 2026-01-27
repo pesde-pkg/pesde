@@ -1,39 +1,26 @@
-#[expect(deprecated)]
 use crate::GixUrl;
 use crate::Importer;
-#[expect(deprecated)]
 use crate::Project;
-#[expect(deprecated)]
 use crate::RefreshedSources;
 use crate::Subproject;
-#[expect(deprecated)]
 use crate::graph::DependencyGraph;
 use crate::graph::DependencyGraphImporter;
-#[expect(deprecated)]
 use crate::graph::DependencyGraphNode;
 use crate::graph::DependencyTypeGraph;
 use crate::graph::DependencyTypeGraphNode;
-#[expect(deprecated)]
 use crate::manifest::Alias;
-#[expect(deprecated)]
 use crate::manifest::DependencyType;
 use crate::manifest::ManifestIndices;
 use crate::manifest::OverrideSpecifier;
 use crate::manifest::target::TargetKind;
 use crate::matching_globs;
-#[expect(deprecated)]
 use crate::source::PackageSources;
-#[expect(deprecated)]
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
 use crate::source::pesde::PesdePackageSource;
-#[expect(deprecated)]
 use crate::source::specifiers::DependencySpecifiers;
-#[expect(deprecated)]
 use crate::source::traits::PackageSource as _;
-#[expect(deprecated)]
 use crate::source::traits::RefreshOptions;
-#[expect(deprecated)]
 use crate::source::traits::ResolveOptions;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;

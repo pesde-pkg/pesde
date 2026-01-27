@@ -11,8 +11,8 @@ use crate::source::ids::VersionId;
 use crate::source::refs::StructureKind;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::future;
 use std::future::Future;
-use std::future::{self};
 use std::path::Path;
 use std::sync::Arc;
 

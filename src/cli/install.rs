@@ -1,6 +1,6 @@
 use crate::cli::dep_type_to_key;
+use crate::cli::reporters;
 use crate::cli::reporters::CliReporter;
-use crate::cli::reporters::{self};
 use crate::cli::style::ADDED_STYLE;
 use crate::cli::style::REMOVED_STYLE;
 use crate::cli::style::WARN_PREFIX;
