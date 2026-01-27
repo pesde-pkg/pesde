@@ -287,7 +287,7 @@ async fn resolve_version(
 			)
 			.await?;
 
-		let (source, pkg_ref, mut versions, suggestions) = source
+		let (source, pkg_ref, mut versions) = source
 			.resolve(
 				specifier,
 				&ResolveOptions {
@@ -322,7 +322,6 @@ async fn resolve_version(
 			return Err(errors::DependencyGraphErrorKind::NoMatchingVersion(
 				specifier.clone(),
 				target,
-				suggestions,
 			)
 			.into());
 		};
@@ -478,13 +477,10 @@ impl Project {
 
 /// Errors that can occur when resolving dependencies
 pub mod errors {
-	use std::collections::BTreeSet;
-
 	use crate::errors::MatchingGlobsError;
 	use crate::manifest::Alias;
 	use crate::manifest::target::TargetKind;
 	use crate::source::DependencySpecifiers;
-	use itertools::Itertools as _;
 	use thiserror::Error;
 
 	/// Errors that can occur when creating a dependency graph
@@ -521,8 +517,8 @@ pub mod errors {
 		Resolve(#[from] crate::source::errors::ResolveError),
 
 		/// No matching version was found for a specifier
-		#[error("no matching version found for {0} {1}{suggestions}", suggestions = if .2.is_empty() { String::new() } else { format!(" available targets {}", .2.iter().format(", ")) })]
-		NoMatchingVersion(DependencySpecifiers, TargetKind, BTreeSet<TargetKind>),
+		#[error("no matching version found for {0} {1}")]
+		NoMatchingVersion(DependencySpecifiers, TargetKind),
 
 		/// An alias for an override was not found in the manifest
 		#[error("alias `{0}` not found in manifest")]

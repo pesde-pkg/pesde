@@ -25,7 +25,6 @@ use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -175,7 +174,6 @@ impl PackageSource for PathPackageSource {
 				VersionId::new(local_version(), manifest.target.kind()),
 				dependencies,
 			)]),
-			BTreeSet::new(),
 		))
 	}
 

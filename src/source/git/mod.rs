@@ -47,7 +47,6 @@ use semver::BuildMetadata;
 use semver::Version;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -372,7 +371,6 @@ impl PackageSource for GitPackageSource {
 				structure_kind,
 			}),
 			BTreeMap::from([(version_id, dependencies)]),
-			BTreeSet::new(),
 		))
 	}
 

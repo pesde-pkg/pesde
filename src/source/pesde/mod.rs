@@ -189,35 +189,42 @@ impl PackageSource for PesdePackageSource {
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
-		let suggestions = entries
-			.iter()
+		let specifier_target = specifier.target.unwrap_or(*project_target);
+		let mut suggestions = BTreeSet::new();
+
+		let versions = entries
+			.into_iter()
 			.filter(|(_, entry)| !entry.yanked)
 			.filter(|(v_id, _)| version_matches(&specifier.version, v_id.version()))
-			.map(|(v_id, _)| v_id.target())
-			.collect();
+			.inspect(|(v_id, _)| {
+				suggestions.insert(v_id.target());
+			})
+			.filter(|(v_id, _)| {
+				// we want anything which might contain bins, scripts (so not Roblox)
+				if *loose_target && specifier_target == TargetKind::Luau {
+					!matches!(v_id.target(), TargetKind::Roblox | TargetKind::RobloxServer)
+				} else {
+					specifier_target == v_id.target()
+				}
+			})
+			.map(|(v_id, entry)| (v_id, entry.dependencies))
+			.collect::<BTreeMap<_, _>>();
 
-		let specifier_target = specifier.target.unwrap_or(*project_target);
+		if versions.is_empty() {
+			return Err(errors::ResolveErrorKind::NoMatchingVersion(
+				specifier.clone(),
+				specifier_target,
+				suggestions,
+			)
+			.into());
+		}
 
 		Ok((
 			PackageSources::Pesde(self.clone()),
 			PackageRefs::Pesde(PesdePackageRef {
 				name: specifier.name.clone(),
 			}),
-			entries
-				.into_iter()
-				.filter(|(_, entry)| !entry.yanked)
-				.filter(|(v_id, _)| version_matches(&specifier.version, v_id.version()))
-				.filter(|(v_id, _)| {
-					// we want anything which might contain bins, scripts (so not Roblox)
-					if *loose_target && specifier_target == TargetKind::Luau {
-						!matches!(v_id.target(), TargetKind::Roblox | TargetKind::RobloxServer)
-					} else {
-						specifier_target == v_id.target()
-					}
-				})
-				.map(|(v_id, entry)| (v_id, entry.dependencies))
-				.collect(),
-			suggestions,
+			versions,
 		))
 	}
 
@@ -553,12 +560,17 @@ impl PesdeVersionedManifest {
 
 /// Errors that can occur when interacting with the pesde package source
 pub mod errors {
+	use std::collections::BTreeSet;
+
+	use itertools::Itertools as _;
 	use thiserror::Error;
 
 	use crate::GixUrl;
+	use crate::manifest::target::TargetKind;
 	use crate::names::PackageName;
 	use crate::source::git_index::errors::ReadFile;
 	use crate::source::git_index::errors::TreeError;
+	use crate::source::pesde::specifier::PesdeDependencySpecifier;
 
 	/// Errors that can occur when reading an index file of a pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
@@ -593,6 +605,11 @@ pub mod errors {
 		/// Package not found in index
 		#[error("package `{0}` not found")]
 		NotFound(PackageName),
+
+		// custom error to provide the user with target suggestions
+		/// No matching version was found for a specifier
+		#[error("no matching version found for {0} {1}. available targets: {suggestions}", suggestions = .2.iter().format(", "))]
+		NoMatchingVersion(PesdeDependencySpecifier, TargetKind, BTreeSet<TargetKind>),
 
 		/// Error reading index file
 		#[error("error reading index file")]

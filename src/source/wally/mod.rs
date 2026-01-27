@@ -32,7 +32,6 @@ use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -248,7 +247,6 @@ impl PackageSource for WallyPackageSource {
 				name: specifier.name.clone(),
 			}),
 			versions,
-			BTreeSet::new(),
 		))
 	}
 

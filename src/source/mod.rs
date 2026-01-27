@@ -2,7 +2,6 @@
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::target::Target;
-use crate::manifest::target::TargetKind;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::fs::PackageFs;
@@ -11,7 +10,6 @@ use crate::source::traits::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -39,7 +37,6 @@ pub type ResolveResult = (
 	PackageSources,
 	PackageRefs,
 	BTreeMap<VersionId, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
-	BTreeSet<TargetKind>,
 );
 
 /// A type of structure
@@ -210,15 +207,7 @@ macro_rules! impls {
 					&self,
 					specifier: &Self::Specifier,
 					options: &ResolveOptions,
-				) -> Result<
-					(
-						PackageSources,
-						PackageRefs,
-						BTreeMap<VersionId, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
-						BTreeSet<TargetKind>,
-					),
-					Self::ResolveError,
-				> {
+				) -> Result<ResolveResult, Self::ResolveError> {
 					match (self, specifier) {
 						$(
 							(PackageSources::$source(source), DependencySpecifiers::$source(specifier)) => {
