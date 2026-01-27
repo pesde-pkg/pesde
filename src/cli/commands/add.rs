@@ -3,7 +3,6 @@ use std::str::FromStr as _;
 
 use anyhow::Context as _;
 use clap::Args;
-use itertools::Itertools as _;
 use semver::VersionReq;
 
 use crate::cli::AnyPackageIdentifier;
@@ -146,7 +145,7 @@ impl AddCommand {
 			.await
 			.context("failed to refresh package source")?;
 
-		let (_, _, mut versions, suggestions) = source
+		let (_, _, mut versions) = source
 			.resolve(
 				&specifier,
 				&ResolveOptions {
@@ -160,17 +159,7 @@ impl AddCommand {
 			.context("failed to resolve package")?;
 
 		let Some((v_id, _)) = versions.pop_last() else {
-			anyhow::bail!(
-				"no matching versions found for package{}",
-				if suggestions.is_empty() {
-					"".into()
-				} else {
-					format!(
-						". available targets: {}",
-						suggestions.into_iter().format(", ")
-					)
-				}
-			);
+			anyhow::bail!("no matching versions found for package");
 		};
 
 		let project_target = manifest.target.kind();

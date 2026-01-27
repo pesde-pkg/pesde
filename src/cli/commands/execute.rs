@@ -97,7 +97,7 @@ impl ExecuteCommand {
 					.context("failed to refresh source")?;
 
 				let version_req = self.package.1.unwrap_or(VersionReq::STAR);
-				let (pkg_source, pkg_ref, mut versions, _) = source
+				let (pkg_source, pkg_ref, mut versions) = source
 					.resolve(
 						&PesdeDependencySpecifier {
 							name: self.package.0.clone(),
