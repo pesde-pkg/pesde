@@ -4,7 +4,7 @@ use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::errors;
 use crate::manifest::target::TargetKind;
-use crate::source::specifiers::DependencySpecifiers;
+use crate::source::DependencySpecifiers;
 use crate::source::wally::specifier::WallyDependencySpecifier;
 use semver::Version;
 use semver::VersionReq;

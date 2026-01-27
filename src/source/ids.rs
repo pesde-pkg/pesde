@@ -1,11 +1,11 @@
 use crate::manifest::target::TargetKind;
 use crate::ser_display_deser_fromstr;
+use crate::source::PackageRefs;
 use crate::source::PackageSources;
+use crate::source::errors::PackageRefParseError;
 use crate::source::errors::PackageSourcesFromStr;
 use crate::source::path::PathPackageSource;
 use crate::source::path::local_version;
-use crate::source::refs::PackageRefs;
-use crate::source::refs::errors::PackageRefParseError;
 use semver::Version;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -230,7 +230,7 @@ pub mod errors {
 
 		/// Parsing the Git package reference failed
 		#[error("error parsing git package reference")]
-		PackageRef(#[from] crate::source::refs::errors::PackageRefParseError),
+		PackageRef(#[from] crate::source::errors::PackageRefParseError),
 
 		/// Parsing the VersionId failed
 		#[error("error parsing version id")]

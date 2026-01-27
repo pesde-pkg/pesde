@@ -17,7 +17,7 @@ include = [
 ]
 
 [features]
-default = ["wally-compat", "patches"]
+default = ["patches"]
 bin = [
     "dep:clap",
     "dep:dirs",
@@ -29,7 +29,6 @@ bin = [
     "dep:anyhow",
     "dep:keyring",
     "dep:open",
-    "dep:paste",
     "dep:windows-registry",
     "dep:windows",
     "dep:base64",
@@ -39,7 +38,6 @@ bin = [
     "tokio/rt-multi-thread",
     "tokio/macros",
 ]
-wally-compat = []
 patches = ["dep:git2"]
 version-management = ["bin"]
 global-binaries = []
@@ -99,6 +97,7 @@ async_zip = { version = "0.0.18", features = [
 ouroboros = "0.18.5"
 croshet = "0.1.0"
 itertools = "0.14.0"
+paste = "1.0.15"
 
 # TODO: remove this when gitoxide adds support for creating & applying diffs
 git2 = { version = "0.20.2", optional = true }
@@ -123,7 +122,6 @@ inquire = { version = "0.9.1", default-features = false, features = [
     "console",
     "one-liners",
 ], optional = true }
-paste = { version = "1.0.15", optional = true }
 base64 = { version = "0.22.1", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]

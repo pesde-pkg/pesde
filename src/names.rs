@@ -123,7 +123,6 @@ pub enum PackageNames {
 	/// A pesde package name
 	Pesde(PackageName),
 	/// A Wally package name
-	#[cfg(feature = "wally-compat")]
 	Wally(wally::WallyPackageName),
 }
 ser_display_deser_fromstr!(PackageNames);
@@ -134,7 +133,6 @@ impl PackageNames {
 	pub fn as_str(&self) -> (&str, &str) {
 		match self {
 			PackageNames::Pesde(name) => name.as_str(),
-			#[cfg(feature = "wally-compat")]
 			PackageNames::Wally(name) => name.as_str(),
 		}
 	}
@@ -144,7 +142,6 @@ impl PackageNames {
 	pub fn escaped(&self) -> String {
 		match self {
 			PackageNames::Pesde(name) => name.escaped(),
-			#[cfg(feature = "wally-compat")]
 			PackageNames::Wally(name) => name.escaped(),
 		}
 	}
@@ -154,7 +151,6 @@ impl PackageNames {
 	pub fn scope(&self) -> &str {
 		match self {
 			PackageNames::Pesde(name) => name.scope(),
-			#[cfg(feature = "wally-compat")]
 			PackageNames::Wally(name) => name.scope(),
 		}
 	}
@@ -164,7 +160,6 @@ impl PackageNames {
 	pub fn name(&self) -> &str {
 		match self {
 			PackageNames::Pesde(name) => name.name(),
-			#[cfg(feature = "wally-compat")]
 			PackageNames::Wally(name) => name.name(),
 		}
 	}
@@ -174,7 +169,6 @@ impl Display for PackageNames {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			PackageNames::Pesde(name) => write!(f, "{name}"),
-			#[cfg(feature = "wally-compat")]
 			PackageNames::Wally(name) => write!(f, "wally#{name}"),
 		}
 	}
@@ -184,7 +178,6 @@ impl FromStr for PackageNames {
 	type Err = errors::PackageNamesError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		#[cfg(feature = "wally-compat")]
 		if let Some(wally_name) = s
 			.strip_prefix("wally#")
 			.or_else(|| s.contains('-').then_some(s))
@@ -202,7 +195,6 @@ impl FromStr for PackageNames {
 }
 
 /// Wally package names
-#[cfg(feature = "wally-compat")]
 pub mod wally {
 	use std::fmt::Display;
 	use std::str::FromStr;
@@ -322,7 +314,6 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when working with Wally package names
-	#[cfg(feature = "wally-compat")]
 	#[allow(clippy::enum_variant_names)]
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = WallyPackageNameError))]

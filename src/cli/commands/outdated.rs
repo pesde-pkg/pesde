@@ -12,9 +12,9 @@ use itertools::Either;
 use pesde::RefreshedSources;
 use pesde::Subproject;
 use pesde::manifest::Alias;
+use pesde::source::DependencySpecifiers;
 use pesde::source::git::specifier::GitVersionSpecifier;
 use pesde::source::ids::VersionId;
-use pesde::source::specifiers::DependencySpecifiers;
 use pesde::source::traits::PackageSource as _;
 use pesde::source::traits::RefreshOptions;
 use pesde::source::traits::ResolveOptions;
@@ -71,7 +71,6 @@ impl OutdatedCommand {
 									DependencySpecifiers::Pesde(spec) => {
 										spec.version = VersionReq::STAR;
 									}
-									#[cfg(feature = "wally-compat")]
 									DependencySpecifiers::Wally(spec) => {
 										spec.version = VersionReq::STAR;
 									}

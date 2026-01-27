@@ -11,10 +11,12 @@ use crate::manifest::DependencyType;
 use crate::manifest::target::Target;
 use crate::reporters::DownloadsReporter;
 use crate::reporters::PatchesReporter;
+use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::ids::PackageId;
 use crate::source::traits::GetTargetOptions;
+use crate::source::traits::PackageRef as _;
 use crate::source::traits::PackageSource as _;
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
@@ -436,7 +438,9 @@ impl Project {
 
 		let (wally_graph_to_download, other_graph_to_download) = graph_to_download
 			.iter()
-			.partition::<HashMap<_, _>, _>(|(id, _)| id.pkg_ref().is_wally_package());
+			.partition::<HashMap<_, _>, _>(|(id, _)| {
+				id.pkg_ref().structure_kind() == StructureKind::Wally
+			});
 
 		let mut package_targets = HashMap::new();
 

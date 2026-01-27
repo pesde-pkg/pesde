@@ -6,13 +6,13 @@ use crate::manifest::Manifest;
 use crate::manifest::target::Target;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
+use crate::source::DependencySpecifiers;
+use crate::source::PackageRefs;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::fs::PackageFs;
 use crate::source::ids::VersionId;
 use crate::source::path::pkg_ref::PathPackageRef;
-use crate::source::refs::PackageRefs;
-use crate::source::specifiers::DependencySpecifiers;
 use crate::source::traits::DownloadOptions;
 use crate::source::traits::GetTargetOptions;
 use crate::source::traits::PackageSource;
@@ -144,7 +144,6 @@ impl PackageSource for PathPackageSource {
 							})?
 							.to_string();
 					}
-					#[cfg(feature = "wally-compat")]
 					DependencySpecifiers::Wally(spec) => {
 						spec.index = manifest
 							.indices

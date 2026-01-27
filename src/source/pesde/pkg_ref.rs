@@ -4,7 +4,7 @@ use std::str::FromStr;
 use crate::names::PackageName;
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
-use crate::source::refs::StructureKind;
+use crate::source::StructureKind;
 
 /// A pesde package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -26,8 +26,11 @@ impl Display for PesdePackageRef {
 	}
 }
 
+/// Errors that can occur when parsing a pesde package reference
+pub type PesdePackageRefParseError = crate::names::errors::PackageNameError;
+
 impl FromStr for PesdePackageRef {
-	type Err = crate::names::errors::PackageNameError;
+	type Err = PesdePackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Ok(PesdePackageRef { name: s.parse()? })

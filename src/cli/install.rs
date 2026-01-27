@@ -19,8 +19,8 @@ use pesde::graph::DependencyGraph;
 use pesde::graph::DependencyTypeGraph;
 use pesde::lockfile::Lockfile;
 use pesde::manifest::DependencyType;
+use pesde::source::PackageRefs;
 use pesde::source::PackageSources;
-use pesde::source::refs::PackageRefs;
 use pesde::source::traits::RefreshOptions;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -281,7 +281,7 @@ pub async fn install(
 				#[expect(deprecated)]
 				{
 					use pesde::engine::EngineKind;
-					use pesde::source::refs::PackageRefs;
+					use pesde::source::PackageRefs;
 					use pesde::version_matches;
 
 					let mut tasks = graph
@@ -323,7 +323,6 @@ pub async fn install(
 											.context("package version not found in index")?
 											.engines
 									}
-									#[cfg(feature = "wally-compat")]
 									PackageRefs::Wally(_) => Default::default(),
 									// _ => {
 									// 	let path =

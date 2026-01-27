@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
-use crate::source::refs::StructureKind;
+use crate::source::StructureKind;
 
 /// A Git package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -26,14 +26,15 @@ impl std::fmt::Display for GitPackageRef {
 	}
 }
 
+/// Errors that can occur when parsing a Git package reference
+pub type GitPackageRefParseError = crate::source::errors::GitPackageRefParseError;
+
 impl FromStr for GitPackageRef {
-	type Err = crate::source::refs::errors::GitPackageRefParseError;
+	type Err = GitPackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let Some((tree_id, structure_kind)) = s.split_once('+') else {
-			return Err(
-				crate::source::refs::errors::GitPackageRefParseErrorKind::InvalidFormat.into(),
-			);
+			return Err(crate::source::errors::GitPackageRefParseErrorKind::InvalidFormat.into());
 		};
 		Ok(GitPackageRef {
 			tree_id: tree_id.to_string(),

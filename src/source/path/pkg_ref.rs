@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
+use crate::source::StructureKind;
 use crate::source::path::RelativeOrAbsolutePath;
-use crate::source::refs::StructureKind;
 
 /// A path package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -28,8 +28,11 @@ impl std::fmt::Display for PathPackageRef {
 	}
 }
 
+/// Errors that can occur when parsing a path package reference
+pub type PathPackageRefParseError = std::convert::Infallible;
+
 impl std::str::FromStr for PathPackageRef {
-	type Err = std::convert::Infallible;
+	type Err = PathPackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Ok(PathPackageRef {

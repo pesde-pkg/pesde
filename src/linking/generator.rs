@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::manifest::Manifest;
 use crate::manifest::target::TargetKind;
-use crate::source::refs::StructureKind;
+use crate::source::StructureKind;
 use full_moon::ast::luau::ExportedTypeDeclaration;
 use full_moon::visitors::Visitor;
 use itertools::Itertools as _;

@@ -7,6 +7,7 @@ use crate::reporters::response_to_async_read;
 use crate::ser_display_deser_fromstr;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
+use crate::source::PackageRefs;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::fs::FsEntry;
@@ -16,7 +17,6 @@ use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
 use crate::source::ids::VersionId;
-use crate::source::refs::PackageRefs;
 use crate::source::traits::DownloadOptions;
 use crate::source::traits::GetTargetOptions;
 use crate::source::traits::PackageSource;
@@ -137,7 +137,7 @@ impl WallyPackageSource {
 impl PackageSource for WallyPackageSource {
 	type Specifier = specifier::WallyDependencySpecifier;
 	type Ref = WallyPackageRef;
-	type RefreshError = crate::source::git_index::errors::RefreshError;
+	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetTargetError = errors::GetTargetError;
@@ -396,6 +396,9 @@ pub mod errors {
 	use crate::GixUrl;
 	use crate::names::wally::WallyPackageName;
 	use crate::source::git_index::errors::ReadFile;
+
+	/// Errors that can occur when refreshing the Wally package source
+	pub type RefreshError = crate::source::git_index::errors::RefreshError;
 
 	/// Errors that can occur when resolving a package from a Wally package source
 	#[derive(Debug, Error, thiserror_ext::Box)]

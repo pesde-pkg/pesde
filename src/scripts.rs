@@ -7,7 +7,6 @@ use std::future;
 use tracing::instrument;
 
 /// Prints a sourcemap for a Wally package, used for finding the library export file
-#[cfg(feature = "wally-compat")]
 pub const SOURCEMAP_GENERATOR: &str = "sourcemap_generator";
 
 /// Hooks for [execute_script]

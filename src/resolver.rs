@@ -14,11 +14,11 @@ use crate::manifest::ManifestIndices;
 use crate::manifest::OverrideSpecifier;
 use crate::manifest::target::TargetKind;
 use crate::matching_globs;
+use crate::source::DependencySpecifiers;
 use crate::source::PackageSources;
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
 use crate::source::pesde::PesdePackageSource;
-use crate::source::specifiers::DependencySpecifiers;
 use crate::source::traits::PackageSource as _;
 use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
@@ -58,7 +58,6 @@ fn specifier_to_source(
 
 			PackageSources::Pesde(PesdePackageSource::new(index_url))
 		}
-		#[cfg(feature = "wally-compat")]
 		DependencySpecifiers::Wally(specifier) => {
 			let index_url = if let Some(indices) = indices {
 				indices
@@ -484,7 +483,7 @@ pub mod errors {
 	use crate::errors::MatchingGlobsError;
 	use crate::manifest::Alias;
 	use crate::manifest::target::TargetKind;
-	use crate::source::specifiers::DependencySpecifiers;
+	use crate::source::DependencySpecifiers;
 	use itertools::Itertools as _;
 	use thiserror::Error;
 
@@ -510,7 +509,6 @@ pub mod errors {
 		IndexNotFound(String),
 
 		/// A Wally index was not found in the manifest
-		#[cfg(feature = "wally-compat")]
 		#[error("wally index named `{0}` not found in manifest")]
 		WallyIndexNotFound(String),
 

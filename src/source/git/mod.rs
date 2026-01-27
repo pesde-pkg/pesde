@@ -12,11 +12,14 @@ use crate::manifest::target::Target;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::ADDITIONAL_FORBIDDEN_FILES;
+use crate::source::DependencySpecifiers;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
+use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::StructureKind;
 use crate::source::VersionId;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
@@ -28,9 +31,6 @@ use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
 use crate::source::path::RelativeOrAbsolutePath;
 use crate::source::pesde::PesdeVersionedManifest;
-use crate::source::refs::PackageRefs;
-use crate::source::refs::StructureKind;
-use crate::source::specifiers::DependencySpecifiers;
 use crate::source::traits::DownloadOptions;
 use crate::source::traits::GetTargetOptions;
 use crate::source::traits::PackageRef as _;
@@ -134,7 +134,6 @@ fn transform_pesde_dependencies(
 						})?
 						.to_string();
 				}
-				#[cfg(feature = "wally-compat")]
 				DependencySpecifiers::Wally(specifier) => {
 					specifier.index = manifest
 						.indices
@@ -171,7 +170,7 @@ fn transform_pesde_dependencies(
 impl PackageSource for GitPackageSource {
 	type Specifier = GitDependencySpecifier;
 	type Ref = GitPackageRef;
-	type RefreshError = crate::source::git_index::errors::RefreshError;
+	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetTargetError = errors::GetTargetError;
@@ -317,7 +316,6 @@ impl PackageSource for GitPackageSource {
 				None => None,
 			};
 
-			#[cfg(feature = "wally-compat")]
 			let Some((dependencies, v_id)) = manifest else {
 				use crate::manifest::target::TargetKind;
 				use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
@@ -355,10 +353,6 @@ impl PackageSource for GitPackageSource {
 					dependencies,
 					tree.id.to_string(),
 				));
-			};
-			#[cfg(not(feature = "wally-compat"))]
-			let Some((dependencies, v_id)) = manifest else {
-				return Err(errors::ResolveErrorKind::NoManifest(repo_url.clone()));
 			};
 
 			Ok((
@@ -545,12 +539,9 @@ impl PackageSource for GitPackageSource {
 		options: &GetTargetOptions<'_>,
 	) -> Result<Target, Self::GetTargetError> {
 		if pkg_ref.structure_kind == StructureKind::Wally {
-			#[cfg(feature = "wally-compat")]
 			return crate::source::wally::compat_util::get_target(options)
 				.await
 				.map_err(Into::into);
-			#[cfg(not(feature = "wally-compat"))]
-			panic!("wally-compat feature is not enabled, and package is a wally package");
 		}
 
 		let manifest = fs::read_to_string(options.path.join(MANIFEST_FILE_NAME))
@@ -570,6 +561,9 @@ pub mod errors {
 	use gix::ObjectId;
 	use relative_path::RelativePathBuf;
 	use thiserror::Error;
+
+	/// Errors that can occur when refreshing the Git package source
+	pub type RefreshError = crate::source::git_index::errors::RefreshError;
 
 	/// Errors that can occur when resolving a package from a Git package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
@@ -695,7 +689,6 @@ pub mod errors {
 		Io(#[from] std::io::Error),
 
 		/// An error occurred while creating a Wally target
-		#[cfg(feature = "wally-compat")]
 		#[error("error creating Wally target")]
 		GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
 
@@ -746,7 +739,6 @@ pub mod errors {
 		ManifestRead(#[from] crate::errors::ManifestReadError),
 
 		/// An error occurred while creating a Wally target
-		#[cfg(feature = "wally-compat")]
 		#[error("error creating Wally target")]
 		GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
 	}

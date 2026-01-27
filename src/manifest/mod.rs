@@ -2,9 +2,9 @@ use crate::GixUrl;
 use crate::engine::EngineKind;
 use crate::manifest::target::Target;
 use crate::ser_display_deser_fromstr;
+use crate::source::DependencySpecifiers;
 #[cfg(feature = "patches")]
 use crate::source::ids::PackageId;
-use crate::source::specifiers::DependencySpecifiers;
 #[cfg(feature = "patches")]
 use relative_path::RelativePathBuf;
 use semver::VersionReq;
@@ -28,7 +28,6 @@ pub struct ManifestIndices {
 	#[serde(default, rename = "indices")]
 	pub pesde: BTreeMap<String, GixUrl>,
 	/// The indices to use for the package's Wally dependencies
-	#[cfg(feature = "wally-compat")]
 	#[serde(default, rename = "wally_indices")]
 	pub wally: BTreeMap<String, GixUrl>,
 }

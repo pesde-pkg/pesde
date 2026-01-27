@@ -17,6 +17,7 @@ use pesde::manifest::Alias;
 use pesde::manifest::DependencyType;
 use pesde::manifest::target::TargetKind;
 use pesde::names::PackageNames;
+use pesde::source::DependencySpecifiers;
 use pesde::source::PackageSources;
 use pesde::source::git::GitPackageSource;
 use pesde::source::git::specifier::GitDependencySpecifier;
@@ -26,7 +27,6 @@ use pesde::source::path::RelativeOrAbsolutePath;
 use pesde::source::path::specifier::PathDependencySpecifier;
 use pesde::source::pesde::PesdePackageSource;
 use pesde::source::pesde::specifier::PesdeDependencySpecifier;
-use pesde::source::specifiers::DependencySpecifiers;
 use pesde::source::traits::PackageSource as _;
 use pesde::source::traits::RefreshOptions;
 use pesde::source::traits::ResolveOptions;
@@ -94,7 +94,6 @@ impl AddCommand {
 
 					(source, specifier)
 				}
-				#[cfg(feature = "wally-compat")]
 				VersionedPackageName(PackageNames::Wally(name), version) => {
 					let index = manifest
 						.indices
@@ -239,7 +238,6 @@ impl AddCommand {
 					v_id.target()
 				);
 			}
-			#[cfg(feature = "wally-compat")]
 			DependencySpecifiers::Wally(spec) => {
 				let name_str = spec.name.to_string();
 				let name_str = name_str.trim_start_matches("wally#");

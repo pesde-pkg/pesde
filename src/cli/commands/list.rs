@@ -9,7 +9,7 @@ use crate::cli::style::SUCCESS_STYLE;
 use pesde::Subproject;
 use pesde::manifest::Alias;
 use pesde::manifest::DependencyType;
-use pesde::source::specifiers::DependencySpecifiers;
+use pesde::source::DependencySpecifiers;
 
 #[derive(Debug, Args)]
 pub struct ListCommand;

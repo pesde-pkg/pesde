@@ -4,7 +4,7 @@ use std::str::FromStr;
 use crate::names::wally::WallyPackageName;
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
-use crate::source::refs::StructureKind;
+use crate::source::StructureKind;
 
 /// A Wally package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -26,8 +26,11 @@ impl Display for WallyPackageRef {
 	}
 }
 
+/// Errors that can occur when parsing a Wally package reference
+pub type WallyPackageRefParseError = crate::names::errors::WallyPackageNameError;
+
 impl FromStr for WallyPackageRef {
-	type Err = crate::names::errors::WallyPackageNameError;
+	type Err = WallyPackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Ok(WallyPackageRef { name: s.parse()? })
