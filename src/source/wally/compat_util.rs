@@ -1,20 +1,22 @@
-use std::{
-	io::{BufRead as _, BufReader, PipeReader, Read as _},
-	path::PathBuf,
-};
+use std::io::BufRead as _;
+use std::io::BufReader;
+use std::io::PipeReader;
+use std::io::Read as _;
+use std::path::PathBuf;
 
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 
-use crate::{
-	Importer, LINK_LIB_NO_FILE_FOUND, Project,
-	manifest::target::Target,
-	scripts::{ExecuteScriptHooks, SOURCEMAP_GENERATOR, execute_script},
-	source::{
-		traits::GetTargetOptions,
-		wally::manifest::{Realm, WallyManifest},
-	},
-};
+use crate::Importer;
+use crate::LINK_LIB_NO_FILE_FOUND;
+use crate::Project;
+use crate::manifest::target::Target;
+use crate::scripts::ExecuteScriptHooks;
+use crate::scripts::SOURCEMAP_GENERATOR;
+use crate::scripts::execute_script;
+use crate::source::traits::GetTargetOptions;
+use crate::source::wally::manifest::Realm;
+use crate::source::wally::manifest::WallyManifest;
 use fs_err::tokio as fs;
 use tracing::instrument;
 

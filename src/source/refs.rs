@@ -1,7 +1,9 @@
 #![expect(deprecated)]
-use std::{fmt::Display, str::FromStr};
+use std::fmt::Display;
+use std::str::FromStr;
 
-use crate::{ser_display_deser_fromstr, source::traits::PackageRef};
+use crate::ser_display_deser_fromstr;
+use crate::source::traits::PackageRef;
 
 /// A type of structure
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

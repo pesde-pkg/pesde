@@ -1,9 +1,8 @@
 use std::str::FromStr;
 
-use crate::{
-	ser_display_deser_fromstr,
-	source::{PackageRef, refs::StructureKind},
-};
+use crate::ser_display_deser_fromstr;
+use crate::source::PackageRef;
+use crate::source::refs::StructureKind;
 
 /// A Git package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

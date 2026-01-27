@@ -1,16 +1,21 @@
 //! Progress reporters for the CLI
 
-use std::{
-	future::Future,
-	io::{Stdout, Write},
-	sync::{Arc, Mutex, Once, OnceLock},
-	time::Duration,
-};
+use std::future::Future;
+use std::io::Stdout;
+use std::io::Write;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::Once;
+use std::sync::OnceLock;
+use std::time::Duration;
 
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use pesde::reporters::{
-	DownloadProgressReporter, DownloadsReporter, PatchProgressReporter, PatchesReporter,
-};
+use indicatif::MultiProgress;
+use indicatif::ProgressBar;
+use indicatif::ProgressStyle;
+use pesde::reporters::DownloadProgressReporter;
+use pesde::reporters::DownloadsReporter;
+use pesde::reporters::PatchProgressReporter;
+use pesde::reporters::PatchesReporter;
 
 pub const TICK_CHARS: &str = "⣷⣯⣟⡿⢿⣻⣽⣾";
 

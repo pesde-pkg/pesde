@@ -3,15 +3,13 @@ use std::collections::BTreeMap;
 use anyhow::Context as _;
 use clap::Args;
 
-use crate::cli::{
-	dep_type_to_key,
-	style::{INFO_STYLE, SUCCESS_STYLE},
-};
-use pesde::{
-	Subproject,
-	manifest::{Alias, DependencyType},
-	source::specifiers::DependencySpecifiers,
-};
+use crate::cli::dep_type_to_key;
+use crate::cli::style::INFO_STYLE;
+use crate::cli::style::SUCCESS_STYLE;
+use pesde::Subproject;
+use pesde::manifest::Alias;
+use pesde::manifest::DependencyType;
+use pesde::source::specifiers::DependencySpecifiers;
 
 #[derive(Debug, Args)]
 pub struct ListCommand;

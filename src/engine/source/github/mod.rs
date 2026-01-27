@@ -1,21 +1,24 @@
 /// The GitHub engine reference
 pub mod engine_ref;
 
-use crate::{
-	GixUrl,
-	engine::source::{
-		archive::Archive,
-		github::engine_ref::Release,
-		traits::{DownloadOptions, EngineSource, ResolveOptions},
-	},
-	reporters::{DownloadProgressReporter, response_to_async_read},
-	util::no_build_metadata,
-	version_matches,
-};
+use crate::GixUrl;
+use crate::engine::source::archive::Archive;
+use crate::engine::source::github::engine_ref::Release;
+use crate::engine::source::traits::DownloadOptions;
+use crate::engine::source::traits::EngineSource;
+use crate::engine::source::traits::ResolveOptions;
+use crate::reporters::DownloadProgressReporter;
+use crate::reporters::response_to_async_read;
+use crate::util::no_build_metadata;
+use crate::version_matches;
 use gix::bstr::BStr;
-use reqwest::header::{ACCEPT, AUTHORIZATION};
-use semver::{Version, VersionReq};
-use std::{collections::BTreeMap, path::PathBuf, sync::LazyLock};
+use reqwest::header::ACCEPT;
+use reqwest::header::AUTHORIZATION;
+use semver::Version;
+use semver::VersionReq;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::LazyLock;
 
 /// The GitHub URL used for authentication
 pub static GITHUB_URL: LazyLock<GixUrl> =

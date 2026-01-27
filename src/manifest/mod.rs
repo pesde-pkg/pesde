@@ -1,21 +1,21 @@
 use crate::GixUrl;
+use crate::engine::EngineKind;
+use crate::manifest::target::Target;
+use crate::ser_display_deser_fromstr;
 #[cfg(feature = "patches")]
 use crate::source::ids::PackageId;
-use crate::{
-	engine::EngineKind, manifest::target::Target, ser_display_deser_fromstr,
-	source::specifiers::DependencySpecifiers,
-};
+use crate::source::specifiers::DependencySpecifiers;
 #[cfg(feature = "patches")]
 use relative_path::RelativePathBuf;
 use semver::VersionReq;
-use serde::{Deserialize, Serialize};
-use std::{
-	collections::{BTreeMap, HashMap},
-	fmt::Display,
-	hash::Hash,
-	str::FromStr,
-	sync::Arc,
-};
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::hash::Hash;
+use std::str::FromStr;
+use std::sync::Arc;
 use tracing::instrument;
 
 /// Targets

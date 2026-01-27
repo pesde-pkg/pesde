@@ -1,24 +1,35 @@
+use crate::cli::ExecReplace as _;
+use crate::cli::PESDE_DIR;
+use crate::cli::auth::get_tokens;
+use crate::cli::display_err;
 #[cfg(feature = "version-management")]
-use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
-use crate::cli::{ExecReplace as _, PESDE_DIR, auth::get_tokens, display_err};
+use crate::cli::version::check_for_updates;
+#[cfg(feature = "version-management")]
+use crate::cli::version::current_version;
+#[cfg(feature = "version-management")]
+use crate::cli::version::get_or_download_engine;
 use anyhow::Context as _;
-use clap::{Parser, builder::styling::AnsiColor};
+use clap::Parser;
+use clap::builder::styling::AnsiColor;
 use cli::data_dir;
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
-use pesde::{AuthConfig, Project, engine::EngineKind, find_roots};
-use std::{
-	io,
-	path::{Path, PathBuf},
-	str::FromStr as _,
-	sync::Mutex,
-};
+use pesde::AuthConfig;
+use pesde::Project;
+use pesde::engine::EngineKind;
+use pesde::find_roots;
+use std::io;
+use std::path::Path;
+use std::path::PathBuf;
+use std::str::FromStr as _;
+use std::sync::Mutex;
 use tempfile::NamedTempFile;
 use tracing::instrument;
-use tracing_subscriber::{
-	EnvFilter, filter::LevelFilter, fmt::MakeWriter, layer::SubscriberExt as _,
-	util::SubscriberInitExt as _,
-};
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
 
 mod cli;
 pub mod util;

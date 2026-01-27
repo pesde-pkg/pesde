@@ -1,6 +1,8 @@
-use crate::cli::install::{InstallOptions, install};
+use crate::cli::install::InstallOptions;
+use crate::cli::install::install;
 use clap::Args;
-use pesde::{Subproject, download_and_link::InstallDependenciesMode};
+use pesde::Subproject;
+use pesde::download_and_link::InstallDependenciesMode;
 use std::num::NonZeroUsize;
 
 #[derive(Debug, Args, Copy, Clone)]

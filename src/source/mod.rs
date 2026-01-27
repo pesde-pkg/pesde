@@ -1,21 +1,20 @@
 #![expect(deprecated)]
-use crate::{
-	manifest::{
-		Alias, DependencyType,
-		target::{Target, TargetKind},
-	},
-	reporters::DownloadProgressReporter,
-	ser_display_deser_fromstr,
-	source::{
-		fs::PackageFs, ids::VersionId, refs::PackageRefs, specifiers::DependencySpecifiers,
-		traits::*,
-	},
-};
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	fmt::{Debug, Display},
-	str::FromStr,
-};
+use crate::manifest::Alias;
+use crate::manifest::DependencyType;
+use crate::manifest::target::Target;
+use crate::manifest::target::TargetKind;
+use crate::reporters::DownloadProgressReporter;
+use crate::ser_display_deser_fromstr;
+use crate::source::fs::PackageFs;
+use crate::source::ids::VersionId;
+use crate::source::refs::PackageRefs;
+use crate::source::specifiers::DependencySpecifiers;
+use crate::source::traits::*;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::str::FromStr;
 
 /// Packages' filesystems
 pub mod fs;

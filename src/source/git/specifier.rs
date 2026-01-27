@@ -1,9 +1,11 @@
 use relative_path::RelativePathBuf;
 use semver::VersionReq;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt::Display;
 
-use crate::{GixUrl, source::DependencySpecifier};
+use crate::GixUrl;
+use crate::source::DependencySpecifier;
 
 /// A specifier of a Git dependency's version
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]

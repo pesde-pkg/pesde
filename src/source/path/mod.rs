@@ -1,30 +1,34 @@
 #![expect(deprecated)]
-use crate::{
-	MANIFEST_FILE_NAME,
-	errors::{ManifestReadError, ManifestReadErrorKind},
-	manifest::{Manifest, target::Target},
-	reporters::DownloadProgressReporter,
-	ser_display_deser_fromstr,
-	source::{
-		PackageSources, ResolveResult,
-		fs::PackageFs,
-		ids::VersionId,
-		path::pkg_ref::PathPackageRef,
-		refs::PackageRefs,
-		specifiers::DependencySpecifiers,
-		traits::{DownloadOptions, GetTargetOptions, PackageSource, ResolveOptions},
-	},
-};
+use crate::MANIFEST_FILE_NAME;
+use crate::errors::ManifestReadError;
+use crate::errors::ManifestReadErrorKind;
+use crate::manifest::Manifest;
+use crate::manifest::target::Target;
+use crate::reporters::DownloadProgressReporter;
+use crate::ser_display_deser_fromstr;
+use crate::source::PackageSources;
+use crate::source::ResolveResult;
+use crate::source::fs::PackageFs;
+use crate::source::ids::VersionId;
+use crate::source::path::pkg_ref::PathPackageRef;
+use crate::source::refs::PackageRefs;
+use crate::source::specifiers::DependencySpecifiers;
+use crate::source::traits::DownloadOptions;
+use crate::source::traits::GetTargetOptions;
+use crate::source::traits::PackageSource;
+use crate::source::traits::ResolveOptions;
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
-use semver::{BuildMetadata, Prerelease, Version};
-use serde::{Deserialize, Serialize};
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	fmt::Display,
-	path::PathBuf,
-	str::FromStr,
-};
+use semver::BuildMetadata;
+use semver::Prerelease;
+use semver::Version;
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::fmt::Display;
+use std::path::PathBuf;
+use std::str::FromStr;
 use tracing::instrument;
 
 /// The path package reference
@@ -211,7 +215,8 @@ impl PackageSource for PathPackageSource {
 
 /// Errors that can occur when using a path package source
 pub mod errors {
-	use crate::{manifest::target::TargetKind, names::PackageName};
+	use crate::manifest::target::TargetKind;
+	use crate::names::PackageName;
 	use std::path::PathBuf;
 	use thiserror::Error;
 

@@ -1,6 +1,13 @@
-use crate::{AuthConfig, engine::source::archive::Archive, reporters::DownloadProgressReporter};
-use semver::{Version, VersionReq};
-use std::{collections::BTreeMap, fmt::Debug, future::Future, path::PathBuf, sync::Arc};
+use crate::AuthConfig;
+use crate::engine::source::archive::Archive;
+use crate::reporters::DownloadProgressReporter;
+use semver::Version;
+use semver::VersionReq;
+use std::collections::BTreeMap;
+use std::fmt::Debug;
+use std::future::Future;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Options for resolving an engine
 #[derive(Debug, Clone)]

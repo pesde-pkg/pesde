@@ -1,22 +1,28 @@
-use crate::cli::{
-	config::read_config,
-	style::{ERROR_STYLE, INFO_STYLE, WARN_STYLE},
-};
+use crate::cli::config::read_config;
+use crate::cli::style::ERROR_STYLE;
+use crate::cli::style::INFO_STYLE;
+use crate::cli::style::WARN_STYLE;
 use anyhow::Context as _;
 use itertools::Itertools as _;
-use pesde::{
-	AuthConfig, DEFAULT_INDEX_NAME, GixUrl, Subproject,
-	engine::{
-		EngineKind,
-		runtime::{Runtime, RuntimeKind},
-	},
-	errors::ManifestReadErrorKind,
-	manifest::{DependencyType, Manifest, target::TargetKind},
-	names::PackageNames,
-	source::{git::specifier::GitVersionSpecifier, ids::VersionId, path::RelativeOrAbsolutePath},
-};
+use pesde::AuthConfig;
+use pesde::DEFAULT_INDEX_NAME;
+use pesde::GixUrl;
+use pesde::Subproject;
+use pesde::engine::EngineKind;
+use pesde::engine::runtime::Runtime;
+use pesde::engine::runtime::RuntimeKind;
+use pesde::errors::ManifestReadErrorKind;
+use pesde::manifest::DependencyType;
+use pesde::manifest::Manifest;
+use pesde::manifest::target::TargetKind;
+use pesde::names::PackageNames;
+use pesde::source::git::specifier::GitVersionSpecifier;
+use pesde::source::ids::VersionId;
+use pesde::source::path::RelativeOrAbsolutePath;
 use semver::Version;
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::str::FromStr;
 
 pub mod auth;
 pub mod commands;
@@ -388,10 +394,9 @@ impl ExecReplace for std::process::Command {
 #[cfg(windows)]
 mod imp {
 	use super::ExecReplace;
-	use windows::{
-		Win32::{Foundation::TRUE, System::Console::SetConsoleCtrlHandler},
-		core::BOOL,
-	};
+	use windows::Win32::Foundation::TRUE;
+	use windows::Win32::System::Console::SetConsoleCtrlHandler;
+	use windows::core::BOOL;
 
 	unsafe extern "system" fn ctrlc_handler(_: u32) -> BOOL {
 		TRUE

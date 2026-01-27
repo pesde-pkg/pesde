@@ -3,32 +3,35 @@
 //! pesde has its own registry, however it can also use Wally, and Git repositories as package sources.
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
 
-use crate::{
-	lockfile::Lockfile,
-	manifest::Manifest,
-	source::{
-		PackageSources,
-		traits::{PackageSource as _, RefreshOptions},
-	},
-	util::hash,
-};
+use crate::lockfile::Lockfile;
+use crate::manifest::Manifest;
+use crate::source::PackageSources;
+use crate::source::traits::PackageSource as _;
+use crate::source::traits::RefreshOptions;
+use crate::util::hash;
 use fs_err::tokio as fs;
 use gix::bstr::ByteSlice as _;
-use relative_path::{RelativePath, RelativePathBuf};
-use semver::{Version, VersionReq};
-use serde::{Deserialize, Serialize};
-use std::{
-	collections::{HashMap, HashSet},
-	fmt::{Debug, Display, Formatter},
-	hash::{Hash as _, Hasher as _},
-	path::{Path, PathBuf},
-	str::FromStr,
-	sync::Arc,
-};
-use tokio::{
-	io::AsyncReadExt as _,
-	sync::{Mutex, OwnedRwLockReadGuard, RwLock},
-};
+use relative_path::RelativePath;
+use relative_path::RelativePathBuf;
+use semver::Version;
+use semver::VersionReq;
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::hash::Hash as _;
+use std::hash::Hasher as _;
+use std::path::Path;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
+use tokio::io::AsyncReadExt as _;
+use tokio::sync::Mutex;
+use tokio::sync::OwnedRwLockReadGuard;
+use tokio::sync::RwLock;
 use tracing::instrument;
 use wax::Pattern as _;
 

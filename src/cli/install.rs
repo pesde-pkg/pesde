@@ -1,23 +1,33 @@
-use crate::cli::{
-	dep_type_to_key,
-	reporters::{self, CliReporter},
-	style::{ADDED_STYLE, REMOVED_STYLE, WARN_PREFIX},
-};
+use crate::cli::dep_type_to_key;
+use crate::cli::reporters::CliReporter;
+use crate::cli::reporters::{self};
+use crate::cli::style::ADDED_STYLE;
+use crate::cli::style::REMOVED_STYLE;
+use crate::cli::style::WARN_PREFIX;
 use anyhow::Context as _;
 use console::style;
 use fs_err::tokio as fs;
-use itertools::{EitherOrBoth, Itertools as _};
-use pesde::{
-	Importer, Project, RefreshedSources,
-	download_and_link::{DownloadAndLinkHooks, DownloadAndLinkOptions, InstallDependenciesMode},
-	graph::{DependencyGraph, DependencyTypeGraph},
-	lockfile::Lockfile,
-	manifest::DependencyType,
-	source::{PackageSources, refs::PackageRefs, traits::RefreshOptions},
-};
-use std::{
-	cmp::Ordering, collections::BTreeMap, num::NonZeroUsize, path::Path, sync::Arc, time::Instant,
-};
+use itertools::EitherOrBoth;
+use itertools::Itertools as _;
+use pesde::Importer;
+use pesde::Project;
+use pesde::RefreshedSources;
+use pesde::download_and_link::DownloadAndLinkHooks;
+use pesde::download_and_link::DownloadAndLinkOptions;
+use pesde::download_and_link::InstallDependenciesMode;
+use pesde::graph::DependencyGraph;
+use pesde::graph::DependencyTypeGraph;
+use pesde::lockfile::Lockfile;
+use pesde::manifest::DependencyType;
+use pesde::source::PackageSources;
+use pesde::source::refs::PackageRefs;
+use pesde::source::traits::RefreshOptions;
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Instant;
 use tokio::task::JoinSet;
 
 pub struct InstallHooks {
@@ -270,7 +280,9 @@ pub async fn install(
 				#[cfg(feature = "version-management")]
 				#[expect(deprecated)]
 				{
-					use pesde::{engine::EngineKind, source::refs::PackageRefs, version_matches};
+					use pesde::engine::EngineKind;
+					use pesde::source::refs::PackageRefs;
+					use pesde::version_matches;
 
 					let mut tasks = graph
 						.nodes

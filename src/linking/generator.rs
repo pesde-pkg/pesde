@@ -1,15 +1,16 @@
-use std::{
-	borrow::Cow,
-	fmt::Display,
-	path::{Component, Path, PathBuf},
-};
+use std::borrow::Cow;
+use std::fmt::Display;
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 
-use crate::{
-	manifest::{Manifest, target::TargetKind},
-	source::refs::StructureKind,
-};
-use full_moon::{ast::luau::ExportedTypeDeclaration, visitors::Visitor};
-use itertools::{Itertools as _, Position};
+use crate::manifest::Manifest;
+use crate::manifest::target::TargetKind;
+use crate::source::refs::StructureKind;
+use full_moon::ast::luau::ExportedTypeDeclaration;
+use full_moon::visitors::Visitor;
+use itertools::Itertools as _;
+use itertools::Position;
 use relative_path::RelativePath;
 use tracing::instrument;
 

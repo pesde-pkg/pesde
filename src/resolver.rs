@@ -1,27 +1,48 @@
 #[expect(deprecated)]
-use crate::{
-	GixUrl, Project, RefreshedSources,
-	graph::{DependencyGraph, DependencyGraphNode},
-	manifest::{Alias, DependencyType},
-	source::{
-		PackageSources,
-		ids::PackageId,
-		pesde::PesdePackageSource,
-		specifiers::DependencySpecifiers,
-		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
-	},
-};
-use crate::{
-	Importer, Subproject,
-	graph::{DependencyGraphImporter, DependencyTypeGraph, DependencyTypeGraphNode},
-	manifest::{ManifestIndices, OverrideSpecifier, target::TargetKind},
-	matching_globs,
-};
+use crate::GixUrl;
+use crate::Importer;
+#[expect(deprecated)]
+use crate::Project;
+#[expect(deprecated)]
+use crate::RefreshedSources;
+use crate::Subproject;
+#[expect(deprecated)]
+use crate::graph::DependencyGraph;
+use crate::graph::DependencyGraphImporter;
+#[expect(deprecated)]
+use crate::graph::DependencyGraphNode;
+use crate::graph::DependencyTypeGraph;
+use crate::graph::DependencyTypeGraphNode;
+#[expect(deprecated)]
+use crate::manifest::Alias;
+#[expect(deprecated)]
+use crate::manifest::DependencyType;
+use crate::manifest::ManifestIndices;
+use crate::manifest::OverrideSpecifier;
+use crate::manifest::target::TargetKind;
+use crate::matching_globs;
+#[expect(deprecated)]
+use crate::source::PackageSources;
+#[expect(deprecated)]
+use crate::source::ids::PackageId;
+#[expect(deprecated)]
+use crate::source::pesde::PesdePackageSource;
+#[expect(deprecated)]
+use crate::source::specifiers::DependencySpecifiers;
+#[expect(deprecated)]
+use crate::source::traits::PackageSource as _;
+#[expect(deprecated)]
+use crate::source::traits::RefreshOptions;
+#[expect(deprecated)]
+use crate::source::traits::ResolveOptions;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use tokio::task::JoinSet;
-use tracing::{Instrument as _, instrument};
+use tracing::Instrument as _;
+use tracing::instrument;
 
 fn specifier_to_source(
 	indices: Option<&ManifestIndices>,
@@ -473,11 +494,10 @@ impl Project {
 pub mod errors {
 	use std::collections::BTreeSet;
 
-	use crate::{
-		errors::MatchingGlobsError,
-		manifest::{Alias, target::TargetKind},
-		source::specifiers::DependencySpecifiers,
-	};
+	use crate::errors::MatchingGlobsError;
+	use crate::manifest::Alias;
+	use crate::manifest::target::TargetKind;
+	use crate::source::specifiers::DependencySpecifiers;
 	use itertools::Itertools as _;
 	use thiserror::Error;
 

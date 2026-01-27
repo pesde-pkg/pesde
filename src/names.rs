@@ -1,6 +1,8 @@
 #![expect(deprecated)]
 use crate::ser_display_deser_fromstr;
-use std::{fmt::Display, str::FromStr, sync::Arc};
+use std::fmt::Display;
+use std::str::FromStr;
+use std::sync::Arc;
 
 /// The invalid part of a package name
 #[derive(Debug)]
@@ -202,12 +204,13 @@ impl FromStr for PackageNames {
 /// Wally package names
 #[cfg(feature = "wally-compat")]
 pub mod wally {
-	use std::{fmt::Display, str::FromStr, sync::Arc};
+	use std::fmt::Display;
+	use std::str::FromStr;
+	use std::sync::Arc;
 
-	use crate::{
-		names::{ErrorReason, errors},
-		ser_display_deser_fromstr,
-	};
+	use crate::names::ErrorReason;
+	use crate::names::errors;
+	use crate::ser_display_deser_fromstr;
 
 	/// A Wally package name
 	#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

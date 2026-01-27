@@ -1,6 +1,8 @@
 #![allow(async_fn_in_trait)]
 
-use crate::{GixUrl, Project, source::traits::RefreshOptions};
+use crate::GixUrl;
+use crate::Project;
+use crate::source::traits::RefreshOptions;
 use fs_err::tokio as fs;
 use gix::remote::Direction;
 use std::fmt::Debug;

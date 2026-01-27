@@ -1,10 +1,11 @@
 use crate::ser_display_deser_fromstr;
-use relative_path::{RelativePath, RelativePathBuf};
-use serde::{Deserialize, Serialize};
-use std::{
-	fmt::{Display, Formatter},
-	str::FromStr,
-};
+use relative_path::RelativePath;
+use relative_path::RelativePathBuf;
+use serde::Deserialize;
+use serde::Serialize;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::str::FromStr;
 
 /// A kind of target
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

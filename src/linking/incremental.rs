@@ -1,9 +1,12 @@
-use crate::{
-	PACKAGES_CONTAINER_NAME, Project, graph::DependencyGraph, manifest::target::TargetKind,
-	util::remove_empty_dir,
-};
+use crate::PACKAGES_CONTAINER_NAME;
+use crate::Project;
+use crate::graph::DependencyGraph;
+use crate::manifest::target::TargetKind;
+use crate::util::remove_empty_dir;
 use fs_err::tokio as fs;
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::Arc;
 use tokio::task::JoinSet;
 
 impl Project {

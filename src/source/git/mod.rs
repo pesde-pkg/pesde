@@ -1,43 +1,60 @@
 #![expect(deprecated)]
-use crate::{
-	GixUrl, MANIFEST_FILE_NAME, Project, Subproject,
-	errors::{ManifestReadError, ManifestReadErrorKind},
-	manifest::{Alias, DependencyType, Manifest, target::Target},
-	reporters::DownloadProgressReporter,
-	ser_display_deser_fromstr,
-	source::{
-		ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS, IGNORED_FILES, PackageSource, PackageSources,
-		ResolveResult, VersionId,
-		fs::{FsEntry, PackageFs, store_in_cas},
-		git::{
-			pkg_ref::GitPackageRef,
-			specifier::{GitDependencySpecifier, GitVersionSpecifier},
-		},
-		git_index::{GitBasedSource, read_file},
-		path::RelativeOrAbsolutePath,
-		pesde::PesdeVersionedManifest,
-		refs::{PackageRefs, StructureKind},
-		specifiers::DependencySpecifiers,
-		traits::{
-			DownloadOptions, GetTargetOptions, PackageRef as _, RefreshOptions, ResolveOptions,
-		},
-	},
-	util::{hash, simplify_path},
-	version_matches,
-};
+use crate::GixUrl;
+use crate::MANIFEST_FILE_NAME;
+use crate::Project;
+use crate::Subproject;
+use crate::errors::ManifestReadError;
+use crate::errors::ManifestReadErrorKind;
+use crate::manifest::Alias;
+use crate::manifest::DependencyType;
+use crate::manifest::Manifest;
+use crate::manifest::target::Target;
+use crate::reporters::DownloadProgressReporter;
+use crate::ser_display_deser_fromstr;
+use crate::source::ADDITIONAL_FORBIDDEN_FILES;
+use crate::source::IGNORED_DIRS;
+use crate::source::IGNORED_FILES;
+use crate::source::PackageSource;
+use crate::source::PackageSources;
+use crate::source::ResolveResult;
+use crate::source::VersionId;
+use crate::source::fs::FsEntry;
+use crate::source::fs::PackageFs;
+use crate::source::fs::store_in_cas;
+use crate::source::git::pkg_ref::GitPackageRef;
+use crate::source::git::specifier::GitDependencySpecifier;
+use crate::source::git::specifier::GitVersionSpecifier;
+use crate::source::git_index::GitBasedSource;
+use crate::source::git_index::read_file;
+use crate::source::path::RelativeOrAbsolutePath;
+use crate::source::pesde::PesdeVersionedManifest;
+use crate::source::refs::PackageRefs;
+use crate::source::refs::StructureKind;
+use crate::source::specifiers::DependencySpecifiers;
+use crate::source::traits::DownloadOptions;
+use crate::source::traits::GetTargetOptions;
+use crate::source::traits::PackageRef as _;
+use crate::source::traits::RefreshOptions;
+use crate::source::traits::ResolveOptions;
+use crate::util::hash;
+use crate::util::simplify_path;
+use crate::version_matches;
 use fs_err::tokio as fs;
-use gix::{ObjectId, traverse::tree::Recorder};
+use gix::ObjectId;
+use gix::traverse::tree::Recorder;
 use relative_path::RelativePathBuf;
-use semver::{BuildMetadata, Version};
-use std::{
-	borrow::Cow,
-	collections::{BTreeMap, BTreeSet},
-	fmt::{Debug, Display},
-	hash::Hash,
-	path::PathBuf,
-	str::FromStr,
-};
-use tokio::task::{JoinSet, spawn_blocking};
+use semver::BuildMetadata;
+use semver::Version;
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::hash::Hash;
+use std::path::PathBuf;
+use std::str::FromStr;
+use tokio::task::JoinSet;
+use tokio::task::spawn_blocking;
 use tracing::instrument;
 
 /// The Git package reference
@@ -302,13 +319,10 @@ impl PackageSource for GitPackageSource {
 
 			#[cfg(feature = "wally-compat")]
 			let Some((dependencies, v_id)) = manifest else {
-				use crate::{
-					manifest::target::TargetKind,
-					source::wally::{
-						compat_util::WALLY_MANIFEST_FILE_NAME,
-						manifest::{Realm, WallyManifest},
-					},
-				};
+				use crate::manifest::target::TargetKind;
+				use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
+				use crate::source::wally::manifest::Realm;
+				use crate::source::wally::manifest::WallyManifest;
 
 				let manifest = read_file(&tree, [WALLY_MANIFEST_FILE_NAME])
 					.map_err(|e| errors::ResolveErrorKind::ReadManifest(repo_url.clone(), e))?;

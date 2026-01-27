@@ -1,34 +1,44 @@
-use crate::{
-	GixUrl, Project,
-	manifest::target::Target,
-	names::wally::WallyPackageName,
-	reporters::{DownloadProgressReporter, response_to_async_read},
-	ser_display_deser_fromstr,
-	source::{
-		IGNORED_DIRS, IGNORED_FILES, PackageSources, ResolveResult,
-		fs::{FsEntry, PackageFs, store_in_cas},
-		git_index::{GitBasedSource, read_file, root_tree},
-		ids::VersionId,
-		refs::PackageRefs,
-		traits::{
-			DownloadOptions, GetTargetOptions, PackageSource, RefreshOptions, ResolveOptions,
-		},
-		wally::{compat_util::get_target, manifest::WallyManifest, pkg_ref::WallyPackageRef},
-	},
-	util::hash,
-	version_matches,
-};
+use crate::GixUrl;
+use crate::Project;
+use crate::manifest::target::Target;
+use crate::names::wally::WallyPackageName;
+use crate::reporters::DownloadProgressReporter;
+use crate::reporters::response_to_async_read;
+use crate::ser_display_deser_fromstr;
+use crate::source::IGNORED_DIRS;
+use crate::source::IGNORED_FILES;
+use crate::source::PackageSources;
+use crate::source::ResolveResult;
+use crate::source::fs::FsEntry;
+use crate::source::fs::PackageFs;
+use crate::source::fs::store_in_cas;
+use crate::source::git_index::GitBasedSource;
+use crate::source::git_index::read_file;
+use crate::source::git_index::root_tree;
+use crate::source::ids::VersionId;
+use crate::source::refs::PackageRefs;
+use crate::source::traits::DownloadOptions;
+use crate::source::traits::GetTargetOptions;
+use crate::source::traits::PackageSource;
+use crate::source::traits::RefreshOptions;
+use crate::source::traits::ResolveOptions;
+use crate::source::wally::compat_util::get_target;
+use crate::source::wally::manifest::WallyManifest;
+use crate::source::wally::pkg_ref::WallyPackageRef;
+use crate::util::hash;
+use crate::version_matches;
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	fmt::Display,
-	path::PathBuf,
-	str::FromStr,
-};
-use tokio::{io::AsyncReadExt as _, pin, task::spawn_blocking};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::fmt::Display;
+use std::path::PathBuf;
+use std::str::FromStr;
+use tokio::io::AsyncReadExt as _;
+use tokio::pin;
+use tokio::task::spawn_blocking;
 use tokio_util::compat::FuturesAsyncReadCompatExt as _;
 use tracing::instrument;
 
@@ -383,7 +393,9 @@ pub struct WallyIndexConfig {
 pub mod errors {
 	use thiserror::Error;
 
-	use crate::{GixUrl, names::wally::WallyPackageName, source::git_index::errors::ReadFile};
+	use crate::GixUrl;
+	use crate::names::wally::WallyPackageName;
+	use crate::source::git_index::errors::ReadFile;
 
 	/// Errors that can occur when resolving a package from a Wally package source
 	#[derive(Debug, Error, thiserror_ext::Box)]

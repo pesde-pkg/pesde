@@ -1,10 +1,9 @@
 use crate::Subproject;
-use std::{
-	convert::Infallible,
-	env::{join_paths, split_paths},
-	error::Error,
-	future,
-};
+use std::convert::Infallible;
+use std::env::join_paths;
+use std::env::split_paths;
+use std::error::Error;
+use std::future;
 use tracing::instrument;
 
 /// Prints a sourcemap for a Wally package, used for finding the library export file

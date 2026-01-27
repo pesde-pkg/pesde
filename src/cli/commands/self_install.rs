@@ -1,7 +1,6 @@
-use crate::cli::{
-	style::{ADDED_STYLE, CLI_STYLE},
-	version::replace_pesde_bin_exe,
-};
+use crate::cli::style::ADDED_STYLE;
+use crate::cli::style::CLI_STYLE;
+use crate::cli::version::replace_pesde_bin_exe;
 use anyhow::Context as _;
 use clap::Args;
 use console::style;
@@ -25,7 +24,8 @@ impl SelfInstallCommand {
 		#[cfg(windows)]
 		{
 			if !self.skip_add_to_path {
-				use std::env::{join_paths, split_paths};
+				use std::env::join_paths;
+				use std::env::split_paths;
 
 				use crate::cli::style::WARN_STYLE;
 				use anyhow::Context as _;

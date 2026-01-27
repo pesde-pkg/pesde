@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use crate::{
-	ser_display_deser_fromstr,
-	source::{PackageRef, path::RelativeOrAbsolutePath, refs::StructureKind},
-};
+use crate::ser_display_deser_fromstr;
+use crate::source::PackageRef;
+use crate::source::path::RelativeOrAbsolutePath;
+use crate::source::refs::StructureKind;
 
 /// A path package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

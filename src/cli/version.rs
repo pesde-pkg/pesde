@@ -1,35 +1,32 @@
-use crate::{
-	cli::{
-		bin_dir,
-		config::{CliConfig, read_config, write_config},
-		style::{ADDED_STYLE, CLI_STYLE, REMOVED_STYLE, URL_STYLE},
-	},
-	util::no_build_metadata,
-};
+use crate::cli::bin_dir;
+use crate::cli::config::CliConfig;
+use crate::cli::config::read_config;
+use crate::cli::config::write_config;
+use crate::cli::style::ADDED_STYLE;
+use crate::cli::style::CLI_STYLE;
+use crate::cli::style::REMOVED_STYLE;
+use crate::cli::style::URL_STYLE;
+use crate::util::no_build_metadata;
 use anyhow::Context as _;
 use console::Style;
 use fs_err::tokio as fs;
 use itertools::Itertools as _;
 use jiff::SignedDuration;
-use pesde::{
-	AuthConfig,
-	engine::{
-		EngineKind,
-		source::{
-			EngineSources,
-			traits::{DownloadOptions, EngineSource as _, ResolveOptions},
-		},
-	},
-	reporters::DownloadsReporter,
-	version_matches,
-};
-use semver::{Version, VersionReq};
-use std::{
-	collections::BTreeSet,
-	env::current_exe,
-	path::{Path, PathBuf},
-	sync::Arc,
-};
+use pesde::AuthConfig;
+use pesde::engine::EngineKind;
+use pesde::engine::source::EngineSources;
+use pesde::engine::source::traits::DownloadOptions;
+use pesde::engine::source::traits::EngineSource as _;
+use pesde::engine::source::traits::ResolveOptions;
+use pesde::reporters::DownloadsReporter;
+use pesde::version_matches;
+use semver::Version;
+use semver::VersionReq;
+use std::collections::BTreeSet;
+use std::env::current_exe;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::task::JoinSet;
 use tracing::instrument;
 

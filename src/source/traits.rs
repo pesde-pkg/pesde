@@ -1,16 +1,20 @@
-use crate::{
-	Project, RefreshedSources, Subproject,
-	engine::runtime::Engines,
-	manifest::target::{Target, TargetKind},
-	reporters::DownloadProgressReporter,
-	source::{PackageFs, ResolveResult, ids::VersionId, refs::StructureKind},
-};
-use std::{
-	fmt::{Debug, Display},
-	future::{self, Future},
-	path::Path,
-	sync::Arc,
-};
+use crate::Project;
+use crate::RefreshedSources;
+use crate::Subproject;
+use crate::engine::runtime::Engines;
+use crate::manifest::target::Target;
+use crate::manifest::target::TargetKind;
+use crate::reporters::DownloadProgressReporter;
+use crate::source::PackageFs;
+use crate::source::ResolveResult;
+use crate::source::ids::VersionId;
+use crate::source::refs::StructureKind;
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::future::Future;
+use std::future::{self};
+use std::path::Path;
+use std::sync::Arc;
 
 /// A specifier for a dependency
 pub trait DependencySpecifier: Debug + Display {}

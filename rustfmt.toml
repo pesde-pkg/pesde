@@ -1,2 +1,2 @@
-imports_granularity = "Crate"
+imports_granularity = "Item"
 hard_tabs = true

@@ -1,4 +1,5 @@
-use crate::cli::auth::{get_token_login, get_tokens};
+use crate::cli::auth::get_token_login;
+use crate::cli::auth::get_tokens;
 use clap::Args;
 use console::style;
 use pesde::GixUrl;

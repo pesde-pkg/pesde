@@ -1,6 +1,9 @@
-use crate::{manifest::target::TargetKind, names::PackageName, source::DependencySpecifier};
+use crate::manifest::target::TargetKind;
+use crate::names::PackageName;
+use crate::source::DependencySpecifier;
 use semver::VersionReq;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt::Display;
 
 /// The specifier for a pesde dependency

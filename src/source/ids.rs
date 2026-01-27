@@ -1,15 +1,15 @@
-use crate::{
-	manifest::target::TargetKind,
-	ser_display_deser_fromstr,
-	source::{
-		PackageSources,
-		errors::PackageSourcesFromStr,
-		path::{PathPackageSource, local_version},
-		refs::{PackageRefs, errors::PackageRefParseError},
-	},
-};
+use crate::manifest::target::TargetKind;
+use crate::ser_display_deser_fromstr;
+use crate::source::PackageSources;
+use crate::source::errors::PackageSourcesFromStr;
+use crate::source::path::PathPackageSource;
+use crate::source::path::local_version;
+use crate::source::refs::PackageRefs;
+use crate::source::refs::errors::PackageRefParseError;
 use semver::Version;
-use std::{fmt::Display, str::FromStr, sync::Arc};
+use std::fmt::Display;
+use std::str::FromStr;
+use std::sync::Arc;
 
 /// A version ID, which is a combination of a version and a target
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

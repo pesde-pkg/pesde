@@ -1,21 +1,19 @@
-use crate::{
-	PACKAGES_CONTAINER_NAME, Project,
-	graph::{DependencyGraph, DependencyGraphNode},
-	linking::generator::LinkDirs,
-	manifest::target::Target,
-	source::{
-		fs::{cas_path, store_in_cas},
-		ids::PackageId,
-		refs::StructureKind,
-		traits::PackageRef as _,
-	},
-};
+use crate::PACKAGES_CONTAINER_NAME;
+use crate::Project;
+use crate::graph::DependencyGraph;
+use crate::graph::DependencyGraphNode;
+use crate::linking::generator::LinkDirs;
+use crate::manifest::target::Target;
+use crate::source::fs::cas_path;
+use crate::source::fs::store_in_cas;
+use crate::source::ids::PackageId;
+use crate::source::refs::StructureKind;
+use crate::source::traits::PackageRef as _;
 use fs_err::tokio as fs;
-use std::{
-	collections::HashMap,
-	path::{Path, PathBuf},
-	sync::Arc,
-};
+use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::task::JoinSet;
 
 /// Generates linking modules for a project
@@ -201,7 +199,8 @@ impl Project {
 pub mod errors {
 	use thiserror::Error;
 
-	use crate::{Importer, source::ids::PackageId};
+	use crate::Importer;
+	use crate::source::ids::PackageId;
 
 	/// Errors that can occur while linking dependencies
 	#[derive(Debug, Error, thiserror_ext::Box)]

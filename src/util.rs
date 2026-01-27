@@ -1,15 +1,17 @@
 use fs_err::tokio as fs;
 use semver::Version;
-use serde::{
-	Deserialize, Deserializer,
-	de::{MapAccess, Visitor},
-};
-use sha2::{Digest as _, Sha256};
-use std::{
-	collections::BTreeMap,
-	fmt::{Display, Formatter},
-	path::{Component, Path, PathBuf},
-};
+use serde::Deserialize;
+use serde::Deserializer;
+use serde::de::MapAccess;
+use serde::de::Visitor;
+use sha2::Digest as _;
+use sha2::Sha256;
+use std::collections::BTreeMap;
+use std::fmt::Display;
+use std::fmt::Formatter;
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 
 pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
 	format!("{:x}", Sha256::digest(struc.as_ref()))

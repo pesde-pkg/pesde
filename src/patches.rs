@@ -1,16 +1,20 @@
-use crate::{
-	MANIFEST_FILE_NAME,
-	reporters::{PatchProgressReporter as _, PatchesReporter},
-	source::ids::PackageId,
-};
+use crate::MANIFEST_FILE_NAME;
+use crate::reporters::PatchProgressReporter as _;
+use crate::reporters::PatchesReporter;
+use crate::source::ids::PackageId;
 use fs_err::tokio as fs;
 use futures::TryFutureExt as _;
-use git2::{ApplyLocation, Diff, DiffFormat, DiffLineType, Repository, Signature};
-use std::{
-	path::{Path, PathBuf},
-	sync::Arc,
-};
-use tokio::task::{JoinSet, spawn_blocking};
+use git2::ApplyLocation;
+use git2::Diff;
+use git2::DiffFormat;
+use git2::DiffLineType;
+use git2::Repository;
+use git2::Signature;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::task::JoinSet;
+use tokio::task::spawn_blocking;
 use tracing::instrument;
 
 /// Set up a git repository for patches

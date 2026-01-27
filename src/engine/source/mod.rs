@@ -1,12 +1,12 @@
-use crate::{
-	engine::source::{
-		archive::Archive,
-		traits::{DownloadOptions, EngineSource, ResolveOptions},
-	},
-	reporters::DownloadProgressReporter,
-};
-use semver::{Version, VersionReq};
-use std::{collections::BTreeMap, path::PathBuf};
+use crate::engine::source::archive::Archive;
+use crate::engine::source::traits::DownloadOptions;
+use crate::engine::source::traits::EngineSource;
+use crate::engine::source::traits::ResolveOptions;
+use crate::reporters::DownloadProgressReporter;
+use semver::Version;
+use semver::VersionReq;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 /// Archives
 pub mod archive;

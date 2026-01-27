@@ -1,5 +1,6 @@
 use crate::cli::get_index;
-use clap::{Args, Subcommand};
+use clap::Args;
+use clap::Subcommand;
 use pesde::Subproject;
 
 mod login;

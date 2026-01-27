@@ -1,11 +1,15 @@
 use std::collections::BTreeMap;
 
-use crate::{
-	manifest::{Alias, DependencyType, errors, target::TargetKind},
-	source::{specifiers::DependencySpecifiers, wally::specifier::WallyDependencySpecifier},
-};
-use semver::{Version, VersionReq};
-use serde::{Deserialize, Deserializer};
+use crate::manifest::Alias;
+use crate::manifest::DependencyType;
+use crate::manifest::errors;
+use crate::manifest::target::TargetKind;
+use crate::source::specifiers::DependencySpecifiers;
+use crate::source::wally::specifier::WallyDependencySpecifier;
+use semver::Version;
+use semver::VersionReq;
+use serde::Deserialize;
+use serde::Deserializer;
 use tracing::instrument;
 
 #[derive(Deserialize, Copy, Clone, Debug)]

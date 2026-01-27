@@ -1,5 +1,7 @@
-use crate::source::{DependencySpecifier, path::RelativeOrAbsolutePath};
-use serde::{Deserialize, Serialize};
+use crate::source::DependencySpecifier;
+use crate::source::path::RelativeOrAbsolutePath;
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt::Display;
 
 /// The specifier for a path dependency

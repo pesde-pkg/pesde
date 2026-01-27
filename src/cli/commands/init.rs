@@ -1,26 +1,29 @@
 #![expect(deprecated)]
-use crate::cli::{
-	config::read_config,
-	style::{ERROR_PREFIX, INFO_STYLE, SUCCESS_STYLE},
-};
+use crate::cli::config::read_config;
+use crate::cli::style::ERROR_PREFIX;
+use crate::cli::style::INFO_STYLE;
+use crate::cli::style::SUCCESS_STYLE;
 use anyhow::Context as _;
 use clap::Args;
 use inquire::validator::Validation;
-use pesde::{
-	DEFAULT_INDEX_NAME, RefreshedSources, Subproject,
-	errors::ManifestReadErrorKind,
-	manifest::{DependencyType, target::TargetKind},
-	names::PackageName,
-	source::{
-		PackageSources,
-		git_index::GitBasedSource as _,
-		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
-		specifiers::DependencySpecifiers,
-		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
-	},
-};
+use pesde::DEFAULT_INDEX_NAME;
+use pesde::RefreshedSources;
+use pesde::Subproject;
+use pesde::errors::ManifestReadErrorKind;
+use pesde::manifest::DependencyType;
+use pesde::manifest::target::TargetKind;
+use pesde::names::PackageName;
+use pesde::source::PackageSources;
+use pesde::source::git_index::GitBasedSource as _;
+use pesde::source::pesde::PesdePackageSource;
+use pesde::source::pesde::specifier::PesdeDependencySpecifier;
+use pesde::source::specifiers::DependencySpecifiers;
+use pesde::source::traits::PackageSource as _;
+use pesde::source::traits::RefreshOptions;
+use pesde::source::traits::ResolveOptions;
 use semver::VersionReq;
-use std::{fmt::Display, str::FromStr as _};
+use std::fmt::Display;
+use std::str::FromStr as _;
 
 #[derive(Debug, Args)]
 pub struct InitCommand;

@@ -1,23 +1,23 @@
-use crate::{
-	manifest::target::TargetKind,
-	source::{ADDITIONAL_FORBIDDEN_FILES, IGNORED_DIRS, IGNORED_FILES},
-	util,
-};
+use crate::manifest::target::TargetKind;
+use crate::source::ADDITIONAL_FORBIDDEN_FILES;
+use crate::source::IGNORED_DIRS;
+use crate::source::IGNORED_FILES;
+use crate::util;
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
-use std::{
-	collections::BTreeMap,
-	fmt::Debug,
-	path::{Path, PathBuf},
-};
+use serde::Deserialize;
+use serde::Serialize;
+use sha2::Digest as _;
+use sha2::Sha256;
+use std::collections::BTreeMap;
+use std::fmt::Debug;
+use std::path::Path;
+use std::path::PathBuf;
 use tempfile::Builder;
-use tokio::{
-	io::{AsyncReadExt as _, AsyncWriteExt as _},
-	pin,
-	task::JoinSet,
-};
+use tokio::io::AsyncReadExt as _;
+use tokio::io::AsyncWriteExt as _;
+use tokio::pin;
+use tokio::task::JoinSet;
 use tracing::instrument;
 
 /// A file system entry

@@ -2,7 +2,8 @@ use crate::cli::auth::Tokens;
 use anyhow::Context as _;
 use fs_err::tokio as fs;
 use pesde::GixUrl;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tracing::instrument;
 
 use super::config_path;

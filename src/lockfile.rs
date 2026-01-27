@@ -1,6 +1,7 @@
 #![allow(deprecated)]
 use crate::graph::DependencyGraph;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// The current format of the lockfile
 pub const CURRENT_FORMAT: usize = 3;

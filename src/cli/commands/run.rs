@@ -1,19 +1,27 @@
-use crate::cli::{
-	ExecReplace as _, compatible_runtime, get_project_engines, install::get_graph_strict,
-};
+use crate::cli::ExecReplace as _;
+use crate::cli::compatible_runtime;
+use crate::cli::get_project_engines;
+use crate::cli::install::get_graph_strict;
 use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
-use pesde::{
-	RefreshedSources, Subproject,
-	engine::runtime::Runtime,
-	graph::DependencyGraphNode,
-	linking::generator::{generate_bin_linking_module, get_bin_require_path},
-	manifest::Alias,
-	source::traits::{GetTargetOptions, PackageSource as _, RefreshOptions},
-};
-use relative_path::{RelativePath, RelativePathBuf};
-use std::{env::current_dir, ffi::OsString, io::Write as _, path::Path, sync::Arc};
+use pesde::RefreshedSources;
+use pesde::Subproject;
+use pesde::engine::runtime::Runtime;
+use pesde::graph::DependencyGraphNode;
+use pesde::linking::generator::generate_bin_linking_module;
+use pesde::linking::generator::get_bin_require_path;
+use pesde::manifest::Alias;
+use pesde::source::traits::GetTargetOptions;
+use pesde::source::traits::PackageSource as _;
+use pesde::source::traits::RefreshOptions;
+use relative_path::RelativePath;
+use relative_path::RelativePathBuf;
+use std::env::current_dir;
+use std::ffi::OsString;
+use std::io::Write as _;
+use std::path::Path;
+use std::sync::Arc;
 
 #[derive(Debug, Args)]
 pub struct RunCommand {

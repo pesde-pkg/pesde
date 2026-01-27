@@ -1,6 +1,8 @@
 #![expect(deprecated)]
-use crate::source::{pesde, traits::DependencySpecifier};
-use serde::{Deserialize, Serialize};
+use crate::source::pesde;
+use crate::source::traits::DependencySpecifier;
+use serde::Deserialize;
+use serde::Serialize;
 use std::fmt::Display;
 
 /// All possible dependency specifiers

@@ -1,18 +1,19 @@
-use crate::cli::{
-	VersionedPackageName,
-	install::get_graph_strict,
-	style::{CLI_STYLE, INFO_STYLE, WARN_PREFIX},
-};
+use crate::cli::VersionedPackageName;
+use crate::cli::install::get_graph_strict;
+use crate::cli::style::CLI_STYLE;
+use crate::cli::style::INFO_STYLE;
+use crate::cli::style::WARN_PREFIX;
 use anyhow::Context as _;
 use base64::Engine as _;
 use clap::Args;
 use console::style;
 use fs_err::tokio as fs;
-use pesde::{
-	MANIFEST_FILE_NAME, Project, RefreshedSources,
-	patches::setup_patches_repo,
-	source::traits::{DownloadOptions, PackageSource as _},
-};
+use pesde::MANIFEST_FILE_NAME;
+use pesde::Project;
+use pesde::RefreshedSources;
+use pesde::patches::setup_patches_repo;
+use pesde::source::traits::DownloadOptions;
+use pesde::source::traits::PackageSource as _;
 
 #[derive(Debug, Args)]
 pub struct PatchCommand {

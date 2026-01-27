@@ -1,10 +1,13 @@
-use crate::{
-	Importer, PACKAGES_CONTAINER_NAME,
-	manifest::{Alias, DependencyType},
-	source::{ids::PackageId, specifiers::DependencySpecifiers},
-};
-use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::PathBuf};
+use crate::Importer;
+use crate::PACKAGES_CONTAINER_NAME;
+use crate::manifest::Alias;
+use crate::manifest::DependencyType;
+use crate::source::ids::PackageId;
+use crate::source::specifiers::DependencySpecifiers;
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 /// A dependency graph importer
 #[derive(Serialize, Deserialize, Debug, Clone)]

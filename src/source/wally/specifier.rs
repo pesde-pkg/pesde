@@ -1,9 +1,11 @@
 use std::fmt::Display;
 
 use semver::VersionReq;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{names::wally::WallyPackageName, source::DependencySpecifier};
+use crate::names::wally::WallyPackageName;
+use crate::source::DependencySpecifier;
 
 /// The specifier for a Wally dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]

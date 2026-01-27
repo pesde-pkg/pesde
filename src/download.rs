@@ -1,17 +1,20 @@
-use crate::{
-	Project, RefreshedSources,
-	reporters::{DownloadProgressReporter as _, DownloadsReporter},
-	source::{
-		fs::PackageFs,
-		ids::PackageId,
-		traits::{DownloadOptions, PackageSource as _, RefreshOptions},
-	},
-};
+use crate::Project;
+use crate::RefreshedSources;
+use crate::reporters::DownloadProgressReporter as _;
+use crate::reporters::DownloadsReporter;
+use crate::source::fs::PackageFs;
+use crate::source::ids::PackageId;
+use crate::source::traits::DownloadOptions;
+use crate::source::traits::PackageSource as _;
+use crate::source::traits::RefreshOptions;
 use async_stream::try_stream;
 use futures::Stream;
-use std::{num::NonZeroUsize, sync::Arc};
-use tokio::{sync::Semaphore, task::JoinSet};
-use tracing::{Instrument as _, instrument};
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
+use tracing::Instrument as _;
+use tracing::instrument;
 
 /// Options for downloading.
 #[derive(Debug)]

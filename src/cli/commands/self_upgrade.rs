@@ -1,14 +1,13 @@
-use crate::{
-	cli::{
-		config::read_config,
-		reporters::run_with_reporter,
-		style::{ADDED_STYLE, CLI_STYLE, REMOVED_STYLE},
-		version::{
-			current_version, find_latest_version, get_or_download_engine, replace_pesde_bin_exe,
-		},
-	},
-	util::no_build_metadata,
-};
+use crate::cli::config::read_config;
+use crate::cli::reporters::run_with_reporter;
+use crate::cli::style::ADDED_STYLE;
+use crate::cli::style::CLI_STYLE;
+use crate::cli::style::REMOVED_STYLE;
+use crate::cli::version::current_version;
+use crate::cli::version::find_latest_version;
+use crate::cli::version::get_or_download_engine;
+use crate::cli::version::replace_pesde_bin_exe;
+use crate::util::no_build_metadata;
 use anyhow::Context as _;
 use clap::Args;
 use pesde::engine::EngineKind;

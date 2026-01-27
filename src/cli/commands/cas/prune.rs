@@ -1,23 +1,22 @@
-use crate::{
-	cli::{
-		reporters::run_with_reporter,
-		style::{INFO_STYLE, SUCCESS_STYLE},
-	},
-	util::remove_empty_dir,
-};
+use crate::cli::reporters::run_with_reporter;
+use crate::cli::style::INFO_STYLE;
+use crate::cli::style::SUCCESS_STYLE;
+use crate::util::remove_empty_dir;
 use anyhow::Context as _;
 use async_stream::try_stream;
 use clap::Args;
 use fs_err::tokio as fs;
-use futures::{FutureExt as _, Stream, StreamExt as _, future::BoxFuture};
-use pesde::{
-	Subproject,
-	source::fs::{FsEntry, PackageFs},
-};
-use std::{
-	collections::{HashMap, HashSet},
-	path::{Path, PathBuf},
-};
+use futures::FutureExt as _;
+use futures::Stream;
+use futures::StreamExt as _;
+use futures::future::BoxFuture;
+use pesde::Subproject;
+use pesde::source::fs::FsEntry;
+use pesde::source::fs::PackageFs;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
 use tokio::task::JoinSet;
 
 #[derive(Debug, Args)]
@@ -47,16 +46,14 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 	#[cfg(windows)]
 	{
 		use std::os::windows::ffi::OsStrExt as _;
-		use windows::{
-			Win32::{
-				Foundation::CloseHandle,
-				Storage::FileSystem::{
-					CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_READ, FILE_SHARE_READ,
-					GetFileInformationByHandle, OPEN_EXISTING,
-				},
-			},
-			core::PWSTR,
-		};
+		use windows::Win32::Foundation::CloseHandle;
+		use windows::Win32::Storage::FileSystem::CreateFileW;
+		use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
+		use windows::Win32::Storage::FileSystem::FILE_GENERIC_READ;
+		use windows::Win32::Storage::FileSystem::FILE_SHARE_READ;
+		use windows::Win32::Storage::FileSystem::GetFileInformationByHandle;
+		use windows::Win32::Storage::FileSystem::OPEN_EXISTING;
+		use windows::core::PWSTR;
 
 		let path = path.to_path_buf();
 		return tokio::task::spawn_blocking(move || unsafe {

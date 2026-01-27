@@ -1,35 +1,39 @@
-use crate::{
-	Importer, LINK_LIB_NO_FILE_FOUND, Project, RefreshedSources,
-	download::DownloadGraphOptions,
-	engine::runtime::Engines,
-	graph::{DependencyGraph, DependencyGraphNode},
-	linking::generator::get_file_types,
-	manifest::{DependencyType, target::Target},
-	reporters::{DownloadsReporter, PatchesReporter},
-	source::{
-		fs::{FsEntry, PackageFs},
-		ids::PackageId,
-		traits::{GetTargetOptions, PackageSource as _},
-	},
-};
+use crate::Importer;
+use crate::LINK_LIB_NO_FILE_FOUND;
+use crate::Project;
+use crate::RefreshedSources;
+use crate::download::DownloadGraphOptions;
+use crate::engine::runtime::Engines;
+use crate::graph::DependencyGraph;
+use crate::graph::DependencyGraphNode;
+use crate::linking::generator::get_file_types;
+use crate::manifest::DependencyType;
+use crate::manifest::target::Target;
+use crate::reporters::DownloadsReporter;
+use crate::reporters::PatchesReporter;
+use crate::source::fs::FsEntry;
+use crate::source::fs::PackageFs;
+use crate::source::ids::PackageId;
+use crate::source::traits::GetTargetOptions;
+use crate::source::traits::PackageSource as _;
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
 use relative_path::RelativePath;
 use sha2::Digest as _;
 
-use std::{
-	collections::{HashMap, HashSet},
-	convert::Infallible,
-	future::{self, Future},
-	num::NonZeroUsize,
-	path::Path,
-	sync::Arc,
-};
-use tokio::{
-	pin,
-	task::{JoinSet, spawn_blocking},
-};
-use tracing::{Instrument as _, instrument};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::convert::Infallible;
+use std::future::Future;
+use std::future::{self};
+use std::num::NonZeroUsize;
+use std::path::Path;
+use std::sync::Arc;
+use tokio::pin;
+use tokio::task::JoinSet;
+use tokio::task::spawn_blocking;
+use tracing::Instrument as _;
+use tracing::instrument;
 
 /// Hooks to perform actions after certain events during download and linking.
 #[allow(unused_variables)]

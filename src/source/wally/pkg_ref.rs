@@ -1,10 +1,10 @@
-use std::{fmt::Display, str::FromStr};
+use std::fmt::Display;
+use std::str::FromStr;
 
-use crate::{
-	names::wally::WallyPackageName,
-	ser_display_deser_fromstr,
-	source::{PackageRef, refs::StructureKind},
-};
+use crate::names::wally::WallyPackageName;
+use crate::ser_display_deser_fromstr;
+use crate::source::PackageRef;
+use crate::source::refs::StructureKind;
 
 /// A Wally package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

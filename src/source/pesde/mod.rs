@@ -1,44 +1,60 @@
 #![deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
 #![expect(deprecated)]
 use relative_path::RelativePathBuf;
-use reqwest::header::{ACCEPT, AUTHORIZATION};
-use serde::{Deserialize, Serialize};
-use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
-	fmt::{Debug, Display},
-	hash::Hash,
-	path::PathBuf,
-	str::FromStr,
-};
+use reqwest::header::ACCEPT;
+use reqwest::header::AUTHORIZATION;
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::hash::Hash;
+use std::path::PathBuf;
+use std::str::FromStr;
 
 use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
-use crate::{
-	GixUrl, Project,
-	engine::EngineKind,
-	manifest::{
-		Alias, DependencyType, Manifest,
-		target::{Target, TargetKind},
-	},
-	names::PackageName,
-	reporters::{DownloadProgressReporter, response_to_async_read},
-	ser_display_deser_fromstr,
-	source::{
-		DependencySpecifiers, IGNORED_DIRS, IGNORED_FILES, PackageSource, PackageSources,
-		ResolveResult, VersionId,
-		fs::{FsEntry, PackageFs, store_in_cas},
-		git_index::{GitBasedSource, read_file, root_tree},
-		refs::PackageRefs,
-		traits::{DownloadOptions, GetTargetOptions, RefreshOptions, ResolveOptions},
-	},
-	util::hash,
-	version_matches,
-};
+use crate::GixUrl;
+use crate::Project;
+use crate::engine::EngineKind;
+use crate::manifest::Alias;
+use crate::manifest::DependencyType;
+use crate::manifest::Manifest;
+use crate::manifest::target::Target;
+use crate::manifest::target::TargetKind;
+use crate::names::PackageName;
+use crate::reporters::DownloadProgressReporter;
+use crate::reporters::response_to_async_read;
+use crate::ser_display_deser_fromstr;
+use crate::source::DependencySpecifiers;
+use crate::source::IGNORED_DIRS;
+use crate::source::IGNORED_FILES;
+use crate::source::PackageSource;
+use crate::source::PackageSources;
+use crate::source::ResolveResult;
+use crate::source::VersionId;
+use crate::source::fs::FsEntry;
+use crate::source::fs::PackageFs;
+use crate::source::fs::store_in_cas;
+use crate::source::git_index::GitBasedSource;
+use crate::source::git_index::read_file;
+use crate::source::git_index::root_tree;
+use crate::source::refs::PackageRefs;
+use crate::source::traits::DownloadOptions;
+use crate::source::traits::GetTargetOptions;
+use crate::source::traits::RefreshOptions;
+use crate::source::traits::ResolveOptions;
+use crate::util::hash;
+use crate::version_matches;
 use fs_err::tokio as fs;
 use futures::StreamExt as _;
-use semver::{Version, VersionReq};
-use tokio::{pin, task::spawn_blocking};
+use semver::Version;
+use semver::VersionReq;
+use tokio::pin;
+use tokio::task::spawn_blocking;
 use tracing::instrument;
 
 /// The pesde package reference
@@ -539,11 +555,10 @@ impl PesdeVersionedManifest {
 pub mod errors {
 	use thiserror::Error;
 
-	use crate::{
-		GixUrl,
-		names::PackageName,
-		source::git_index::errors::{ReadFile, TreeError},
-	};
+	use crate::GixUrl;
+	use crate::names::PackageName;
+	use crate::source::git_index::errors::ReadFile;
+	use crate::source::git_index::errors::TreeError;
 
 	/// Errors that can occur when reading an index file of a pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]

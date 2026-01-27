@@ -6,25 +6,30 @@ use clap::Args;
 use itertools::Itertools as _;
 use semver::VersionReq;
 
-use crate::cli::{
-	AnyPackageIdentifier, VersionedPackageName, config::read_config, dep_type_to_key,
-};
-use pesde::{
-	DEFAULT_INDEX_NAME, RefreshedSources, Subproject,
-	manifest::{Alias, DependencyType, target::TargetKind},
-	names::PackageNames,
-	source::{
-		PackageSources,
-		git::{
-			GitPackageSource,
-			specifier::{GitDependencySpecifier, GitVersionSpecifier},
-		},
-		path::{PathPackageSource, RelativeOrAbsolutePath, specifier::PathDependencySpecifier},
-		pesde::{PesdePackageSource, specifier::PesdeDependencySpecifier},
-		specifiers::DependencySpecifiers,
-		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
-	},
-};
+use crate::cli::AnyPackageIdentifier;
+use crate::cli::VersionedPackageName;
+use crate::cli::config::read_config;
+use crate::cli::dep_type_to_key;
+use pesde::DEFAULT_INDEX_NAME;
+use pesde::RefreshedSources;
+use pesde::Subproject;
+use pesde::manifest::Alias;
+use pesde::manifest::DependencyType;
+use pesde::manifest::target::TargetKind;
+use pesde::names::PackageNames;
+use pesde::source::PackageSources;
+use pesde::source::git::GitPackageSource;
+use pesde::source::git::specifier::GitDependencySpecifier;
+use pesde::source::git::specifier::GitVersionSpecifier;
+use pesde::source::path::PathPackageSource;
+use pesde::source::path::RelativeOrAbsolutePath;
+use pesde::source::path::specifier::PathDependencySpecifier;
+use pesde::source::pesde::PesdePackageSource;
+use pesde::source::pesde::specifier::PesdeDependencySpecifier;
+use pesde::source::specifiers::DependencySpecifiers;
+use pesde::source::traits::PackageSource as _;
+use pesde::source::traits::RefreshOptions;
+use pesde::source::traits::ResolveOptions;
 
 #[derive(Debug, Args)]
 pub struct AddCommand {

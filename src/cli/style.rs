@@ -1,6 +1,8 @@
-use console::{Style, StyledObject};
+use console::Style;
+use console::StyledObject;
 use paste::paste;
-use std::{fmt::Display, sync::LazyLock};
+use std::fmt::Display;
+use std::sync::LazyLock;
 
 #[derive(Debug)]
 pub struct LazyStyle<T>(LazyLock<T>);

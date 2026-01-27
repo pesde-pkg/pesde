@@ -1,17 +1,18 @@
 use futures::StreamExt as _;
 use ouroboros::self_referencing;
-use std::{
-	collections::BTreeSet,
-	fmt::Display,
-	path::{Path, PathBuf},
-	pin::Pin,
-	str::FromStr,
-	task::{Context, Poll},
-};
-use tokio::{
-	io::{AsyncBufRead, AsyncRead, AsyncReadExt as _, ReadBuf},
-	pin,
-};
+use std::collections::BTreeSet;
+use std::fmt::Display;
+use std::path::Path;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::str::FromStr;
+use std::task::Context;
+use std::task::Poll;
+use tokio::io::AsyncBufRead;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncReadExt as _;
+use tokio::io::ReadBuf;
+use tokio::pin;
 use tokio_util::compat::Compat;
 
 /// The kind of encoding used for the archive

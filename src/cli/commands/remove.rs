@@ -3,14 +3,12 @@ use std::str::FromStr as _;
 use anyhow::Context as _;
 use clap::Args;
 
-use crate::cli::{
-	dep_type_to_key,
-	style::{INFO_STYLE, SUCCESS_STYLE},
-};
-use pesde::{
-	Subproject,
-	manifest::{Alias, DependencyType},
-};
+use crate::cli::dep_type_to_key;
+use crate::cli::style::INFO_STYLE;
+use crate::cli::style::SUCCESS_STYLE;
+use pesde::Subproject;
+use pesde::manifest::Alias;
+use pesde::manifest::DependencyType;
 
 #[derive(Debug, Args)]
 pub struct RemoveCommand {

@@ -1,11 +1,11 @@
-use std::{
-	collections::HashMap,
-	ffi::OsStr,
-	fmt::{Debug, Display},
-};
+use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::fmt::Debug;
+use std::fmt::Display;
 
 use semver::Version;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::process::Command;
 
 use super::EngineKind;

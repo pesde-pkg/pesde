@@ -1,23 +1,23 @@
 use std::collections::BTreeMap;
 
-use crate::cli::{
-	install::get_graph_loose,
-	style::{ADDED_STYLE, INFO_STYLE, REMOVED_STYLE, SUCCESS_STYLE},
-};
+use crate::cli::install::get_graph_loose;
+use crate::cli::style::ADDED_STYLE;
+use crate::cli::style::INFO_STYLE;
+use crate::cli::style::REMOVED_STYLE;
+use crate::cli::style::SUCCESS_STYLE;
 use anyhow::Context as _;
 use clap::Args;
 use console::style;
 use itertools::Either;
-use pesde::{
-	RefreshedSources, Subproject,
-	manifest::Alias,
-	source::{
-		git::specifier::GitVersionSpecifier,
-		ids::VersionId,
-		specifiers::DependencySpecifiers,
-		traits::{PackageSource as _, RefreshOptions, ResolveOptions},
-	},
-};
+use pesde::RefreshedSources;
+use pesde::Subproject;
+use pesde::manifest::Alias;
+use pesde::source::git::specifier::GitVersionSpecifier;
+use pesde::source::ids::VersionId;
+use pesde::source::specifiers::DependencySpecifiers;
+use pesde::source::traits::PackageSource as _;
+use pesde::source::traits::RefreshOptions;
+use pesde::source::traits::ResolveOptions;
 use semver::VersionReq;
 use tokio::task::JoinSet;
 
