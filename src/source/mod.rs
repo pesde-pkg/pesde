@@ -32,12 +32,46 @@ pub const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 /// Directories that will not be stored when downloading a package. These are only directories which break pesde's functionality, or are meaningless and possibly heavy
 pub const IGNORED_DIRS: &[&str] = &[".git"];
 
-/// The result of resolving a package
-pub type ResolveResult = (
-	PackageSources,
-	PackageRefs,
-	BTreeMap<VersionId, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
-);
+pub(crate) type Dependencies = BTreeMap<Alias, (DependencySpecifiers, DependencyType)>;
+
+/// All possible package dependency providers
+#[derive(Debug)]
+pub enum PackageDependencies {
+	/// Dependencies which are immediately available
+	Immediate(Dependencies),
+	/// Dependencies provided by a Git dependency provider
+	Git(git::GitDependencyProvider),
+}
+
+/// A provider for package dependencies
+pub trait DependencyProvider {
+	/// The PackageRef that this provider works with
+	type PackageRef: PackageRef + ?Sized;
+	/// The error type for dependency queries
+	type Error: std::error::Error + Send + Sync + 'static;
+
+	/// Queries the dependencies for the given package reference
+	fn dependencies(
+		self,
+		pkg_ref: &Self::PackageRef,
+	) -> impl Future<Output = Result<Dependencies, Self::Error>> + Send;
+}
+
+impl DependencyProvider for PackageDependencies {
+	type PackageRef = PackageRefs;
+	type Error = errors::PackageDependenciesError;
+
+	async fn dependencies(self, pkg_ref: &Self::PackageRef) -> Result<Dependencies, Self::Error> {
+		Ok(match (self, pkg_ref) {
+			(PackageDependencies::Immediate(deps), _) => deps,
+			(PackageDependencies::Git(provider), PackageRefs::Git(git_ref)) => provider
+				.dependencies(git_ref)
+				.await
+				.map_err(errors::PackageDependenciesErrorKind::GitDependencyProvider)?,
+			(_, _) => return Err(errors::PackageDependenciesErrorKind::Mismatch.into()),
+		})
+	}
+}
 
 /// A type of structure
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -101,7 +135,7 @@ macro_rules! impls {
 		paste::paste! {
 			$(
 				#[doc = concat!(stringify!($source), " package source")]
-				pub mod [<$source:lower>];
+				pub mod [< $source:lower >];
 			)+
 
 			/// All possible dependency specifiers
@@ -150,7 +184,7 @@ macro_rules! impls {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 					match self {
 						$(
-							PackageRefs::$source(pkg_ref) => write!(f, "{}:{pkg_ref}", stringify!($source:lower))
+							PackageRefs::$source(pkg_ref) => write!(f, "{}:{pkg_ref}", stringify!([< $source:lower >]))
 						),+
 					}
 				}
@@ -207,7 +241,14 @@ macro_rules! impls {
 					&self,
 					specifier: &Self::Specifier,
 					options: &ResolveOptions,
-				) -> Result<ResolveResult, Self::ResolveError> {
+				) -> Result<
+					(
+						PackageSources,
+						PackageRefs,
+						BTreeMap<VersionId, PackageDependencies>,
+					),
+					Self::ResolveError
+				> {
 					match (self, specifier) {
 						$(
 							(PackageSources::$source(source), DependencySpecifiers::$source(specifier)) => {
@@ -269,6 +310,19 @@ macro_rules! impls {
 					UnknownKind(String),
 				}
 
+				/// Errors that can occur when querying package dependencies
+				#[derive(Debug, Error, thiserror_ext::Box)]
+				#[thiserror_ext(newtype(name = PackageDependenciesError))]
+				pub enum PackageDependenciesErrorKind {
+					/// Querying the Git dependency provider failed
+					#[error("error querying git dependency provider")]
+					GitDependencyProvider(#[from] crate::source::git::errors::GitDependencyProviderError),
+
+					/// The package ref does not match the provider
+					#[error("mismatched package ref for dependency provider")]
+					Mismatch,
+				}
+
 				/// Errors that can occur when parsing a Git package reference
 				#[derive(Debug, Error, thiserror_ext::Box)]
 				#[thiserror_ext(newtype(name = GitPackageRefParseError))]
@@ -296,7 +350,7 @@ macro_rules! impls {
 
 					$(
 						#[doc = concat!(stringify!($source), " package reference parsing failed")]
-						#[error("error parsing {} package reference", stringify!($source:lower))]
+						#[error("error parsing {} package reference", stringify!([< $source:lower >]))]
 						[< $source PackageRef >](#[from] crate::source::[<$source:lower>]::pkg_ref::[<$source PackageRefParseError>])
 					),+
 				}
@@ -326,7 +380,7 @@ macro_rules! impls {
 				pub enum RefreshErrorKind {
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to refresh")]
-						#[error("error refreshing {} package", stringify!($source:lower))]
+						#[error("error refreshing {} package", stringify!([< $source:lower >]))]
 						$source(#[source] crate::source::[<$source:lower>]::errors::RefreshError)
 					),+
 				}
@@ -342,7 +396,7 @@ macro_rules! impls {
 
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to resolve")]
-						#[error("error resolving {} package", stringify!($source:lower))]
+						#[error("error resolving {} package", stringify!([< $source:lower >]))]
 						$source(#[source] crate::source::[<$source:lower>]::errors::ResolveError)
 					),+
 				}
@@ -358,7 +412,7 @@ macro_rules! impls {
 
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to download")]
-						#[error("error downloading {} package", stringify!($source:lower))]
+						#[error("error downloading {} package", stringify!([< $source:lower >]))]
 						$source(#[source] crate::source::[<$source:lower>]::errors::DownloadError)
 					),+
 				}
@@ -374,7 +428,7 @@ macro_rules! impls {
 
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to get target")]
-						#[error("error getting target for {} package", stringify!($source:lower))]
+						#[error("error getting target for {} package", stringify!([< $source:lower >]))]
 						$source(#[source] crate::source::[<$source:lower>]::errors::GetTargetError)
 					),+
 				}
@@ -448,8 +502,12 @@ mod tests {
 				"wally:foo/bar",
 			),
 			(
-				PackageRefs::Git("abcdef+pesde_v1".parse().unwrap()),
-				"git:abcdef+pesde_v1",
+				PackageRefs::Git("pesde_v1+abcdef".parse().unwrap()),
+				"git:pesde_v1+abcdef",
+			),
+			(
+				PackageRefs::Git("pesde_v1+abcdef+pkgs/lib".parse().unwrap()),
+				"git:pesde_v1+abcdef+pkgs/lib",
 			),
 			(
 				PackageRefs::Path("/dev/null".parse().unwrap()),

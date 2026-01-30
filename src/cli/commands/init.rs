@@ -13,6 +13,7 @@ use pesde::errors::ManifestReadErrorKind;
 use pesde::manifest::DependencyType;
 use pesde::manifest::target::TargetKind;
 use pesde::names::PackageName;
+use pesde::source::DependencyProvider as _;
 use pesde::source::DependencySpecifiers;
 use pesde::source::PackageSources;
 use pesde::source::git_index::GitBasedSource as _;
@@ -201,7 +202,7 @@ impl InitCommand {
 			};
 
 			if let Some(scripts_pkg_name) = scripts_package {
-				let (v_id, dependencies) = source
+				let (_, pkg_ref, mut dependencies) = source
 					.resolve(
 						&PesdeDependencySpecifier {
 							name: scripts_pkg_name.clone(),
@@ -217,10 +218,16 @@ impl InitCommand {
 						},
 					)
 					.await
-					.context("failed to resolve scripts package")?
-					.2
+					.context("failed to resolve scripts package")?;
+
+				let (v_id, dependencies) = dependencies
 					.pop_last()
 					.context("scripts package not found")?;
+
+				let dependencies = dependencies
+					.dependencies(&pkg_ref)
+					.await
+					.context("failed to query dependencies")?;
 
 				let mut file = source
 					.read_index_file(scripts_pkg_name.clone(), subproject.project())

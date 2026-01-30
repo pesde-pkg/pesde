@@ -14,6 +14,8 @@ use crate::manifest::ManifestIndices;
 use crate::manifest::OverrideSpecifier;
 use crate::manifest::target::TargetKind;
 use crate::matching_globs;
+use crate::source::Dependencies;
+use crate::source::DependencyProvider as _;
 use crate::source::DependencySpecifiers;
 use crate::source::PackageSources;
 use crate::source::ids::PackageId;
@@ -24,7 +26,6 @@ use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use tokio::task::JoinSet;
@@ -256,11 +257,6 @@ async fn prepare_queue(
 	Ok(queue)
 }
 
-type ResolveVersionData = (
-	PackageId,
-	BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
-);
-
 #[instrument(skip_all, level = "debug")]
 async fn resolve_version(
 	subproject: Subproject,
@@ -269,7 +265,7 @@ async fn resolve_version(
 	pass_indices: bool,
 	specifier: &DependencySpecifiers,
 	target: TargetKind,
-) -> Result<ResolveVersionData, errors::DependencyGraphError> {
+) -> Result<(PackageId, Dependencies), errors::DependencyGraphError> {
 	let mut manifest = None;
 
 	let mut inner = async |specifier: &DependencySpecifiers, pass_indices: bool| {
@@ -329,11 +325,13 @@ async fn resolve_version(
 		Ok::<_, errors::DependencyGraphError>((package_id, dependencies))
 	};
 
-	let (id, deps) = inner(specifier, pass_indices).await?;
-	if let Some(specifier) = graph.overrides.get(&id) {
-		return inner(specifier, true).await;
+	let mut package = inner(specifier, pass_indices).await?;
+	if let Some(specifier) = graph.overrides.get(&package.0) {
+		package = inner(specifier, true).await?;
 	}
-	Ok((id, deps))
+
+	let dependencies = package.1.dependencies(package.0.pkg_ref()).await?;
+	Ok((package.0, dependencies))
 }
 
 impl Project {
@@ -519,6 +517,10 @@ pub mod errors {
 		/// No matching version was found for a specifier
 		#[error("no matching version found for {0} {1}")]
 		NoMatchingVersion(DependencySpecifiers, TargetKind),
+
+		/// Querying the dependencies
+		#[error("error querying dependencies")]
+		PackageDependencies(#[from] crate::source::errors::PackageDependenciesError),
 
 		/// An alias for an override was not found in the manifest
 		#[error("alias `{0}` not found in manifest")]

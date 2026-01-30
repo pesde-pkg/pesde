@@ -32,10 +32,10 @@ use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
+use crate::source::PackageDependencies;
 use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
-use crate::source::ResolveResult;
 use crate::source::VersionId;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
@@ -172,7 +172,14 @@ impl PackageSource for PesdePackageSource {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> Result<ResolveResult, Self::ResolveError> {
+	) -> Result<
+		(
+			PackageSources,
+			PackageRefs,
+			BTreeMap<VersionId, PackageDependencies>,
+		),
+		Self::ResolveError,
+	> {
 		let ResolveOptions {
 			subproject,
 			target: project_target,
@@ -207,7 +214,7 @@ impl PackageSource for PesdePackageSource {
 					specifier_target == v_id.target()
 				}
 			})
-			.map(|(v_id, entry)| (v_id, entry.dependencies))
+			.map(|(v_id, entry)| (v_id, PackageDependencies::Immediate(entry.dependencies)))
 			.collect::<BTreeMap<_, _>>();
 
 		if versions.is_empty() {

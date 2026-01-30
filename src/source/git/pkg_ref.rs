@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use relative_path::RelativePathBuf;
+
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
 use crate::source::StructureKind;
@@ -7,10 +9,12 @@ use crate::source::StructureKind;
 /// A Git package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GitPackageRef {
-	/// The id of the package's tree
-	pub tree_id: String,
 	/// The structure kind of this package
 	pub structure_kind: StructureKind,
+	/// The id of the package's root tree
+	pub tree_id: String,
+	/// The path to the package within the tree
+	pub path: RelativePathBuf,
 }
 ser_display_deser_fromstr!(GitPackageRef);
 
@@ -22,7 +26,12 @@ impl PackageRef for GitPackageRef {
 
 impl std::fmt::Display for GitPackageRef {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}+{}", self.tree_id, self.structure_kind)
+		let path = if self.path.as_str().is_empty() {
+			format_args!("")
+		} else {
+			format_args!("+{}", self.path)
+		};
+		write!(f, "{}+{}{path}", self.structure_kind, self.tree_id)
 	}
 }
 
@@ -33,12 +42,19 @@ impl FromStr for GitPackageRef {
 	type Err = GitPackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let Some((tree_id, structure_kind)) = s.split_once('+') else {
-			return Err(crate::source::errors::GitPackageRefParseErrorKind::InvalidFormat.into());
-		};
+		let mut s = s.split('+');
+		let structure_kind = s
+			.next()
+			.ok_or(crate::source::errors::GitPackageRefParseErrorKind::InvalidFormat)?;
+		let tree_id = s
+			.next()
+			.ok_or(crate::source::errors::GitPackageRefParseErrorKind::InvalidFormat)?;
+		let path = s.next().map(Into::into).unwrap_or_default();
+
 		Ok(GitPackageRef {
-			tree_id: tree_id.to_string(),
 			structure_kind: structure_kind.parse()?,
+			tree_id: tree_id.to_string(),
+			path,
 		})
 	}
 }

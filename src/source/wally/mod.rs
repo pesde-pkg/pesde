@@ -7,9 +7,9 @@ use crate::reporters::response_to_async_read;
 use crate::ser_display_deser_fromstr;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
+use crate::source::PackageDependencies;
 use crate::source::PackageRefs;
 use crate::source::PackageSources;
-use crate::source::ResolveResult;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
@@ -151,7 +151,14 @@ impl PackageSource for WallyPackageSource {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> Result<ResolveResult, Self::ResolveError> {
+	) -> Result<
+		(
+			PackageSources,
+			PackageRefs,
+			BTreeMap<VersionId, PackageDependencies>,
+		),
+		Self::ResolveError,
+	> {
 		let ResolveOptions {
 			subproject,
 			refreshed_sources,
@@ -234,7 +241,7 @@ impl PackageSource for WallyPackageSource {
 
 				Ok((
 					VersionId::new(manifest.package.version, manifest.package.realm.to_target()),
-					dependencies,
+					PackageDependencies::Immediate(dependencies),
 				))
 			})
 			.collect::<Result<_, errors::ResolveError>>()?;

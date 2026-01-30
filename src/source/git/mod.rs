@@ -12,13 +12,15 @@ use crate::manifest::target::Target;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::ADDITIONAL_FORBIDDEN_FILES;
+use crate::source::Dependencies;
+use crate::source::DependencyProvider;
 use crate::source::DependencySpecifiers;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
+use crate::source::PackageDependencies;
 use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
-use crate::source::ResolveResult;
 use crate::source::StructureKind;
 use crate::source::VersionId;
 use crate::source::fs::FsEntry;
@@ -107,6 +109,19 @@ impl GitPackageSource {
 	}
 }
 
+/// The Git dependency provider
+#[derive(Debug)]
+pub struct GitDependencyProvider;
+
+impl DependencyProvider for GitDependencyProvider {
+	type PackageRef = GitPackageRef;
+	type Error = errors::GitDependencyProviderError;
+
+	async fn dependencies(self, pkg_ref: &Self::PackageRef) -> Result<Dependencies, Self::Error> {
+		unimplemented!()
+	}
+}
+
 fn transform_pesde_dependencies(
 	subproject: &Subproject,
 	manifest: &Manifest,
@@ -184,12 +199,19 @@ impl PackageSource for GitPackageSource {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> Result<ResolveResult, Self::ResolveError> {
+	) -> Result<
+		(
+			PackageSources,
+			PackageRefs,
+			BTreeMap<VersionId, PackageDependencies>,
+		),
+		Self::ResolveError,
+	> {
 		let ResolveOptions { subproject, .. } = options;
 
 		let path = self.path(subproject.project());
 		let repo_url = self.repo_url.clone();
-		let specifier = specifier.clone();
+		let specifier_clone = specifier.clone();
 		let subproject = subproject.clone();
 
 		let (structure_kind, version_id, dependencies, tree_id) = spawn_blocking::<
@@ -198,7 +220,7 @@ impl PackageSource for GitPackageSource {
 		>(move || {
 			let repo = gix::open(path)
 				.map_err(|e| errors::ResolveErrorKind::OpenRepo(repo_url.clone(), e))?;
-			let (rev, resolved_version) = match specifier.version_specifier {
+			let (rev, resolved_version) = match specifier_clone.version_specifier {
 				GitVersionSpecifier::Rev(rev_str) => (
 					repo.rev_parse_single(rev_str.as_bytes()).map_err(|e| {
 						errors::ResolveErrorKind::ParseRev(rev_str.clone(), repo_url.clone(), e)
@@ -206,10 +228,10 @@ impl PackageSource for GitPackageSource {
 					None,
 				),
 				GitVersionSpecifier::VersionReq(req) => {
-					let prefix = if let Some(path) = &specifier.path {
-						Cow::Owned(format!("refs/tags/{path}/v"))
-					} else {
+					let prefix = if specifier_clone.path.as_str().is_empty() {
 						Cow::Borrowed("refs/tags/v")
+					} else {
+						Cow::Owned(format!("refs/tags/{}/v", specifier_clone.path))
 					};
 
 					let (mut refe, version) = repo
@@ -254,21 +276,28 @@ impl PackageSource for GitPackageSource {
 				.peel_to_tree()
 				.map_err(|e| errors::ResolveErrorKind::ParseObjectToTree(repo_url.clone(), e))?;
 
-			let tree = if let Some(path) = &specifier.path {
+			let tree = if specifier_clone.path.as_str().is_empty() {
 				root_tree
-					.lookup_entry_by_path(path.as_str())
+			} else {
+				root_tree
+					.lookup_entry_by_path(specifier_clone.path.as_str())
 					.map_err(|e| {
-						errors::ResolveErrorKind::ReadTreeEntry(repo_url.clone(), path.clone(), e)
+						errors::ResolveErrorKind::ReadTreeEntry(
+							repo_url.clone(),
+							specifier_clone.path.clone(),
+							e,
+						)
 					})?
 					.ok_or_else(|| {
-						errors::ResolveErrorKind::NoEntryAtPath(repo_url.clone(), path.clone())
+						errors::ResolveErrorKind::NoEntryAtPath(
+							repo_url.clone(),
+							specifier_clone.path.clone(),
+						)
 					})?
 					.object()
 					.map_err(|e| errors::ResolveErrorKind::ParseEntryToObject(repo_url.clone(), e))?
 					.peel_to_tree()
 					.map_err(|e| errors::ResolveErrorKind::ParseObjectToTree(repo_url.clone(), e))?
-			} else {
-				root_tree
 			};
 
 			let tree_version = || Version {
@@ -367,10 +396,11 @@ impl PackageSource for GitPackageSource {
 		Ok((
 			PackageSources::Git(self.clone()),
 			PackageRefs::Git(GitPackageRef {
-				tree_id,
 				structure_kind,
+				tree_id,
+				path: specifier.path.clone(),
 			}),
-			BTreeMap::from([(version_id, dependencies)]),
+			BTreeMap::from([(version_id, PackageDependencies::Immediate(dependencies))]),
 		))
 	}
 
@@ -562,6 +592,12 @@ pub mod errors {
 
 	/// Errors that can occur when refreshing the Git package source
 	pub type RefreshError = crate::source::git_index::errors::RefreshError;
+
+	/// Errors that can occur when interacting with the Git dependency provider
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = GitDependencyProviderError))]
+	#[non_exhaustive]
+	pub enum GitDependencyProviderErrorKind {}
 
 	/// Errors that can occur when resolving a package from a Git package source
 	#[derive(Debug, Error, thiserror_ext::Box)]

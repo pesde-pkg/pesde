@@ -7,9 +7,9 @@ use crate::manifest::target::Target;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
+use crate::source::PackageDependencies;
 use crate::source::PackageRefs;
 use crate::source::PackageSources;
-use crate::source::ResolveResult;
 use crate::source::fs::PackageFs;
 use crate::source::ids::VersionId;
 use crate::source::path::pkg_ref::PathPackageRef;
@@ -92,7 +92,14 @@ impl PackageSource for PathPackageSource {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> Result<ResolveResult, Self::ResolveError> {
+	) -> Result<
+		(
+			PackageSources,
+			PackageRefs,
+			BTreeMap<VersionId, PackageDependencies>,
+		),
+		Self::ResolveError,
+	> {
 		let ResolveOptions { subproject, .. } = options;
 
 		let path = match &specifier.path {
@@ -172,7 +179,7 @@ impl PackageSource for PathPackageSource {
 			}),
 			BTreeMap::from([(
 				VersionId::new(local_version(), manifest.target.kind()),
-				dependencies,
+				PackageDependencies::Immediate(dependencies),
 			)]),
 		))
 	}

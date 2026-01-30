@@ -1,4 +1,5 @@
 use fs_err::tokio as fs;
+use relative_path::RelativePath;
 use semver::Version;
 use serde::Deserialize;
 use serde::Deserializer;
@@ -162,4 +163,9 @@ pub fn simplify_path(path: &Path) -> PathBuf {
 		}
 	}
 	result
+}
+
+#[must_use]
+pub fn is_empty_relative_path(path: &RelativePath) -> bool {
+	path.as_str().is_empty()
 }

@@ -247,7 +247,8 @@ mod tests {
 		let ids = [
 			"pesde:github.com/pesde-pkg/index:foo/bar@1.2.3:roblox",
 			"wally:github.com/pesde-pkg/index:foo/bar@1.2.3:lune",
-			"git:github.com/pesde-pkg/index:abcdef+pesde_v1#1.2.3:luau",
+			"git:github.com/pesde-pkg/index:pesde_v1+abcdef#1.2.3:luau",
+			"git:github.com/pesde-pkg/index:pesde_v1+abcdef+pkgs/lib#1.2.3:luau",
 			"path:/dev/null:luau",
 			"path:filename:with:colons:luau",
 		];

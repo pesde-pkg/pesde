@@ -124,7 +124,7 @@ impl AddCommand {
 				DependencySpecifiers::Git(GitDependencySpecifier {
 					repo: url.clone(),
 					version_specifier: ver.clone(),
-					path: None,
+					path: Default::default(),
 				}),
 			),
 			AnyPackageIdentifier::Path(path) => (

@@ -5,10 +5,13 @@ use crate::engine::runtime::Engines;
 use crate::manifest::target::Target;
 use crate::manifest::target::TargetKind;
 use crate::reporters::DownloadProgressReporter;
+use crate::source::PackageDependencies;
 use crate::source::PackageFs;
-use crate::source::ResolveResult;
+use crate::source::PackageRefs;
+use crate::source::PackageSources;
 use crate::source::StructureKind;
 use crate::source::ids::VersionId;
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future;
@@ -100,7 +103,16 @@ pub trait PackageSource: Debug {
 		&self,
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
-	) -> impl Future<Output = Result<ResolveResult, Self::ResolveError>> + Send;
+	) -> impl Future<
+		Output = Result<
+			(
+				PackageSources,
+				PackageRefs,
+				BTreeMap<VersionId, PackageDependencies>,
+			),
+			Self::ResolveError,
+		>,
+	> + Send;
 
 	/// Downloads a package
 	fn download<R: DownloadProgressReporter>(

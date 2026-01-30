@@ -36,8 +36,8 @@ pub struct GitDependencySpecifier {
 	#[serde(flatten)]
 	pub version_specifier: GitVersionSpecifier,
 	/// The path of the package in the repository
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub path: Option<RelativePathBuf>,
+	#[serde(default, skip_serializing_if = "crate::util::is_empty_relative_path")]
+	pub path: RelativePathBuf,
 }
 impl DependencySpecifier for GitDependencySpecifier {}
 
