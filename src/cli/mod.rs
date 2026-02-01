@@ -89,7 +89,7 @@ impl VersionedPackageName {
 	#[cfg(feature = "patches")]
 	fn get(
 		self,
-		_graph: &pesde::graph::DependencyGraph,
+		_graph: &pesde::resolver::DependencyGraph,
 	) -> anyhow::Result<pesde::source::ids::PackageId> {
 		unimplemented!()
 		// let version_id = if let Some(version) = self.1 {

@@ -41,8 +41,6 @@ pub mod download;
 pub mod download_and_link;
 /// Handling of engines
 pub mod engine;
-/// Graphs
-pub mod graph;
 /// Linking packages
 pub mod linking;
 /// Lockfile

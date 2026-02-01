@@ -1,7 +1,7 @@
 use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
-use crate::graph::DependencyGraph;
 use crate::manifest::target::TargetKind;
+use crate::resolver::DependencyGraph;
 use crate::util::remove_empty_dir;
 use fs_err::tokio as fs;
 use std::collections::HashSet;
@@ -48,7 +48,7 @@ impl Project {
 					if expected_ids.insert(pkg_id.clone())
 						&& let Some(node) = graph.nodes.get(&pkg_id)
 					{
-						for dep_id in node.dependencies.values() {
+						for (dep_id, _) in node.dependencies.values() {
 							queue.push(dep_id.clone());
 						}
 					}

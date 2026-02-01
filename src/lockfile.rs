@@ -1,5 +1,5 @@
 #![allow(deprecated)]
-use crate::graph::DependencyGraph;
+use crate::resolver::DependencyGraph;
 use serde::Deserialize;
 use serde::Serialize;
 

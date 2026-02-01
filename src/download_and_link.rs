@@ -4,13 +4,13 @@ use crate::Project;
 use crate::RefreshedSources;
 use crate::download::DownloadGraphOptions;
 use crate::engine::runtime::Engines;
-use crate::graph::DependencyGraph;
-use crate::graph::DependencyGraphNode;
 use crate::linking::generator::get_file_types;
 use crate::manifest::DependencyType;
 use crate::manifest::target::Target;
 use crate::reporters::DownloadsReporter;
 use crate::reporters::PatchesReporter;
+use crate::resolver::DependencyGraph;
+use crate::resolver::DependencyGraphNode;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
@@ -265,7 +265,7 @@ impl Project {
 					if visited.insert(pkg_id.clone())
 						&& let Some(node) = graph.nodes.get(&pkg_id)
 					{
-						for dep_id in node.dependencies.values() {
+						for (dep_id, _) in node.dependencies.values() {
 							queue.push(dep_id.clone());
 						}
 					}

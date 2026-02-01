@@ -1,9 +1,9 @@
 use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
-use crate::graph::DependencyGraph;
-use crate::graph::DependencyGraphNode;
 use crate::linking::generator::LinkDirs;
 use crate::manifest::target::Target;
+use crate::resolver::DependencyGraph;
+use crate::resolver::DependencyGraphNode;
 use crate::source::StructureKind;
 use crate::source::fs::cas_path;
 use crate::source::fs::store_in_cas;
@@ -20,6 +20,22 @@ use tokio::task::JoinSet;
 pub mod generator;
 /// Incremental installs
 pub mod incremental;
+
+impl DependencyGraphNode {
+	/// Returns the directory to store the contents of the package in
+	#[must_use]
+	pub fn container_dir(package_id: &PackageId) -> PathBuf {
+		PathBuf::from(package_id.escaped()).join(package_id.v_id().escaped())
+	}
+
+	/// Returns the directory to store the contents of the package in starting from the project's package directory
+	#[must_use]
+	pub fn container_dir_top_level(package_id: &PackageId) -> PathBuf {
+		PathBuf::from(package_id.v_id().target().packages_dir())
+			.join(PACKAGES_CONTAINER_NAME)
+			.join(Self::container_dir(package_id))
+	}
+}
 
 async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
 	let hash = store_in_cas(cas_dir, contents.as_bytes()).await?;
@@ -78,7 +94,7 @@ impl Project {
 							.flat_map(|(id, node)| {
 								node.dependencies
 									.iter()
-									.map(|(dep_alias, dep_id)| (id.clone(), dep_alias, dep_id))
+									.map(|(dep_alias, (dep_id, _))| (id.clone(), dep_alias, dep_id))
 							})
 							.map(|(dependant_id, dep_alias, dep_id)| {
 								let subproject = self.clone().subproject(importer.clone());

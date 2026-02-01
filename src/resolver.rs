@@ -3,11 +3,6 @@ use crate::Importer;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
-use crate::graph::DependencyGraph;
-use crate::graph::DependencyGraphImporter;
-use crate::graph::DependencyGraphNode;
-use crate::graph::DependencyTypeGraph;
-use crate::graph::DependencyTypeGraphNode;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::ManifestIndices;
@@ -24,12 +19,46 @@ use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
+use serde::Deserialize;
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use tokio::task::JoinSet;
 use tracing::Instrument as _;
 use tracing::instrument;
+
+/// A dependency graph importer
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DependencyGraphImporter {
+	/// The dependencies of the importer
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub dependencies: BTreeMap<Alias, (PackageId, DependencySpecifiers, DependencyType)>,
+}
+
+/// A dependency graph node
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DependencyGraphNode {
+	/// The dependencies of the package
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub dependencies: BTreeMap<Alias, (PackageId, DependencyType)>,
+	/// The checksum of the package
+	#[serde(default, skip_serializing_if = "String::is_empty")]
+	pub checksum: String,
+}
+
+/// A graph of dependencies in a project
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DependencyGraph {
+	/// The importers in the graph
+	pub importers: BTreeMap<Importer, DependencyGraphImporter>,
+	/// The overrides in this workspace
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub overrides: BTreeMap<PackageId, DependencySpecifiers>,
+	/// The nodes in the graph
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub nodes: BTreeMap<PackageId, DependencyGraphNode>,
+}
 
 fn specifier_to_source(
 	indices: Option<&ManifestIndices>,
@@ -208,7 +237,7 @@ async fn prepare_queue(
 					.nodes
 					.insert(package_id.clone(), previous_graph.nodes[package_id].clone());
 
-				while let Some((dep_id, path)) = queue.pop_front() {
+				while let Some(((dep_id, _), path)) = queue.pop_front() {
 					let inner_span =
 						tracing::info_span!("resolve dependency", path = path.iter().join(">"));
 					let _inner_guard = inner_span.enter();
@@ -349,9 +378,7 @@ impl Project {
 		refreshed_sources: &RefreshedSources,
 		// used by `x` command - if true, specifier indices are expected to be URLs
 		is_published_package: bool,
-	) -> Result<(DependencyGraph, Option<DependencyTypeGraph>, bool), errors::DependencyGraphError>
-	{
-		// TODO: always recompute the type graph
+	) -> Result<(DependencyGraph, bool), errors::DependencyGraphError> {
 		let mut graph = DependencyGraph {
 			importers: Default::default(),
 			overrides: Default::default(),
@@ -361,13 +388,8 @@ impl Project {
 		let mut queue = prepare_queue(self, &mut graph, previous_graph).await?;
 		if queue.is_empty() {
 			tracing::debug!("dependency graph is up to date");
-			return Ok((graph, None, false));
+			return Ok((graph, false));
 		}
-
-		let mut type_graph = DependencyTypeGraph {
-			importers: Default::default(),
-			nodes: Default::default(),
-		};
 
 		while let Some(entry) = queue.pop_front() {
 			async {
@@ -396,11 +418,6 @@ impl Project {
 							alias.clone(),
 							(package_id.clone(), entry.specifier.clone(), entry.ty),
 						);
-					type_graph
-						.importers
-						.entry(entry.subproject.importer().clone())
-						.or_default()
-						.insert(alias.clone(), package_id.clone());
 				}
 
 				if let Some(dependant_id) = entry.dependant {
@@ -408,12 +425,6 @@ impl Project {
 						.nodes
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in graph")
-						.dependencies
-						.insert(alias.clone(), package_id.clone());
-					type_graph
-						.nodes
-						.get_mut(&dependant_id)
-						.expect("dependant package not found in type graph")
 						.dependencies
 						.insert(alias.clone(), (package_id.clone(), entry.ty));
 				}
@@ -430,12 +441,6 @@ impl Project {
 						dependencies: Default::default(),
 						// will be filled out later, we don't have this information at this step
 						checksum: Default::default(),
-					},
-				);
-				type_graph.nodes.insert(
-					package_id.clone(),
-					DependencyTypeGraphNode {
-						dependencies: Default::default(),
 					},
 				);
 
@@ -471,7 +476,7 @@ impl Project {
 			.await?;
 		}
 
-		Ok((graph, Some(type_graph), true))
+		Ok((graph, true))
 	}
 }
 
