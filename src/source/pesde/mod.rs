@@ -23,8 +23,6 @@ use crate::engine::EngineKind;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::Manifest;
-use crate::manifest::target::Target;
-use crate::manifest::target::TargetKind;
 use crate::names::PackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::reporters::response_to_async_read;
@@ -36,15 +34,17 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
-use crate::source::VersionId;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
+use crate::source::pesde::target::Target;
+use crate::source::pesde::target::TargetKind;
 use crate::source::traits::DownloadOptions;
-use crate::source::traits::GetTargetOptions;
+use crate::source::traits::GetExportsOptions;
+use crate::source::traits::PackageExports;
 use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
 use crate::util::hash;
@@ -61,6 +61,8 @@ use tracing::instrument;
 pub mod pkg_ref;
 /// The pesde dependency specifier
 pub mod specifier;
+/// Targets
+pub mod target;
 
 /// The pesde package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -160,7 +162,7 @@ impl PackageSource for PesdePackageSource {
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
-	type GetTargetError = errors::GetTargetError;
+	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
 	async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
@@ -173,12 +175,7 @@ impl PackageSource for PesdePackageSource {
 		specifier: &Self::Specifier,
 		options: &ResolveOptions,
 	) -> Result<ResolveResult, Self::ResolveError> {
-		let ResolveOptions {
-			subproject,
-			target: project_target,
-			loose_target,
-			..
-		} = options;
+		let ResolveOptions { subproject, .. } = options;
 
 		let Some(IndexFile { entries, .. }) = self
 			.read_index_file(specifier.name.clone(), subproject.project())
@@ -189,7 +186,6 @@ impl PackageSource for PesdePackageSource {
 
 		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
 
-		let specifier_target = specifier.target.unwrap_or(*project_target);
 		let mut suggestions = BTreeSet::new();
 
 		let versions = entries
@@ -199,21 +195,14 @@ impl PackageSource for PesdePackageSource {
 			.inspect(|(v_id, _)| {
 				suggestions.insert(v_id.target());
 			})
-			.filter(|(v_id, _)| {
-				// we want anything which might contain bins, scripts (so not Roblox)
-				if *loose_target && specifier_target == TargetKind::Luau {
-					!matches!(v_id.target(), TargetKind::Roblox | TargetKind::RobloxServer)
-				} else {
-					specifier_target == v_id.target()
-				}
-			})
-			.map(|(v_id, entry)| (v_id, entry.dependencies))
+			.filter(|(v_id, _)| specifier.target == v_id.target())
+			.map(|(v_id, entry)| (v_id.0, entry.dependencies))
 			.collect::<BTreeMap<_, _>>();
 
 		if versions.is_empty() {
 			return Err(errors::ResolveErrorKind::NoMatchingVersion(
 				specifier.clone(),
-				specifier_target,
+				specifier.target,
 				suggestions,
 			)
 			.into());
@@ -223,6 +212,7 @@ impl PackageSource for PesdePackageSource {
 			PackageSources::Pesde(self.clone()),
 			PackageRefs::Pesde(PesdePackageRef {
 				name: specifier.name.clone(),
+				target: specifier.target,
 			}),
 			versions,
 		))
@@ -238,7 +228,7 @@ impl PackageSource for PesdePackageSource {
 			project,
 			reporter,
 			reqwest,
-			version_id,
+			version,
 			..
 		} = options;
 
@@ -248,14 +238,15 @@ impl PackageSource for PesdePackageSource {
 			.join("index")
 			.join(hash(self.as_bytes()))
 			.join(pkg_ref.name.escaped())
-			.join(version_id.version().to_string())
-			.join(version_id.target().to_string());
+			.join(version.to_string())
+			.join(pkg_ref.target.to_string());
 
 		match fs::read_to_string(&index_file).await {
 			Ok(s) => {
 				tracing::debug!(
-					"using cached index file for package {}@{version_id}",
-					pkg_ref.name
+					"using cached index file for package {}@{version} {}",
+					pkg_ref.name,
+					pkg_ref.target
 				);
 
 				reporter.report_done();
@@ -271,11 +262,11 @@ impl PackageSource for PesdePackageSource {
 			.replace("{PACKAGE}", &urlencoding::encode(&pkg_ref.name.to_string()))
 			.replace(
 				"{PACKAGE_VERSION}",
-				&urlencoding::encode(&version_id.version().to_string()),
+				&urlencoding::encode(&version.to_string()),
 			)
 			.replace(
 				"{PACKAGE_TARGET}",
-				&urlencoding::encode(&version_id.target().to_string()),
+				&urlencoding::encode(&pkg_ref.target.to_string()),
 			);
 
 		let mut request = reqwest.get(&url).header(ACCEPT, "application/octet-stream");
@@ -347,23 +338,23 @@ impl PackageSource for PesdePackageSource {
 	}
 
 	#[instrument(skip_all, level = "debug")]
-	async fn get_target(
+	async fn get_exports(
 		&self,
 		pkg_ref: &Self::Ref,
-		options: &GetTargetOptions<'_>,
-	) -> Result<Target, Self::GetTargetError> {
+		options: &GetExportsOptions<'_>,
+	) -> Result<PackageExports, Self::GetExportsError> {
 		let Some(IndexFile { mut entries, .. }) = self
 			.read_index_file(pkg_ref.name.clone(), &options.project)
 			.await?
 		else {
-			return Err(errors::GetTargetErrorKind::NotFound(pkg_ref.name.clone()).into());
+			return Err(errors::GetExportsErrorKind::NotFound(pkg_ref.name.clone()).into());
 		};
 
 		let entry = entries
-			.remove(options.version_id)
-			.ok_or_else(|| errors::GetTargetErrorKind::NotFound(pkg_ref.name.clone()))?;
+			.remove(&VersionId::new(options.version.clone(), pkg_ref.target))
+			.ok_or_else(|| errors::GetExportsErrorKind::NotFound(pkg_ref.name.clone()))?;
 
-		Ok(entry.target)
+		Ok(entry.target.into_exports())
 	}
 }
 
@@ -515,11 +506,71 @@ pub struct IndexFile {
 	pub entries: BTreeMap<VersionId, IndexFileEntry>,
 }
 
+/// A version ID, which is a combination of a version and a target
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct VersionId(Version, TargetKind);
+ser_display_deser_fromstr!(VersionId);
+
+impl VersionId {
+	/// Creates a new version ID
+	#[must_use]
+	pub fn new(version: Version, target: TargetKind) -> Self {
+		VersionId(version, target)
+	}
+
+	/// Access the version
+	#[must_use]
+	pub fn version(&self) -> &Version {
+		&self.0
+	}
+
+	/// Access the target
+	#[must_use]
+	pub fn target(&self) -> TargetKind {
+		self.1
+	}
+
+	/// Returns this version ID as a string that can be used in the filesystem
+	#[must_use]
+	pub fn escaped(&self) -> String {
+		format!("{}+{}", self.version(), self.target())
+	}
+
+	/// Access the parts of the version ID
+	#[must_use]
+	pub fn parts(&self) -> (&Version, TargetKind) {
+		(self.version(), self.target())
+	}
+}
+
+impl Display for VersionId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}:{}", self.version(), self.target())
+	}
+}
+
+impl FromStr for VersionId {
+	type Err = errors::VersionIdParseError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let (version, target) = s
+			.split_once([':', ' '])
+			.ok_or(errors::VersionIdParseErrorKind::Malformed(s.to_string()))?;
+
+		let version = version.parse()?;
+		let target = target.parse()?;
+
+		Ok(VersionId(version, target))
+	}
+}
+
 /// A pesde v1 (<0.8) manifest
 #[derive(Debug, Deserialize)]
 pub struct PesdeV1Manifest {
 	/// The version
 	pub version: Version,
+	/// The target
+	pub target: Target,
 	/// The pesde v2-compatible fields
 	#[serde(flatten)]
 	pub manifest: Manifest,
@@ -556,6 +607,15 @@ impl PesdeVersionedManifest {
 			Self::V2(m) => m,
 		}
 	}
+
+	/// Returns the exports for this manifest
+	#[must_use]
+	pub fn as_exports(&self) -> PackageExports {
+		match self {
+			Self::V1(m) => m.target.clone().into_exports(),
+			Self::V2(m) => m.as_exports(),
+		}
+	}
 }
 
 /// Errors that can occur when interacting with the pesde package source
@@ -565,8 +625,8 @@ pub mod errors {
 	use itertools::Itertools as _;
 	use thiserror::Error;
 
+	use super::target::TargetKind;
 	use crate::GixUrl;
-	use crate::manifest::target::TargetKind;
 	use crate::names::PackageName;
 	use crate::source::git_index::errors::ReadFile;
 	use crate::source::git_index::errors::TreeError;
@@ -682,9 +742,9 @@ pub mod errors {
 
 	/// Errors that can occur when getting the target for a package from a pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = GetTargetError))]
+	#[thiserror_ext(newtype(name = GetExportsError))]
 	#[non_exhaustive]
-	pub enum GetTargetErrorKind {
+	pub enum GetExportsErrorKind {
 		/// Error reading index file
 		#[error("error reading index file")]
 		ReadIndex(#[from] ReadIndexFileError),
@@ -692,5 +752,22 @@ pub mod errors {
 		/// Package not found in index
 		#[error("package `{0}` not found in index")]
 		NotFound(PackageName),
+	}
+
+	/// Errors that can occur when parsing a version ID
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = VersionIdParseError))]
+	pub enum VersionIdParseErrorKind {
+		/// The version ID is malformed
+		#[error("malformed version ID `{0}`")]
+		Malformed(String),
+
+		/// Error parsing version
+		#[error("error parsing version")]
+		Version(#[from] semver::Error),
+
+		/// Error parsing target
+		#[error("error parsing target")]
+		Target(#[from] super::target::errors::TargetKindFromStr),
 	}
 }

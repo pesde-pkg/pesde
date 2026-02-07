@@ -14,10 +14,8 @@ use pesde::engine::runtime::RuntimeKind;
 use pesde::errors::ManifestReadErrorKind;
 use pesde::manifest::DependencyType;
 use pesde::manifest::Manifest;
-use pesde::manifest::target::TargetKind;
 use pesde::names::PackageNames;
 use pesde::source::git::specifier::GitVersionSpecifier;
-use pesde::source::ids::VersionId;
 use pesde::source::path::RelativeOrAbsolutePath;
 use semver::Version;
 use std::collections::HashMap;
@@ -62,7 +60,7 @@ pub fn data_dir() -> anyhow::Result<PathBuf> {
 }
 
 #[derive(Debug, Clone)]
-struct VersionedPackageName<V: FromStr = VersionId, N: FromStr = PackageNames>(N, Option<V>);
+struct VersionedPackageName<V: FromStr = Version, N: FromStr = PackageNames>(N, Option<V>);
 
 impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<anyhow::Error>>
 	FromStr for VersionedPackageName<V, N>
@@ -85,41 +83,8 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 	}
 }
 
-impl VersionedPackageName {
-	#[cfg(feature = "patches")]
-	fn get(
-		self,
-		_graph: &pesde::resolver::DependencyGraph,
-	) -> anyhow::Result<pesde::source::ids::PackageId> {
-		unimplemented!()
-		// let version_id = if let Some(version) = self.1 {
-		// 	version
-		// } else {
-		// 	let versions = graph
-		// 		.keys()
-		// 		.filter(|id| *id.name() == self.0)
-		// 		.collect::<Vec<_>>();
-
-		// 	match versions.len() {
-		// 		0 => anyhow::bail!("package not found"),
-		// 		1 => versions[0].version_id().clone(),
-		// 		_ => anyhow::bail!(
-		// 			"multiple versions found, please specify one of: {}",
-		// 			versions
-		// 				.iter()
-		// 				.map(ToString::to_string)
-		// 				.collect::<Vec<_>>()
-		// 				.join(", ")
-		// 		),
-		// 	}
-		// };
-
-		// Ok(pesde::source::ids::PackageId::new(self.0, version_id))
-	}
-}
-
 #[derive(Debug, Clone)]
-enum AnyPackageIdentifier<V: FromStr = VersionId, N: FromStr = PackageNames> {
+enum AnyPackageIdentifier<V: FromStr = Version, N: FromStr = PackageNames> {
 	PackageName(VersionedPackageName<V, N>),
 	Git((GixUrl, GitVersionSpecifier)),
 	Path(RelativeOrAbsolutePath),
@@ -280,7 +245,6 @@ pub async fn get_project_engines(
 		#[cfg(feature = "version-management")]
 		let reporter = reporter;
 
-		root_progress.set_prefix(format!("{}: ", manifest.target));
 		root_progress.reset();
 		root_progress.set_message("update engines");
 
@@ -350,26 +314,15 @@ pub async fn get_project_engines(
 	.await
 }
 
-pub fn compatible_runtime(
-	target: TargetKind,
-	engines: &HashMap<EngineKind, Version>,
-) -> anyhow::Result<Runtime> {
-	let runtime = match target {
-		TargetKind::Lune => RuntimeKind::Lune,
-		TargetKind::Luau => engines
-			.keys()
-			.find_map(|e| e.as_runtime())
-			.context("no runtime available")?,
-		TargetKind::Roblox | TargetKind::RobloxServer => {
-			anyhow::bail!("roblox targets cannot be ran!")
-		}
-	};
-
+pub fn compatible_runtime(engines: &HashMap<EngineKind, Version>) -> anyhow::Result<Runtime> {
+	// TODO
 	Ok(Runtime::new(
-		runtime,
+		RuntimeKind::Lune,
 		engines
-			.get(&runtime.into())
-			.with_context(|| format!("{runtime} not available!"))?
+			.iter()
+			.next()
+			.context("Lune not available!")?
+			.1
 			.clone(),
 	))
 }

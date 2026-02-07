@@ -137,7 +137,7 @@ impl Project {
 									&DownloadOptions {
 										project: project.clone(),
 										reqwest,
-										version_id: package_id.v_id(),
+										version: package_id.version(),
 										reporter: progress_reporter.into(),
 									},
 								)
@@ -150,7 +150,7 @@ impl Project {
 									&DownloadOptions {
 										project: project.clone(),
 										reqwest,
-										version_id: package_id.v_id(),
+										version: package_id.version(),
 										reporter: ().into(),
 									},
 								)

@@ -3,6 +3,8 @@ use std::str::FromStr as _;
 
 use anyhow::Context as _;
 use clap::Args;
+use pesde::source::Realm;
+use pesde::source::pesde::target::TargetKind;
 use semver::VersionReq;
 
 use crate::cli::AnyPackageIdentifier;
@@ -14,7 +16,6 @@ use pesde::RefreshedSources;
 use pesde::Subproject;
 use pesde::manifest::Alias;
 use pesde::manifest::DependencyType;
-use pesde::manifest::target::TargetKind;
 use pesde::names::PackageNames;
 use pesde::source::DependencySpecifiers;
 use pesde::source::PackageSources;
@@ -40,9 +41,9 @@ pub struct AddCommand {
 	#[arg(short, long)]
 	index: Option<String>,
 
-	/// The target environment of the package
+	/// The realm for the package
 	#[arg(short, long)]
-	target: Option<TargetKind>,
+	realm: Option<Realm>,
 
 	/// The alias to use for the package
 	#[arg(short, long)]
@@ -88,7 +89,11 @@ impl AddCommand {
 						name: name.clone(),
 						version: version.clone().unwrap_or(VersionReq::STAR),
 						index: self.index.unwrap_or_else(|| DEFAULT_INDEX_NAME.to_string()),
-						target: self.target,
+						target: match self.realm {
+							Some(Realm::Shared) => TargetKind::Roblox,
+							Some(Realm::Server) => TargetKind::RobloxServer,
+							None => TargetKind::Luau,
+						},
 					});
 
 					(source, specifier)
@@ -113,6 +118,7 @@ impl AddCommand {
 							name: name.clone(),
 							version: version.clone().unwrap_or(VersionReq::STAR),
 							index: self.index.unwrap_or_else(|| DEFAULT_INDEX_NAME.to_string()),
+							realm: self.realm.context("wally packages require a realm")?,
 						},
 					);
 
@@ -125,11 +131,15 @@ impl AddCommand {
 					repo: url.clone(),
 					version_specifier: ver.clone(),
 					path: None,
+					realm: self.realm,
 				}),
 			),
 			AnyPackageIdentifier::Path(path) => (
 				PackageSources::Path(PathPackageSource),
-				DependencySpecifiers::Path(PathDependencySpecifier { path: path.clone() }),
+				DependencySpecifiers::Path(PathDependencySpecifier {
+					path: path.clone(),
+					realm: self.realm,
+				}),
 			),
 		};
 
@@ -150,19 +160,16 @@ impl AddCommand {
 				&specifier,
 				&ResolveOptions {
 					subproject: subproject.clone(),
-					target: manifest.target.kind(),
 					refreshed_sources,
-					loose_target: false,
 				},
 			)
 			.await
 			.context("failed to resolve package")?;
 
-		let Some((v_id, _)) = versions.pop_last() else {
+		let Some((version, _)) = versions.pop_last() else {
 			anyhow::bail!("no matching versions found for package");
 		};
 
-		let project_target = manifest.target.kind();
 		let mut manifest = toml_edit::DocumentMut::from_str(
 			&subproject
 				.read_manifest()
@@ -210,37 +217,30 @@ impl AddCommand {
 			#[expect(deprecated)]
 			DependencySpecifiers::Pesde(spec) => {
 				field["name"] = toml_edit::value(spec.name.to_string());
-				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
+				field["version"] = toml_edit::value(format!("^{version}"));
 
-				if v_id.target() != project_target {
-					field["target"] = toml_edit::value(v_id.target().to_string());
-				}
+				field["target"] = toml_edit::value(spec.target.to_string());
 
 				if spec.index != DEFAULT_INDEX_NAME {
 					field["index"] = toml_edit::value(spec.index);
 				}
 
 				println!(
-					"added {}@{} {} to {dependency_key}",
-					spec.name,
-					v_id.version(),
-					v_id.target()
+					"added {}@{version} {} to {dependency_key}",
+					spec.name, spec.target
 				);
 			}
 			DependencySpecifiers::Wally(spec) => {
 				let name_str = spec.name.to_string();
 				let name_str = name_str.trim_start_matches("wally#");
 				field["wally"] = toml_edit::value(name_str);
-				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
+				field["version"] = toml_edit::value(format!("^{version}"));
 
 				if spec.index != DEFAULT_INDEX_NAME {
 					field["index"] = toml_edit::value(spec.index);
 				}
 
-				println!(
-					"added wally {name_str}@{} to {dependency_key}",
-					v_id.version()
-				);
+				println!("added wally {name_str}@{version} to {dependency_key}");
 			}
 			DependencySpecifiers::Git(spec) => {
 				field["repo"] = toml_edit::value(spec.repo.to_string());

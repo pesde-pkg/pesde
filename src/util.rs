@@ -163,3 +163,21 @@ pub fn simplify_path(path: &Path) -> PathBuf {
 	}
 	result
 }
+
+pub trait ToEscaped {
+	fn escaped(self) -> String;
+}
+
+impl ToEscaped for String {
+	fn escaped(self) -> String {
+		self.chars()
+			.map(|c| {
+				if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '+' {
+					c
+				} else {
+					'-'
+				}
+			})
+			.collect()
+	}
+}

@@ -1,7 +1,8 @@
 use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
-use crate::manifest::target::TargetKind;
 use crate::resolver::DependencyGraph;
+use crate::source::Realm;
+use crate::source::RealmExt as _;
 use crate::util::remove_empty_dir;
 use fs_err::tokio as fs;
 use std::collections::HashSet;
@@ -19,45 +20,28 @@ impl Project {
 			.importers
 			.keys()
 			.flat_map(|importer| {
-				TargetKind::VARIANTS
-					.iter()
-					.map(|target| (importer.clone(), *target))
+				[None, Some(Realm::Shared), Some(Realm::Server)]
+					.into_iter()
+					.map(|realm| (importer.clone(), realm))
 			})
-			.map(|(importer, target)| {
+			.map(|(importer, realm)| {
 				let subproject = self.clone().subproject(importer.clone());
 				let packages_dir: Arc<Path> = subproject
 					.dependencies_dir()
-					.join(target.packages_dir())
+					.join(realm.packages_dir())
 					.into();
 
 				let expected_aliases = graph.importers[&importer]
 					.dependencies
 					.iter()
-					.filter(|(_, (id, _, _))| id.v_id().target() == target)
+					.filter(|(_, (id, _, _))| graph.realm_of(&importer, id) == realm)
 					.map(|(alias, _)| alias)
 					.cloned()
 					.collect::<HashSet<_>>();
-				let mut queue = graph.importers[&importer]
-					.dependencies
-					.values()
-					.map(|(id, _, _)| id.clone())
-					.collect::<Vec<_>>();
-				let mut expected_ids = HashSet::new();
-
-				while let Some(pkg_id) = queue.pop() {
-					if expected_ids.insert(pkg_id.clone())
-						&& let Some(node) = graph.nodes.get(&pkg_id)
-					{
-						for (dep_id, _) in node.dependencies.values() {
-							queue.push(dep_id.clone());
-						}
-					}
-				}
-
-				let expected_ids = expected_ids
-					.into_iter()
-					.filter(|id| id.v_id().target() == target)
-					.map(|id| id.escaped())
+				let expected_ids = graph
+					.packages_for_importer(&importer, |_| true)
+					.iter()
+					.map(ToString::to_string)
 					.collect::<HashSet<_>>();
 
 				async move {

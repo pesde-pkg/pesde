@@ -1,26 +1,27 @@
 use crate::Importer;
 use crate::LINK_LIB_NO_FILE_FOUND;
+use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::download::DownloadGraphOptions;
 use crate::engine::runtime::Engines;
 use crate::linking::generator::get_file_types;
 use crate::manifest::DependencyType;
-use crate::manifest::target::Target;
 use crate::reporters::DownloadsReporter;
 use crate::reporters::PatchesReporter;
 use crate::resolver::DependencyGraph;
 use crate::resolver::DependencyGraphNode;
+use crate::source::RealmExt as _;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::ids::PackageId;
-use crate::source::traits::GetTargetOptions;
+use crate::source::traits::GetExportsOptions;
+use crate::source::traits::PackageExports;
 use crate::source::traits::PackageRef as _;
 use crate::source::traits::PackageSource as _;
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
-use relative_path::RelativePath;
 use sha2::Digest as _;
 
 use std::collections::HashMap;
@@ -201,7 +202,7 @@ impl Project {
 		&self,
 		graph: &mut DependencyGraph,
 		options: DownloadAndLinkOptions<Reporter, Hooks>,
-	) -> Result<HashMap<PackageId, Arc<Target>>, errors::DownloadAndLinkError<Hooks::Error>>
+	) -> Result<(), errors::DownloadAndLinkError<Hooks::Error>>
 	where
 		Reporter: DownloadsReporter + PatchesReporter + 'static,
 		Hooks: DownloadAndLinkHooks + 'static,
@@ -252,26 +253,10 @@ impl Project {
 			}
 
 			let mut importer_deps = HashMap::<PackageId, HashSet<Importer>>::new();
-			for (importer, data) in &graph.importers {
-				let mut queue = data
-					.dependencies
-					.values()
-					.filter(|(_, _, ty)| install_dependencies_mode.fits(*ty))
-					.map(|(id, _, _)| id.clone())
-					.collect::<Vec<_>>();
-				let mut visited = HashSet::new();
-
-				while let Some(pkg_id) = queue.pop() {
-					if visited.insert(pkg_id.clone())
-						&& let Some(node) = graph.nodes.get(&pkg_id)
-					{
-						for (dep_id, _) in node.dependencies.values() {
-							queue.push(dep_id.clone());
-						}
-					}
-				}
-
-				for id in visited {
+			for importer in graph.importers.keys() {
+				for id in
+					graph.packages_for_importer(importer, |ty| install_dependencies_mode.fits(*ty))
+				{
 					importer_deps
 						.entry(id)
 						.or_default()
@@ -293,15 +278,17 @@ impl Project {
 					})
 					.map(|(importer, id)| {
 						let subproject = self.clone().subproject(importer.clone());
-						let dependency_dir = subproject
+						let container_dir = subproject
 							.dependencies_dir()
-							.join(DependencyGraphNode::container_dir_top_level(&id));
+							.join(graph.realm_of(&importer, &id).packages_dir())
+							.join(PACKAGES_CONTAINER_NAME)
+							.join(DependencyGraphNode::container_dir(&id));
 						async move {
 							if id.pkg_ref().is_local() {
 								return (importer, id, false);
 							}
 
-							(importer, id, fs::metadata(&dependency_dir).await.is_ok())
+							(importer, id, fs::metadata(&container_dir).await.is_ok())
 						}
 					})
 					.collect::<JoinSet<_>>();
@@ -354,14 +341,16 @@ impl Project {
 				for importer in &graph_to_download[&id] {
 					let subproject = self.clone().subproject(importer.clone());
 
+					let container_dir = subproject
+						.dependencies_dir()
+						.join(graph.realm_of(importer, &id).packages_dir())
+						.join(PACKAGES_CONTAINER_NAME)
+						.join(DependencyGraphNode::container_dir(&id));
+
 					let id = id.clone();
 					let fs = fs.clone();
 
 					tasks.spawn(async move {
-						let container_dir = subproject
-							.dependencies_dir()
-							.join(DependencyGraphNode::container_dir_top_level(&id));
-
 						fs::create_dir_all(&container_dir).await?;
 
 						fs.write_to(&container_dir, subproject.project().cas_dir(), true)
@@ -410,11 +399,13 @@ impl Project {
 						let subproject = self.clone().subproject(importer.clone());
 						let reporter = reporter.clone();
 
-						async move {
-							let container_dir = subproject
-								.dependencies_dir()
-								.join(DependencyGraphNode::container_dir_top_level(&id));
+						let container_dir = subproject
+							.dependencies_dir()
+							.join(graph.realm_of(importer, &id).packages_dir())
+							.join(PACKAGES_CONTAINER_NAME)
+							.join(DependencyGraphNode::container_dir(&id));
 
+						async move {
 							match reporter {
 								Some(reporter) => {
 									apply_patch(&id, container_dir, &patch_path, reporter.clone())
@@ -442,10 +433,10 @@ impl Project {
 				id.pkg_ref().structure_kind() == StructureKind::Wally
 			});
 
-		let mut package_targets = HashMap::new();
+		let mut package_exports = HashMap::new();
 
-		let get_graph_targets =
-			async |package_targets: &mut HashMap<PackageId, Arc<Target>>,
+		let get_graph_exports =
+			async |package_exports: &mut HashMap<PackageId, Arc<PackageExports>>,
 			       downloaded_graph: HashMap<&PackageId, &HashSet<Importer>>| {
 				let mut tasks = downloaded_graph
 					.into_iter()
@@ -456,45 +447,47 @@ impl Project {
 							.subproject(importers.iter().next().unwrap().clone());
 						let install_path = subproject
 							.dependencies_dir()
-							.join(DependencyGraphNode::container_dir_top_level(id))
+							.join(graph.realm_of(subproject.importer(), id).packages_dir())
+							.join(PACKAGES_CONTAINER_NAME)
+							.join(DependencyGraphNode::container_dir(id))
 							.into();
 						let project = self.clone();
 						let engines = engines.clone();
 						let id = id.clone();
 
 						async move {
-							let target = id
+							let exports = id
 								.source()
-								.get_target(
+								.get_exports(
 									id.pkg_ref(),
-									&GetTargetOptions {
+									&GetExportsOptions {
 										project,
 										path: install_path,
-										version_id: id.v_id(),
+										version: id.version(),
 										engines,
 									},
 								)
 								.await?;
 
-							Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((id, target))
+							Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((id, exports))
 						}
 					})
 					.collect::<JoinSet<_>>();
 
 				while let Some(task) = tasks.join_next().await {
-					let (id, target) = task.unwrap()?;
-					package_targets.insert(id, Arc::new(target));
+					let (id, exports) = task.unwrap()?;
+					package_exports.insert(id, Arc::new(exports));
 				}
 
 				Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>(())
 			};
 
 		// step 2. get targets for non Wally packages (Wally packages require the scripts packages to be downloaded first)
-		get_graph_targets(&mut package_targets, other_graph_to_download)
+		get_graph_exports(&mut package_exports, other_graph_to_download)
 			.instrument(tracing::debug_span!("get targets (non-wally)"))
 			.await?;
 
-		self.link(graph, &package_targets, &Default::default())
+		self.link(graph, &package_exports, &Default::default())
 			.instrument(tracing::debug_span!("link (non-wally)"))
 			.await?;
 
@@ -504,9 +497,9 @@ impl Project {
 					.dependencies
 					.iter()
 					.filter_map(|(alias, (id, _, _))| {
-						package_targets
+						package_exports
 							.get(id)
-							.is_some_and(|t| t.bin_path().is_some())
+							.is_some_and(|e| e.bin.is_some())
 							.then_some(alias.as_str())
 					})
 					.collect::<HashSet<_>>();
@@ -519,29 +512,35 @@ impl Project {
 		}
 
 		// step 3. get targets for Wally packages
-		get_graph_targets(&mut package_targets, wally_graph_to_download)
+		get_graph_exports(&mut package_exports, wally_graph_to_download)
 			.instrument(tracing::debug_span!("get targets (wally)"))
 			.await?;
 
-		let mut tasks = package_targets
+		let mut tasks = package_exports
 			.iter()
-			.map(|(package_id, target)| {
+			.map(|(package_id, exports)| {
 				// importer does not matter here, as it is the same package being linked in different places
 				let subproject = self
 					.clone()
 					.subproject(graph_to_download[package_id].iter().next().unwrap().clone());
 				let install_path = subproject
 					.dependencies_dir()
-					.join(DependencyGraphNode::container_dir_top_level(package_id));
+					.join(
+						graph
+							.realm_of(subproject.importer(), package_id)
+							.packages_dir(),
+					)
+					.join(PACKAGES_CONTAINER_NAME)
+					.join(DependencyGraphNode::container_dir(package_id));
 
 				let span =
 					tracing::info_span!("extract types", package_id = package_id.to_string());
 
 				let package_id = package_id.clone();
-				let lib_path = target.lib_path().map::<Arc<RelativePath>, _>(Into::into);
+				let exports = exports.clone();
 
 				async move {
-					let Some(lib_file) = lib_path else {
+					let Some(lib_file) = exports.lib.as_deref() else {
 						return Ok((package_id, vec![]));
 					};
 
@@ -582,7 +581,7 @@ impl Project {
 		}
 
 		// step 4. link ALL dependencies. do so with types
-		self.link(graph, &package_targets, &package_types)
+		self.link(graph, &package_exports, &package_types)
 			.instrument(tracing::debug_span!("link (all)"))
 			.await?;
 
@@ -590,7 +589,7 @@ impl Project {
 			self.remove_unused(graph).await?;
 		}
 
-		Ok(package_targets)
+		Ok(())
 	}
 }
 
@@ -626,9 +625,9 @@ pub mod errors {
 		#[error("io error")]
 		Io(#[from] std::io::Error),
 
-		/// Error getting a target
-		#[error("error getting target")]
-		GetTarget(#[from] crate::source::errors::GetTargetError),
+		/// Error getting package exports
+		#[error("error getting package exports")]
+		GetExports(#[from] crate::source::errors::GetExportsError),
 
 		/// Removing unused dependencies failed
 		#[error("error removing unused dependencies")]

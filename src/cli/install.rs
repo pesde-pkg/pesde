@@ -290,6 +290,8 @@ pub async fn install(
 							async move {
 								let engines = match id.pkg_ref() {
 									PackageRefs::Pesde(pkg_ref) => {
+										use pesde::source::pesde::VersionId;
+
 										let PackageSources::Pesde(source) = id.source() else {
 											return Ok::<_, anyhow::Error>((
 												id,
@@ -314,7 +316,10 @@ pub async fn install(
 											.context("package not found in index")?;
 
 										file.entries
-											.remove(id.v_id())
+											.remove(&VersionId::new(
+												id.version().clone(),
+												pkg_ref.target,
+											))
 											.context("package version not found in index")?
 											.engines
 									}
@@ -438,7 +443,7 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 			let mut queue = node
 				.dependencies
 				.iter()
-				.map(|(dep_alias, (dep_id, dep_ty))| {
+				.map(|(dep_alias, (dep_id, dep_ty, _))| {
 					(vec![(id, alias)], (dep_id, dep_alias), *dep_ty)
 				})
 				.collect::<Vec<_>>();
@@ -458,7 +463,7 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 							new_graph.nodes[id]
 								.dependencies
 								.values()
-								.any(|(id, _)| id == dep_id)
+								.any(|(id, _, _)| id == dep_id)
 						})
 					} else {
 						new.iter().any(|(_, (node_id, _, _))| node_id == dep_id)
@@ -477,7 +482,7 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 
 				if let Some(dep_node) = new_graph.nodes.get(dep_id) {
 					queue.extend(dep_node.dependencies.iter().map(
-						|(inner_dep_alias, (inner_dep_id, inner_dep_ty))| {
+						|(inner_dep_alias, (inner_dep_id, inner_dep_ty, _))| {
 							(
 								path.iter()
 									.copied()
@@ -531,7 +536,7 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 				let version = if let PackageSources::Path(_) = id.source() {
 					format_args!("")
 				} else {
-					format_args!(" v{}", id.v_id().version())
+					format_args!(" v{}", id.version())
 				};
 
 				let sign = match change {

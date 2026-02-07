@@ -21,13 +21,14 @@ use pesde::download_and_link::DownloadAndLinkOptions;
 use pesde::download_and_link::InstallDependenciesMode;
 use pesde::linking::generator::generate_bin_linking_module;
 use pesde::linking::generator::get_bin_require_path;
-use pesde::manifest::target::TargetKind;
 use pesde::names::PackageName;
 use pesde::source::PackageRefs;
 use pesde::source::PackageSources;
 use pesde::source::ids::PackageId;
 use pesde::source::pesde::PesdePackageSource;
+use pesde::source::pesde::VersionId;
 use pesde::source::pesde::specifier::PesdeDependencySpecifier;
+use pesde::source::pesde::target::TargetKind;
 use pesde::source::traits::DownloadOptions;
 use pesde::source::traits::PackageSource as _;
 use pesde::source::traits::RefreshOptions;
@@ -103,18 +104,16 @@ impl ExecuteCommand {
 							name: self.package.0.clone(),
 							version: version_req.clone(),
 							index: DEFAULT_INDEX_NAME.into(),
-							target: None,
+							target: self.target,
 						},
 						&ResolveOptions {
 							subproject: subproject.clone(),
-							target: self.target,
 							refreshed_sources: refreshed_sources.clone(),
-							loose_target: true,
 						},
 					)
 					.await
 					.context("failed to resolve package")?;
-				let Some((v_id, _)) = versions.pop_last() else {
+				let Some((version, _)) = versions.pop_last() else {
 					anyhow::bail!(
 						"no compatible package could be found for {}@{version_req}",
 						self.package.0,
@@ -143,12 +142,13 @@ impl ExecuteCommand {
 
 				let entry = file
 					.entries
-					.remove(&v_id)
+					.remove(&VersionId::new(version.clone(), self.target))
 					.context("version id not present in index file")?;
 
 				let bin_path = entry
 					.target
-					.bin_path()
+					.into_exports()
+					.bin
 					.context("package has no binary export")?;
 
 				let PackageRefs::Pesde(pesde_ref) = &pkg_ref else {
@@ -162,7 +162,7 @@ impl ExecuteCommand {
 							project: project.clone(),
 							reqwest: reqwest.clone(),
 							reporter: ().into(),
-							version_id: &v_id,
+							version: &version,
 						},
 					)
 					.await
@@ -178,7 +178,7 @@ impl ExecuteCommand {
 					.context("failed to build dependency graph")?
 					.0;
 
-				let id = PackageId::new(pkg_source, pkg_ref, v_id);
+				let id = PackageId::new(pkg_source, pkg_ref, version);
 				multi_progress.suspend(|| {
 					eprintln!("{}", style(format!("using {}", style(id).bold())).dim());
 				});
@@ -210,7 +210,7 @@ impl ExecuteCommand {
 
 				anyhow::Ok((
 					tempdir,
-					compatible_runtime(entry.target.kind(), &engines)?,
+					compatible_runtime(&engines)?,
 					bin_path.to_relative_path_buf(),
 				))
 			},

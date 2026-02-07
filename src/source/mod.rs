@@ -1,12 +1,11 @@
 #![expect(deprecated)]
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
-use crate::manifest::target::Target;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::fs::PackageFs;
-use crate::source::ids::VersionId;
 use crate::source::traits::*;
+use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -36,7 +35,7 @@ pub const IGNORED_DIRS: &[&str] = &[".git"];
 pub type ResolveResult = (
 	PackageSources,
 	PackageRefs,
-	BTreeMap<VersionId, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
+	BTreeMap<Version, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
 );
 
 /// A type of structure
@@ -45,14 +44,17 @@ pub enum StructureKind {
 	/// Linker files in the parent of the directory containing the package's contents
 	Wally,
 	/// `*_packages` directories inside the package's content directory
-	PesdeV1,
+	PesdeV1(crate::source::pesde::target::TargetKind),
+	/// Luau aliases in the directory containing the package's contents
+	PesdeV2,
 }
 
 impl Display for StructureKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			StructureKind::Wally => write!(f, "wally"),
-			StructureKind::PesdeV1 => write!(f, "pesde_v1"),
+			StructureKind::PesdeV1(target) => write!(f, "pesde_v1-{target}"),
+			StructureKind::PesdeV2 => write!(f, "pesde_v2"),
 		}
 	}
 }
@@ -61,10 +63,69 @@ impl FromStr for StructureKind {
 	type Err = errors::StructureKindParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if s == "wally" {
+			return Ok(Self::Wally);
+		} else if s == "pesde_v2" {
+			return Ok(Self::PesdeV2);
+		} else if let Some(target) = s.strip_prefix("pesde_v1-") {
+			return Ok(Self::PesdeV1(target.parse()?));
+		}
+
+		Err(errors::StructureKindParseErrorKind::UnknownKind(s.to_string()).into())
+	}
+}
+
+/// Realms for separating packages
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Realm {
+	/// The shared realm, which is shared between the client and server
+	Shared,
+	/// The server realm, which is only used by the server
+	Server,
+}
+ser_display_deser_fromstr!(Realm);
+
+impl Display for Realm {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Realm::Shared => write!(f, "shared"),
+			Realm::Server => write!(f, "server"),
+		}
+	}
+}
+
+impl FromStr for Realm {
+	type Err = errors::RealmFromStr;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
-			"wally" => Ok(StructureKind::Wally),
-			"pesde_v1" => Ok(StructureKind::PesdeV1),
-			_ => Err(errors::StructureKindParseErrorKind::UnknownKind(s.to_string()).into()),
+			"shared" => Ok(Self::Shared),
+			"server" => Ok(Self::Server),
+			_ => Err(errors::RealmFromStrKind::UnknownRealm(s.to_string()).into()),
+		}
+	}
+}
+
+/// Methods for realms
+pub trait RealmExt {
+	/// The directory to store packages in for this realm
+	fn packages_dir(self) -> &'static str;
+}
+
+impl RealmExt for Realm {
+	fn packages_dir(self) -> &'static str {
+		match self {
+			Realm::Shared => "shared_packages",
+			Realm::Server => "server_packages",
+		}
+	}
+}
+
+impl RealmExt for Option<Realm> {
+	fn packages_dir(self) -> &'static str {
+		match self {
+			Some(realm) => realm.packages_dir(),
+			None => "packages",
 		}
 	}
 }
@@ -114,7 +175,15 @@ macro_rules! impls {
 				),+
 			}
 
-			impl DependencySpecifier for DependencySpecifiers {}
+			impl DependencySpecifier for DependencySpecifiers {
+				fn realm(&self) -> Option<Realm> {
+					match self {
+						$(
+							Self::$source(specifier) => specifier.realm()
+						),+
+					}
+				}
+			}
 
 			impl Display for DependencySpecifiers {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -189,7 +258,7 @@ macro_rules! impls {
 				type RefreshError = errors::RefreshError;
 				type ResolveError = errors::ResolveError;
 				type DownloadError = errors::DownloadError;
-				type GetTargetError = errors::GetTargetError;
+				type GetExportsError = errors::GetExportsError;
 
 				async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
 					match self {
@@ -237,20 +306,20 @@ macro_rules! impls {
 					.map_err(Into::into)
 				}
 
-				async fn get_target(
+				async fn get_exports(
 					&self,
 					pkg_ref: &Self::Ref,
-					options: &GetTargetOptions<'_>,
-				) -> Result<Target, Self::GetTargetError> {
+					options: &GetExportsOptions<'_>,
+				) -> Result<PackageExports, Self::GetExportsError> {
 					match (self, pkg_ref) {
 						$(
 							(PackageSources::$source(source), PackageRefs::$source(pkg_ref)) => source
-								.get_target(pkg_ref, options)
+								.get_exports(pkg_ref, options)
 								.await
-								.map_err(errors::GetTargetErrorKind::$source),
+								.map_err(errors::GetExportsErrorKind::$source),
 						)+
 
-						_ => Err(errors::GetTargetErrorKind::Mismatch.into()),
+						_ => Err(errors::GetExportsErrorKind::Mismatch.into()),
 					}
 					.map_err(Into::into)
 				}
@@ -267,6 +336,19 @@ macro_rules! impls {
 					/// The structure kind is unknown
 					#[error("unknown structure kind {0}")]
 					UnknownKind(String),
+
+					/// The target in a pesde_v1 structure kind is invalid
+					#[error("invalid target in pesde_v1 structure kind")]
+					InvalidPesdeV1Target(#[from] crate::source::pesde::target::errors::TargetKindFromStr),
+				}
+
+				/// Errors that can occur when parsing a realm from a string
+				#[derive(Debug, Error, thiserror_ext::Box)]
+				#[thiserror_ext(newtype(name = RealmFromStr))]
+				pub enum RealmFromStrKind {
+					/// The realm is unknown
+					#[error("unknown realm {0}")]
+					UnknownRealm(String),
 				}
 
 				/// Errors that can occur when parsing a Git package reference
@@ -365,17 +447,17 @@ macro_rules! impls {
 
 				/// Errors that can occur when getting a package's target
 				#[derive(Debug, Error, thiserror_ext::Box)]
-				#[thiserror_ext(newtype(name = GetTargetError))]
+				#[thiserror_ext(newtype(name = GetExportsError))]
 				#[non_exhaustive]
-				pub enum GetTargetErrorKind {
+				pub enum GetExportsErrorKind {
 					/// The package ref does not match the source (if using the CLI, this is a bug - file an issue)
 					#[error("mismatched package ref for source")]
 					Mismatch,
 
 					$(
-						#[doc = concat!(stringify!($source), " package source failed to get target")]
-						#[error("error getting target for {} package", stringify!($source:lower))]
-						$source(#[source] crate::source::[<$source:lower>]::errors::GetTargetError)
+						#[doc = concat!(stringify!($source), " package source failed to get exports")]
+						#[error("error getting exports for {} package", stringify!($source:lower))]
+						$source(#[source] crate::source::[<$source:lower>]::errors::GetExportsError)
 					),+
 				}
 			}

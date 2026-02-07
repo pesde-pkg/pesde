@@ -10,14 +10,11 @@ use serde::Deserialize;
 use crate::Importer;
 use crate::LINK_LIB_NO_FILE_FOUND;
 use crate::Project;
-use crate::manifest::target::Target;
 use crate::scripts::ExecuteScriptHooks;
 use crate::scripts::SOURCEMAP_GENERATOR;
 use crate::scripts::execute_script;
-use crate::source::traits::GetTargetOptions;
-use crate::source::wally::manifest::Realm;
-use crate::source::wally::manifest::WallyManifest;
-use fs_err::tokio as fs;
+use crate::source::traits::GetExportsOptions;
+use crate::source::traits::PackageExports;
 use tracing::instrument;
 
 #[derive(Deserialize)]
@@ -92,7 +89,7 @@ impl ExecuteScriptHooks for SourcemapGeneratorHooks {
 async fn find_lib_path(
 	project: Project,
 	package_dir: PathBuf,
-) -> Result<Option<RelativePathBuf>, errors::GetTargetError> {
+) -> Result<Option<RelativePathBuf>, errors::GetExportsError> {
 	let mut hooks = SourcemapGeneratorHooks::default();
 	let ran = execute_script(
 		SOURCEMAP_GENERATOR,
@@ -118,24 +115,16 @@ async fn find_lib_path(
 pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
 
 #[instrument(skip_all, level = "debug")]
-pub(crate) async fn get_target(
-	options: &GetTargetOptions<'_>,
-) -> Result<Target, errors::GetTargetError> {
-	let GetTargetOptions { project, path, .. } = options;
+pub(crate) async fn get_exports(
+	options: &GetExportsOptions<'_>,
+) -> Result<PackageExports, errors::GetExportsError> {
+	let GetExportsOptions { project, path, .. } = options;
 
 	let lib = find_lib_path(project.clone(), path.to_path_buf())
 		.await?
 		.or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND)));
 
-	let manifest = path.join(WALLY_MANIFEST_FILE_NAME);
-	let manifest = fs::read_to_string(&manifest).await?;
-	let manifest: WallyManifest = toml::from_str(&manifest)?;
-
-	Ok(if matches!(manifest.package.realm, Realm::Shared) {
-		Target::Roblox { lib }
-	} else {
-		Target::RobloxServer { lib }
-	})
+	Ok(PackageExports { lib, bin: None })
 }
 
 pub mod errors {
@@ -145,9 +134,9 @@ pub mod errors {
 
 	/// Errors that can occur when finding the lib path
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = GetTargetError))]
+	#[thiserror_ext(newtype(name = GetExportsError))]
 	#[non_exhaustive]
-	pub enum GetTargetErrorKind {
+	pub enum GetExportsErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),

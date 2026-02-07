@@ -1,5 +1,5 @@
 use crate::ser_display_deser_fromstr;
-use relative_path::RelativePath;
+use crate::source::traits::PackageExports;
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -135,25 +135,12 @@ impl Target {
 		}
 	}
 
-	/// Returns the path to the lib export file
+	/// Converts this target into a [PackageExports]
 	#[must_use]
-	pub fn lib_path(&self) -> Option<&RelativePath> {
+	pub fn into_exports(self) -> PackageExports {
 		match self {
-			Target::Roblox { lib, .. } => lib.as_deref(),
-			Target::RobloxServer { lib, .. } => lib.as_deref(),
-			Target::Lune { lib, .. } => lib.as_deref(),
-			Target::Luau { lib, .. } => lib.as_deref(),
-		}
-	}
-
-	/// Returns the path to the bin export file
-	#[must_use]
-	pub fn bin_path(&self) -> Option<&RelativePath> {
-		match self {
-			Target::Roblox { .. } => None,
-			Target::RobloxServer { .. } => None,
-			Target::Lune { bin, .. } => bin.as_deref(),
-			Target::Luau { bin, .. } => bin.as_deref(),
+			Self::Roblox { lib } | Self::RobloxServer { lib } => PackageExports { lib, bin: None },
+			Self::Lune { lib, bin } | Self::Luau { lib, bin } => PackageExports { lib, bin },
 		}
 	}
 }

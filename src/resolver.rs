@@ -7,13 +7,14 @@ use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::ManifestIndices;
 use crate::manifest::OverrideSpecifier;
-use crate::manifest::target::TargetKind;
 use crate::matching_globs;
 use crate::source::DependencySpecifiers;
 use crate::source::PackageSources;
+use crate::source::Realm;
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
 use crate::source::pesde::PesdePackageSource;
+use crate::source::traits::DependencySpecifier as _;
 use crate::source::traits::PackageSource as _;
 use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
@@ -23,6 +24,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use tokio::task::JoinSet;
 use tracing::Instrument as _;
@@ -41,7 +43,7 @@ pub struct DependencyGraphImporter {
 pub struct DependencyGraphNode {
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<Alias, (PackageId, DependencyType)>,
+	pub dependencies: BTreeMap<Alias, (PackageId, DependencyType, Option<Realm>)>,
 	/// The checksum of the package
 	#[serde(default, skip_serializing_if = "String::is_empty")]
 	pub checksum: String,
@@ -58,6 +60,66 @@ pub struct DependencyGraph {
 	/// The nodes in the graph
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub nodes: BTreeMap<PackageId, DependencyGraphNode>,
+}
+
+impl DependencyGraph {
+	/// Returns all the packages used by a single importer
+	pub fn packages_for_importer(
+		&self,
+		importer: &Importer,
+		filter: impl Fn(&DependencyType) -> bool,
+	) -> HashSet<PackageId> {
+		let mut visited = HashSet::new();
+		let Some(importer) = self.importers.get(importer) else {
+			return visited;
+		};
+
+		let mut queue = importer
+			.dependencies
+			.values()
+			.filter(|(_, _, ty)| filter(ty))
+			.map(|(id, _, _)| id.clone())
+			.collect::<Vec<_>>();
+
+		while let Some(pkg_id) = queue.pop() {
+			if let Some(node) = self.nodes.get(&pkg_id)
+				&& visited.insert(pkg_id)
+			{
+				for dep in node.dependencies.values() {
+					queue.push(dep.0.clone());
+				}
+			}
+		}
+
+		visited
+	}
+
+	/// Returns the resolved realm of a package
+	/// Resolution works as so:
+	/// if the package is never depended on with a realm, it has no realm
+	/// if the package is depended on as a shared dependency anywhere in the graph, it is a shared package
+	/// otherwise, it is a server package
+	#[must_use]
+	pub fn realm_of(&self, importer: &Importer, package_id: &PackageId) -> Option<Realm> {
+		let packages = self.packages_for_importer(importer, |_| true);
+		let mut ret = None;
+
+		let realms = packages
+			.into_iter()
+			.filter_map(|pkg| self.nodes.get(&pkg))
+			.flat_map(|node| node.dependencies.values())
+			.filter(|(id, _, _)| id == package_id)
+			.filter_map(|(_, _, realm)| *realm);
+
+		for realm in realms {
+			if realm == Realm::Shared {
+				return Some(Realm::Shared);
+			}
+			ret = Some(Realm::Server);
+		}
+
+		ret
+	}
 }
 
 fn specifier_to_source(
@@ -126,7 +188,6 @@ struct ResolveEntry {
 	ty: DependencyType,
 	dependant: Option<PackageId>,
 	path: Vec<Alias>,
-	target: TargetKind,
 }
 
 #[instrument(skip_all, level = "debug")]
@@ -224,7 +285,7 @@ async fn prepare_queue(
 				let mut queue = previous_graph.nodes[package_id]
 					.dependencies
 					.iter()
-					.map(|(dep_alias, id)| (id, vec![alias.clone(), dep_alias.clone()]))
+					.map(|(dep_alias, dep)| (&dep.0, vec![alias.clone(), dep_alias.clone()]))
 					.collect::<VecDeque<_>>();
 
 				tracing::debug!("resolved {package_id} from old dependency graph");
@@ -237,7 +298,7 @@ async fn prepare_queue(
 					.nodes
 					.insert(package_id.clone(), previous_graph.nodes[package_id].clone());
 
-				while let Some(((dep_id, _), path)) = queue.pop_front() {
+				while let Some((dep_id, path)) = queue.pop_front() {
 					let inner_span =
 						tracing::info_span!("resolve dependency", path = path.iter().join(">"));
 					let _inner_guard = inner_span.enter();
@@ -254,9 +315,9 @@ async fn prepare_queue(
 					previous_graph.nodes[dep_id]
 						.dependencies
 						.iter()
-						.map(|(alias, id)| {
+						.map(|(alias, dep)| {
 							(
-								id,
+								&dep.0,
 								path.iter()
 									.cloned()
 									.chain(std::iter::once(alias.clone()))
@@ -277,7 +338,6 @@ async fn prepare_queue(
 					ty,
 					dependant: None,
 					path: vec![alias],
-					target: manifest.target.kind(),
 				}),
 		);
 	}
@@ -297,7 +357,6 @@ async fn resolve_version(
 	refreshed_sources: &RefreshedSources,
 	pass_indices: bool,
 	specifier: &DependencySpecifiers,
-	target: TargetKind,
 ) -> Result<ResolveVersionData, errors::DependencyGraphError> {
 	let mut manifest = None;
 
@@ -321,9 +380,7 @@ async fn resolve_version(
 				specifier,
 				&ResolveOptions {
 					subproject: subproject.clone(),
-					target,
 					refreshed_sources: refreshed_sources.clone(),
-					loose_target: false,
 				},
 			)
 			.await?;
@@ -334,25 +391,23 @@ async fn resolve_version(
 			.rfind(|package_id| {
 				*package_id.source() == source
 					&& *package_id.pkg_ref() == pkg_ref
-					&& versions.contains_key(package_id.v_id())
+					&& versions.contains_key(package_id.version())
 			})
 			.map(|package_id| {
 				(
 					package_id.clone(),
-					versions.remove(package_id.v_id()).unwrap(),
+					versions.remove(package_id.version()).unwrap(),
 				)
 			})
 			.or_else(|| {
-				versions.pop_last().map(|(v_id, dependencies)| {
-					(PackageId::new(source, pkg_ref, v_id), dependencies)
+				versions.pop_last().map(|(version, dependencies)| {
+					(PackageId::new(source, pkg_ref, version), dependencies)
 				})
 			})
 		else {
-			return Err(errors::DependencyGraphErrorKind::NoMatchingVersion(
-				specifier.clone(),
-				target,
-			)
-			.into());
+			return Err(
+				errors::DependencyGraphErrorKind::NoMatchingVersion(specifier.clone()).into(),
+			);
 		};
 
 		Ok::<_, errors::DependencyGraphError>((package_id, dependencies))
@@ -404,7 +459,6 @@ impl Project {
 					refreshed_sources,
 					!is_published_package && depth == 0,
 					&entry.specifier,
-					entry.target,
 				)
 				.await?;
 
@@ -426,7 +480,10 @@ impl Project {
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in graph")
 						.dependencies
-						.insert(alias.clone(), (package_id.clone(), entry.ty));
+						.insert(
+							alias.clone(),
+							(package_id.clone(), entry.ty, entry.specifier.realm()),
+						);
 				}
 
 				if graph.nodes.contains_key(&package_id) {
@@ -463,7 +520,6 @@ impl Project {
 							.cloned()
 							.chain(std::iter::once(dependency_alias))
 							.collect(),
-						target: package_id.v_id().target(),
 					});
 				}
 
@@ -484,7 +540,6 @@ impl Project {
 pub mod errors {
 	use crate::errors::MatchingGlobsError;
 	use crate::manifest::Alias;
-	use crate::manifest::target::TargetKind;
 	use crate::source::DependencySpecifiers;
 	use thiserror::Error;
 
@@ -522,8 +577,8 @@ pub mod errors {
 		Resolve(#[from] crate::source::errors::ResolveError),
 
 		/// No matching version was found for a specifier
-		#[error("no matching version found for {0} {1}")]
-		NoMatchingVersion(DependencySpecifiers, TargetKind),
+		#[error("no matching version found for {0}")]
+		NoMatchingVersion(DependencySpecifiers),
 
 		/// An alias for an override was not found in the manifest
 		#[error("alias `{0}` not found in manifest")]

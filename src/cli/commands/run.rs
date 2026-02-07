@@ -5,6 +5,7 @@ use crate::cli::install::get_graph_strict;
 use anyhow::Context as _;
 use clap::Args;
 use fs_err::tokio as fs;
+use pesde::PACKAGES_CONTAINER_NAME;
 use pesde::RefreshedSources;
 use pesde::Subproject;
 use pesde::engine::runtime::Runtime;
@@ -12,7 +13,8 @@ use pesde::linking::generator::generate_bin_linking_module;
 use pesde::linking::generator::get_bin_require_path;
 use pesde::manifest::Alias;
 use pesde::resolver::DependencyGraphNode;
-use pesde::source::traits::GetTargetOptions;
+use pesde::source::RealmExt as _;
+use pesde::source::traits::GetExportsOptions;
 use pesde::source::traits::PackageSource as _;
 use pesde::source::traits::RefreshOptions;
 use relative_path::RelativePath;
@@ -82,53 +84,50 @@ impl RunCommand {
 			command.exec_replace()
 		};
 
-		#[allow(clippy::useless_let_if_seq)]
-		let mut package_info = None;
-
 		if let Ok(alias) = self.package_or_script.parse::<Alias>() {
 			let refreshed_sources = RefreshedSources::new();
-			let mut graph = get_graph_strict(subproject.project(), &refreshed_sources).await?;
-			package_info = graph
+			let graph = get_graph_strict(subproject.project(), &refreshed_sources).await?;
+			let package_id = graph
 				.importers
-				.remove(subproject.importer())
+				.get(subproject.importer())
 				.context("failed to get importer from lockfile")?
 				.dependencies
-				.remove(&alias)
+				.get(&alias)
 				.map(|(id, _, _)| id);
-		}
+			if let Some(id) = package_id {
+				let container_dir = subproject
+					.dependencies_dir()
+					.join(graph.realm_of(subproject.importer(), id).packages_dir())
+					.join(PACKAGES_CONTAINER_NAME)
+					.join(DependencyGraphNode::container_dir(id));
 
-		if let Some(id) = package_info {
-			let dir = subproject.private_dir();
-			let container_dir = dir
-				.join("dependencies")
-				.join(DependencyGraphNode::container_dir_top_level(&id));
-
-			let source = id.source();
-			source
-				.refresh(&RefreshOptions {
-					project: subproject.project().clone(),
-				})
-				.await
-				.context("failed to refresh source")?;
-			let target = source
-				.get_target(
-					id.pkg_ref(),
-					&GetTargetOptions {
+				let source = id.source();
+				source
+					.refresh(&RefreshOptions {
 						project: subproject.project().clone(),
-						path: container_dir.as_path().into(),
-						version_id: id.v_id(),
-						engines: engines.clone(),
-					},
-				)
-				.await?;
+					})
+					.await
+					.context("failed to refresh source")?;
+				let exports = source
+					.get_exports(
+						id.pkg_ref(),
+						&GetExportsOptions {
+							project: subproject.project().clone(),
+							path: container_dir.as_path().into(),
+							version: id.version(),
+							engines: engines.clone(),
+						},
+					)
+					.await?;
 
-			let Some(bin_path) = target.bin_path() else {
-				anyhow::bail!("package has no bin path");
-			};
+				let Some(bin_path) = exports.bin else {
+					anyhow::bail!("package has no bin path");
+				};
 
-			let path = bin_path.to_path(&container_dir);
+				let path = bin_path.to_path(&container_dir);
 
-			run(compatible_runtime(target.kind(), &engines)?, &path, &path).await;
+				run(compatible_runtime(&engines)?, &path, &path).await;
+			}
 		}
 
 		if let Ok(manifest) = subproject.deser_manifest().await

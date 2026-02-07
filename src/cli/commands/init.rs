@@ -1,47 +1,12 @@
-#![expect(deprecated)]
-use crate::cli::config::read_config;
-use crate::cli::style::ERROR_PREFIX;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::SUCCESS_STYLE;
-use anyhow::Context as _;
 use clap::Args;
 use inquire::validator::Validation;
-use pesde::DEFAULT_INDEX_NAME;
-use pesde::RefreshedSources;
 use pesde::Subproject;
 use pesde::errors::ManifestReadErrorKind;
-use pesde::manifest::DependencyType;
-use pesde::manifest::target::TargetKind;
-use pesde::names::PackageName;
-use pesde::source::DependencySpecifiers;
-use pesde::source::PackageSources;
-use pesde::source::git_index::GitBasedSource as _;
-use pesde::source::pesde::PesdePackageSource;
-use pesde::source::pesde::specifier::PesdeDependencySpecifier;
-use pesde::source::traits::PackageSource as _;
-use pesde::source::traits::RefreshOptions;
-use pesde::source::traits::ResolveOptions;
-use semver::VersionReq;
-use std::fmt::Display;
-use std::str::FromStr as _;
 
 #[derive(Debug, Args)]
 pub struct InitCommand;
-
-#[derive(Debug)]
-enum PackageNameOrCustom {
-	PackageName(PackageName),
-	Custom,
-}
-
-impl Display for PackageNameOrCustom {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			PackageNameOrCustom::PackageName(n) => write!(f, "{n}"),
-			PackageNameOrCustom::Custom => write!(f, "custom"),
-		}
-	}
-}
 
 impl InitCommand {
 	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
@@ -58,19 +23,6 @@ impl InitCommand {
 		}
 
 		let mut manifest = toml_edit::DocumentMut::new();
-
-		manifest["name"] = toml_edit::value(
-			inquire::Text::new("what is the name of the project?")
-				.with_validator(|name: &str| {
-					Ok(match PackageName::from_str(name) {
-						Ok(_) => Validation::Valid,
-						Err(e) => Validation::Invalid(e.to_string().into()),
-					})
-				})
-				.prompt()
-				.unwrap(),
-		);
-		manifest["version"] = toml_edit::value("0.1.0");
 
 		let description = inquire::Text::new("what is the description of the project?")
 			.with_help_message("a short description of the project. leave empty for none")
@@ -121,158 +73,6 @@ impl InitCommand {
 			.unwrap();
 		if !license.is_empty() {
 			manifest["license"] = toml_edit::value(license);
-		}
-
-		let target_env = inquire::Select::new(
-			"what environment are you targeting for your package?",
-			TargetKind::VARIANTS.to_vec(),
-		)
-		.prompt()
-		.unwrap();
-
-		manifest["target"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))["environment"] =
-			toml_edit::value(target_env.to_string());
-
-		let source = PesdePackageSource::new(read_config().await?.default_index);
-
-		manifest["indices"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
-			[DEFAULT_INDEX_NAME] = toml_edit::value(source.repo_url().to_string());
-
-		let refreshed_sources = RefreshedSources::new();
-
-		if target_env.is_roblox()
-			|| inquire::prompt_confirmation("would you like to setup Roblox compatibility scripts?")
-				.unwrap()
-		{
-			refreshed_sources
-				.refresh(
-					&PackageSources::Pesde(source.clone()),
-					&RefreshOptions {
-						project: subproject.project().clone(),
-					},
-				)
-				.await
-				.context("failed to refresh package source")?;
-			let config = source
-				.config(subproject.project())
-				.await
-				.context("failed to get source config")?;
-
-			let scripts_package = if config.scripts_packages.is_empty() {
-				PackageNameOrCustom::Custom
-			} else {
-				inquire::Select::new(
-					"which scripts package do you want to use?",
-					config
-						.scripts_packages
-						.into_iter()
-						.map(PackageNameOrCustom::PackageName)
-						.chain(std::iter::once(PackageNameOrCustom::Custom))
-						.collect(),
-				)
-				.prompt()
-				.unwrap()
-			};
-
-			let scripts_package = match scripts_package {
-				PackageNameOrCustom::PackageName(p) => Some(p),
-				PackageNameOrCustom::Custom => {
-					let name = inquire::Text::new("which scripts package to use?")
-						.with_validator(|name: &str| {
-							if name.is_empty() {
-								return Ok(Validation::Valid);
-							}
-
-							Ok(match PackageName::from_str(name) {
-								Ok(_) => Validation::Valid,
-								Err(e) => Validation::Invalid(e.to_string().into()),
-							})
-						})
-						.with_help_message("leave empty for none")
-						.prompt()
-						.unwrap();
-
-					if name.is_empty() {
-						None
-					} else {
-						Some(PackageName::from_str(&name).unwrap())
-					}
-				}
-			};
-
-			if let Some(scripts_pkg_name) = scripts_package {
-				let (v_id, dependencies) = source
-					.resolve(
-						&PesdeDependencySpecifier {
-							name: scripts_pkg_name.clone(),
-							version: VersionReq::STAR,
-							index: DEFAULT_INDEX_NAME.into(),
-							target: None,
-						},
-						&ResolveOptions {
-							subproject: subproject.clone(),
-							target: TargetKind::Luau,
-							refreshed_sources,
-							loose_target: true,
-						},
-					)
-					.await
-					.context("failed to resolve scripts package")?
-					.2
-					.pop_last()
-					.context("scripts package not found")?;
-
-				let mut file = source
-					.read_index_file(scripts_pkg_name.clone(), subproject.project())
-					.await
-					.context("failed to read scripts package index file")?
-					.context("scripts package not found in index")?;
-
-				let entry = file
-					.entries
-					.remove(&v_id)
-					.context("failed to remove scripts package entry")?;
-
-				let dev_deps = manifest["dev_dependencies"]
-					.or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
-
-				let field = &mut dev_deps["scripts"];
-				field["name"] = toml_edit::value(scripts_pkg_name.to_string());
-				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
-				field["target"] = toml_edit::value(v_id.target().to_string());
-
-				for (alias, (spec, ty)) in dependencies {
-					if ty != DependencyType::Peer {
-						continue;
-					}
-
-					let DependencySpecifiers::Pesde(spec) = spec else {
-						continue;
-					};
-
-					let field = &mut dev_deps[alias.as_str()];
-					field["name"] = toml_edit::value(spec.name.to_string());
-					field["version"] = toml_edit::value(spec.version.to_string());
-					field["target"] =
-						toml_edit::value(spec.target.unwrap_or(v_id.target()).to_string());
-				}
-
-				if !entry.engines.is_empty() {
-					let engines = manifest["engines"]
-						.or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
-
-					for (engine, req) in entry.engines {
-						engines[engine.to_string()] = toml_edit::value(req.to_string());
-					}
-				}
-			} else {
-				println!(
-					"{ERROR_PREFIX}: no scripts package configured, this can cause issues with Roblox compatibility"
-				);
-				if !inquire::prompt_confirmation("initialize regardless?").unwrap() {
-					return Ok(());
-				}
-			}
 		}
 
 		subproject.write_manifest(manifest.to_string()).await?;
