@@ -67,7 +67,7 @@ impl DependencyGraph {
 	pub fn packages_for_importer(
 		&self,
 		importer: &Importer,
-		filter: impl Fn(&DependencyType) -> bool,
+		filter: impl Fn(&DependencySpecifiers, &DependencyType) -> bool,
 	) -> HashSet<PackageId> {
 		let mut visited = HashSet::new();
 		let Some(importer) = self.importers.get(importer) else {
@@ -77,7 +77,7 @@ impl DependencyGraph {
 		let mut queue = importer
 			.dependencies
 			.values()
-			.filter(|(_, _, ty)| filter(ty))
+			.filter(|(_, spec, ty)| filter(spec, ty))
 			.map(|(id, _, _)| id.clone())
 			.collect::<Vec<_>>();
 
@@ -101,7 +101,11 @@ impl DependencyGraph {
 	/// otherwise, it is a server package
 	#[must_use]
 	pub fn realm_of(&self, importer: &Importer, package_id: &PackageId) -> Option<Realm> {
-		let packages = self.packages_for_importer(importer, |_| true);
+		let packages = self.packages_for_importer(
+			importer,
+			// we only care about dependencies that have a realm since those without shouldn't be treated as realm-specific
+			|spec, _| spec.realm().is_some(),
+		);
 		let mut ret = None;
 
 		let realms = packages

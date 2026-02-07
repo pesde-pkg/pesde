@@ -254,8 +254,8 @@ impl Project {
 
 			let mut importer_deps = HashMap::<PackageId, HashSet<Importer>>::new();
 			for importer in graph.importers.keys() {
-				for id in
-					graph.packages_for_importer(importer, |ty| install_dependencies_mode.fits(*ty))
+				for id in graph
+					.packages_for_importer(importer, |_, ty| install_dependencies_mode.fits(*ty))
 				{
 					importer_deps
 						.entry(id)

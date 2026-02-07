@@ -39,7 +39,7 @@ impl Project {
 					.cloned()
 					.collect::<HashSet<_>>();
 				let expected_ids = graph
-					.packages_for_importer(&importer, |_| true)
+					.packages_for_importer(&importer, |_, _| true)
 					.iter()
 					.map(ToString::to_string)
 					.collect::<HashSet<_>>();
