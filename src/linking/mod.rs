@@ -157,15 +157,13 @@ impl Project {
 				let types = package_types.get(&id).cloned();
 
 				Some(async move {
-					static NO_TYPES: [String; 0] = [];
-
 					let mut tasks = JoinSet::<Result<_, errors::LinkingError>>::new();
 
-					if exports.lib.is_some() || exports.bin.is_some() {
+					if exports.lib_file.is_some() || exports.bin_file.is_some() {
 						fs::create_dir_all(&dirs.base).await?;
 					}
 
-					if let Some(bin_file) = exports.bin.as_deref() {
+					if let Some(bin_file) = exports.bin_file.as_deref() {
 						let destination = dirs
 							.base
 							.join(alias.as_str())
@@ -184,7 +182,7 @@ impl Project {
 						});
 					}
 
-					if let Some(lib_file) = exports.lib.clone() {
+					if let Some(lib_file) = exports.lib_file.clone() {
 						let destination =
 							dirs.base.join(alias.as_str()).with_added_extension("luau");
 
@@ -206,7 +204,7 @@ impl Project {
 										e,
 									)
 								})?,
-								types.as_deref().unwrap_or(&NO_TYPES),
+								types.as_deref().unwrap_or(&[]),
 							);
 
 							write_cas(destination, &cas_dir, &lib_module)

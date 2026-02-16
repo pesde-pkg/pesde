@@ -1,3 +1,4 @@
+use crate::cli::GITHUB_URL;
 use crate::cli::bin_dir;
 use crate::cli::config::CliConfig;
 use crate::cli::config::read_config;
@@ -8,26 +9,30 @@ use crate::cli::style::REMOVED_STYLE;
 use crate::cli::style::URL_STYLE;
 use crate::util::no_build_metadata;
 use anyhow::Context as _;
+use async_stream::stream;
 use console::Style;
 use fs_err::tokio as fs;
+use futures::StreamExt as _;
 use itertools::Itertools as _;
 use jiff::SignedDuration;
 use pesde::AuthConfig;
-use pesde::engine::EngineKind;
-use pesde::engine::source::EngineSources;
-use pesde::engine::source::traits::DownloadOptions;
-use pesde::engine::source::traits::EngineSource as _;
-use pesde::engine::source::traits::ResolveOptions;
+use pesde::reporters::DownloadProgressReporter;
 use pesde::reporters::DownloadsReporter;
 use pesde::version_matches;
+use reqwest::header::AUTHORIZATION;
 use semver::Version;
 use semver::VersionReq;
+use serde::Deserialize;
 use std::collections::BTreeSet;
-use std::env::current_exe;
+use std::io::Cursor;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::io::AsyncBufRead;
+use tokio::io::AsyncReadExt;
 use tokio::task::JoinSet;
+use tokio_util::compat::FuturesAsyncReadCompatExt;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 use tracing::instrument;
 
 use super::engines_dir;
@@ -36,31 +41,69 @@ pub fn current_version() -> Version {
 	Version::parse(env!("CARGO_PKG_VERSION")).unwrap()
 }
 
+fn repo_parts() -> (&'static str, &'static str) {
+	let mut parts = env!("CARGO_PKG_REPOSITORY").split('/').skip(3);
+	(parts.next().unwrap(), parts.next().unwrap())
+}
+
+/// A GitHub release
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize)]
+struct Release {
+	/// The tag name of the release
+	pub tag_name: String,
+	/// The assets of the release
+	pub assets: Vec<Asset>,
+}
+
+/// An asset of a GitHub release
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize)]
+struct Asset {
+	/// The name of the asset
+	pub name: String,
+	/// The download URL of the asset
+	pub url: url::Url,
+}
+
 const CHECK_INTERVAL: SignedDuration = SignedDuration::from_hours(6);
 
-pub async fn find_latest_version(
+pub async fn query_versions(
 	reqwest: &reqwest::Client,
-	include_pre: bool,
 	auth_config: &AuthConfig,
-) -> anyhow::Result<Version> {
-	let include_pre = include_pre || !current_version().pre.is_empty();
+) -> anyhow::Result<impl Iterator<Item = (Version, Vec<Asset>)>> {
+	let mut parts = env!("CARGO_PKG_REPOSITORY").split('/').skip(3);
+	let (owner, repo) = (parts.next().unwrap(), parts.next().unwrap());
 
-	let version = EngineSources::pesde()
-		.resolve(
-			&VersionReq::STAR,
-			&ResolveOptions {
-				reqwest: reqwest.clone(),
-				auth_config: auth_config.clone(),
-			},
-		)
+	let mut request = reqwest.get(format!(
+		"https://api.github.com/repos/{}/{}/releases",
+		urlencoding::encode(owner),
+		urlencoding::encode(repo)
+	));
+
+	if let Some(token) = auth_config.tokens().get(&GITHUB_URL) {
+		request = request.header(AUTHORIZATION, token);
+	}
+
+	let versions = request
+		.send()
 		.await
-		.context("failed to resolve version")?
-		.into_keys()
-		// since the iterator is from a BTreeMap it is already sorted
-		.rfind(|ver| include_pre || ver.pre.is_empty())
-		.context("no versions found")?;
+		.and_then(|resp| resp.error_for_status())
+		.context("failed to fetch releases from GitHub API")?
+		.json::<Vec<Release>>()
+		.await
+		.context("failed to parse releases from GitHub API")?
+		.into_iter()
+		.filter_map(|release| {
+			Version::parse(
+				release
+					.tag_name
+					.strip_prefix('v')
+					.unwrap_or(&release.tag_name),
+			)
+			.ok()
+			.map(|version| (version, release.assets))
+		});
 
-	Ok(version)
+	Ok(versions)
 }
 
 #[instrument(skip(reqwest, auth_config), level = "trace")]
@@ -78,7 +121,16 @@ pub async fn check_for_updates(
 		version
 	} else {
 		tracing::debug!("checking for updates");
-		let version = find_latest_version(reqwest, false, auth_config).await?;
+		let include_pre = !current_version().pre.is_empty();
+		let Some(version) = query_versions(reqwest, auth_config)
+			.await?
+			.map(|(version, _)| version)
+			.filter(|version| include_pre || version.pre.is_empty())
+			.max()
+		else {
+			tracing::debug!("no releases found");
+			return Ok(());
+		};
 
 		write_config(&CliConfig {
 			last_checked_updates: Some((jiff::Timestamp::now(), version.clone())),
@@ -125,9 +177,7 @@ pub async fn check_for_updates(
 }
 
 #[instrument(level = "trace")]
-pub async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeSet<Version>> {
-	let source = engine.source();
-	let path = engines_dir()?.join(source.directory());
+async fn installed_versions(path: &Path) -> anyhow::Result<BTreeSet<Version>> {
 	let mut installed_versions = BTreeSet::new();
 
 	let mut read_dir = match fs::read_dir(&path).await {
@@ -152,96 +202,107 @@ pub async fn get_installed_versions(engine: EngineKind) -> anyhow::Result<BTreeS
 }
 
 #[instrument(skip(reqwest, reporter, auth_config), level = "trace")]
-pub async fn get_or_download_engine(
+pub async fn get_or_download_version(
 	reqwest: &reqwest::Client,
-	engine: EngineKind,
-	req: VersionReq,
+	req: &VersionReq,
 	reporter: Arc<impl DownloadsReporter>,
 	auth_config: &AuthConfig,
-) -> anyhow::Result<(PathBuf, Version)> {
-	let source = engine.source();
-	let path = engines_dir()?.join(source.directory());
+) -> anyhow::Result<PathBuf> {
+	let (owner, repo) = repo_parts();
+	let path = engines_dir()?.join("github").join(owner).join(repo);
 
-	let installed_versions = get_installed_versions(engine).await?;
+	let installed_versions = installed_versions(&path).await?;
 
-	let max_matching = installed_versions
-		.iter()
-		.rfind(|v| version_matches(&req, v));
-	if let Some(version) = max_matching {
-		return Ok((
-			path.join(version.to_string())
-				.join(source.expected_file_name())
-				.with_extension(std::env::consts::EXE_EXTENSION),
-			version.clone(),
-		));
+	if let Some(version) = installed_versions
+		.into_iter()
+		.rfind(|version| version_matches(&req, version))
+	{
+		return Ok(path
+			.join(version.to_string())
+			.join(env!("CARGO_BIN_NAME"))
+			.with_extension(std::env::consts::EXE_EXTENSION));
 	}
 
-	let mut versions = source
-		.resolve(
-			&req,
-			&ResolveOptions {
-				reqwest: reqwest.clone(),
-				auth_config: auth_config.clone(),
-			},
-		)
+	let Some((version, assets)) = query_versions(reqwest, auth_config)
 		.await
-		.context("failed to resolve versions")?;
-	let (version, engine_ref) = versions.pop_last().context("no matching versions found")?;
+		.context("failed to resolve versions")?
+		.filter(|(version, _)| version_matches(req, version))
+		.max_by(|(ver_a, _), (ver_b, _)| ver_a.cmp(ver_b))
+	else {
+		anyhow::bail!("no matching versions found");
+	};
 
-	let reporter = reporter.report_download(format!("{engine} v{}", no_build_metadata(&version)));
+	let reporter = reporter.report_download(format!(
+		"{} v{}",
+		no_build_metadata(&version),
+		env!("CARGO_BIN_NAME")
+	));
+	let reporter = Arc::new(reporter);
 
-	let archive = source
-		.download(
-			&engine_ref,
-			&DownloadOptions {
-				reqwest: reqwest.clone(),
-				reporter: reporter.into(),
-				version: version.clone(),
-				auth_config: auth_config.clone(),
-			},
-		)
+	let mut request = reqwest.get(
+		assets
+			.into_iter()
+			.find(|asset| {
+				asset.name
+					== format!(
+						"{}-{}-{}-{}.zip",
+						env!("CARGO_BIN_NAME"),
+						version,
+						std::env::consts::OS,
+						std::env::consts::ARCH
+					)
+			})
+			.context("failed to find expected asset in release")?
+			.url,
+	);
+	if let Some(token) = auth_config.tokens().get(&GITHUB_URL) {
+		request = request.header(AUTHORIZATION, token);
+	}
+
+	let response = request
+		.send()
 		.await
-		.context("failed to download engine")?;
+		.and_then(|resp| resp.error_for_status())
+		.context("failed to query release asset")?;
+	let response = response_to_async_read(response, reporter);
+	tokio::pin!(response);
+
+	let mut archive = vec![];
+	response.read_to_end(&mut archive).await?;
+
+	let archive =
+		async_zip::base::read::seek::ZipFileReader::new(Cursor::new(archive).compat()).await?;
 
 	let path = path.join(version.to_string());
 	fs::create_dir_all(&path)
 		.await
 		.context("failed to create engine container directory")?;
 	let path = path
-		.join(source.expected_file_name())
+		.join(env!("CARGO_BIN_NAME"))
 		.with_extension(std::env::consts::EXE_EXTENSION);
 
-	let mut file = fs::File::create(&path)
+	let mut entry = archive
+		.into_entry(0)
 		.await
-		.context("failed to create new file")?;
-
-	tokio::io::copy(
-		&mut archive
-			.find_executable(source.expected_file_name())
-			.await
-			.context("failed to find executable")?,
-		&mut file,
-	)
-	.await
-	.context("failed to write to file")?;
+		.context("failed to read zip archive entry")?
+		.compat();
+	let mut file = tokio::fs::File::create(&path)
+		.await
+		.context("failed to create file for downloaded version")?;
+	tokio::io::copy(&mut entry, &mut file).await?;
 
 	make_executable(&path)
 		.await
 		.context("failed to make downloaded version executable")?;
 
-	if engine != EngineKind::Pesde {
-		make_linker_if_needed(engine).await?;
-	}
-
-	Ok((path, version))
+	Ok(path)
 }
 
 #[instrument(level = "trace")]
 pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
 	let bin_dir = bin_dir()?;
-	let bin_name = EngineKind::Pesde.to_string();
 	let bin_exe_path = bin_dir
-		.join(&bin_name)
+		.join(env!("CARGO_BIN_NAME"))
 		.with_extension(std::env::consts::EXE_EXTENSION);
 
 	let exists = fs::metadata(&bin_exe_path).await.is_ok();
@@ -303,7 +364,7 @@ pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
 
 		if path
 			.file_stem()
-			.is_some_and(|name| name.eq_ignore_ascii_case(&bin_name))
+			.is_some_and(|name| name.eq_ignore_ascii_case(env!("CARGO_BIN_NAME")))
 		{
 			continue;
 		}
@@ -322,29 +383,6 @@ pub async fn replace_pesde_bin_exe(with: &Path) -> anyhow::Result<()> {
 
 	while let Some(res) = tasks.join_next().await {
 		res.unwrap()?;
-	}
-
-	Ok(())
-}
-
-#[instrument(level = "trace")]
-pub async fn make_linker_if_needed(engine: EngineKind) -> anyhow::Result<()> {
-	let linker = bin_dir()?
-		.join(engine.to_string())
-		.with_extension(std::env::consts::EXE_EXTENSION);
-
-	let exe = current_exe().context("failed to get current exe path")?;
-
-	if let Some(parent) = linker.parent() {
-		fs::create_dir_all(parent)
-			.await
-			.context("failed to create linker directory")?;
-	}
-
-	match fs::hard_link(exe, linker).await {
-		Ok(_) => {}
-		Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-		e => e.context("failed to hard link engine executable")?,
 	}
 
 	Ok(())
@@ -369,4 +407,33 @@ pub async fn make_executable(_path: impl AsRef<Path>) -> anyhow::Result<()> {
 	}
 
 	Ok(())
+}
+
+fn response_to_async_read<R: DownloadProgressReporter>(
+	response: reqwest::Response,
+	reporter: Arc<R>,
+) -> impl AsyncBufRead {
+	let total_len = response.content_length().unwrap_or(0);
+	reporter.report_progress(total_len, 0);
+
+	let mut bytes_downloaded = 0;
+	let mut stream = response.bytes_stream();
+	let bytes = stream!({
+		while let Some(chunk) = stream.next().await {
+			let chunk = match chunk {
+				Ok(chunk) => chunk,
+				Err(err) => {
+					yield Err(std::io::Error::other(err));
+					continue;
+				}
+			};
+			bytes_downloaded += chunk.len() as u64;
+			reporter.report_progress(total_len, bytes_downloaded);
+			yield Ok(chunk);
+		}
+
+		reporter.report_done();
+	});
+
+	tokio_util::io::StreamReader::new(bytes)
 }

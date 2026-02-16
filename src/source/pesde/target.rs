@@ -139,8 +139,16 @@ impl Target {
 	#[must_use]
 	pub fn into_exports(self) -> PackageExports {
 		match self {
-			Self::Roblox { lib } | Self::RobloxServer { lib } => PackageExports { lib, bin: None },
-			Self::Lune { lib, bin } | Self::Luau { lib, bin } => PackageExports { lib, bin },
+			Self::Roblox { lib } | Self::RobloxServer { lib } => PackageExports {
+				lib_file: lib,
+				bin_file: None,
+				x_script: None,
+			},
+			Self::Lune { lib, bin } | Self::Luau { lib, bin } => PackageExports {
+				lib_file: lib,
+				x_script: bin.as_deref().map(|bin| format!("lune run {bin}")),
+				bin_file: bin,
+			},
 		}
 	}
 }

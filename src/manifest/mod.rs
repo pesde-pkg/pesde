@@ -1,5 +1,4 @@
 use crate::GixUrl;
-use crate::engine::EngineKind;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::Realm;
@@ -53,6 +52,14 @@ pub struct ManifestWorkspace {
 	pub overrides: BTreeMap<PackageId, OverrideSpecifier>,
 }
 
+/// The `engines` field of the manifest
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct ManifestEngines {
+	/// The pesde version this package supports
+	pub pesde: Option<VersionReq>,
+}
+
 /// A package manifest
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -83,7 +90,7 @@ pub struct Manifest {
 	pub place: BTreeMap<Realm, String>,
 	/// The engines this package supports
 	#[serde(default)]
-	pub engines: BTreeMap<EngineKind, VersionReq>,
+	pub engines: ManifestEngines,
 	/// The lib export of this package
 	#[serde(default)]
 	pub lib: Option<RelativePathBuf>,
@@ -165,9 +172,6 @@ impl FromStr for Alias {
 
 			// Luau's `@self` alias
 			| "self"
-
-			// The Cart runtime (#25)
-			| "cart"
 		) {
 			return Err(errors::AliasFromStrKind::Reserved(s.to_string()).into());
 		}
@@ -179,7 +183,7 @@ impl FromStr for Alias {
 			return Err(errors::AliasFromStrKind::InvalidCharacters(s.to_string()).into());
 		}
 
-		if EngineKind::from_str(s).is_ok() {
+		if s.eq_ignore_ascii_case("pesde") {
 			return Err(errors::AliasFromStrKind::EngineName(s.to_string()).into());
 		}
 
@@ -246,8 +250,9 @@ impl Manifest {
 	#[must_use]
 	pub fn as_exports(&self) -> PackageExports {
 		PackageExports {
-			lib: self.lib.clone(),
-			bin: self.bin.clone(),
+			lib_file: self.lib.clone(),
+			bin_file: self.bin.clone(),
+			x_script: self.scripts.get("x").cloned(),
 		}
 	}
 }

@@ -1,6 +1,3 @@
-use crate::cli::ExecReplace as _;
-use crate::cli::compatible_runtime;
-use crate::cli::get_project_engines;
 use crate::cli::install::get_graph_strict;
 use anyhow::Context as _;
 use clap::Args;
@@ -8,7 +5,6 @@ use fs_err::tokio as fs;
 use pesde::PACKAGES_CONTAINER_NAME;
 use pesde::RefreshedSources;
 use pesde::Subproject;
-use pesde::engine::runtime::Runtime;
 use pesde::linking::generator::generate_bin_linking_module;
 use pesde::linking::generator::get_bin_require_path;
 use pesde::manifest::Alias;
@@ -43,11 +39,7 @@ impl RunCommand {
 			.await
 			.context("failed to deserialize manifest")?;
 
-		let engines = Arc::new(
-			get_project_engines(&manifest, &reqwest, subproject.project().auth_config()).await?,
-		);
-
-		let run = async |runtime: Runtime, root: &Path, file_path: &Path| -> ! {
+		let run = async |root: &Path, file_path: &Path| -> ! {
 			let tempdir = subproject.project().cas_dir().join(".tmp");
 			fs::create_dir_all(&tempdir)
 				.await

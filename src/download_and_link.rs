@@ -4,7 +4,6 @@ use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::download::DownloadGraphOptions;
-use crate::engine::runtime::Engines;
 use crate::linking::generator::get_file_types;
 use crate::manifest::DependencyType;
 use crate::reporters::DownloadsReporter;
@@ -44,8 +43,8 @@ pub trait DownloadAndLinkHooks: Send + Sync {
 	/// The error type for the hooks.
 	type Error: std::error::Error + Send + Sync + 'static;
 
-	/// Called after binary dependencies have been downloaded.
-	/// `aliases` contains all the aliases binary dependencies of the importer are known under.
+	/// Called after packages with an x script have been downloaded.
+	/// `aliases` contains all the aliases of the packages with x scripts that were downloaded.
 	fn on_bins_downloaded<'a>(
 		&self,
 		importer: &Importer,
@@ -98,8 +97,6 @@ pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
 	pub network_concurrency: NonZeroUsize,
 	/// Whether to re-install all dependencies even if they are already installed
 	pub force: bool,
-	/// The engines this project is using
-	pub engines: Arc<Engines>,
 }
 
 impl<Reporter, Hooks> DownloadAndLinkOptions<Reporter, Hooks>
@@ -118,7 +115,6 @@ where
 			install_dependencies_mode: InstallDependenciesMode::All,
 			network_concurrency: NonZeroUsize::new(16).unwrap(),
 			force: false,
-			engines: Default::default(),
 		}
 	}
 
@@ -166,13 +162,6 @@ where
 		self.force = force;
 		self
 	}
-
-	/// Sets the engines this project is using
-	#[must_use]
-	pub fn engines(mut self, engines: impl Into<Arc<Engines>>) -> Self {
-		self.engines = engines.into();
-		self
-	}
 }
 
 impl Clone for DownloadAndLinkOptions {
@@ -185,7 +174,6 @@ impl Clone for DownloadAndLinkOptions {
 			install_dependencies_mode: self.install_dependencies_mode,
 			network_concurrency: self.network_concurrency,
 			force: self.force,
-			engines: self.engines.clone(),
 		}
 	}
 }
@@ -202,7 +190,7 @@ impl Project {
 		&self,
 		graph: &mut DependencyGraph,
 		options: DownloadAndLinkOptions<Reporter, Hooks>,
-	) -> Result<(), errors::DownloadAndLinkError<Hooks::Error>>
+	) -> Result<HashMap<PackageId, Arc<PackageExports>>, errors::DownloadAndLinkError<Hooks::Error>>
 	where
 		Reporter: DownloadsReporter + PatchesReporter + 'static,
 		Hooks: DownloadAndLinkHooks + 'static,
@@ -215,7 +203,6 @@ impl Project {
 			install_dependencies_mode,
 			network_concurrency,
 			force,
-			engines,
 		} = options;
 
 		let reqwest = reqwest.clone();
@@ -452,7 +439,6 @@ impl Project {
 							.join(DependencyGraphNode::container_dir(id))
 							.into();
 						let project = self.clone();
-						let engines = engines.clone();
 						let id = id.clone();
 
 						async move {
@@ -464,7 +450,6 @@ impl Project {
 										project,
 										path: install_path,
 										version: id.version(),
-										engines,
 									},
 								)
 								.await?;
@@ -499,7 +484,7 @@ impl Project {
 					.filter_map(|(alias, (id, _, _))| {
 						package_exports
 							.get(id)
-							.is_some_and(|e| e.bin.is_some())
+							.is_some_and(|e| e.x_script.is_some())
 							.then_some(alias.as_str())
 					})
 					.collect::<HashSet<_>>();
@@ -540,7 +525,7 @@ impl Project {
 				let exports = exports.clone();
 
 				async move {
-					let Some(lib_file) = exports.lib.as_deref() else {
+					let Some(lib_file) = exports.lib_file.as_deref() else {
 						return Ok((package_id, vec![]));
 					};
 
@@ -589,7 +574,7 @@ impl Project {
 			self.remove_unused(graph).await?;
 		}
 
-		Ok(())
+		Ok(package_exports)
 	}
 }
 

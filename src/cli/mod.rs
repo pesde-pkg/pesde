@@ -3,24 +3,18 @@ use crate::cli::style::ERROR_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_STYLE;
 use anyhow::Context as _;
-use itertools::Itertools as _;
-use pesde::AuthConfig;
 use pesde::DEFAULT_INDEX_NAME;
 use pesde::GixUrl;
 use pesde::Subproject;
-use pesde::engine::EngineKind;
-use pesde::engine::runtime::Runtime;
-use pesde::engine::runtime::RuntimeKind;
 use pesde::errors::ManifestReadErrorKind;
 use pesde::manifest::DependencyType;
-use pesde::manifest::Manifest;
 use pesde::names::PackageNames;
 use pesde::source::git::specifier::GitVersionSpecifier;
 use pesde::source::path::RelativeOrAbsolutePath;
 use semver::Version;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 pub mod auth;
 pub mod commands;
@@ -193,188 +187,4 @@ pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
 	}
 }
 
-async fn get_executable_version(engine: EngineKind) -> anyhow::Result<Option<Version>> {
-	let output = tokio::process::Command::new(engine.to_string())
-		.arg("--version")
-		.stdout(std::process::Stdio::piped())
-		.output()
-		.await;
-
-	let output = match output {
-		Ok(output) => output.stdout,
-		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-		Err(e) => return Err(e).context(format!("failed to execute {engine}")),
-	};
-
-	let parse = move || {
-		let output = String::from_utf8(output)
-			.with_context(|| format!("failed to parse {engine} version output"))?;
-		let version = output
-			.split_once(' ')
-			.with_context(|| format!("failed to split {engine} version output"))?
-			.1;
-		let version = version.trim().trim_start_matches('v');
-		let version =
-			Version::parse(version).with_context(|| format!("failed to parse {engine} version"))?;
-
-		Ok::<_, anyhow::Error>(version)
-	};
-
-	match parse() {
-		Ok(version) => Ok(Some(version)),
-		Err(err) => {
-			let cause = std::iter::successors(err.source(), |err| err.source())
-				.format_with("", |err, f| f(&format_args!("\n\t- {err}")));
-
-			tracing::error!("failed to extract {engine} version:\n{err}{cause}");
-			Ok(None)
-		}
-	}
-}
-
-#[cfg_attr(not(feature = "version-management"), allow(unused_variables))]
-pub async fn get_project_engines(
-	manifest: &Manifest,
-	reqwest: &reqwest::Client,
-	auth_config: &AuthConfig,
-) -> anyhow::Result<HashMap<EngineKind, Version>> {
-	use tokio::task::JoinSet;
-
-	crate::cli::reporters::run_with_reporter(|_, root_progress, reporter| async {
-		let root_progress = root_progress;
-		#[cfg(feature = "version-management")]
-		let reporter = reporter;
-
-		root_progress.reset();
-		root_progress.set_message("update engines");
-
-		let tasks = EngineKind::VARIANTS.iter().copied();
-
-		#[cfg(feature = "version-management")]
-		let mut tasks = tasks
-			.map(|engine| {
-				let req = manifest.engines.get(&engine).cloned();
-				let reqwest = reqwest.clone();
-				let reporter = reporter.clone();
-				let auth_config = auth_config.clone();
-
-				async move {
-					let Some(req) = req else {
-						if let Some(version) =
-							version::get_installed_versions(engine).await?.pop_last()
-						{
-							return Ok(Some((engine, version)));
-						}
-
-						return get_executable_version(engine)
-							.await
-							.map(|opt| opt.map(|ver| (engine, ver)));
-					};
-
-					let version = crate::cli::version::get_or_download_engine(
-						&reqwest,
-						engine,
-						req,
-						reporter,
-						&auth_config,
-					)
-					.await
-					.context("failed to install engine")?
-					.1;
-
-					crate::cli::version::make_linker_if_needed(engine)
-						.await
-						.context("failed to make engine linker")?;
-
-					Ok::<_, anyhow::Error>(Some((engine, version)))
-				}
-			})
-			.collect::<JoinSet<_>>();
-
-		#[cfg(not(feature = "version-management"))]
-		let mut tasks = tasks
-			.map(|engine| async move {
-				get_executable_version(engine)
-					.await
-					.map(|opt| opt.map(|ver| (engine, ver)))
-			})
-			.collect::<JoinSet<_>>();
-
-		let mut resolved_engine_versions = HashMap::new();
-
-		while let Some(task) = tasks.join_next().await {
-			let Some((engine, version)) = task.unwrap()? else {
-				continue;
-			};
-			resolved_engine_versions.insert(engine, version);
-		}
-
-		Ok::<_, anyhow::Error>(resolved_engine_versions)
-	})
-	.await
-}
-
-pub fn compatible_runtime(engines: &HashMap<EngineKind, Version>) -> anyhow::Result<Runtime> {
-	// TODO
-	Ok(Runtime::new(
-		RuntimeKind::Lune,
-		engines
-			.iter()
-			.next()
-			.context("Lune not available!")?
-			.1
-			.clone(),
-	))
-}
-
-pub trait ExecReplace: Sized {
-	fn _exec_replace(self) -> std::io::Error;
-
-	fn exec_replace(self) -> ! {
-		panic!("failed to replace process: {}", self._exec_replace());
-	}
-}
-
-#[cfg(unix)]
-impl ExecReplace for std::process::Command {
-	fn _exec_replace(mut self) -> std::io::Error {
-		use std::os::unix::process::CommandExt as _;
-
-		self.exec()
-	}
-}
-
-#[cfg(windows)]
-mod imp {
-	use super::ExecReplace;
-	use windows::Win32::Foundation::TRUE;
-	use windows::Win32::System::Console::SetConsoleCtrlHandler;
-	use windows::core::BOOL;
-
-	unsafe extern "system" fn ctrlc_handler(_: u32) -> BOOL {
-		TRUE
-	}
-
-	impl ExecReplace for std::process::Command {
-		fn _exec_replace(mut self) -> std::io::Error {
-			unsafe {
-				if let Err(e) = SetConsoleCtrlHandler(Some(ctrlc_handler), true) {
-					return e.into();
-				}
-			}
-
-			let status = match self.status() {
-				Ok(status) => status,
-				Err(e) => return e,
-			};
-
-			std::process::exit(status.code().unwrap_or(-1))
-		}
-	}
-}
-
-impl ExecReplace for tokio::process::Command {
-	fn _exec_replace(self) -> std::io::Error {
-		self.into_std()._exec_replace()
-	}
-}
+pub static GITHUB_URL: LazyLock<GixUrl> = LazyLock::new(|| "github.com".parse().unwrap());

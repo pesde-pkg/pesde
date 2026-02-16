@@ -4,8 +4,8 @@ use semver::Version;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
-use crate::engine::runtime::Engines;
 use crate::reporters::DownloadProgressReporter;
+use crate::resolver::DependencyGraph;
 use crate::source::PackageFs;
 use crate::source::Realm;
 use crate::source::ResolveResult;
@@ -67,17 +67,17 @@ pub struct GetExportsOptions<'a> {
 	pub path: Arc<Path>,
 	/// The version of the package to be downloaded
 	pub version: &'a Version,
-	/// The engines this project is using
-	pub engines: Arc<Engines>,
 }
 
 /// The exports of a package
 #[derive(Debug, Clone)]
 pub struct PackageExports {
 	/// The path to the lib export file
-	pub lib: Option<RelativePathBuf>,
+	pub lib_file: Option<RelativePathBuf>,
 	/// The path to the bin export file
-	pub bin: Option<RelativePathBuf>,
+	pub bin_file: Option<RelativePathBuf>,
+	/// The x script export of this package, if any
+	pub x_script: Option<String>,
 }
 
 /// A source of packages

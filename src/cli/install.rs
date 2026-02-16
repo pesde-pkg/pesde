@@ -165,16 +165,6 @@ pub async fn install(
 
 	let refreshed_sources = RefreshedSources::new();
 
-	let manifest = project
-		.clone()
-		.subproject(Importer::root())
-		.deser_manifest()
-		.await
-		.context("failed to read manifest")?;
-
-	let resolved_engine_versions =
-		Arc::new(super::get_project_engines(&manifest, &reqwest, project.auth_config()).await?);
-
 	let (new_lockfile, old_graph) =
 		reporters::run_with_reporter(|multi, root_progress, reporter| async {
 			let multi = multi;
@@ -266,129 +256,10 @@ pub async fn install(
 							.refreshed_sources(refreshed_sources.clone())
 							.install_dependencies_mode(options.install_dependencies_mode)
 							.network_concurrency(options.network_concurrency)
-							.force(options.force)
-							.engines(resolved_engine_versions.clone()),
+							.force(options.force),
 					)
 					.await
 					.context("failed to download and link dependencies")?;
-
-				#[cfg(feature = "version-management")]
-				#[expect(deprecated)]
-				{
-					use pesde::engine::EngineKind;
-					use pesde::source::PackageRefs;
-					use pesde::version_matches;
-
-					let mut tasks = graph
-						.nodes
-						.keys()
-						.map(|id| {
-							let id = id.clone();
-							let project = project.clone();
-							let refreshed_sources = refreshed_sources.clone();
-
-							async move {
-								let engines = match id.pkg_ref() {
-									PackageRefs::Pesde(pkg_ref) => {
-										use pesde::source::pesde::VersionId;
-
-										let PackageSources::Pesde(source) = id.source() else {
-											return Ok::<_, anyhow::Error>((
-												id,
-												Default::default(),
-											));
-										};
-
-										refreshed_sources
-											.refresh(
-												id.source(),
-												&RefreshOptions {
-													project: project.clone(),
-												},
-											)
-											.await
-											.context("failed to refresh source")?;
-
-										let mut file = source
-											.read_index_file(pkg_ref.name.clone(), &project)
-											.await
-											.context("failed to read package index file")?
-											.context("package not found in index")?;
-
-										file.entries
-											.remove(&VersionId::new(
-												id.version().clone(),
-												pkg_ref.target,
-											))
-											.context("package version not found in index")?
-											.engines
-									}
-									PackageRefs::Wally(_) => Default::default(),
-									// _ => {
-									// 	let path =
-
-									// 	match fs::read_to_string(path.join(MANIFEST_FILE_NAME))
-									// 		.await
-									// 	{
-									// 		Ok(manifest) => {
-									// 			match toml::from_str::<PesdeVersionedManifest>(
-									// 				&manifest,
-									// 			) {
-									// 				Ok(manifest) => {
-									// 					manifest.into_manifest().engines
-									// 				}
-									// 				Err(e) => {
-									// 					return Err(e).context(
-									// 						"failed to read package manifest",
-									// 					);
-									// 				}
-									// 			}
-									// 		}
-									// 		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-									// 			Default::default()
-									// 		}
-									// 		Err(e) => {
-									// 			return Err(e)
-									// 				.context("failed to read package manifest");
-									// 		}
-									// 	}
-									// }
-									_ => {
-										// TODO
-										return Ok::<_, anyhow::Error>((id, Default::default()));
-									}
-								};
-
-								Ok((id, engines))
-							}
-						})
-						.collect::<JoinSet<_>>();
-
-					while let Some(task) = tasks.join_next().await {
-						let (id, required_engines) = task.unwrap()?;
-
-						for (engine, req) in required_engines {
-							if engine == EngineKind::Pesde {
-								continue;
-							}
-
-							let Some(version) = resolved_engine_versions.get(&engine) else {
-								tracing::debug!(
-									"package {id} requires {engine} {req}, but it is not installed"
-								);
-								continue;
-							};
-
-							if !version_matches(&req, version) {
-								multi.suspend(|| {
-									println!(
-										"{WARN_PREFIX}: package {id} requires {engine} {req}, but {version} is installed"
-									);
-								});
-							}
-						}
-					}
-				}
 			}
 
 			root_progress.reset();

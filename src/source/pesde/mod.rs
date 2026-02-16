@@ -19,7 +19,6 @@ use specifier::PesdeDependencySpecifier;
 
 use crate::GixUrl;
 use crate::Project;
-use crate::engine::EngineKind;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::Manifest;
@@ -52,7 +51,6 @@ use crate::version_matches;
 use fs_err::tokio as fs;
 use futures::StreamExt as _;
 use semver::Version;
-use semver::VersionReq;
 use tokio::pin;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
@@ -457,9 +455,6 @@ pub struct IndexFileEntry {
 	pub target: Target,
 	/// When this package was published
 	pub published_at: jiff::Timestamp,
-	/// The engines this package supports
-	#[serde(default)]
-	pub engines: BTreeMap<EngineKind, VersionReq>,
 
 	/// The description of this package
 	#[serde(default)]

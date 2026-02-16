@@ -1,13 +1,23 @@
-use crate::Subproject;
+use async_trait::async_trait;
+use croshet::ExecuteResult;
+use croshet::ShellCommand;
+use croshet::ShellPipeReader;
+use croshet::ShellPipeWriter;
+use itertools::Either;
+use std::collections::HashMap;
 use std::convert::Infallible;
-use std::env::join_paths;
-use std::env::split_paths;
 use std::error::Error;
 use std::future;
+use std::sync::Arc;
 use tracing::instrument;
 
-/// Prints a sourcemap for a Wally package, used for finding the library export file
-pub const SOURCEMAP_GENERATOR: &str = "sourcemap_generator";
+use crate::PACKAGES_CONTAINER_NAME;
+use crate::Subproject;
+use crate::resolver::DependencyGraph;
+use crate::resolver::DependencyGraphNode;
+use crate::source::RealmExt as _;
+use crate::source::ids::PackageId;
+use crate::source::traits::PackageExports;
 
 /// Hooks for [execute_script]
 #[allow(unused_variables)]
@@ -16,17 +26,11 @@ pub trait ExecuteScriptHooks {
 	type Error: Error;
 
 	/// Returns the stdio options in the format of (stdout, stderr, stdin)
-	fn stdio(
-		&mut self,
-	) -> (
-		croshet::ShellPipeWriter,
-		croshet::ShellPipeWriter,
-		croshet::ShellPipeReader,
-	) {
+	fn stdio(&mut self) -> (ShellPipeWriter, ShellPipeWriter, ShellPipeReader) {
 		(
-			croshet::ShellPipeWriter::Stdout,
-			croshet::ShellPipeWriter::Stderr,
-			croshet::ShellPipeReader::stdin(),
+			ShellPipeWriter::Stdout,
+			ShellPipeWriter::Stderr,
+			ShellPipeReader::stdin(),
 		)
 	}
 
@@ -40,55 +44,155 @@ impl ExecuteScriptHooks for () {
 	type Error = Infallible;
 }
 
+struct BinPackageCommand {
+	context: ExecuteScriptContext,
+}
+
+#[async_trait]
+impl ShellCommand for BinPackageCommand {
+	async fn execute(&self, context: croshet::ShellCommandContext) -> ExecuteResult {
+		struct Hooks {
+			stdin: Option<ShellPipeReader>,
+			stdout: Option<ShellPipeWriter>,
+			stderr: Option<ShellPipeWriter>,
+		}
+
+		impl ExecuteScriptHooks for Hooks {
+			type Error = Infallible;
+
+			fn stdio(&mut self) -> (ShellPipeWriter, ShellPipeWriter, ShellPipeReader) {
+				(
+					self.stdout.take().unwrap(),
+					self.stderr.take().unwrap(),
+					self.stdin.take().unwrap(),
+				)
+			}
+		}
+
+		let package = self.context.package.as_ref().unwrap();
+		execute_script(
+			self.context.package_exports[package]
+				.x_script
+				.as_deref()
+				.unwrap(),
+			self.context.clone(),
+			&mut Hooks {
+				stdin: Some(context.stdin),
+				stdout: Some(context.stdout),
+				stderr: Some(context.stderr),
+			},
+			context.args,
+		)
+		.await;
+
+		ExecuteResult::Exit(0, vec![])
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct ExecuteScriptContext {
+	graph: Arc<DependencyGraph>,
+	subproject: Subproject,
+	package_exports: Arc<HashMap<PackageId, Arc<PackageExports>>>,
+	package: Option<PackageId>,
+}
+
+impl ExecuteScriptContext {
+	pub fn new(
+		graph: impl Into<Arc<DependencyGraph>>,
+		subproject: Subproject,
+		package_exports: impl Into<Arc<HashMap<PackageId, Arc<PackageExports>>>>,
+	) -> Self {
+		Self {
+			graph: graph.into(),
+			subproject,
+			package_exports: package_exports.into(),
+			package: None,
+		}
+	}
+}
+
 /// Executes a script
-#[instrument(skip(subproject, hooks), level = "debug")]
+#[instrument(skip(hooks), level = "debug")]
 pub async fn execute_script<H: ExecuteScriptHooks>(
-	script_name: &str,
-	subproject: &Subproject,
+	script: &str,
+	context: ExecuteScriptContext,
 	hooks: &mut H,
 	args: Vec<std::ffi::OsString>,
-) -> Result<bool, errors::ExecuteScriptError<H>> {
-	let parsed_script = {
-		let manifest = subproject.deser_manifest().await?;
-		match manifest.scripts.get(script_name) {
-			Some(s) => croshet::parser::parse(s)?,
-			None => return Ok(false),
-		}
-	};
-
-	let mut paths = vec![subproject.bin_dir()];
-	if std::env::var("PESDE_IMPURE_SCRIPTS").is_ok_and(|s| !s.is_empty())
-		&& let Some(path) = std::env::var_os("PATH")
-	{
-		paths.extend(split_paths(&path));
-	}
-	let path = join_paths(paths)?;
+) -> Result<i32, errors::ExecuteScriptError<H>> {
+	let parsed_script = croshet::parser::parse(script)?;
 
 	let (stdout, stderr, stdin) = hooks.stdio();
+
+	let commands = match &context.package {
+		Some(package) => Either::Left(
+			context.graph.nodes[package]
+				.dependencies
+				.iter()
+				.map(|(alias, (id, _, _))| (alias, id)),
+		),
+		None => Either::Right(
+			context.graph.importers[context.subproject.importer()]
+				.dependencies
+				.iter()
+				.map(|(alias, (id, _, _))| (alias, id)),
+		),
+	}
+	.filter(|(_, id)| {
+		context
+			.package_exports
+			.get(id)
+			.is_some_and(|exports| exports.x_script.is_some())
+	})
+	.map(|(alias, id)| {
+		(
+			alias.as_str().to_string(),
+			Arc::new(BinPackageCommand {
+				context: ExecuteScriptContext {
+					package: Some(id.clone()),
+					..context.clone()
+				},
+			}) as Arc<dyn ShellCommand>,
+		)
+	})
+	.collect();
 
 	let (code, stdio_result) = tokio::join!(
 		croshet::execute(
 			parsed_script,
 			croshet::ExecuteOptionsBuilder::new()
-				.cwd(subproject.project().dir().to_path_buf())
+				.cwd(context.subproject.dir().to_path_buf())
 				.stdout(stdout)
 				.stderr(stderr)
 				.stdin(stdin)
 				.args(args)
-				.env_var("PATH".into(), path)
+				.custom_commands(commands)
+				.env_var(
+					"PESDE_ROOT".into(),
+					match &context.package {
+						Some(package) => context
+							.subproject
+							.dependencies_dir()
+							.join(
+								context
+									.graph
+									.realm_of(context.subproject.importer(), package)
+									.packages_dir(),
+							)
+							.join(PACKAGES_CONTAINER_NAME)
+							.join(DependencyGraphNode::container_dir(package))
+							.into_os_string(),
+						None => context.subproject.dir().into_os_string(),
+					}
+				)
 				.build()
 				.unwrap(),
 		),
 		hooks.run(),
 	);
 	stdio_result.map_err(errors::ExecuteScriptError::Hooks)?;
-	if code != 0i32 {
-		return Err(errors::ExecuteScriptError::Io(std::io::Error::other(
-			format!("script {script_name} exited with non-zero code {code}"),
-		)));
-	}
 
-	Ok(true)
+	Ok(code)
 }
 
 /// Errors that can occur when using scripts
@@ -100,14 +204,6 @@ pub mod errors {
 	/// Errors which can occur while executing a script
 	#[derive(Debug, Error)]
 	pub enum ExecuteScriptError<Hooks: ExecuteScriptHooks> {
-		/// An IO error occurred
-		#[error("IO error")]
-		Io(#[from] std::io::Error),
-
-		/// Reading the manifest failed
-		#[error("error reading manifest")]
-		ManifestRead(#[from] crate::errors::ManifestReadError),
-
 		/// Constructing a PATH failed
 		#[error("PATH creation error")]
 		Path(#[from] std::env::JoinPathsError),

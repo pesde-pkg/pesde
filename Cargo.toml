@@ -94,10 +94,10 @@ async_zip = { version = "0.0.18", features = [
     "deflate64",
     "tokio-fs",
 ] }
-ouroboros = "0.18.5"
 croshet = "0.1.0"
 itertools = "0.14.0"
 paste = "1.0.15"
+async-trait = "0.1.89"
 
 # TODO: remove this when gitoxide adds support for creating & applying diffs
 git2 = { version = "0.20.2", optional = true }
