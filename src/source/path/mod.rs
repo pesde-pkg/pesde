@@ -13,14 +13,24 @@ use crate::{
 	},
 	Project,
 };
+use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::{Path, PathBuf};
 use tracing::instrument;
 
 /// The path package reference
 pub mod pkg_ref;
 /// The path dependency specifier
 pub mod specifier;
+
+fn resolve_path_from(base_dir: &Path, path: &Path) -> PathBuf {
+	if path.is_relative() {
+		base_dir.join(path)
+	} else {
+		path.to_path_buf()
+	}
+}
 
 /// The path package source
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -42,9 +52,12 @@ impl PackageSource for PathPackageSource {
 	) -> Result<ResolveResult<Self::Ref>, Self::ResolveError> {
 		let ResolveOptions { project, .. } = options;
 
-		let manifest = deser_manifest(&specifier.path).await?;
+		let path = fs::canonicalize(resolve_path_from(project.package_dir(), &specifier.path))
+			.await
+			.map_err(crate::errors::ManifestReadError::Io)?;
+		let manifest = deser_manifest(&path).await?;
 
-		let (path_package_dir, path_workspace_dir) = find_roots(specifier.path.clone()).await?;
+		let (path_package_dir, path_workspace_dir) = find_roots(path.clone()).await?;
 		let path_project = Project::new(
 			path_package_dir,
 			path_workspace_dir,
@@ -63,6 +76,7 @@ impl PackageSource for PathPackageSource {
 
 		let pkg_ref = PathPackageRef {
 			path: specifier.path.clone(),
+			absolute_path: path.clone(),
 			dependencies: manifest
 				.all_dependencies()?
 				.into_iter()
@@ -108,7 +122,9 @@ impl PackageSource for PathPackageSource {
 								)?,
 							});
 						}
-						DependencySpecifiers::Path(_) => {}
+						DependencySpecifiers::Path(specifier) => {
+							specifier.path = resolve_path_from(&path, &specifier.path);
+						}
 					}
 
 					Ok((alias, (spec, ty)))
@@ -133,14 +149,16 @@ impl PackageSource for PathPackageSource {
 		options: &DownloadOptions<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let DownloadOptions { reporter, .. } = options;
-		let manifest = deser_manifest(&pkg_ref.path).await?;
+		let path = if pkg_ref.absolute_path.as_os_str().is_empty() {
+			&pkg_ref.path
+		} else {
+			&pkg_ref.absolute_path
+		};
+		let manifest = deser_manifest(path).await?;
 
 		reporter.report_done();
 
-		Ok(PackageFs::Copy(
-			pkg_ref.path.clone(),
-			manifest.target.kind(),
-		))
+		Ok(PackageFs::Copy(path.to_path_buf(), manifest.target.kind()))
 	}
 
 	#[instrument(skip_all, level = "debug")]
@@ -149,7 +167,12 @@ impl PackageSource for PathPackageSource {
 		pkg_ref: &Self::Ref,
 		_options: &GetTargetOptions,
 	) -> Result<Target, Self::GetTargetError> {
-		let manifest = deser_manifest(&pkg_ref.path).await?;
+		let path = if pkg_ref.absolute_path.as_os_str().is_empty() {
+			&pkg_ref.path
+		} else {
+			&pkg_ref.absolute_path
+		};
+		let manifest = deser_manifest(path).await?;
 
 		Ok(manifest.target)
 	}

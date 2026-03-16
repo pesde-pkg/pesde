@@ -10,6 +10,9 @@ use std::{collections::BTreeMap, path::PathBuf};
 pub struct PathPackageRef {
 	/// The path of the package
 	pub path: PathBuf,
+	/// The absolute path of the package for filesystem operations
+	#[serde(skip, default)]
+	pub absolute_path: PathBuf,
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
