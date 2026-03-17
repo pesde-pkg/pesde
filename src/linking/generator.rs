@@ -52,10 +52,19 @@ impl Visitor for TypeVisitor {
 			.into_iter()
 			.map(|param| param.to_string())
 			.collect::<Vec<String>>();
+
 		let generics = format!("<{}>", params.join(", "));
+		let declaration_generics = {
+			if params.is_empty() {
+				// Luau does not like empty generics on the left hand side of type declarations
+				"".to_string()
+			} else {
+				generics.clone()
+			}
+		};
 
 		self.types.push(format!(
-			"export type {name}{generics} = module.{name}{generics}\n"
+			"export type {name}{declaration_generics} = module.{name}{generics}\n"
 		))
 	}
 }
