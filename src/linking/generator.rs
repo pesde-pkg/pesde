@@ -52,8 +52,15 @@ impl Visitor for TypeVisitor {
 			.into_iter()
 			.map(|param| param.to_string())
 			.collect::<Vec<String>>();
-		let generics = format!("<{}>", params.join(", "));
 
+		// Type functions without any parameters seems to be unusable for external modules,
+		// which means the linker can't re-export them.
+		// Luau throws: TypeError: Attempting to modify a type function instance from another arena
+		if params.is_empty() {
+			return;
+		}
+
+		let generics = format!("<{}>", params.join(", "));
 		self.types.push(format!(
 			"export type {name}{generics} = module.{name}{generics}\n"
 		))
