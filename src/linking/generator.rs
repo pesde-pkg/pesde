@@ -45,16 +45,14 @@ impl Visitor for TypeVisitor {
 
 	fn visit_exported_type_function(&mut self, node: &ExportedTypeFunction) {
 		let name = node.type_function().function_name().to_string();
-
-		let generics = {
-			let mut generics = vec![];
-
-			for parameter in node.type_function().function_body().parameters() {
-				generics.push(parameter.to_string());
-			}
-
-			format!("<{}>", generics.join(", "))
-		};
+		let params = node
+			.type_function()
+			.function_body()
+			.parameters()
+			.into_iter()
+			.map(|param| param.to_string())
+			.collect::<Vec<String>>();
+		let generics = format!("<{}>", params.join(", "));
 
 		self.types.push(format!(
 			"export type {name}{generics} = module.{name}{generics}\n"
