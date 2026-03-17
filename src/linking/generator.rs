@@ -53,18 +53,14 @@ impl Visitor for TypeVisitor {
 			.map(|param| param.to_string())
 			.collect::<Vec<String>>();
 
-		let generics = format!("<{}>", params.join(", "));
-		let declaration_generics = {
-			if params.is_empty() {
-				// Luau does not like empty generics on the left hand side of type declarations
-				"".to_string()
-			} else {
-				generics.clone()
-			}
+		// Not possible to re-export type functions without parameters as a type declaration
+		if params.is_empty() {
+			return;
 		};
 
+		let generics = format!("<{}>", params.join(", "));
 		self.types.push(format!(
-			"export type {name}{declaration_generics} = module.{name}{generics}\n"
+			"export type {name}{generics} = module.{name}{generics}\n"
 		))
 	}
 }
