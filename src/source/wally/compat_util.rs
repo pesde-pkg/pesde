@@ -10,7 +10,6 @@ use serde::Deserialize;
 use crate::Importer;
 use crate::LINK_LIB_NO_FILE_FOUND;
 use crate::Project;
-use crate::scripts::ExecuteScriptContext;
 use crate::scripts::ExecuteScriptHooks;
 use crate::scripts::execute_script;
 use crate::source::traits::GetExportsOptions;
@@ -23,6 +22,8 @@ struct SourcemapNode {
 	#[serde(default)]
 	file_paths: Vec<RelativePathBuf>,
 }
+
+const SOURCEMAP_GENERATOR: &str = "sourcemap_generator";
 
 #[derive(Debug, Default)]
 pub struct SourcemapGeneratorHooks {
@@ -92,9 +93,9 @@ async fn find_lib_path(
 ) -> Result<Option<RelativePathBuf>, errors::GetExportsError> {
 	let subproject = project.subproject(Importer::root());
 	let manifest = subproject.deser_manifest().await?;
-	let Some(sourcemap_generator) = manifest.scripts.get("sourcemap_generator") else {
+	let Some(sourcemap_generator) = manifest.scripts.get(SOURCEMAP_GENERATOR) else {
 		tracing::warn!(
-			"no `sourcemap_generator` script found in project. wally types will not be generated"
+			"no `{SOURCEMAP_GENERATOR}` script found in project. wally types will not be generated"
 		);
 
 		return Ok(None);
@@ -102,14 +103,14 @@ async fn find_lib_path(
 
 	let mut hooks = SourcemapGeneratorHooks::default();
 	let exit_code = execute_script(
+		&subproject,
 		sourcemap_generator,
-		ExecuteScriptContext::new(graph, subproject, package_exports),
 		&mut hooks,
 		vec![package_dir.into_os_string()],
 	)
 	.await?;
-	if exit_code != 0 {
-		tracing::error!("`sourcemap_generator` script exited with code {exit_code}");
+	if exit_code != 0i32 {
+		tracing::error!("`{SOURCEMAP_GENERATOR}` script exited with code {exit_code}");
 		return Ok(None);
 	}
 

@@ -22,8 +22,6 @@ pub mod config;
 pub mod install;
 pub mod reporters;
 pub mod style;
-#[cfg(feature = "version-management")]
-pub mod version;
 
 pub const PESDE_DIR: &str = concat!(".", env!("CARGO_PKG_NAME"));
 
@@ -34,15 +32,6 @@ fn base_dir() -> anyhow::Result<PathBuf> {
 			.context("failed to get home directory")?
 			.join(PESDE_DIR),
 	})
-}
-
-pub fn bin_dir() -> anyhow::Result<PathBuf> {
-	Ok(base_dir()?.join("bin"))
-}
-
-#[cfg(feature = "version-management")]
-pub fn engines_dir() -> anyhow::Result<PathBuf> {
-	Ok(base_dir()?.join("engines"))
 }
 
 pub fn config_path() -> anyhow::Result<PathBuf> {

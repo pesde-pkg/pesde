@@ -1,5 +1,4 @@
 use fs_err::tokio as fs;
-use semver::Version;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::de::MapAccess;
@@ -15,13 +14,6 @@ use std::path::PathBuf;
 
 pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
 	format!("{:x}", Sha256::digest(struc.as_ref()))
-}
-
-#[must_use]
-pub fn no_build_metadata(version: &Version) -> Version {
-	let mut version = version.clone();
-	version.build = semver::BuildMetadata::EMPTY;
-	version
 }
 
 pub async fn remove_empty_dir(path: &Path) -> std::io::Result<()> {

@@ -1,12 +1,6 @@
 use crate::cli::PESDE_DIR;
 use crate::cli::auth::get_tokens;
 use crate::cli::display_err;
-#[cfg(feature = "version-management")]
-use crate::cli::version::check_for_updates;
-#[cfg(feature = "version-management")]
-use crate::cli::version::current_version;
-#[cfg(feature = "version-management")]
-use crate::cli::version::get_or_download_version;
 use anyhow::Context as _;
 use clap::Parser;
 use clap::builder::styling::AnsiColor;
@@ -146,16 +140,6 @@ impl<'a> MakeWriter<'a> for IndicatifWriter {
 
 async fn run() -> anyhow::Result<()> {
 	let cwd = std::env::current_dir().expect("failed to get current working directory");
-	// Unix doesn't return the symlinked path, so we need to get it from the 0 argument
-	#[cfg(unix)]
-	let current_exe = PathBuf::from(std::env::args_os().next().expect("argument 0 not set"));
-	#[cfg(not(unix))]
-	let current_exe = std::env::current_exe().expect("failed to get current executable path");
-	let exe_name = current_exe
-		.file_stem()
-		.unwrap()
-		.to_str()
-		.expect("exe name is not valid utf-8");
 
 	let tracing_env_filter = EnvFilter::builder()
 		.with_default_directive(LevelFilter::INFO.into())
@@ -210,99 +194,6 @@ async fn run() -> anyhow::Result<()> {
 	)
 	.subproject(importer);
 
-	'scripts: {
-		// if we're an engine, we don't want to run any scripts
-		if exe_name_engine.is_ok() {
-			break 'scripts;
-		}
-
-		if let Some(bin_folder) = current_exe.parent() {
-			// we're not in {path}/bin/{exe}
-			if bin_folder.file_name().is_some_and(|parent| parent != "bin") {
-				break 'scripts;
-			}
-		}
-
-		let linker_file_name = format!("{exe_name}.bin.luau");
-
-		let (path, target) = 'finder: {
-			let all_folders = TargetKind::VARIANTS
-				.iter()
-				.copied()
-				.filter(|t| t.has_bin())
-				.flat_map(|a| {
-					TargetKind::VARIANTS
-						.iter()
-						.copied()
-						.filter(|t| t.has_bin())
-						.map(move |b| (a.packages_folder(b), b))
-				})
-				.collect::<HashMap<_, _>>();
-
-			let mut tasks = all_folders
-				.into_iter()
-				.map(|(folder, target)| {
-					let package_path = project_root_dir.join(&folder).join(&linker_file_name);
-					let workspace_path = project_workspace_dir
-						.as_deref()
-						.map(|path| path.join(&folder).join(&linker_file_name));
-
-					async move {
-						if fs::metadata(&package_path).await.is_ok() {
-							return Some((true, package_path, target));
-						}
-
-						if let Some(workspace_path) = workspace_path {
-							if fs::metadata(&workspace_path).await.is_ok() {
-								return Some((false, workspace_path, target));
-							}
-						}
-
-						None
-					}
-				})
-				.collect::<JoinSet<_>>();
-
-			let mut workspace_path = None;
-
-			while let Some(res) = tasks.join_next().await {
-				if let Some((primary, path, target)) = res.unwrap() {
-					if primary {
-						break 'finder (path, target);
-					}
-
-					workspace_path = Some((path, target));
-				}
-			}
-
-			if let Some(path) = workspace_path {
-				break 'finder path;
-			}
-
-			eprintln!(
-				"{}",
-				ERROR_STYLE.apply_to(format!(
-					"binary `{exe_name}` not found. are you in the right directory?"
-				))
-			);
-			std::process::exit(1i32);
-		};
-
-		let manifest = fs::read_to_string(project_root_dir.join(MANIFEST_FILE_NAME))
-			.await
-			.context("failed to read manifest")?;
-		let manifest = toml::de::from_str(&manifest).context("failed to deserialize manifest")?;
-
-		// Use empty auth config since we're just executing an already-installed binary.
-		let auth_config = AuthConfig::new();
-		let engines = get_project_engines(&manifest, &reqwest, &auth_config).await?;
-
-		let mut command = compatible_runtime(target, &engines)?
-			.prepare_command(path.as_os_str(), std::env::args_os().skip(1));
-		command.current_dir(cwd);
-		command.exec_replace();
-	};
-
 	let reqwest = reqwest::Client::builder()
 		.user_agent(concat!(
 			env!("CARGO_PKG_NAME"),
@@ -310,50 +201,6 @@ async fn run() -> anyhow::Result<()> {
 			env!("CARGO_PKG_VERSION")
 		))
 		.build()?;
-
-	#[cfg(feature = "version-management")]
-	'version: {
-		if exe_name != env!("CARGO_BIN_NAME") {
-			break 'version;
-		};
-
-		let manifest = subproject.deser_manifest().await;
-		let req = match manifest.map_err(pesde::errors::ManifestReadError::into_inner) {
-			Ok(manifest) => manifest.engines.pesde.as_ref(),
-			Err(pesde::errors::ManifestReadErrorKind::Io(e))
-				if e.kind() == io::ErrorKind::NotFound =>
-			{
-				None
-			}
-			Err(e) => return Err(e.into()),
-		};
-
-		match req {
-			// we're already running a compatible version
-			Some(req) if pesde::version_matches(req, &current_version()) => break 'version,
-			// the user has not requested a specific version, so we'll just use the current one
-			None => break 'version,
-			_ => (),
-		}
-
-		let exe_path = get_or_download_version(
-			&reqwest,
-			req.unwrap_or(&semver::VersionReq::STAR),
-			().into(),
-			subproject.project().auth_config(),
-		)
-		.await?;
-
-		let mut command = std::process::Command::new(exe_path);
-		command.args(std::env::args_os().skip(1));
-		ChildProcessTracker
-	};
-
-	#[cfg(feature = "version-management")]
-	display_err(
-		check_for_updates(&reqwest, subproject.project().auth_config()).await,
-		" while checking for updates",
-	);
 
 	let cli = Cli::parse();
 

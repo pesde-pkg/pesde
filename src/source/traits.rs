@@ -5,7 +5,6 @@ use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
 use crate::reporters::DownloadProgressReporter;
-use crate::resolver::DependencyGraph;
 use crate::source::PackageFs;
 use crate::source::Realm;
 use crate::source::ResolveResult;

@@ -15,10 +15,6 @@ mod patch;
 mod patch_commit;
 mod remove;
 mod run;
-#[cfg(feature = "version-management")]
-mod self_install;
-#[cfg(feature = "version-management")]
-mod self_upgrade;
 mod update;
 
 #[derive(Debug, clap::Subcommand)]
@@ -70,14 +66,6 @@ pub enum Subcommand {
 	/// Executes a binary package without needing to be run in a subproject directory
 	#[clap(name = "x", visible_alias = "execute", visible_alias = "exec")]
 	Execute(execute::ExecuteCommand),
-
-	/// Installs the pesde binary and scripts
-	#[cfg(feature = "version-management")]
-	SelfInstall(self_install::SelfInstallCommand),
-
-	/// Installs the latest version of pesde
-	#[cfg(feature = "version-management")]
-	SelfUpgrade(self_upgrade::SelfUpgradeCommand),
 }
 
 impl Subcommand {
@@ -93,20 +81,12 @@ impl Subcommand {
 			Subcommand::Update(update) => update.run(subproject, reqwest).await,
 			Subcommand::Outdated(outdated) => outdated.run(subproject).await,
 			Subcommand::List(list) => list.run(subproject).await,
-			Subcommand::Run(run) => run.run(subproject, reqwest).await,
+			Subcommand::Run(run) => run.run(subproject).await,
 			#[cfg(feature = "patches")]
 			Subcommand::Patch(patch) => patch.run(subproject.project().clone(), reqwest).await,
 			#[cfg(feature = "patches")]
 			Subcommand::PatchCommit(patch_commit) => patch_commit.run(subproject.project().clone()).await,
 			Subcommand::Execute(execute) => execute.run(subproject, reqwest).await,
-			#[cfg(feature = "version-management")]
-			Subcommand::SelfInstall(self_install) => self_install.run().await,
-			#[cfg(feature = "version-management")]
-			Subcommand::SelfUpgrade(self_upgrade) => {
-				self_upgrade
-					.run(subproject.project().clone(), reqwest)
-					.await
-			}
 		}
 	}
 }

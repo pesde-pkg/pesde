@@ -1,53 +1,18 @@
 #![expect(deprecated)]
-use crate::cli::ExecReplace as _;
 use crate::cli::VersionedPackageName;
-use crate::cli::compatible_runtime;
-use crate::cli::config::read_config;
-use crate::cli::get_project_engines;
-use crate::cli::reporters;
-use crate::cli::reporters::CliReporter;
-use anyhow::Context as _;
 use clap::Args;
-use console::style;
-use fs_err::tokio as fs;
-use indicatif::MultiProgress;
-use pesde::DEFAULT_INDEX_NAME;
 use pesde::GixUrl;
-use pesde::Importer;
-use pesde::Project;
-use pesde::RefreshedSources;
 use pesde::Subproject;
-use pesde::download_and_link::DownloadAndLinkOptions;
-use pesde::download_and_link::InstallDependenciesMode;
-use pesde::linking::generator::generate_bin_linking_module;
-use pesde::linking::generator::get_bin_require_path;
 use pesde::names::PackageName;
-use pesde::source::PackageRefs;
-use pesde::source::PackageSources;
-use pesde::source::ids::PackageId;
-use pesde::source::pesde::PesdePackageSource;
-use pesde::source::pesde::VersionId;
-use pesde::source::pesde::specifier::PesdeDependencySpecifier;
 use pesde::source::pesde::target::TargetKind;
-use pesde::source::traits::DownloadOptions;
-use pesde::source::traits::PackageSource as _;
-use pesde::source::traits::RefreshOptions;
-use pesde::source::traits::ResolveOptions;
 use semver::VersionReq;
-use std::env::current_dir;
 use std::ffi::OsString;
-use std::io::Stderr;
-use std::io::Write as _;
 
 #[derive(Debug, Args)]
 pub struct ExecuteCommand {
 	/// The package to run
 	#[arg(index = 1)]
 	package: VersionedPackageName<VersionReq, PackageName>,
-
-	/// The target of the package to run
-	#[arg(short, long, default_value_t = TargetKind::Luau)]
-	target: TargetKind,
 
 	/// The index URL to use for the package
 	#[arg(short, long)]
@@ -60,7 +25,8 @@ pub struct ExecuteCommand {
 
 impl ExecuteCommand {
 	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
-		if !self.target.has_bin() {
+		/*
+				if !self.target.has_bin() {
 			anyhow::bail!("{} doesn't support bin exports!", self.target);
 		}
 
@@ -233,6 +199,7 @@ impl ExecuteCommand {
 
 		let mut command = runtime.prepare_command(caller.path().as_os_str(), self.args);
 		command.current_dir(current_dir().context("failed to get current directory")?);
-		command.exec_replace();
+		command.exec_replace(); */
+		unimplemented!()
 	}
 }

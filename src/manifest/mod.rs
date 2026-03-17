@@ -7,7 +7,6 @@ use crate::source::ids::PackageId;
 use crate::source::traits::PackageExports;
 #[cfg(feature = "patches")]
 use relative_path::RelativePathBuf;
-use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -52,14 +51,6 @@ pub struct ManifestWorkspace {
 	pub overrides: BTreeMap<PackageId, OverrideSpecifier>,
 }
 
-/// The `engines` field of the manifest
-#[derive(Deserialize, Debug, Clone, Default)]
-#[serde(default, deny_unknown_fields)]
-pub struct ManifestEngines {
-	/// The pesde version this package supports
-	pub pesde: Option<VersionReq>,
-}
-
 /// A package manifest
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -88,9 +79,6 @@ pub struct Manifest {
 	/// The Roblox place of this project
 	#[serde(default)]
 	pub place: BTreeMap<Realm, String>,
-	/// The engines this package supports
-	#[serde(default)]
-	pub engines: ManifestEngines,
 	/// The lib export of this package
 	#[serde(default)]
 	pub lib: Option<RelativePathBuf>,
@@ -172,6 +160,8 @@ impl FromStr for Alias {
 
 			// Luau's `@self` alias
 			| "self"
+
+			| "pesde"
 		) {
 			return Err(errors::AliasFromStrKind::Reserved(s.to_string()).into());
 		}
@@ -181,10 +171,6 @@ impl FromStr for Alias {
 			.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 		{
 			return Err(errors::AliasFromStrKind::InvalidCharacters(s.to_string()).into());
-		}
-
-		if s.eq_ignore_ascii_case("pesde") {
-			return Err(errors::AliasFromStrKind::EngineName(s.to_string()).into());
 		}
 
 		Ok(Self(s.into()))
@@ -282,10 +268,6 @@ pub mod errors {
 		/// The alias contains characters outside a-z, A-Z, 0-9, -, and _
 		#[error("alias `{0}` contains characters outside a-z, A-Z, 0-9, -, and _")]
 		InvalidCharacters(String),
-
-		/// The alias is an engine name
-		#[error("alias `{0}` is an engine name")]
-		EngineName(String),
 	}
 
 	/// Errors that can occur when trying to get all dependencies from a manifest
