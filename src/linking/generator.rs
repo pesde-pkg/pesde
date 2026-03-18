@@ -68,23 +68,19 @@ impl Visitor for TypeVisitor {
 	}
 
 	fn visit_exported_type_function(&mut self, node: &ExportedTypeFunction) {
-		let name = node.type_function().function_name().to_string();
-		let params = node
-			.type_function()
-			.function_body()
-			.parameters()
-			.into_iter()
-			.map(ToString::to_string)
-			.collect::<Vec<String>>();
+		let name = node.type_function().function_name();
+		let params = node.type_function().function_body().parameters();
 
 		// Not possible to re-export type functions without parameters as a type declaration
 		if params.is_empty() {
 			return;
 		}
 
-		let generics = format!("<{}>", params.join(", "));
+		let declaration_generics = format_args!("<{}>", params.iter().format(", "));
+		let generics = format_args!("<{}>", params.iter().format(", "));
+
 		self.types.push(format!(
-			"export type {name}{generics} = module.{name}{generics}\n"
+			"export type {name}{declaration_generics} = module.{name}{generics}\n"
 		));
 	}
 }
