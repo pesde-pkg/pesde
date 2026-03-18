@@ -1,6 +1,6 @@
 [package]
 name = "pesde"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2024"
 license = "MIT"
 authors = ["daimond113 <contact@daimond113.com>"]
