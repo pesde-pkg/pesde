@@ -2,7 +2,8 @@ use std::path::{Component, Path};
 
 use crate::manifest::{target::TargetKind, Manifest};
 use full_moon::{
-	ast::luau::ExportedTypeDeclaration, ast::luau::ExportedTypeFunction, visitors::Visitor,
+	ast::luau::{ExportedTypeDeclaration, ExportedTypeFunction},
+	visitors::Visitor,
 };
 use relative_path::RelativePath;
 use tracing::instrument;
@@ -50,18 +51,18 @@ impl Visitor for TypeVisitor {
 			.function_body()
 			.parameters()
 			.into_iter()
-			.map(|param| param.to_string())
+			.map(ToString::to_string)
 			.collect::<Vec<String>>();
 
 		// Not possible to re-export type functions without parameters as a type declaration
 		if params.is_empty() {
 			return;
-		};
+		}
 
 		let generics = format!("<{}>", params.join(", "));
 		self.types.push(format!(
 			"export type {name}{generics} = module.{name}{generics}\n"
-		))
+		));
 	}
 }
 
