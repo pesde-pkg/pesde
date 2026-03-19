@@ -75,8 +75,6 @@ pub struct PackageExports {
 	pub lib_file: Option<RelativePathBuf>,
 	/// The path to the bin export file
 	pub bin_file: Option<RelativePathBuf>,
-	/// The x script export of this package, if any
-	pub x_script: Option<String>,
 }
 
 /// A source of packages

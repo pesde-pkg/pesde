@@ -25,9 +25,6 @@ use sha2::Digest as _;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::convert::Infallible;
-use std::future;
-use std::future::Future;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
@@ -36,27 +33,6 @@ use tokio::task::JoinSet;
 use tokio::task::spawn_blocking;
 use tracing::Instrument as _;
 use tracing::instrument;
-
-/// Hooks to perform actions after certain events during download and linking.
-#[allow(unused_variables)]
-pub trait DownloadAndLinkHooks: Send + Sync {
-	/// The error type for the hooks.
-	type Error: std::error::Error + Send + Sync + 'static;
-
-	/// Called after packages with an x script have been downloaded.
-	/// `aliases` contains all the aliases of the packages with x scripts that were downloaded.
-	fn on_bins_downloaded<'a>(
-		&self,
-		importer: &Importer,
-		aliases: impl IntoIterator<Item = &'a str> + Send,
-	) -> impl Future<Output = Result<(), Self::Error>> + Send {
-		future::ready(Ok(()))
-	}
-}
-
-impl DownloadAndLinkHooks for () {
-	type Error = Infallible;
-}
 
 /// Options for which dependencies to install.
 #[derive(Debug, Clone, Copy)]
@@ -82,13 +58,11 @@ impl InstallDependenciesMode {
 
 /// Options for downloading and linking.
 #[derive(Debug)]
-pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
+pub struct DownloadAndLinkOptions<Reporter = ()> {
 	/// The reqwest client.
 	pub reqwest: reqwest::Client,
 	/// The downloads reporter.
 	pub reporter: Option<Arc<Reporter>>,
-	/// The download and link hooks.
-	pub hooks: Option<Arc<Hooks>>,
 	/// The refreshed sources.
 	pub refreshed_sources: RefreshedSources,
 	/// Which dependencies to install.
@@ -99,10 +73,9 @@ pub struct DownloadAndLinkOptions<Reporter = (), Hooks = ()> {
 	pub force: bool,
 }
 
-impl<Reporter, Hooks> DownloadAndLinkOptions<Reporter, Hooks>
+impl<Reporter> DownloadAndLinkOptions<Reporter>
 where
 	Reporter: DownloadsReporter + PatchesReporter + Send + Sync + 'static,
-	Hooks: DownloadAndLinkHooks + Send + Sync + 'static,
 {
 	/// Creates a new download options with the given reqwest client and reporter.
 	#[must_use]
@@ -110,7 +83,6 @@ where
 		Self {
 			reqwest,
 			reporter: None,
-			hooks: None,
 			refreshed_sources: Default::default(),
 			install_dependencies_mode: InstallDependenciesMode::All,
 			network_concurrency: NonZeroUsize::new(16).unwrap(),
@@ -122,13 +94,6 @@ where
 	#[must_use]
 	pub fn reporter(mut self, reporter: impl Into<Arc<Reporter>>) -> Self {
 		self.reporter.replace(reporter.into());
-		self
-	}
-
-	/// Sets the download and link hooks.
-	#[must_use]
-	pub fn hooks(mut self, hooks: impl Into<Arc<Hooks>>) -> Self {
-		self.hooks.replace(hooks.into());
 		self
 	}
 
@@ -169,7 +134,6 @@ impl Clone for DownloadAndLinkOptions {
 		Self {
 			reqwest: self.reqwest.clone(),
 			reporter: self.reporter.clone(),
-			hooks: self.hooks.clone(),
 			refreshed_sources: self.refreshed_sources.clone(),
 			install_dependencies_mode: self.install_dependencies_mode,
 			network_concurrency: self.network_concurrency,
@@ -186,19 +150,17 @@ impl Project {
 		fields(install_dependencies = debug(options.install_dependencies_mode)),
 		level = "debug"
 	)]
-	pub async fn download_and_link<Reporter, Hooks>(
+	pub async fn download_and_link<Reporter>(
 		&self,
 		graph: &mut DependencyGraph,
-		options: DownloadAndLinkOptions<Reporter, Hooks>,
-	) -> Result<HashMap<PackageId, Arc<PackageExports>>, errors::DownloadAndLinkError<Hooks::Error>>
+		options: DownloadAndLinkOptions<Reporter>,
+	) -> Result<HashMap<PackageId, Arc<PackageExports>>, errors::DownloadAndLinkError>
 	where
 		Reporter: DownloadsReporter + PatchesReporter + 'static,
-		Hooks: DownloadAndLinkHooks + 'static,
 	{
 		let DownloadAndLinkOptions {
 			reqwest,
 			reporter,
-			hooks,
 			refreshed_sources,
 			install_dependencies_mode,
 			network_concurrency,
@@ -319,7 +281,7 @@ impl Project {
 					let checksum = format!("{checksum:x}");
 					let node = graph.nodes.get_mut(&id).unwrap();
 					if !node.checksum.is_empty() && node.checksum != checksum {
-						return Err(errors::DownloadAndLinkError::BadChecksum(id));
+						return Err(errors::DownloadAndLinkErrorKind::BadChecksum(id).into());
 					}
 					node.checksum = checksum;
 				}
@@ -342,12 +304,9 @@ impl Project {
 
 						fs.write_to(&container_dir, subproject.project().cas_dir(), true)
 							.await
-							.map_err(errors::DownloadAndLinkError::<Hooks::Error>::from)?;
+							.map_err(errors::DownloadAndLinkError::from)?;
 
-						Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((
-							id,
-							subproject.importer().clone(),
-						))
+						Ok::<_, errors::DownloadAndLinkError>((id, subproject.importer().clone()))
 					});
 				}
 			}
@@ -454,7 +413,7 @@ impl Project {
 								)
 								.await?;
 
-							Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>((id, exports))
+							Ok::<_, errors::DownloadAndLinkError>((id, exports))
 						}
 					})
 					.collect::<JoinSet<_>>();
@@ -464,7 +423,7 @@ impl Project {
 					package_exports.insert(id, Arc::new(exports));
 				}
 
-				Ok::<_, errors::DownloadAndLinkError<Hooks::Error>>(())
+				Ok::<_, errors::DownloadAndLinkError>(())
 			};
 
 		// step 2. get targets for non Wally packages (Wally packages require the scripts packages to be downloaded first)
@@ -475,26 +434,6 @@ impl Project {
 		self.link(graph, &package_exports, &Default::default())
 			.instrument(tracing::debug_span!("link (non-wally)"))
 			.await?;
-
-		if let Some(hooks) = &hooks {
-			for (importer, data) in &graph.importers {
-				let aliases = data
-					.dependencies
-					.iter()
-					.filter_map(|(alias, (id, _, _))| {
-						package_exports
-							.get(id)
-							.is_some_and(|e| e.x_script.is_some())
-							.then_some(alias.as_str())
-					})
-					.collect::<HashSet<_>>();
-
-				hooks
-					.on_bins_downloaded(importer, aliases)
-					.await
-					.map_err(errors::DownloadAndLinkError::Hook)?;
-			}
-		}
 
 		// step 3. get targets for Wally packages
 		get_graph_exports(&mut package_exports, wally_graph_to_download)
@@ -534,14 +473,16 @@ impl Project {
 					} else {
 						let lib_file = lib_file.to_path(install_path);
 
-						let contents =
-							match fs::read_to_string(&lib_file).await {
-								Ok(contents) => contents,
-								Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-									return Err(errors::DownloadAndLinkError::<Hooks::Error>::LibFileNotFound(lib_file));
-								}
-								Err(e) => return Err(e.into()),
-							};
+						let contents = match fs::read_to_string(&lib_file).await {
+							Ok(contents) => contents,
+							Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+								return Err(errors::DownloadAndLinkErrorKind::LibFileNotFound(
+									lib_file,
+								)
+								.into());
+							}
+							Err(e) => return Err(e.into()),
+						};
 
 						let types = spawn_blocking(move || get_file_types(&contents))
 							.await
@@ -552,7 +493,7 @@ impl Project {
 						types
 					};
 
-					Ok((package_id, types))
+					Ok::<_, errors::DownloadAndLinkError>((package_id, types))
 				}
 				.instrument(span)
 			})
@@ -587,9 +528,10 @@ pub mod errors {
 	use crate::source::ids::PackageId;
 
 	/// An error that can occur when downloading and linking dependencies
-	#[derive(Debug, Error)]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = DownloadAndLinkError))]
 	#[non_exhaustive]
-	pub enum DownloadAndLinkError<E> {
+	pub enum DownloadAndLinkErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),
@@ -601,10 +543,6 @@ pub mod errors {
 		/// An error occurred while linking dependencies
 		#[error("error linking dependencies")]
 		Linking(#[from] crate::linking::errors::LinkingError),
-
-		/// An error occurred while executing the pesde callback
-		#[error("error executing hook")]
-		Hook(#[source] E),
 
 		/// IO error
 		#[error("io error")]

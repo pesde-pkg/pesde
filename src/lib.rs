@@ -306,12 +306,6 @@ impl Subproject {
 		self.private_dir().join("dependencies")
 	}
 
-	/// The bin directory
-	#[must_use]
-	pub fn bin_dir(&self) -> PathBuf {
-		self.private_dir().join("bin")
-	}
-
 	/// Read the manifest file
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
 	pub async fn read_manifest(&self) -> Result<String, errors::ManifestReadError> {

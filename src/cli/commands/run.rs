@@ -10,7 +10,7 @@ pub struct RunCommand {
 	script: String,
 
 	/// Arguments to pass to the script
-	#[arg(index = 2, last = true)]
+	#[arg(index = 2, trailing_var_arg = true)]
 	args: Vec<OsString>,
 }
 

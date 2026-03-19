@@ -238,7 +238,6 @@ impl Manifest {
 		PackageExports {
 			lib_file: self.lib.clone(),
 			bin_file: self.bin.clone(),
-			x_script: self.scripts.get("x").cloned(),
 		}
 	}
 }

@@ -136,7 +136,6 @@ pub(crate) async fn get_exports(
 	Ok(PackageExports {
 		lib_file,
 		bin_file: None,
-		x_script: None,
 	})
 }
 

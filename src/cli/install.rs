@@ -6,13 +6,10 @@ use crate::cli::style::REMOVED_STYLE;
 use crate::cli::style::WARN_PREFIX;
 use anyhow::Context as _;
 use console::style;
-use fs_err::tokio as fs;
 use itertools::EitherOrBoth;
 use itertools::Itertools as _;
-use pesde::Importer;
 use pesde::Project;
 use pesde::RefreshedSources;
-use pesde::download_and_link::DownloadAndLinkHooks;
 use pesde::download_and_link::DownloadAndLinkOptions;
 use pesde::download_and_link::InstallDependenciesMode;
 use pesde::lockfile::Lockfile;
@@ -24,67 +21,8 @@ use pesde::source::traits::RefreshOptions;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
-use std::path::Path;
-use std::sync::Arc;
 use std::time::Instant;
 use tokio::task::JoinSet;
-
-pub struct InstallHooks {
-	pub project: Project,
-	pub global_binaries: bool,
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error(transparent)]
-pub struct InstallHooksError(#[from] anyhow::Error);
-
-impl DownloadAndLinkHooks for InstallHooks {
-	type Error = InstallHooksError;
-
-	async fn on_bins_downloaded<'a>(
-		&self,
-		importer: &Importer,
-		aliases: impl IntoIterator<Item = &'a str>,
-	) -> Result<(), Self::Error> {
-		if !self.global_binaries {
-			return Ok(());
-		}
-
-		let dir = self.project.clone().subproject(importer.clone()).dir();
-		let bin_dir = dir.join("bin");
-
-		let curr_exe: Arc<Path> = std::env::current_exe()
-			.context("failed to get current executable path")?
-			.as_path()
-			.into();
-
-		let mut tasks = aliases
-			.into_iter()
-			.map(|alias| {
-				let bin_exec_file = bin_dir
-					.join(alias)
-					.with_extension(std::env::consts::EXE_EXTENSION);
-				let curr_exe = curr_exe.clone();
-
-				async move {
-					match fs::hard_link(curr_exe, bin_exec_file).await {
-						Ok(_) => {}
-						Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-						e => e.context("failed to hard link bin link file")?,
-					}
-
-					Ok::<_, anyhow::Error>(())
-				}
-			})
-			.collect::<JoinSet<_>>();
-
-		while let Some(task) = tasks.join_next().await {
-			task.unwrap()?;
-		}
-
-		Ok(())
-	}
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct InstallOptions {
@@ -242,17 +180,8 @@ pub async fn install(
 				project
 					.download_and_link(
 						&mut graph,
-						DownloadAndLinkOptions::<CliReporter, InstallHooks>::new(reqwest.clone())
+						DownloadAndLinkOptions::<CliReporter>::new(reqwest.clone())
 							.reporter(reporter)
-							.hooks(InstallHooks {
-								project: project.clone(),
-								#[cfg(feature = "global-binaries")]
-								global_binaries: crate::cli::config::read_config()
-									.await?
-									.global_binaries,
-								#[cfg(not(feature = "global-binaries"))]
-								global_binaries: false,
-							})
 							.refreshed_sources(refreshed_sources.clone())
 							.install_dependencies_mode(options.install_dependencies_mode)
 							.network_concurrency(options.network_concurrency)

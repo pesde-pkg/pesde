@@ -17,8 +17,6 @@ pub struct CliConfig {
 
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub last_checked_updates: Option<(jiff::Timestamp, semver::Version)>,
-
-	pub global_binaries: bool,
 }
 
 impl Default for CliConfig {
@@ -29,8 +27,6 @@ impl Default for CliConfig {
 			tokens: Tokens::default(),
 
 			last_checked_updates: None,
-
-			global_binaries: true,
 		}
 	}
 }

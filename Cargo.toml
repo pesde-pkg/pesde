@@ -39,7 +39,6 @@ bin = [
     "tokio/macros",
 ]
 patches = ["dep:git2"]
-global-binaries = []
 
 [[bin]]
 name = "pesde"
