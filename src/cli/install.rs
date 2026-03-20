@@ -74,22 +74,11 @@ async fn get_graph_internal(
 	Ok((old_graph, graph))
 }
 
-/// Loose means that it doesn't have to be linked, only need it for the data
-pub async fn get_graph_loose(
+pub async fn get_graph(
 	project: &Project,
 	refreshed_sources: &RefreshedSources,
 ) -> anyhow::Result<DependencyGraph> {
 	let (_, graph) = get_graph_internal(project, refreshed_sources, false, true).await?;
-
-	Ok(graph)
-}
-
-/// Strict means that it has to be unchanged (and so linked)
-pub async fn get_graph_strict(
-	project: &Project,
-	refreshed_sources: &RefreshedSources,
-) -> anyhow::Result<DependencyGraph> {
-	let (_, graph) = get_graph_internal(project, refreshed_sources, true, true).await?;
 
 	Ok(graph)
 }

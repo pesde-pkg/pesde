@@ -63,37 +63,6 @@ pub struct DependencyGraph {
 }
 
 impl DependencyGraph {
-	/// Returns all the packages used by a single importer
-	pub fn packages_for_importer(
-		&self,
-		importer: &Importer,
-		filter: impl Fn(&DependencySpecifiers, &DependencyType) -> bool,
-	) -> HashSet<PackageId> {
-		let mut visited = HashSet::new();
-		let Some(importer) = self.importers.get(importer) else {
-			return visited;
-		};
-
-		let mut queue = importer
-			.dependencies
-			.values()
-			.filter(|(_, spec, ty)| filter(spec, ty))
-			.map(|(id, _, _)| id.clone())
-			.collect::<Vec<_>>();
-
-		while let Some(pkg_id) = queue.pop() {
-			if let Some(node) = self.nodes.get(&pkg_id)
-				&& visited.insert(pkg_id)
-			{
-				for dep in node.dependencies.values() {
-					queue.push(dep.0.clone());
-				}
-			}
-		}
-
-		visited
-	}
-
 	/// Returns the resolved realm of a package
 	/// Resolution works as so:
 	/// if the package is never depended on with a realm, it has no realm
@@ -101,25 +70,34 @@ impl DependencyGraph {
 	/// otherwise, it is a server package
 	#[must_use]
 	pub fn realm_of(&self, importer: &Importer, package_id: &PackageId) -> Option<Realm> {
-		let packages = self.packages_for_importer(
-			importer,
-			// we only care about dependencies that have a realm since those without shouldn't be treated as realm-specific
-			|spec, _| spec.realm().is_some(),
-		);
+		let graph_importer = self.importers.get(importer)?;
+
+		let mut visited = HashSet::new();
 		let mut ret = None;
+		let mut queue = graph_importer
+			.dependencies
+			.values()
+			.filter_map(|(id, spec, _)| spec.realm().map(|realm| (id, realm)))
+			.collect::<Vec<_>>();
 
-		let realms = packages
-			.into_iter()
-			.filter_map(|pkg| self.nodes.get(&pkg))
-			.flat_map(|node| node.dependencies.values())
-			.filter(|(id, _, _)| id == package_id)
-			.filter_map(|(_, _, realm)| *realm);
-
-		for realm in realms {
-			if realm == Realm::Shared {
-				return Some(Realm::Shared);
+		while let Some((pkg_id, realm)) = queue.pop() {
+			if pkg_id == package_id {
+				match realm {
+					Realm::Shared => return Some(Realm::Shared),
+					Realm::Server => ret = Some(Realm::Server),
+				}
 			}
-			ret = Some(Realm::Server);
+
+			if let Some(node) = self.nodes.get(pkg_id)
+				&& visited.insert(pkg_id)
+			{
+				for (id, _, realm) in node.dependencies.values() {
+					let Some(realm) = realm else {
+						continue;
+					};
+					queue.push((id, *realm));
+				}
+			}
 		}
 
 		ret

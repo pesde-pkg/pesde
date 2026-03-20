@@ -38,11 +38,23 @@ impl Project {
 					.map(|(alias, _)| alias)
 					.cloned()
 					.collect::<HashSet<_>>();
-				let expected_ids = graph
-					.packages_for_importer(&importer, |_, _| true)
-					.iter()
-					.map(ToString::to_string)
-					.collect::<HashSet<_>>();
+
+				let mut queue = graph.importers[&importer]
+					.dependencies
+					.values()
+					.map(|(id, _, _)| id)
+					.collect::<Vec<_>>();
+				let mut expected_ids = HashSet::new();
+
+				while let Some(pkg_id) = queue.pop() {
+					if let Some(node) = graph.nodes.get(pkg_id)
+						&& expected_ids.insert(pkg_id.to_string())
+					{
+						for dep in node.dependencies.values() {
+							queue.push(&dep.0);
+						}
+					}
+				}
 
 				async move {
 					let mut tasks = JoinSet::<Result<(), errors::RemoveUnusedError>>::new();

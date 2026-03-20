@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::cli::install::get_graph_loose;
+use crate::cli::install::get_graph;
 use crate::cli::style::ADDED_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::REMOVED_STYLE;
@@ -31,7 +31,7 @@ pub struct OutdatedCommand {
 impl OutdatedCommand {
 	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		let refreshed_sources = RefreshedSources::new();
-		let mut graph = get_graph_loose(subproject.project(), &refreshed_sources).await?;
+		let mut graph = get_graph(subproject.project(), &refreshed_sources).await?;
 
 		let refreshed_sources = RefreshedSources::new();
 

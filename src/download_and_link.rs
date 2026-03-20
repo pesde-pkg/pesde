@@ -202,10 +202,32 @@ impl Project {
 			}
 
 			let mut importer_deps = HashMap::<PackageId, HashSet<Importer>>::new();
-			for importer in graph.importers.keys() {
-				for id in graph
-					.packages_for_importer(importer, |_, ty| install_dependencies_mode.fits(*ty))
-				{
+			let mut visited = HashSet::new();
+			let mut queue = vec![];
+			for (importer, graph_importer) in &graph.importers {
+				queue.extend(
+					graph_importer
+						.dependencies
+						.values()
+						.filter(|(_, _, ty)| install_dependencies_mode.fits(*ty))
+						.map(|(id, _, _)| id.clone()),
+				);
+
+				while let Some(pkg_id) = queue.pop() {
+					if let Some(node) = graph.nodes.get(&pkg_id)
+						&& visited.insert(pkg_id)
+					{
+						for (id, ty, _) in node.dependencies.values() {
+							// don't need to download dev dependencies of dependencies
+							if *ty == DependencyType::Dev {
+								continue;
+							}
+							queue.push(id.clone());
+						}
+					}
+				}
+
+				for id in visited.drain() {
 					importer_deps
 						.entry(id)
 						.or_default()
