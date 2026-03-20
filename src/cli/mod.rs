@@ -9,9 +9,24 @@ use pesde::Subproject;
 use pesde::errors::ManifestReadErrorKind;
 use pesde::manifest::DependencyType;
 use pesde::names::PackageNames;
+use pesde::source::DependencySpecifiers;
+use pesde::source::PackageSources;
+use pesde::source::Realm;
+use pesde::source::git::GitPackageSource;
+use pesde::source::git::specifier::GitDependencySpecifier;
 use pesde::source::git::specifier::GitVersionSpecifier;
+use pesde::source::path::PathPackageSource;
 use pesde::source::path::RelativeOrAbsolutePath;
-use semver::Version;
+use pesde::source::path::specifier::PathDependencySpecifier;
+#[expect(deprecated)]
+use pesde::source::pesde::PesdePackageSource;
+#[expect(deprecated)]
+use pesde::source::pesde::specifier::PesdeDependencySpecifier;
+#[expect(deprecated)]
+use pesde::source::pesde::target::TargetKind;
+use pesde::source::wally::WallyPackageSource;
+use pesde::source::wally::specifier::WallyDependencySpecifier;
+use semver::VersionReq;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::LazyLock;
@@ -43,39 +58,88 @@ pub fn data_dir() -> anyhow::Result<PathBuf> {
 }
 
 #[derive(Debug, Clone)]
-struct VersionedPackageName<V: FromStr = Version, N: FromStr = PackageNames>(N, Option<V>);
+struct VersionedPackageNames(PackageNames, Option<VersionReq>);
 
-impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<anyhow::Error>>
-	FromStr for VersionedPackageName<V, N>
-{
+impl FromStr for VersionedPackageNames {
 	type Err = anyhow::Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let mut parts = s.splitn(2, '@');
 		let name = parts.next().unwrap();
-		let version = parts
-			.next()
-			.map(FromStr::from_str)
-			.transpose()
-			.map_err(Into::into)?;
+		let version = parts.next().map(FromStr::from_str).transpose()?;
 
-		Ok(VersionedPackageName(
-			name.parse().map_err(Into::into)?,
-			version,
-		))
+		Ok(VersionedPackageNames(name.parse()?, version))
 	}
 }
 
 #[derive(Debug, Clone)]
-enum AnyPackageIdentifier<V: FromStr = Version, N: FromStr = PackageNames> {
-	PackageName(VersionedPackageName<V, N>),
+enum AnyPackageIdentifier {
+	PackageNames(VersionedPackageNames),
 	Git((GixUrl, GitVersionSpecifier)),
 	Path(RelativeOrAbsolutePath),
 }
 
-impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<anyhow::Error>>
-	FromStr for AnyPackageIdentifier<V, N>
-{
+impl AnyPackageIdentifier {
+	async fn source_and_specifier(
+		&self,
+		realm: Option<Realm>,
+		get_index: impl AsyncFnOnce(bool) -> anyhow::Result<(String, GixUrl)>,
+	) -> anyhow::Result<(PackageSources, DependencySpecifiers)> {
+		Ok(match self {
+			AnyPackageIdentifier::PackageNames(VersionedPackageNames(name, version)) => {
+				match name {
+					#[expect(deprecated)]
+					PackageNames::Pesde(name) => {
+						let (index_name, index_url) = get_index(true).await?;
+						let source = PackageSources::Pesde(PesdePackageSource::new(index_url));
+						let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
+							name: name.clone(),
+							version: version.clone().unwrap_or(VersionReq::STAR),
+							index: index_name,
+							target: match realm {
+								Some(Realm::Shared) => TargetKind::Roblox,
+								Some(Realm::Server) => TargetKind::RobloxServer,
+								None => TargetKind::Luau,
+							},
+						});
+
+						(source, specifier)
+					}
+					PackageNames::Wally(name) => {
+						let (index_name, index_url) = get_index(false).await?;
+						let source = PackageSources::Wally(WallyPackageSource::new(index_url));
+						let specifier = DependencySpecifiers::Wally(WallyDependencySpecifier {
+							name: name.clone(),
+							version: version.clone().unwrap_or(VersionReq::STAR),
+							index: index_name,
+							realm: realm.context("wally packages require a realm")?,
+						});
+
+						(source, specifier)
+					}
+				}
+			}
+			AnyPackageIdentifier::Git((url, ver)) => (
+				PackageSources::Git(GitPackageSource::new(url.clone())),
+				DependencySpecifiers::Git(GitDependencySpecifier {
+					repo: url.clone(),
+					version_specifier: ver.clone(),
+					path: None,
+					realm,
+				}),
+			),
+			AnyPackageIdentifier::Path(path) => (
+				PackageSources::Path(PathPackageSource),
+				DependencySpecifiers::Path(PathDependencySpecifier {
+					path: path.clone(),
+					realm,
+				}),
+			),
+		})
+	}
+}
+
+impl FromStr for AnyPackageIdentifier {
 	type Err = anyhow::Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -97,7 +161,7 @@ impl<V: FromStr<Err = E>, E: Into<anyhow::Error>, N: FromStr<Err = F>, F: Into<a
 
 			Ok(AnyPackageIdentifier::Git((repo.parse()?, ver)))
 		} else {
-			Ok(AnyPackageIdentifier::PackageName(s.parse()?))
+			Ok(AnyPackageIdentifier::PackageNames(s.parse()?))
 		}
 	}
 }

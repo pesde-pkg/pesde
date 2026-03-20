@@ -1,44 +1,58 @@
-#![expect(deprecated)]
-use crate::cli::VersionedPackageName;
+use crate::cli::AnyPackageIdentifier;
+use crate::cli::config::read_config;
+use crate::cli::reporters;
+use crate::cli::reporters::CliReporter;
+use anyhow::Context as _;
 use clap::Args;
-use pesde::GixUrl;
+use console::style;
+use indicatif::MultiProgress;
+use pesde::Importer;
+use pesde::Project;
+use pesde::RefreshedSources;
 use pesde::Subproject;
-use pesde::names::PackageName;
-use pesde::source::pesde::target::TargetKind;
-use semver::VersionReq;
+use pesde::download_and_link::DownloadAndLinkOptions;
+use pesde::download_and_link::InstallDependenciesMode;
+use pesde::scripts::execute_script;
+use pesde::source::StructureKind;
+use pesde::source::ids::PackageId;
+use pesde::source::traits::DownloadOptions;
+use pesde::source::traits::GetExportsOptions;
+use pesde::source::traits::PackageRef as _;
+use pesde::source::traits::PackageSource as _;
+use pesde::source::traits::RefreshOptions;
+use pesde::source::traits::ResolveOptions;
 use std::ffi::OsString;
+use std::io::Stderr;
+use tempfile::TempDir;
 
 #[derive(Debug, Args)]
 pub struct ExecuteCommand {
-	/// The package to run
+	/// The command to execute the binary export with (the path to the binary export will be passed as the first argument)
 	#[arg(index = 1)]
-	package: VersionedPackageName<VersionReq, PackageName>,
+	command: String,
 
-	/// The index URL to use for the package
-	#[arg(short, long)]
-	index: Option<GixUrl>,
+	/// The package to run
+	#[arg(index = 2)]
+	package: AnyPackageIdentifier,
 
 	/// Arguments to pass to the script
-	#[arg(index = 2, last = true)]
+	#[arg(index = 3, trailing_var_arg = true, allow_hyphen_values = true)]
 	args: Vec<OsString>,
 }
 
 impl ExecuteCommand {
-	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
-		/*
-				if !self.target.has_bin() {
-			anyhow::bail!("{} doesn't support bin exports!", self.target);
-		}
-
+	pub async fn run(
+		mut self,
+		subproject: Subproject,
+		reqwest: reqwest::Client,
+	) -> anyhow::Result<()> {
 		let multi_progress = MultiProgress::new();
 		crate::PROGRESS_BARS
 			.lock()
 			.unwrap()
 			.replace(multi_progress.clone());
 
-		let refreshed_sources = RefreshedSources::new();
-
-		let (tempdir, runtime, bin_path) = reporters::run_with_reporter_and_writer(
+		let (project, tempdir, bin_file) = reporters::run_with_reporter_and_writer(
 			std::io::stderr(),
 			|multi_progress, root_progress, reporter| async {
 				let multi_progress = multi_progress;
@@ -46,16 +60,19 @@ impl ExecuteCommand {
 
 				root_progress.set_message("resolve");
 
-				let index = match self.index {
-					Some(index) => Some(index),
-					None => read_config().await.ok().map(|c| c.default_index),
-				}
-				.context("no index specified")?;
+				let (source, specifier) = self
+					.package
+					.source_and_specifier(None, async |_| {
+						let index = read_config().await?.default_index;
+						Ok((index.to_string(), index))
+					})
+					.await
+					.context("failed to parse package identifier")?;
 
-				let source = PesdePackageSource::new(index);
+				let refreshed_sources = RefreshedSources::new();
 				refreshed_sources
 					.refresh(
-						&PackageSources::Pesde(source.clone()),
+						&source,
 						&RefreshOptions {
 							project: subproject.project().clone(),
 						},
@@ -63,15 +80,9 @@ impl ExecuteCommand {
 					.await
 					.context("failed to refresh source")?;
 
-				let version_req = self.package.1.unwrap_or(VersionReq::STAR);
-				let (pkg_source, pkg_ref, mut versions) = source
+				let (source, pkg_ref, mut versions) = source
 					.resolve(
-						&PesdeDependencySpecifier {
-							name: self.package.0.clone(),
-							version: version_req.clone(),
-							index: DEFAULT_INDEX_NAME.into(),
-							target: self.target,
-						},
+						&specifier,
 						&ResolveOptions {
 							subproject: subproject.clone(),
 							refreshed_sources: refreshed_sources.clone(),
@@ -79,19 +90,60 @@ impl ExecuteCommand {
 					)
 					.await
 					.context("failed to resolve package")?;
+
 				let Some((version, _)) = versions.pop_last() else {
-					anyhow::bail!(
-						"no compatible package could be found for {}@{version_req}",
-						self.package.0,
-					);
+					anyhow::bail!("no compatible package could be found");
 				};
 
-				let tmp_dir = subproject.project().cas_dir().join(".tmp");
-				fs::create_dir_all(&tmp_dir)
+				if pkg_ref.structure_kind() == StructureKind::Wally {
+					anyhow::bail!("executing binaries from wally packages is not supported");
+				}
+
+				let id = PackageId::new(source, pkg_ref, version);
+				multi_progress.suspend(|| {
+					eprintln!(
+						"{}",
+						style(format_args!("using {}", style(&id).bold())).dim()
+					);
+				});
+
+				root_progress.reset();
+				root_progress.set_message("download");
+				root_progress.set_style(reporters::root_progress_style_with_progress());
+
+				let tempdir = TempDir::new_in(subproject.project().cas_dir().join(".tmp"))
+					.context("failed to create temporary directory")?;
+
+				let fs = id
+					.source()
+					.download(
+						id.pkg_ref(),
+						&DownloadOptions {
+							project: subproject.project().clone(),
+							reqwest: reqwest.clone(),
+							reporter: ().into(),
+							version: id.version(),
+						},
+					)
 					.await
-					.context("failed to create temporary directory")?;
-				let tempdir = tempfile::tempdir_in(tmp_dir)
-					.context("failed to create temporary directory")?;
+					.context("failed to download package")?;
+
+				fs.write_to(tempdir.path(), subproject.project().cas_dir(), true)
+					.await
+					.context("failed to write package contents")?;
+
+				let exports = id
+					.source()
+					.get_exports(
+						id.pkg_ref(),
+						&GetExportsOptions {
+							project: subproject.project().clone(),
+							path: tempdir.path().into(),
+							version: id.version(),
+						},
+					)
+					.await
+					.context("failed to get package exports")?;
 
 				let project = Project::new(
 					tempdir.path(),
@@ -100,63 +152,16 @@ impl ExecuteCommand {
 					subproject.project().auth_config().clone(),
 				);
 
-				let mut file = source
-					.read_index_file(self.package.0, &project)
-					.await
-					.context("failed to read package index file")?
-					.context("package doesn't exist on the index")?;
-
-				let entry = file
-					.entries
-					.remove(&VersionId::new(version.clone(), self.target))
-					.context("version id not present in index file")?;
-
-				let bin_path = entry
-					.target
-					.into_exports()
-					.bin
-					.context("package has no binary export")?;
-
-				let PackageRefs::Pesde(pesde_ref) = &pkg_ref else {
-					unreachable!()
-				};
-
-				let fs = source
-					.download(
-						pesde_ref,
-						&DownloadOptions {
-							project: project.clone(),
-							reqwest: reqwest.clone(),
-							reporter: ().into(),
-							version: &version,
-						},
-					)
-					.await
-					.context("failed to download package")?;
-
-				fs.write_to(tempdir.path(), project.cas_dir(), true)
-					.await
-					.context("failed to write package contents")?;
-
 				let mut graph = project
 					.dependency_graph(None, &refreshed_sources, true)
 					.await
 					.context("failed to build dependency graph")?
 					.0;
 
-				let id = PackageId::new(pkg_source, pkg_ref, version);
-				multi_progress.suspend(|| {
-					eprintln!("{}", style(format!("using {}", style(id).bold())).dim());
-				});
-
-				root_progress.reset();
-				root_progress.set_message("download");
-				root_progress.set_style(reporters::root_progress_style_with_progress());
-
 				project
 					.download_and_link(
 						&mut graph,
-						DownloadAndLinkOptions::<CliReporter<Stderr>, ()>::new(reqwest.clone())
+						DownloadAndLinkOptions::<CliReporter<Stderr>>::new(reqwest.clone())
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources)
 							.install_dependencies_mode(InstallDependenciesMode::Prod),
@@ -164,42 +169,29 @@ impl ExecuteCommand {
 					.await
 					.context("failed to download and link dependencies")?;
 
-				let manifest = project
-					.clone()
-					.subproject(Importer::root())
-					.deser_manifest()
-					.await
-					.context("failed to deserialize manifest")?;
-
-				let engines =
-					get_project_engines(&manifest, &reqwest, project.auth_config()).await?;
-
-				anyhow::Ok((
+				Ok((
+					project,
 					tempdir,
-					compatible_runtime(&engines)?,
-					bin_path.to_relative_path_buf(),
+					exports.bin_file.context("package has no binary export")?,
 				))
 			},
 		)
 		.await?;
 
-		let mut caller = tempfile::Builder::new()
-			.suffix(".luau")
-			.tempfile_in(tempdir.path())
-			.context("failed to create tempfile")?;
-		caller
-			.write_all(
-				generate_bin_linking_module(
-					tempdir.path(),
-					&get_bin_require_path(tempdir.path(), &bin_path, tempdir.path()),
-				)
-				.as_bytes(),
-			)
-			.context("failed to write to tempfile")?;
+		self.args.insert(0, bin_file.into_string().into());
 
-		let mut command = runtime.prepare_command(caller.path().as_os_str(), self.args);
-		command.current_dir(current_dir().context("failed to get current directory")?);
-		command.exec_replace(); */
-		unimplemented!()
+		let code = execute_script(
+			&project.subproject(Importer::root()),
+			&self.command,
+			&mut (),
+			self.args,
+		)
+		.await
+		.context("failed to execute script")?;
+
+		// explicitly drop the tempdir before exiting to ensure all files are cleaned up
+		drop(tempdir);
+
+		std::process::exit(code);
 	}
 }
