@@ -1,13 +1,11 @@
-use crate::Subproject;
+use croshet::ShellPipeReader;
+use croshet::ShellPipeWriter;
 use std::convert::Infallible;
-use std::env::join_paths;
-use std::env::split_paths;
 use std::error::Error;
 use std::future;
 use tracing::instrument;
 
-/// Prints a sourcemap for a Wally package, used for finding the library export file
-pub const SOURCEMAP_GENERATOR: &str = "sourcemap_generator";
+use crate::Subproject;
 
 /// Hooks for [execute_script]
 #[allow(unused_variables)]
@@ -16,17 +14,11 @@ pub trait ExecuteScriptHooks {
 	type Error: Error;
 
 	/// Returns the stdio options in the format of (stdout, stderr, stdin)
-	fn stdio(
-		&mut self,
-	) -> (
-		croshet::ShellPipeWriter,
-		croshet::ShellPipeWriter,
-		croshet::ShellPipeReader,
-	) {
+	fn stdio(&mut self) -> (ShellPipeWriter, ShellPipeWriter, ShellPipeReader) {
 		(
-			croshet::ShellPipeWriter::Stdout,
-			croshet::ShellPipeWriter::Stderr,
-			croshet::ShellPipeReader::stdin(),
+			ShellPipeWriter::Stdout,
+			ShellPipeWriter::Stderr,
+			ShellPipeReader::stdin(),
 		)
 	}
 
@@ -41,28 +33,14 @@ impl ExecuteScriptHooks for () {
 }
 
 /// Executes a script
-#[instrument(skip(subproject, hooks), level = "debug")]
+#[instrument(skip(hooks), level = "debug")]
 pub async fn execute_script<H: ExecuteScriptHooks>(
-	script_name: &str,
 	subproject: &Subproject,
+	script: &str,
 	hooks: &mut H,
 	args: Vec<std::ffi::OsString>,
-) -> Result<bool, errors::ExecuteScriptError<H>> {
-	let parsed_script = {
-		let manifest = subproject.deser_manifest().await?;
-		match manifest.scripts.get(script_name) {
-			Some(s) => croshet::parser::parse(s)?,
-			None => return Ok(false),
-		}
-	};
-
-	let mut paths = vec![subproject.bin_dir()];
-	if std::env::var("PESDE_IMPURE_SCRIPTS").is_ok_and(|s| !s.is_empty())
-		&& let Some(path) = std::env::var_os("PATH")
-	{
-		paths.extend(split_paths(&path));
-	}
-	let path = join_paths(paths)?;
+) -> Result<i32, errors::ExecuteScriptError<H>> {
+	let parsed_script = croshet::parser::parse(script)?;
 
 	let (stdout, stderr, stdin) = hooks.stdio();
 
@@ -70,25 +48,19 @@ pub async fn execute_script<H: ExecuteScriptHooks>(
 		croshet::execute(
 			parsed_script,
 			croshet::ExecuteOptionsBuilder::new()
-				.cwd(subproject.project().dir().to_path_buf())
+				.cwd(subproject.dir())
 				.stdout(stdout)
 				.stderr(stderr)
 				.stdin(stdin)
 				.args(args)
-				.env_var("PATH".into(), path)
 				.build()
 				.unwrap(),
 		),
 		hooks.run(),
 	);
 	stdio_result.map_err(errors::ExecuteScriptError::Hooks)?;
-	if code != 0i32 {
-		return Err(errors::ExecuteScriptError::Io(std::io::Error::other(
-			format!("script {script_name} exited with non-zero code {code}"),
-		)));
-	}
 
-	Ok(true)
+	Ok(code)
 }
 
 /// Errors that can occur when using scripts
@@ -100,14 +72,6 @@ pub mod errors {
 	/// Errors which can occur while executing a script
 	#[derive(Debug, Error)]
 	pub enum ExecuteScriptError<Hooks: ExecuteScriptHooks> {
-		/// An IO error occurred
-		#[error("IO error")]
-		Io(#[from] std::io::Error),
-
-		/// Reading the manifest failed
-		#[error("error reading manifest")]
-		ManifestRead(#[from] crate::errors::ManifestReadError),
-
 		/// Constructing a PATH failed
 		#[error("PATH creation error")]
 		Path(#[from] std::env::JoinPathsError),

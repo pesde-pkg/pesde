@@ -1,13 +1,6 @@
-use crate::cli::ExecReplace as _;
 use crate::cli::PESDE_DIR;
 use crate::cli::auth::get_tokens;
 use crate::cli::display_err;
-#[cfg(feature = "version-management")]
-use crate::cli::version::check_for_updates;
-#[cfg(feature = "version-management")]
-use crate::cli::version::current_version;
-#[cfg(feature = "version-management")]
-use crate::cli::version::get_or_download_engine;
 use anyhow::Context as _;
 use clap::Parser;
 use clap::builder::styling::AnsiColor;
@@ -16,12 +9,10 @@ use fs_err::tokio as fs;
 use indicatif::MultiProgress;
 use pesde::AuthConfig;
 use pesde::Project;
-use pesde::engine::EngineKind;
 use pesde::find_roots;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
-use std::str::FromStr as _;
 use std::sync::Mutex;
 use tempfile::NamedTempFile;
 use tracing::instrument;
@@ -149,17 +140,6 @@ impl<'a> MakeWriter<'a> for IndicatifWriter {
 
 async fn run() -> anyhow::Result<()> {
 	let cwd = std::env::current_dir().expect("failed to get current working directory");
-	// Unix doesn't return the symlinked path, so we need to get it from the 0 argument
-	#[cfg(unix)]
-	let current_exe = PathBuf::from(std::env::args_os().next().expect("argument 0 not set"));
-	#[cfg(not(unix))]
-	let current_exe = std::env::current_exe().expect("failed to get current executable path");
-	let exe_name = current_exe
-		.file_stem()
-		.unwrap()
-		.to_str()
-		.expect("exe name is not valid utf-8");
-	let exe_name_engine = EngineKind::from_str(exe_name);
 
 	let tracing_env_filter = EnvFilter::builder()
 		.with_default_directive(LevelFilter::INFO.into())
@@ -199,14 +179,6 @@ async fn run() -> anyhow::Result<()> {
 		project_dir.display(),
 	);
 
-	let reqwest = reqwest::Client::builder()
-		.user_agent(concat!(
-			env!("CARGO_PKG_NAME"),
-			"/",
-			env!("CARGO_PKG_VERSION")
-		))
-		.build()?;
-
 	let cas_dir = get_linkable_dir(&project_dir)
 		.await
 		.join(PESDE_DIR)
@@ -222,59 +194,13 @@ async fn run() -> anyhow::Result<()> {
 	)
 	.subproject(importer);
 
-	#[cfg(feature = "version-management")]
-	'engines: {
-		let Ok(engine) = exe_name_engine else {
-			break 'engines;
-		};
-
-		let req = match subproject
-			.deser_manifest()
-			.await
-			.map_err(pesde::errors::ManifestReadError::into_inner)
-		{
-			Ok(manifest) => manifest.engines.get(&engine).cloned(),
-			Err(pesde::errors::ManifestReadErrorKind::Io(e))
-				if e.kind() == io::ErrorKind::NotFound =>
-			{
-				None
-			}
-			Err(e) => return Err(e.into()),
-		};
-
-		if engine == EngineKind::Pesde {
-			match &req {
-				// we're already running a compatible version
-				Some(req) if pesde::version_matches(req, &current_version()) => break 'engines,
-				// the user has not requested a specific version, so we'll just use the current one
-				None => break 'engines,
-				_ => (),
-			}
-		}
-
-		let exe_path = get_or_download_engine(
-			&reqwest,
-			engine,
-			req.unwrap_or(semver::VersionReq::STAR),
-			().into(),
-			subproject.project().auth_config(),
-		)
-		.await?
-		.0;
-		if exe_path == current_exe {
-			anyhow::bail!("engine linker executed by itself")
-		}
-
-		let mut command = std::process::Command::new(exe_path);
-		command.args(std::env::args_os().skip(1));
-		command.exec_replace();
-	};
-
-	#[cfg(feature = "version-management")]
-	display_err(
-		check_for_updates(&reqwest, subproject.project().auth_config()).await,
-		" while checking for updates",
-	);
+	let reqwest = reqwest::Client::builder()
+		.user_agent(concat!(
+			env!("CARGO_PKG_NAME"),
+			"/",
+			env!("CARGO_PKG_VERSION")
+		))
+		.build()?;
 
 	let cli = Cli::parse();
 

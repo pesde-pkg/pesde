@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+env:
+  CRATE_NAME: pesde
+  BIN_NAME: pesde
+
 jobs:
   get-version:
     name: Get build version
@@ -12,14 +16,13 @@ jobs:
       version: v${{ steps.get_version.outputs.value }}+rev.g${{ steps.trim_sha.outputs.trimmed_sha }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Get package version
-        uses: SebRollen/toml-action@v1.2.0
         id: get_version
-        with:
-          file: Cargo.toml
-          field: package.version
+        run: |
+          VERSION=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "${{ env.CRATE_NAME }}") | .version')
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Trim commit SHA
         id: trim_sha
@@ -30,40 +33,39 @@ jobs:
     strategy:
       matrix:
         include:
-          - job-name: windows-x86_64
-            target: x86_64-pc-windows-msvc
-            runs-on: windows-latest
-            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-windows-x86_64
-
-          - job-name: linux-x86_64
+          - runner: ubuntu-latest
+            host: linux
+            arch: x86_64
             target: x86_64-unknown-linux-gnu
-            runs-on: ubuntu-latest
-            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-linux-x86_64
 
-          - job-name: linux-aarch64
+          - runner: ubuntu-24.04-arm
+            host: linux
+            arch: aarch64
             target: aarch64-unknown-linux-gnu
-            runs-on: ubuntu-24.04-arm
-            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-linux-aarch64
 
-          - job-name: macos-x86_64
+          - runner: windows-latest
+            host: windows
+            arch: x86_64
+            target: x86_64-pc-windows-msvc
+
+          - runner: macos-15-intel
+            host: macos
+            arch: x86_64
             target: x86_64-apple-darwin
-            runs-on: macos-15-intel
-            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-macos-x86_64
 
-          - job-name: macos-aarch64
+          - runner: macos-latest
+            host: macos
+            arch: aarch64
             target: aarch64-apple-darwin
-            runs-on: macos-latest
-            artifact-name: pesde-debug-${{ needs.get-version.outputs.version }}-macos-aarch64
-
-    name: Build for ${{ matrix.job-name }}
-    runs-on: ${{ matrix.runs-on }}
+    name: Build for ${{ matrix.host }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     needs: get-version
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Linux build dependencies
-        if: ${{ startsWith(matrix.runs-on, 'ubuntu') }}
+        if: ${{ matrix.host == 'linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install libdbus-1-dev pkg-config
@@ -72,13 +74,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Compile in debug mode
-        run: cargo build --bins --no-default-features --features bin,patches,global-binaries --target ${{ matrix.target }} --locked
+        run: cargo build --bins --no-default-features --features bin,patches --target ${{ matrix.target }} --locked
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact-name }}
+          name: ${{ env.BIN_NAME }}-debug-${{ needs.get-version.outputs.version }}-${{ matrix.host }}-${{ matrix.arch }}
           if-no-files-found: error
           path: |
-            target/${{ matrix.target }}/debug/pesde.exe
-            target/${{ matrix.target }}/debug/pesde
+            target/${{ matrix.target }}/debug/${{ env.BIN_NAME }}.exe
+            target/${{ matrix.target }}/debug/${{ env.BIN_NAME }}

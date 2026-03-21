@@ -18,13 +18,6 @@ pub fn hash<S: AsRef<[u8]>>(struc: S) -> String {
 	format!("{:x}", Sha256::digest(struc.as_ref()))
 }
 
-#[must_use]
-pub fn no_build_metadata(version: &Version) -> Version {
-	let mut version = version.clone();
-	version.build = semver::BuildMetadata::EMPTY;
-	version
-}
-
 pub async fn remove_empty_dir(path: &Path) -> std::io::Result<()> {
 	match fs::remove_dir(path).await {
 		Ok(()) => Ok(()),
@@ -168,4 +161,22 @@ pub fn simplify_path(path: &Path) -> PathBuf {
 #[must_use]
 pub fn is_empty_relative_path(path: &RelativePath) -> bool {
 	path.as_str().is_empty()
+}
+
+pub trait ToEscaped {
+	fn escaped(self) -> String;
+}
+
+impl ToEscaped for String {
+	fn escaped(self) -> String {
+		self.chars()
+			.map(|c| {
+				if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '+' {
+					c
+				} else {
+					'-'
+				}
+			})
+			.collect()
+	}
 }

@@ -33,16 +33,12 @@ use tokio::sync::Mutex;
 use tokio::sync::OwnedRwLockReadGuard;
 use tokio::sync::RwLock;
 use tracing::instrument;
-use wax::Pattern as _;
+use wax::Program as _;
 
 /// Downloading packages
 pub mod download;
 /// Utility for downloading and linking in the correct order
 pub mod download_and_link;
-/// Handling of engines
-pub mod engine;
-/// Graphs
-pub mod graph;
 /// Linking packages
 pub mod linking;
 /// Lockfile
@@ -308,12 +304,6 @@ impl Subproject {
 	#[must_use]
 	pub fn dependencies_dir(&self) -> PathBuf {
 		self.private_dir().join("dependencies")
-	}
-
-	/// The bin directory
-	#[must_use]
-	pub fn bin_dir(&self) -> PathBuf {
-		self.private_dir().join("bin")
 	}
 
 	/// Read the manifest file

@@ -8,13 +8,13 @@ use std::thread::spawn;
 use tokio::time::sleep;
 use url::Url;
 
+use crate::cli::GITHUB_URL;
 use crate::cli::auth::get_token_login;
 use crate::cli::auth::get_tokens;
 use crate::cli::auth::set_token;
 use crate::cli::style::URL_STYLE;
 use pesde::GixUrl;
 use pesde::Subproject;
-use pesde::engine::source::github::GITHUB_URL;
 use pesde::source::pesde::PesdePackageSource;
 use pesde::source::traits::PackageSource as _;
 use pesde::source::traits::RefreshOptions;

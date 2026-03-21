@@ -15,12 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switch to croshet by @daimond113
 - Workspaces are now integrated more deeply - they're no longer treated as a simple "run on" wrapper by @daimond113
 - Patches now apply to an entire workspace and must be specified in the root by @daimond113
+- Always recheck peer dependencies, even if reusing lockfile by @daimond113
 
 ### Removed
 - Drop `build_files` ([RFC](https://github.com/pesde-pkg/pesde/issues/57)) by @daimond113
 - Remove pesde-managed script inheritance by @daimond113
 - Remove scripts packages by @daimond113
 - Remove workspace packages, use the FS package source instead by @daimond113
+- Remove toolchain management ([RFC](https://github.com/pesde-pkg/pesde/issues/65)) by @daimond113
+
+## [0.7.3] - 2026-03-18
+### Added
+- Type functions are now re-exported by dependency linkers by @ewd3v
 
 ## [0.7.2] - 2025-12-26
 ### Changed
@@ -252,6 +258,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Asyncify dependency linking by @daimond113
 - Use `exec` in Unix bin linking to reduce the number of processes by @daimond113
 
+[0.7.3]: https://github.com/daimond113/pesde/compare/v0.7.2%2Bregistry.0.2.3..v0.7.3%2Bregistry.0.2.3
 [0.7.2]: https://github.com/daimond113/pesde/compare/v0.7.1%2Bregistry.0.2.3..v0.7.2%2Bregistry.0.2.3
 [0.7.1]: https://github.com/daimond113/pesde/compare/v0.7.0%2Bregistry.0.2.3..v0.7.1%2Bregistry.0.2.3
 [0.7.0]: https://github.com/daimond113/pesde/compare/v0.6.2%2Bregistry.0.2.2..v0.7.0%2Bregistry.0.2.3

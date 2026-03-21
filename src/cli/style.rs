@@ -48,7 +48,6 @@ make_style!(INFO, cyan);
 make_style!(WARN, yellow);
 make_prefix!(warn);
 make_style!(ERROR, red);
-make_prefix!(error);
 make_style!(SUCCESS, green);
 make_style!(CLI, color256(CLI_COLOR_256));
 make_style!(ADDED, green);

@@ -5,10 +5,7 @@ use crate::Project;
 use crate::Subproject;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
-use crate::manifest::Alias;
-use crate::manifest::DependencyType;
 use crate::manifest::Manifest;
-use crate::manifest::target::Target;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::ADDITIONAL_FORBIDDEN_FILES;
@@ -22,7 +19,6 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::StructureKind;
-use crate::source::VersionId;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
@@ -34,10 +30,14 @@ use crate::source::git_index::read_file;
 use crate::source::path::RelativeOrAbsolutePath;
 use crate::source::pesde::PesdeVersionedManifest;
 use crate::source::traits::DownloadOptions;
-use crate::source::traits::GetTargetOptions;
+use crate::source::traits::GetExportsOptions;
+use crate::source::traits::PackageExports;
 use crate::source::traits::PackageRef as _;
 use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
+use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
+use crate::source::wally::compat_util::get_exports;
+use crate::source::wally::manifest::WallyManifest;
 use crate::util::hash;
 use crate::util::simplify_path;
 use crate::version_matches;
@@ -126,12 +126,12 @@ fn transform_pesde_dependencies(
 	subproject: &Subproject,
 	manifest: &Manifest,
 	repo_url: &GixUrl,
-) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
+) -> Result<PackageDependencies, errors::ResolveError> {
 	let dependencies = manifest
 		.all_dependencies()
 		.map_err(|e| errors::ResolveErrorKind::CollectDependencies(repo_url.clone(), e))?;
 
-	dependencies
+	let dependencies = dependencies
 		.into_iter()
 		.map(|(alias, (mut spec, ty))| {
 			match &mut spec {
@@ -178,7 +178,9 @@ fn transform_pesde_dependencies(
 
 			Ok((alias, (spec, ty)))
 		})
-		.collect()
+		.collect::<Result<_, errors::ResolveError>>()?;
+
+	Ok(PackageDependencies::Immediate(dependencies))
 }
 
 impl PackageSource for GitPackageSource {
@@ -187,7 +189,7 @@ impl PackageSource for GitPackageSource {
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
-	type GetTargetError = errors::GetTargetError;
+	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
 	async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
@@ -203,7 +205,7 @@ impl PackageSource for GitPackageSource {
 		(
 			PackageSources,
 			PackageRefs,
-			BTreeMap<VersionId, PackageDependencies>,
+			BTreeMap<Version, PackageDependencies>,
 		),
 		Self::ResolveError,
 	> {
@@ -214,7 +216,7 @@ impl PackageSource for GitPackageSource {
 		let specifier_clone = specifier.clone();
 		let subproject = subproject.clone();
 
-		let (structure_kind, version_id, dependencies, tree_id) = spawn_blocking::<
+		let (structure_kind, version, dependencies, tree_id) = spawn_blocking::<
 			_,
 			Result<_, Self::ResolveError>,
 		>(move || {
@@ -308,84 +310,62 @@ impl PackageSource for GitPackageSource {
 				pre: tree.id.to_string().parse().unwrap(),
 			};
 
-			let manifest = match read_file(&tree, [MANIFEST_FILE_NAME])
+			if let Some(m) = read_file(&tree, [MANIFEST_FILE_NAME])
 				.map_err(|e| errors::ResolveErrorKind::ReadManifest(repo_url.clone(), e))?
 			{
-				Some(m) => {
-					if let Some(resolved_version) = resolved_version {
-						match toml::from_str::<Manifest>(&m) {
-							Ok(m) => Some((
+				if let Some(resolved_version) = resolved_version {
+					match toml::from_str::<Manifest>(&m) {
+						Ok(m) => {
+							return Ok((
+								StructureKind::PesdeV2,
+								resolved_version,
 								transform_pesde_dependencies(&subproject, &m, &repo_url)?,
-								VersionId::new(resolved_version, m.target.kind()),
-							)),
-							Err(e) => {
-								return Err(errors::ResolveErrorKind::DeserManifest(
-									repo_url.clone(),
-									e,
-								)
-								.into());
-							}
+								tree.id.to_string(),
+							));
 						}
-					} else {
-						let manifest =
-							toml::from_str::<PesdeVersionedManifest>(&m).map_err(|e| {
-								errors::ResolveErrorKind::DeserManifest(repo_url.clone(), e)
-							})?;
-						Some((
-							transform_pesde_dependencies(
-								&subproject,
-								manifest.as_manifest(),
-								&repo_url,
-							)?,
-							VersionId::new(tree_version(), manifest.as_manifest().target.kind()),
-						))
+						Err(e) => {
+							return Err(errors::ResolveErrorKind::DeserManifest(
+								repo_url.clone(),
+								e,
+							)
+							.into());
+						}
 					}
 				}
-				None => None,
-			};
 
-			let Some((dependencies, v_id)) = manifest else {
-				use crate::manifest::target::TargetKind;
-				use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
-				use crate::source::wally::manifest::Realm;
-				use crate::source::wally::manifest::WallyManifest;
-
-				let manifest = read_file(&tree, [WALLY_MANIFEST_FILE_NAME])
-					.map_err(|e| errors::ResolveErrorKind::ReadManifest(repo_url.clone(), e))?;
-
-				let Some(manifest) = manifest else {
-					return Err(errors::ResolveErrorKind::NoManifest(repo_url.clone()).into());
-				};
-
-				let mut manifest = match toml::from_str::<WallyManifest>(&manifest) {
-					Ok(manifest) => manifest,
-					Err(e) => {
-						return Err(
-							errors::ResolveErrorKind::DeserManifest(repo_url.clone(), e).into()
-						);
-					}
-				};
-				let dependencies = manifest.all_dependencies().map_err(|e| {
-					errors::ResolveErrorKind::CollectDependencies(repo_url.clone(), e)
-				})?;
-
+				let manifest = toml::from_str::<PesdeVersionedManifest>(&m)
+					.map_err(|e| errors::ResolveErrorKind::DeserManifest(repo_url.clone(), e))?;
 				return Ok((
-					StructureKind::Wally,
-					VersionId::new(
-						tree_version(),
-						match manifest.package.realm {
-							Realm::Shared => TargetKind::Roblox,
-							Realm::Server => TargetKind::RobloxServer,
-						},
-					),
-					dependencies,
+					match &manifest {
+						PesdeVersionedManifest::V1(m) => StructureKind::PesdeV1(m.target.kind()),
+						PesdeVersionedManifest::V2(_) => StructureKind::PesdeV2,
+					},
+					tree_version(),
+					transform_pesde_dependencies(&subproject, manifest.as_manifest(), &repo_url)?,
 					tree.id.to_string(),
 				));
+			}
+
+			let manifest = read_file(&tree, [WALLY_MANIFEST_FILE_NAME])
+				.map_err(|e| errors::ResolveErrorKind::ReadManifest(repo_url.clone(), e))?;
+
+			let Some(manifest) = manifest else {
+				return Err(errors::ResolveErrorKind::NoManifest(repo_url.clone()).into());
 			};
 
+			let manifest = match toml::from_str::<WallyManifest>(&manifest) {
+				Ok(manifest) => manifest,
+				Err(e) => {
+					return Err(errors::ResolveErrorKind::DeserManifest(repo_url.clone(), e).into());
+				}
+			};
+			let (_, dependencies) = manifest
+				.into_resolve_entry()
+				.map_err(|e| errors::ResolveErrorKind::CollectDependencies(repo_url.clone(), e))?;
+
 			Ok((
-				StructureKind::PesdeV1,
-				v_id,
+				StructureKind::Wally,
+				tree_version(),
 				dependencies,
 				tree.id.to_string(),
 			))
@@ -400,7 +380,7 @@ impl PackageSource for GitPackageSource {
 				tree_id,
 				path: specifier.path.clone(),
 			}),
-			BTreeMap::from([(version_id, PackageDependencies::Immediate(dependencies))]),
+			BTreeMap::from([(version, dependencies)]),
 		))
 	}
 
@@ -561,15 +541,13 @@ impl PackageSource for GitPackageSource {
 	}
 
 	#[instrument(skip_all, level = "debug")]
-	async fn get_target(
+	async fn get_exports(
 		&self,
 		pkg_ref: &Self::Ref,
-		options: &GetTargetOptions<'_>,
-	) -> Result<Target, Self::GetTargetError> {
+		options: &GetExportsOptions<'_>,
+	) -> Result<PackageExports, Self::GetExportsError> {
 		if pkg_ref.structure_kind == StructureKind::Wally {
-			return crate::source::wally::compat_util::get_target(options)
-				.await
-				.map_err(Into::into);
+			return get_exports(options).await.map_err(Into::into);
 		}
 
 		let manifest = fs::read_to_string(options.path.join(MANIFEST_FILE_NAME))
@@ -579,7 +557,7 @@ impl PackageSource for GitPackageSource {
 			ManifestReadError::from(ManifestReadErrorKind::Serde((*options.path).into(), e))
 		})?;
 
-		Ok(manifest.into_manifest().target)
+		Ok(manifest.as_exports())
 	}
 }
 
@@ -722,9 +700,9 @@ pub mod errors {
 		#[error("error interacting with the file system")]
 		Io(#[from] std::io::Error),
 
-		/// An error occurred while creating a Wally target
-		#[error("error creating Wally target")]
-		GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
+		/// An error occurred while getting Wally exports
+		#[error("error getting wally exports")]
+		WallyGetExports(#[from] crate::source::wally::compat_util::errors::GetExportsError),
 
 		/// An error occurred opening the Git repository
 		#[error("error opening Git repository for url {0}")]
@@ -765,15 +743,15 @@ pub mod errors {
 
 	/// Errors that can occur when getting a target from a Git package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = GetTargetError))]
+	#[thiserror_ext(newtype(name = GetExportsError))]
 	#[non_exhaustive]
-	pub enum GetTargetErrorKind {
+	pub enum GetExportsErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),
 
-		/// An error occurred while creating a Wally target
-		#[error("error creating Wally target")]
-		GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
+		/// An error occurred while getting Wally exports
+		#[error("error getting Wally exports")]
+		WallyGetExports(#[from] crate::source::wally::compat_util::errors::GetExportsError),
 	}
 }

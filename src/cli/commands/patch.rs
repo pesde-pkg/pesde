@@ -1,5 +1,3 @@
-use crate::cli::VersionedPackageName;
-use crate::cli::install::get_graph_strict;
 use crate::cli::style::CLI_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_PREFIX;
@@ -10,8 +8,8 @@ use console::style;
 use fs_err::tokio as fs;
 use pesde::MANIFEST_FILE_NAME;
 use pesde::Project;
-use pesde::RefreshedSources;
 use pesde::patches::setup_patches_repo;
+use pesde::source::ids::PackageId;
 use pesde::source::traits::DownloadOptions;
 use pesde::source::traits::PackageSource as _;
 
@@ -19,36 +17,31 @@ use pesde::source::traits::PackageSource as _;
 pub struct PatchCommand {
 	/// The package name to patch
 	#[arg(index = 1)]
-	package: VersionedPackageName,
+	package: PackageId,
 }
 
 impl PatchCommand {
 	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
-		let refreshed_sources = RefreshedSources::new();
-		let graph = get_graph_strict(&project, &refreshed_sources).await?;
-
-		let id = self.package.get(&graph)?;
-		if id.pkg_ref().is_local() {
+		if self.package.pkg_ref().is_local() {
 			anyhow::bail!("cannot patch a local package")
 		}
 
-		let source = id.source();
-
+		let source = self.package.source();
 		let directory = project
 			.data_dir()
 			.join("patches")
-			.join(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(id.to_string()))
+			.join(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(self.package.to_string()))
 			.join(jiff::Timestamp::now().as_second().to_string());
 		fs::create_dir_all(&directory).await?;
 
 		source
 			.download(
-				id.pkg_ref(),
+				self.package.pkg_ref(),
 				&DownloadOptions {
 					project: project.clone(),
 					reqwest,
 					reporter: ().into(),
-					version_id: id.v_id(),
+					version: self.package.version(),
 				},
 			)
 			.await?

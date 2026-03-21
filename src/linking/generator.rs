@@ -5,27 +5,15 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::manifest::Manifest;
-use crate::manifest::target::TargetKind;
+use crate::source::Realm;
 use crate::source::StructureKind;
 use full_moon::ast::luau::ExportedTypeDeclaration;
+use full_moon::ast::luau::ExportedTypeFunction;
 use full_moon::visitors::Visitor;
 use itertools::Itertools as _;
 use itertools::Position;
 use relative_path::RelativePath;
 use tracing::instrument;
-
-/// Paths used for linking
-#[derive(Debug)]
-pub struct LinkDirs {
-	/// the root directory of the packages, e.g. `/path/to/project/luau_packages` or `/path/to/project/luau_packages/.pesde/my+package/package/luau_packages`
-	pub base: PathBuf,
-	/// the directory in which the library is contained, e.g. `/path/to/project/luau_packages/.pesde/my+package/package`
-	pub destination: PathBuf,
-	/// the root directory of the packages, e.g. `/path/to/project/luau_packages`
-	pub root_container: PathBuf,
-	/// Relative path used when linking Roblox places - appended to the place path. For example, `.pesde/my+package/package`
-	pub container: PathBuf,
-}
 
 struct TypeVisitor {
 	types: Vec<String>,
@@ -63,6 +51,23 @@ impl Visitor for TypeVisitor {
 
 		self.types.push(format!(
 			"export type {name}{declaration_generics} = module.{name}{generics}"
+		));
+	}
+
+	fn visit_exported_type_function(&mut self, node: &ExportedTypeFunction) {
+		let name = node.type_function().function_name();
+		let params = node.type_function().function_body().parameters();
+
+		// Not possible to re-export type functions without parameters as a type declaration
+		if params.is_empty() {
+			return;
+		}
+
+		let declaration_generics = format_args!("<{}>", params.iter().format(", "));
+		let generics = format_args!("<{}>", params.iter().format(", "));
+
+		self.types.push(format!(
+			"export type {name}{declaration_generics} = module.{name}{generics}\n"
 		));
 	}
 }
@@ -125,12 +130,23 @@ fn luau_style_path(path: &Path) -> String {
 	format!(r#""{}""#, require.escape_default())
 }
 
-// This function should be simplified (especially to reduce the number of arguments),
-// but it's not clear how to do that while maintaining the current functionality.
+/// Paths used for linking
+#[derive(Debug)]
+pub struct LinkDirs {
+	/// the root directory of the packages, e.g. `/path/to/project/luau_packages` or `/path/to/project/luau_packages/.pesde/my+package/package/luau_packages`
+	pub base: PathBuf,
+	/// the directory in which the library is contained, e.g. `/path/to/project/luau_packages/.pesde/my+package/package`
+	pub destination: PathBuf,
+	/// the root directory of the packages, e.g. `/path/to/project/luau_packages`
+	pub root_container: PathBuf,
+	/// Relative path used when linking Roblox places - appended to the place path. For example, `.pesde/my+package/package`
+	pub container: PathBuf,
+}
+
 /// Get the require path for a library
 #[instrument(skip(project_manifest), level = "trace", ret)]
 pub fn get_lib_require_path(
-	target: TargetKind,
+	realm: Option<Realm>,
 	lib_file: &RelativePath,
 	dirs: &LinkDirs,
 	structure_kind: StructureKind,
@@ -140,24 +156,24 @@ pub fn get_lib_require_path(
 	tracing::debug!("diffed lib path: {}", path.display());
 	let path = match structure_kind {
 		StructureKind::Wally => path,
-		StructureKind::PesdeV1 => lib_file.to_path(path),
+		StructureKind::PesdeV1(_) | StructureKind::PesdeV2 => lib_file.to_path(path),
 	};
 
-	let (prefix, path) = match target.try_into() {
-		Ok(place_kind) if !dirs.destination.starts_with(&dirs.root_container) => (
+	let (prefix, path) = match realm {
+		Some(realm) if !dirs.destination.starts_with(&dirs.root_container) => (
 			project_manifest
 				.place
-				.get(&place_kind)
-				.ok_or(errors::GetLibRequirePathKind::RobloxPlaceKindPathNotFound(
-					place_kind,
-				))?
+				.get(&realm)
+				.ok_or(errors::GetLibRequirePathKind::RealmPathNotFound(realm))?
 				.as_str(),
 			match structure_kind {
 				StructureKind::Wally => Cow::Borrowed(dirs.container.as_path()),
-				StructureKind::PesdeV1 => Cow::Owned(lib_file.to_path(&dirs.container)),
+				StructureKind::PesdeV1(_) | StructureKind::PesdeV2 => {
+					Cow::Owned(lib_file.to_path(&dirs.container))
+				}
 			},
 		),
-		Ok(_) if structure_kind == StructureKind::Wally => ("script.Parent", Cow::Owned(path)),
+		_ if structure_kind == StructureKind::Wally => ("script.Parent", Cow::Owned(path)),
 		_ => return Ok(luau_style_path(&path)),
 	};
 
@@ -225,8 +241,8 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = GetLibRequirePath))]
 	#[non_exhaustive]
 	pub enum GetLibRequirePathKind {
-		/// The path for the RobloxPlaceKind could not be found
-		#[error("could not find the path for the RobloxPlaceKind {0}")]
-		RobloxPlaceKindPathNotFound(crate::manifest::target::RobloxPlaceKind),
+		/// The path for the realm could not be found
+		#[error("could not find the path for the {0} realm")]
+		RealmPathNotFound(crate::source::Realm),
 	}
 }

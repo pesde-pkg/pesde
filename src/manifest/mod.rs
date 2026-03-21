@@ -1,13 +1,12 @@
 use crate::GixUrl;
-use crate::engine::EngineKind;
-use crate::manifest::target::Target;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
+use crate::source::Realm;
 #[cfg(feature = "patches")]
 use crate::source::ids::PackageId;
+use crate::source::traits::PackageExports;
 #[cfg(feature = "patches")]
 use relative_path::RelativePathBuf;
-use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -17,9 +16,6 @@ use std::hash::Hash;
 use std::str::FromStr;
 use std::sync::Arc;
 use tracing::instrument;
-
-/// Targets
-pub mod target;
 
 /// Indices specified in a manifest
 #[derive(Deserialize, Debug, Clone)]
@@ -68,8 +64,6 @@ pub struct Manifest {
 	/// The repository of the package
 	#[serde(default)]
 	pub repository: Option<url::Url>,
-	/// The target of the package
-	pub target: Target,
 	/// The scripts of the package
 	#[serde(default)]
 	pub scripts: BTreeMap<String, String>,
@@ -84,10 +78,13 @@ pub struct Manifest {
 	pub workspace: ManifestWorkspace,
 	/// The Roblox place of this project
 	#[serde(default)]
-	pub place: BTreeMap<target::RobloxPlaceKind, String>,
-	/// The engines this package supports
+	pub place: BTreeMap<Realm, String>,
+	/// The lib export of this package
 	#[serde(default)]
-	pub engines: BTreeMap<EngineKind, VersionReq>,
+	pub lib: Option<RelativePathBuf>,
+	/// The bin export of this package
+	#[serde(default)]
+	pub bin: Option<RelativePathBuf>,
 
 	/// The standard dependencies of the package
 	#[serde(default, deserialize_with = "crate::util::deserialize_no_dup_keys")]
@@ -98,6 +95,7 @@ pub struct Manifest {
 	/// The dev dependencies of the package
 	#[serde(default, deserialize_with = "crate::util::deserialize_no_dup_keys")]
 	pub dev_dependencies: BTreeMap<Alias, DependencySpecifiers>,
+
 	/// An area for user-defined fields, which will always be ignored by pesde
 	#[serde(default)]
 	pub meta: HashMap<String, toml::Value>,
@@ -163,8 +161,7 @@ impl FromStr for Alias {
 			// Luau's `@self` alias
 			| "self"
 
-			// The Cart runtime (#25)
-			| "cart"
+			| "pesde"
 		) {
 			return Err(errors::AliasFromStrKind::Reserved(s.to_string()).into());
 		}
@@ -174,10 +171,6 @@ impl FromStr for Alias {
 			.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 		{
 			return Err(errors::AliasFromStrKind::InvalidCharacters(s.to_string()).into());
-		}
-
-		if EngineKind::from_str(s).is_ok() {
-			return Err(errors::AliasFromStrKind::EngineName(s.to_string()).into());
 		}
 
 		Ok(Self(s.into()))
@@ -238,6 +231,15 @@ impl Manifest {
 
 		Ok(all_deps)
 	}
+
+	/// Converts the manifest into a [PackageExports]
+	#[must_use]
+	pub fn as_exports(&self) -> PackageExports {
+		PackageExports {
+			lib_file: self.lib.clone(),
+			bin_file: self.bin.clone(),
+		}
+	}
 }
 
 /// Errors that can occur when interacting with manifests
@@ -265,10 +267,6 @@ pub mod errors {
 		/// The alias contains characters outside a-z, A-Z, 0-9, -, and _
 		#[error("alias `{0}` contains characters outside a-z, A-Z, 0-9, -, and _")]
 		InvalidCharacters(String),
-
-		/// The alias is an engine name
-		#[error("alias `{0}` is an engine name")]
-		EngineName(String),
 	}
 
 	/// Errors that can occur when trying to get all dependencies from a manifest
