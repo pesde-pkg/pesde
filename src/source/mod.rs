@@ -162,7 +162,7 @@ macro_rules! impls {
 		paste::paste! {
 			$(
 				#[doc = concat!(stringify!($source), " package source")]
-				pub mod [<$source:lower>];
+				pub mod [< $source:lower >];
 			)+
 
 			/// All possible dependency specifiers
@@ -219,7 +219,7 @@ macro_rules! impls {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 					match self {
 						$(
-							PackageRefs::$source(pkg_ref) => write!(f, "{}:{pkg_ref}", stringify!($source:lower))
+							PackageRefs::$source(pkg_ref) => write!(f, "{}:{pkg_ref}", stringify!([< $source:lower >]))
 						),+
 					}
 				}
@@ -378,8 +378,8 @@ macro_rules! impls {
 
 					$(
 						#[doc = concat!(stringify!($source), " package reference parsing failed")]
-						#[error("error parsing {} package reference", stringify!($source:lower))]
-						[< $source PackageRef >](#[from] crate::source::[<$source:lower>]::pkg_ref::[<$source PackageRefParseError>])
+						#[error("error parsing {} package reference", stringify!([< $source:lower >]))]
+						[< $source PackageRef >](#[from] crate::source::[< $source:lower >]::pkg_ref::[<$source PackageRefParseError>])
 					),+
 				}
 
@@ -408,8 +408,8 @@ macro_rules! impls {
 				pub enum RefreshErrorKind {
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to refresh")]
-						#[error("error refreshing {} package", stringify!($source:lower))]
-						$source(#[source] crate::source::[<$source:lower>]::errors::RefreshError)
+						#[error("error refreshing {} package", stringify!([< $source:lower >]))]
+						$source(#[source] crate::source::[< $source:lower >]::errors::RefreshError)
 					),+
 				}
 
@@ -424,8 +424,8 @@ macro_rules! impls {
 
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to resolve")]
-						#[error("error resolving {} package", stringify!($source:lower))]
-						$source(#[source] crate::source::[<$source:lower>]::errors::ResolveError)
+						#[error("error resolving {} package", stringify!([< $source:lower >]))]
+						$source(#[source] crate::source::[< $source:lower >]::errors::ResolveError)
 					),+
 				}
 
@@ -440,8 +440,8 @@ macro_rules! impls {
 
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to download")]
-						#[error("error downloading {} package", stringify!($source:lower))]
-						$source(#[source] crate::source::[<$source:lower>]::errors::DownloadError)
+						#[error("error downloading {} package", stringify!([< $source:lower >]))]
+						$source(#[source] crate::source::[< $source:lower >]::errors::DownloadError)
 					),+
 				}
 
@@ -456,8 +456,8 @@ macro_rules! impls {
 
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to get exports")]
-						#[error("error getting exports for {} package", stringify!($source:lower))]
-						$source(#[source] crate::source::[<$source:lower>]::errors::GetExportsError)
+						#[error("error getting exports for {} package", stringify!([< $source:lower >]))]
+						$source(#[source] crate::source::[< $source:lower >]::errors::GetExportsError)
 					),+
 				}
 			}
@@ -522,16 +522,16 @@ mod tests {
 	fn serde_package_refs() {
 		let refs = [
 			(
-				PackageRefs::Pesde("foo/bar".parse().unwrap()),
-				"pesde:foo/bar",
+				PackageRefs::Pesde("foo/bar+lune".parse().unwrap()),
+				"pesde:foo/bar+lune",
 			),
 			(
 				PackageRefs::Wally("foo/bar".parse().unwrap()),
 				"wally:foo/bar",
 			),
 			(
-				PackageRefs::Git("abcdef+pesde_v1".parse().unwrap()),
-				"git:abcdef+pesde_v1",
+				PackageRefs::Git("abcdef+pesde_v1-lune".parse().unwrap()),
+				"git:abcdef+pesde_v1-lune",
 			),
 			(
 				PackageRefs::Path("/dev/null".parse().unwrap()),

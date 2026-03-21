@@ -76,33 +76,34 @@ impl FromStr for PackageId {
 			.split_once(':')
 			.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?;
 
+		if tag == "path" {
+			let pkg_ref = s.parse().map_err(PackageRefParseError::from)?;
+			let version = local_version();
+			return Ok(PackageId::new(
+				PackageSources::Path(PathPackageSource),
+				PackageRefs::Path(pkg_ref),
+				version,
+			));
+		}
+
 		let version_sep = match tag {
 			"git" => '#',
-			"path" => ':',
 			_ => '@',
 		};
 		let (s, version) = s
 			.rsplit_once(version_sep)
 			.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?;
 
-		let (source, pkg_ref) = if tag == "path" {
-			("", s)
-		} else {
-			s.rsplit_once(':')
-				.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?
-		};
+		let (source, pkg_ref) = s
+			.rsplit_once(':')
+			.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?;
 
-		let version = if tag == "path" {
-			local_version()
-		} else {
-			version.parse()?
-		};
+		let version = version.parse()?;
 
 		let source = match tag {
 			"pesde" => PackageSources::Pesde(source.parse().map_err(PackageSourcesFromStr::from)?),
 			"wally" => PackageSources::Wally(source.parse().map_err(PackageSourcesFromStr::from)?),
 			"git" => PackageSources::Git(source.parse().map_err(PackageSourcesFromStr::from)?),
-			"path" => PackageSources::Path(PathPackageSource),
 			_ => return Err(errors::PackageIdParseErrorKind::InvalidFormat.into()),
 		};
 
@@ -110,8 +111,6 @@ impl FromStr for PackageId {
 			"pesde" => PackageRefs::Pesde(pkg_ref.parse().map_err(PackageRefParseError::from)?),
 			"wally" => PackageRefs::Wally(pkg_ref.parse().map_err(PackageRefParseError::from)?),
 			"git" => PackageRefs::Git(pkg_ref.parse().map_err(PackageRefParseError::from)?),
-			// infallible
-			"path" => PackageRefs::Path(pkg_ref.parse().unwrap()),
 			_ => return Err(errors::PackageIdParseErrorKind::InvalidFormat.into()),
 		};
 
@@ -153,11 +152,11 @@ mod tests {
 	#[test]
 	fn serde_package_ids() {
 		let ids = [
-			"pesde:github.com/pesde-pkg/index:foo/bar@1.2.3:roblox",
-			"wally:github.com/pesde-pkg/index:foo/bar@1.2.3:lune",
-			"git:github.com/pesde-pkg/index:abcdef+pesde_v1#1.2.3:luau",
-			"path:/dev/null:luau",
-			"path:filename:with:colons:luau",
+			"pesde:github.com/pesde-pkg/index:foo/bar+lune@1.2.3",
+			"wally:github.com/pesde-pkg/index:foo/bar@1.2.3",
+			"git:github.com/pesde-pkg/index:abcdef+pesde_v1-lune#1.2.3",
+			"path:/dev/null",
+			"path:filename:with:colons",
 		];
 
 		for serialized in ids {
