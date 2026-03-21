@@ -584,12 +584,12 @@ mod tests {
 				"wally:foo/bar",
 			),
 			(
-				PackageRefs::Git("pesde_v1+abcdef-lune".parse().unwrap()),
-				"git:pesde_v1+abcdef",
+				PackageRefs::Git("pesde_v1-lune+abcdef".parse().unwrap()),
+				"git:pesde_v1-lune+abcdef",
 			),
 			(
-				PackageRefs::Git("pesde_v1+abcdef+pkgs/lib".parse().unwrap()),
-				"git:pesde_v1+abcdef+pkgs/lib-lune",
+				PackageRefs::Git("pesde_v1-lune+abcdef+pkgs/lib".parse().unwrap()),
+				"git:pesde_v1-lune+abcdef+pkgs/lib",
 			),
 			(
 				PackageRefs::Path("/dev/null".parse().unwrap()),
