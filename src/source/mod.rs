@@ -377,6 +377,19 @@ macro_rules! impls {
 					/// The structure kind is unknown
 					#[error("unknown structure kind {0}")]
 					UnknownKind(String),
+
+					/// The target in a pesde_v1 structure kind is invalid
+					#[error("invalid target in pesde_v1 structure kind")]
+					InvalidPesdeV1Target(#[from] crate::source::pesde::target::errors::TargetKindFromStr),
+				}
+
+				/// Errors that can occur when querying package dependencies
+				#[derive(Debug, Error, thiserror_ext::Box)]
+				#[thiserror_ext(newtype(name = RealmFromStr))]
+				pub enum RealmFromStrKind {
+					/// The realm is unknown
+					#[error("unknown realm {0}")]
+					UnknownRealm(String),
 				}
 
 				/// Errors that can occur when querying package dependencies

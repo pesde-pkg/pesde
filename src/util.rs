@@ -1,6 +1,5 @@
 use fs_err::tokio as fs;
 use relative_path::RelativePath;
-use semver::Version;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::de::MapAccess;

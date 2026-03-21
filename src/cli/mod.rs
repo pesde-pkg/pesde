@@ -26,6 +26,7 @@ use pesde::source::pesde::specifier::PesdeDependencySpecifier;
 use pesde::source::pesde::target::TargetKind;
 use pesde::source::wally::WallyPackageSource;
 use pesde::source::wally::specifier::WallyDependencySpecifier;
+use relative_path::RelativePathBuf;
 use semver::VersionReq;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -124,7 +125,7 @@ impl AnyPackageIdentifier {
 				DependencySpecifiers::Git(GitDependencySpecifier {
 					repo: url.clone(),
 					version_specifier: ver.clone(),
-					path: None,
+					path: RelativePathBuf::new(),
 					realm,
 				}),
 			),
