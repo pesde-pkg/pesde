@@ -280,7 +280,7 @@ impl PackageSource for PesdePackageSource {
 		pin!(bytes);
 
 		let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes);
-		let mut archive = tokio_tar::Archive::new(&mut decoder);
+		let archive = async_tar::Archive::new(&mut decoder);
 
 		let mut entries = BTreeMap::new();
 

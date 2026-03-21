@@ -33,7 +33,7 @@ use tokio::sync::Mutex;
 use tokio::sync::OwnedRwLockReadGuard;
 use tokio::sync::RwLock;
 use tracing::instrument;
-use wax::Pattern as _;
+use wax::Program as _;
 
 /// Downloading packages
 pub mod download;
