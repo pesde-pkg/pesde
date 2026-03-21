@@ -12,25 +12,18 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.extract_version.outputs.value }}
-      found: ${{ steps.ensure_not_published.outputs.FOUND }}
+      found: ${{ steps.publish_status.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Extract version
-        uses: SebRollen/toml-action@v1.0.2
         id: extract_version
-        with:
-          file: "./Cargo.toml"
-          field: "package.version"
+        run: |
+          VERSION=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[] | select(.name == "${{ env.CRATE_NAME }}") | .version')
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Lowercase repository owner
-        uses: ASzc/change-string-case-action@v6
-        id: repository_owner
-        with:
-          string: ${{ github.repository_owner }}
-
-      - name: Ensure not published
-        id: ensure_not_published
+      - name: Check publish status
+        id: publish_status
         shell: bash
         run: |
           CRATE_NAME="${{ env.CRATE_NAME }}"
@@ -45,42 +38,42 @@ jobs:
           fi
 
           FOUND=$(curl -sSL --fail-with-body "https://index.crates.io/$DIR/${{ env.CRATE_NAME }}" | jq -s 'any(.[]; .vers == "${{ steps.extract_version.outputs.value }}")')
-          echo "FOUND=$FOUND" >> "$GITHUB_OUTPUT"
+          echo "value=$FOUND" >> "$GITHUB_OUTPUT"
 
   build:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - runner: ubuntu-latest
             host: linux
             arch: x86_64
             target: x86_64-unknown-linux-gnu
 
-          - os: ubuntu-24.04-arm
+          - runner: ubuntu-24.04-arm
             host: linux
             arch: aarch64
             target: aarch64-unknown-linux-gnu
 
-          - os: windows-latest
+          - runner: windows-latest
             host: windows
             arch: x86_64
             target: x86_64-pc-windows-msvc
 
-          - os: macos-15-intel
+          - runner: macos-15-intel
             host: macos
             arch: x86_64
             target: x86_64-apple-darwin
 
-          - os: macos-latest
+          - runner: macos-latest
             host: macos
             arch: aarch64
             target: aarch64-apple-darwin
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
     name: Build for ${{ matrix.host }}-${{ matrix.arch }}
     needs: [prepare]
     if: ${{ needs.prepare.outputs.found == 'false' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - name: Set env
         shell: bash
@@ -110,7 +103,7 @@ jobs:
           fi
 
       - name: Upload zip artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARCHIVE_NAME }}.zip
           path: ${{ env.ARCHIVE_NAME }}.zip
@@ -120,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - name: Publish
         run: cargo publish --token ${{ secrets.CRATES_IO_TOKEN }} --allow-dirty --locked
@@ -130,13 +123,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: read
     needs: [prepare, publish]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
@@ -154,10 +146,8 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ github.ref_name }}
           name: v${{ needs.prepare.outputs.version }}
           draft: true
           prerelease: ${{ steps.is_prerelease.outputs.value }}
