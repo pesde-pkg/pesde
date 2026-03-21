@@ -383,7 +383,7 @@ macro_rules! impls {
 					InvalidPesdeV1Target(#[from] crate::source::pesde::target::errors::TargetKindFromStr),
 				}
 
-				/// Errors that can occur when querying package dependencies
+				/// Errors that can occur when parsing a realm from a string
 				#[derive(Debug, Error, thiserror_ext::Box)]
 				#[thiserror_ext(newtype(name = RealmFromStr))]
 				pub enum RealmFromStrKind {
