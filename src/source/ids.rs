@@ -1,4 +1,3 @@
-use crate::manifest::target::TargetKind;
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRefs;
 use crate::source::PackageSources;
@@ -11,74 +10,16 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// A version ID, which is a combination of a version and a target
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct VersionId(Version, TargetKind);
-ser_display_deser_fromstr!(VersionId);
-
-impl VersionId {
-	/// Creates a new version ID
-	#[must_use]
-	pub fn new(version: Version, target: TargetKind) -> Self {
-		VersionId(version, target)
-	}
-
-	/// Access the version
-	#[must_use]
-	pub fn version(&self) -> &Version {
-		&self.0
-	}
-
-	/// Access the target
-	#[must_use]
-	pub fn target(&self) -> TargetKind {
-		self.1
-	}
-
-	/// Returns this version ID as a string that can be used in the filesystem
-	#[must_use]
-	pub fn escaped(&self) -> String {
-		format!("{}+{}", self.version(), self.target())
-	}
-
-	/// Access the parts of the version ID
-	#[must_use]
-	pub fn parts(&self) -> (&Version, TargetKind) {
-		(self.version(), self.target())
-	}
-}
-
-impl Display for VersionId {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}:{}", self.version(), self.target())
-	}
-}
-
-impl FromStr for VersionId {
-	type Err = errors::VersionIdParseError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let (version, target) = s
-			.split_once([':', ' '])
-			.ok_or(errors::VersionIdParseErrorKind::Malformed(s.to_string()))?;
-
-		let version = version.parse()?;
-		let target = target.parse()?;
-
-		Ok(VersionId(version, target))
-	}
-}
-
 /// A package ID, which is a combination of a name and a version ID
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct PackageId(Arc<(PackageSources, PackageRefs, VersionId)>);
+pub struct PackageId(Arc<(PackageSources, PackageRefs, Version)>);
 ser_display_deser_fromstr!(PackageId);
 
 impl PackageId {
 	/// Creates a new package ID
 	#[must_use]
-	pub fn new(source: PackageSources, pkg_ref: PackageRefs, v_id: VersionId) -> Self {
-		PackageId(Arc::new((source, pkg_ref, v_id)))
+	pub fn new(source: PackageSources, pkg_ref: PackageRefs, version: Version) -> Self {
+		PackageId(Arc::new((source, pkg_ref, version)))
 	}
 
 	/// Accesses the package source
@@ -93,25 +34,10 @@ impl PackageId {
 		&self.0.1
 	}
 
-	/// Accesses the version id
+	/// Accesses the version
 	#[must_use]
-	pub fn v_id(&self) -> &VersionId {
+	pub fn version(&self) -> &Version {
 		&self.0.2
-	}
-
-	/// Returns a filesystem safe version of this id
-	#[must_use]
-	pub fn escaped(&self) -> String {
-		self.to_string()
-			.chars()
-			.map(|c| {
-				if c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '+' {
-					c
-				} else {
-					'-'
-				}
-			})
-			.collect()
 	}
 }
 
@@ -125,14 +51,19 @@ impl Display for PackageId {
 		};
 
 		if let PackageSources::Path(_) = self.source() {
-			write!(f, "{}:{pkg_ref}:{}", self.source(), self.v_id().target())
+			write!(f, "{}:{pkg_ref}", self.source())
 		} else {
-			let v_id_sep = match self.source() {
+			let version_sep = match self.source() {
 				PackageSources::Git(_) => '#',
 				_ => '@',
 			};
 
-			write!(f, "{}:{pkg_ref}{v_id_sep}{}", self.source(), self.v_id())
+			write!(
+				f,
+				"{}:{pkg_ref}{version_sep}{}",
+				self.source(),
+				self.version()
+			)
 		}
 	}
 }
@@ -145,13 +76,13 @@ impl FromStr for PackageId {
 			.split_once(':')
 			.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?;
 
-		let v_id_sep = match tag {
+		let version_sep = match tag {
 			"git" => '#',
 			"path" => ':',
 			_ => '@',
 		};
-		let (s, v_id) = s
-			.rsplit_once(v_id_sep)
+		let (s, version) = s
+			.rsplit_once(version_sep)
 			.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?;
 
 		let (source, pkg_ref) = if tag == "path" {
@@ -161,15 +92,10 @@ impl FromStr for PackageId {
 				.ok_or(errors::PackageIdParseErrorKind::InvalidFormat)?
 		};
 
-		let v_id = if tag == "path" {
-			VersionId(
-				local_version(),
-				v_id.parse().map_err(|e| {
-					errors::VersionIdParseError::from(errors::VersionIdParseErrorKind::Target(e))
-				})?,
-			)
+		let version = if tag == "path" {
+			local_version()
 		} else {
-			v_id.parse()?
+			version.parse()?
 		};
 
 		let source = match tag {
@@ -189,31 +115,13 @@ impl FromStr for PackageId {
 			_ => return Err(errors::PackageIdParseErrorKind::InvalidFormat.into()),
 		};
 
-		Ok(PackageId::new(source, pkg_ref, v_id))
+		Ok(PackageId::new(source, pkg_ref, version))
 	}
 }
 
-/// Errors that can occur when using a version ID
+/// Errors that can occur when working with IDs
 pub mod errors {
 	use thiserror::Error;
-
-	/// Errors that can occur when parsing a version ID
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = VersionIdParseError))]
-	#[non_exhaustive]
-	pub enum VersionIdParseErrorKind {
-		/// The version ID is malformed
-		#[error("malformed version id {0}")]
-		Malformed(String),
-
-		/// The version is malformed
-		#[error("malformed version")]
-		Version(#[from] semver::Error),
-
-		/// The target is malformed
-		#[error("malformed target")]
-		Target(#[from] crate::manifest::target::errors::TargetKindFromStr),
-	}
 
 	/// Errors that can occur when parsing a package ID
 	#[derive(Debug, Error, thiserror_ext::Box)]
@@ -232,9 +140,9 @@ pub mod errors {
 		#[error("error parsing git package reference")]
 		PackageRef(#[from] crate::source::errors::PackageRefParseError),
 
-		/// Parsing the VersionId failed
-		#[error("error parsing version id")]
-		VersionId(#[from] VersionIdParseError),
+		/// Parsing the version failed
+		#[error("error parsing version")]
+		Version(#[from] semver::Error),
 	}
 }
 

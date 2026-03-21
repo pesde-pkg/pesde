@@ -1,48 +1,36 @@
-#![expect(deprecated)]
 use std::str::FromStr as _;
 
 use anyhow::Context as _;
 use clap::Args;
-use semver::VersionReq;
+use pesde::source::Realm;
 
 use crate::cli::AnyPackageIdentifier;
-use crate::cli::VersionedPackageName;
-use crate::cli::config::read_config;
 use crate::cli::dep_type_to_key;
 use pesde::DEFAULT_INDEX_NAME;
 use pesde::RefreshedSources;
 use pesde::Subproject;
 use pesde::manifest::Alias;
 use pesde::manifest::DependencyType;
-use pesde::manifest::target::TargetKind;
-use pesde::names::PackageNames;
 use pesde::source::DependencySpecifiers;
-use pesde::source::PackageSources;
-use pesde::source::git::GitPackageSource;
-use pesde::source::git::specifier::GitDependencySpecifier;
 use pesde::source::git::specifier::GitVersionSpecifier;
-use pesde::source::path::PathPackageSource;
 use pesde::source::path::RelativeOrAbsolutePath;
-use pesde::source::path::specifier::PathDependencySpecifier;
-use pesde::source::pesde::PesdePackageSource;
-use pesde::source::pesde::specifier::PesdeDependencySpecifier;
 use pesde::source::traits::PackageSource as _;
 use pesde::source::traits::RefreshOptions;
 use pesde::source::traits::ResolveOptions;
 
 #[derive(Debug, Args)]
 pub struct AddCommand {
-	/// The package name to add
+	/// The package to add
 	#[arg(index = 1)]
-	name: AnyPackageIdentifier<VersionReq>,
+	package: AnyPackageIdentifier,
 
 	/// The index in which to search for the package
 	#[arg(short, long)]
 	index: Option<String>,
 
-	/// The target environment of the package
+	/// The realm for the package
 	#[arg(short, long)]
-	target: Option<TargetKind>,
+	realm: Option<Realm>,
 
 	/// The alias to use for the package
 	#[arg(short, long)]
@@ -59,79 +47,31 @@ pub struct AddCommand {
 
 impl AddCommand {
 	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
-		let manifest = subproject
-			.deser_manifest()
+		let (source, specifier) = self
+			.package
+			.source_and_specifier(self.realm, async |pesde| {
+				let manifest = subproject
+					.deser_manifest()
+					.await
+					.context("failed to read manifest")?;
+
+				let indices = if pesde {
+					&manifest.indices.pesde
+				} else {
+					&manifest.indices.wally
+				};
+
+				let name = self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
+				Ok((
+					name.to_string(),
+					indices
+						.get(name)
+						.with_context(|| format!("index `{name}` not found"))?
+						.clone(),
+				))
+			})
 			.await
-			.context("failed to read manifest")?;
-
-		let (source, specifier) = match &self.name {
-			AnyPackageIdentifier::PackageName(versioned) => match &versioned {
-				#[expect(deprecated)]
-				VersionedPackageName(PackageNames::Pesde(name), version) => {
-					let index = manifest
-						.indices
-						.pesde
-						.get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
-						.cloned();
-
-					if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
-						anyhow::bail!("index {index} not found");
-					}
-
-					let index = match index {
-						Some(index) => index,
-						None => read_config().await?.default_index,
-					};
-
-					let source = PackageSources::Pesde(PesdePackageSource::new(index));
-					let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
-						name: name.clone(),
-						version: version.clone().unwrap_or(VersionReq::STAR),
-						index: self.index.unwrap_or_else(|| DEFAULT_INDEX_NAME.to_string()),
-						target: self.target,
-					});
-
-					(source, specifier)
-				}
-				VersionedPackageName(PackageNames::Wally(name), version) => {
-					let index = manifest
-						.indices
-						.wally
-						.get(self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME))
-						.cloned();
-
-					if let Some(index) = self.index.as_ref().filter(|_| index.is_none()) {
-						anyhow::bail!("wally index {index} not found");
-					}
-
-					let index = index.context("no wally index found")?;
-
-					let source =
-						PackageSources::Wally(pesde::source::wally::WallyPackageSource::new(index));
-					let specifier = DependencySpecifiers::Wally(
-						pesde::source::wally::specifier::WallyDependencySpecifier {
-							name: name.clone(),
-							version: version.clone().unwrap_or(VersionReq::STAR),
-							index: self.index.unwrap_or_else(|| DEFAULT_INDEX_NAME.to_string()),
-						},
-					);
-
-					(source, specifier)
-				}
-			},
-			AnyPackageIdentifier::Git((url, ver)) => (
-				PackageSources::Git(GitPackageSource::new(url.clone())),
-				DependencySpecifiers::Git(GitDependencySpecifier {
-					repo: url.clone(),
-					version_specifier: ver.clone(),
-					path: None,
-				}),
-			),
-			AnyPackageIdentifier::Path(path) => (
-				PackageSources::Path(PathPackageSource),
-				DependencySpecifiers::Path(PathDependencySpecifier { path: path.clone() }),
-			),
-		};
+			.context("failed to parse package identifier")?;
 
 		let refreshed_sources = RefreshedSources::new();
 
@@ -150,19 +90,16 @@ impl AddCommand {
 				&specifier,
 				&ResolveOptions {
 					subproject: subproject.clone(),
-					target: manifest.target.kind(),
 					refreshed_sources,
-					loose_target: false,
 				},
 			)
 			.await
 			.context("failed to resolve package")?;
 
-		let Some((v_id, _)) = versions.pop_last() else {
+		let Some((version, _)) = versions.pop_last() else {
 			anyhow::bail!("no matching versions found for package");
 		};
 
-		let project_target = manifest.target.kind();
 		let mut manifest = toml_edit::DocumentMut::from_str(
 			&subproject
 				.read_manifest()
@@ -180,8 +117,8 @@ impl AddCommand {
 
 		let alias = match self.alias {
 			Some(alias) => alias,
-			None => match &self.name {
-				AnyPackageIdentifier::PackageName(versioned) => versioned.0.name().to_string(),
+			None => match &self.package {
+				AnyPackageIdentifier::PackageNames(versioned) => versioned.0.name().to_string(),
 				AnyPackageIdentifier::Git((url, _)) => url
 					.as_url()
 					.path
@@ -210,37 +147,30 @@ impl AddCommand {
 			#[expect(deprecated)]
 			DependencySpecifiers::Pesde(spec) => {
 				field["name"] = toml_edit::value(spec.name.to_string());
-				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
+				field["version"] = toml_edit::value(format!("^{version}"));
 
-				if v_id.target() != project_target {
-					field["target"] = toml_edit::value(v_id.target().to_string());
-				}
+				field["target"] = toml_edit::value(spec.target.to_string());
 
 				if spec.index != DEFAULT_INDEX_NAME {
 					field["index"] = toml_edit::value(spec.index);
 				}
 
 				println!(
-					"added {}@{} {} to {dependency_key}",
-					spec.name,
-					v_id.version(),
-					v_id.target()
+					"added {}@{version} {} to {dependency_key}",
+					spec.name, spec.target
 				);
 			}
 			DependencySpecifiers::Wally(spec) => {
 				let name_str = spec.name.to_string();
 				let name_str = name_str.trim_start_matches("wally#");
 				field["wally"] = toml_edit::value(name_str);
-				field["version"] = toml_edit::value(format!("^{}", v_id.version()));
+				field["version"] = toml_edit::value(format!("^{version}"));
 
 				if spec.index != DEFAULT_INDEX_NAME {
 					field["index"] = toml_edit::value(spec.index);
 				}
 
-				println!(
-					"added wally {name_str}@{} to {dependency_key}",
-					v_id.version()
-				);
+				println!("added wally {name_str}@{version} to {dependency_key}");
 			}
 			DependencySpecifiers::Git(spec) => {
 				field["repo"] = toml_edit::value(spec.repo.to_string());

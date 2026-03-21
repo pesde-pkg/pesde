@@ -6,6 +6,7 @@ use std::fmt::Display;
 
 use crate::GixUrl;
 use crate::source::DependencySpecifier;
+use crate::source::Realm;
 
 /// A specifier of a Git dependency's version
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -38,8 +39,15 @@ pub struct GitDependencySpecifier {
 	/// The path of the package in the repository
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub path: Option<RelativePathBuf>,
+	/// The realm of the package
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub realm: Option<Realm>,
 }
-impl DependencySpecifier for GitDependencySpecifier {}
+impl DependencySpecifier for GitDependencySpecifier {
+	fn realm(&self) -> Option<Realm> {
+		self.realm
+	}
+}
 
 impl Display for GitDependencySpecifier {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

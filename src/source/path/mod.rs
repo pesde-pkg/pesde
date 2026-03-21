@@ -3,7 +3,6 @@ use crate::MANIFEST_FILE_NAME;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
 use crate::manifest::Manifest;
-use crate::manifest::target::Target;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
@@ -11,10 +10,10 @@ use crate::source::PackageRefs;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::fs::PackageFs;
-use crate::source::ids::VersionId;
 use crate::source::path::pkg_ref::PathPackageRef;
 use crate::source::traits::DownloadOptions;
-use crate::source::traits::GetTargetOptions;
+use crate::source::traits::GetExportsOptions;
+use crate::source::traits::PackageExports;
 use crate::source::traits::PackageSource;
 use crate::source::traits::ResolveOptions;
 use fs_err::tokio as fs;
@@ -85,7 +84,7 @@ impl PackageSource for PathPackageSource {
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
-	type GetTargetError = errors::GetTargetError;
+	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
@@ -170,10 +169,7 @@ impl PackageSource for PathPackageSource {
 				path: specifier.path.clone(),
 				absolute_path: path,
 			}),
-			BTreeMap::from([(
-				VersionId::new(local_version(), manifest.target.kind()),
-				dependencies,
-			)]),
+			BTreeMap::from([(local_version(), dependencies)]),
 		))
 	}
 
@@ -192,12 +188,12 @@ impl PackageSource for PathPackageSource {
 	}
 
 	#[instrument(skip_all, level = "debug")]
-	async fn get_target(
+	async fn get_exports(
 		&self,
 		_pkg_ref: &Self::Ref,
-		options: &GetTargetOptions<'_>,
-	) -> Result<Target, Self::GetTargetError> {
-		let GetTargetOptions { path, .. } = options;
+		options: &GetExportsOptions<'_>,
+	) -> Result<PackageExports, Self::GetExportsError> {
+		let GetExportsOptions { path, .. } = options;
 
 		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
 			.await
@@ -206,14 +202,12 @@ impl PackageSource for PathPackageSource {
 			ManifestReadError::from(ManifestReadErrorKind::Serde(path.to_path_buf(), e))
 		})?;
 
-		Ok(manifest.target)
+		Ok(manifest.as_exports())
 	}
 }
 
 /// Errors that can occur when using a path package source
 pub mod errors {
-	use crate::manifest::target::TargetKind;
-	use crate::names::PackageName;
 	use std::path::PathBuf;
 	use thiserror::Error;
 
@@ -239,14 +233,6 @@ pub mod errors {
 		/// An index of the package was not found
 		#[error("index {0} not found in package {1}")]
 		IndexNotFound(String, PathBuf),
-
-		/// Finding the package roots failed
-		#[error("failed to find package roots")]
-		FindRoots(#[from] crate::errors::FindRootsError),
-
-		/// Workspace package not found
-		#[error("workspace package {0} {1} not found in package")]
-		WorkspacePackageNotFound(PackageName, TargetKind),
 	}
 
 	/// Errors that can occur when downloading a path package
@@ -261,9 +247,9 @@ pub mod errors {
 
 	/// Errors that can occur when getting the target of a path package
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = GetTargetError))]
+	#[thiserror_ext(newtype(name = GetExportsError))]
 	#[non_exhaustive]
-	pub enum GetTargetErrorKind {
+	pub enum GetExportsErrorKind {
 		/// Reading the manifest failed
 		#[error("error reading manifest")]
 		ManifestRead(#[from] crate::errors::ManifestReadError),

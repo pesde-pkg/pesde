@@ -39,8 +39,6 @@ use wax::Pattern as _;
 pub mod download;
 /// Utility for downloading and linking in the correct order
 pub mod download_and_link;
-/// Handling of engines
-pub mod engine;
 /// Linking packages
 pub mod linking;
 /// Lockfile
@@ -306,12 +304,6 @@ impl Subproject {
 	#[must_use]
 	pub fn dependencies_dir(&self) -> PathBuf {
 		self.private_dir().join("dependencies")
-	}
-
-	/// The bin directory
-	#[must_use]
-	pub fn bin_dir(&self) -> PathBuf {
-		self.private_dir().join("bin")
 	}
 
 	/// Read the manifest file

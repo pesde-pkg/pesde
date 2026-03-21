@@ -1,6 +1,7 @@
-use crate::manifest::target::TargetKind;
+use super::target::TargetKind;
 use crate::names::PackageName;
 use crate::source::DependencySpecifier;
+use crate::source::Realm;
 use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
@@ -17,13 +18,20 @@ pub struct PesdeDependencySpecifier {
 	#[serde(default = "crate::default_index_name")]
 	pub index: String,
 	/// The target to use for the package
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub target: Option<TargetKind>,
+	pub target: TargetKind,
 }
-impl DependencySpecifier for PesdeDependencySpecifier {}
+impl DependencySpecifier for PesdeDependencySpecifier {
+	fn realm(&self) -> Option<Realm> {
+		match self.target {
+			TargetKind::Roblox => Some(Realm::Shared),
+			TargetKind::RobloxServer => Some(Realm::Server),
+			TargetKind::Lune | TargetKind::Luau => None,
+		}
+	}
+}
 
 impl Display for PesdeDependencySpecifier {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}@{}", self.name, self.version)
+		write!(f, "{}@{} {}", self.name, self.version, self.target)
 	}
 }

@@ -1,6 +1,5 @@
 use crate::GixUrl;
 use crate::Project;
-use crate::manifest::target::Target;
 use crate::names::wally::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::reporters::response_to_async_read;
@@ -16,13 +15,13 @@ use crate::source::fs::store_in_cas;
 use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
-use crate::source::ids::VersionId;
 use crate::source::traits::DownloadOptions;
-use crate::source::traits::GetTargetOptions;
+use crate::source::traits::GetExportsOptions;
+use crate::source::traits::PackageExports;
 use crate::source::traits::PackageSource;
 use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
-use crate::source::wally::compat_util::get_target;
+use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
 use crate::source::wally::pkg_ref::WallyPackageRef;
 use crate::util::hash;
@@ -139,7 +138,7 @@ impl PackageSource for WallyPackageSource {
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
-	type GetTargetError = errors::GetTargetError;
+	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
 	async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
@@ -227,15 +226,10 @@ impl PackageSource for WallyPackageSource {
 		let versions = entries
 			.into_iter()
 			.filter(|manifest| version_matches(&specifier.version, &manifest.package.version))
-			.map(|mut manifest| {
-				let dependencies = manifest.all_dependencies().map_err(|e| {
-					errors::ResolveErrorKind::AllDependencies(specifier.name.clone(), e)
-				})?;
-
-				Ok((
-					VersionId::new(manifest.package.version, manifest.package.realm.to_target()),
-					dependencies,
-				))
+			.map(|manifest| {
+				manifest.into_resolve_entry().map_err(|e| {
+					errors::ResolveErrorKind::AllDependencies(specifier.name.clone(), e).into()
+				})
 			})
 			.collect::<Result<_, errors::ResolveError>>()?;
 
@@ -260,7 +254,7 @@ impl PackageSource for WallyPackageSource {
 			project,
 			reqwest,
 			reporter,
-			version_id,
+			version,
 			..
 		} = options;
 
@@ -270,12 +264,12 @@ impl PackageSource for WallyPackageSource {
 			.join("wally_index")
 			.join(hash(self.as_bytes()))
 			.join(pkg_ref.name.escaped())
-			.join(version_id.version().to_string());
+			.join(version.to_string());
 
 		match fs::read_to_string(&index_file).await {
 			Ok(s) => {
 				tracing::debug!(
-					"using cached index file for package {}@{version_id}",
+					"using cached index file for package {}@{version}",
 					pkg_ref.name
 				);
 
@@ -295,7 +289,7 @@ impl PackageSource for WallyPackageSource {
 				config.api.as_str().trim_end_matches('/'),
 				urlencoding::encode(scope),
 				urlencoding::encode(name),
-				urlencoding::encode(&version_id.version().to_string())
+				urlencoding::encode(&version.to_string())
 			))
 			.header(
 				"Wally-Version",
@@ -370,12 +364,12 @@ impl PackageSource for WallyPackageSource {
 	}
 
 	#[instrument(skip_all, level = "debug")]
-	async fn get_target(
+	async fn get_exports(
 		&self,
 		_pkg_ref: &Self::Ref,
-		options: &GetTargetOptions<'_>,
-	) -> Result<Target, Self::GetTargetError> {
-		get_target(options).await.map_err(Into::into)
+		options: &GetExportsOptions<'_>,
+	) -> Result<PackageExports, Self::GetExportsError> {
+		get_exports(options).await.map_err(Into::into)
 	}
 }
 
@@ -502,9 +496,9 @@ pub mod errors {
 		#[error("error serializing index file")]
 		SerializeIndex(#[from] toml::ser::Error),
 
-		/// Creating the target failed
-		#[error("error creating a target")]
-		GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
+		/// Error getting the package exports
+		#[error("error getting package exports")]
+		GetExports(#[from] crate::source::wally::compat_util::errors::GetExportsError),
 
 		/// Error writing index file
 		#[error("error writing index file")]
@@ -513,11 +507,11 @@ pub mod errors {
 
 	/// Errors that can occur when getting a target from a Wally package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = GetTargetError))]
+	#[thiserror_ext(newtype(name = GetExportsError))]
 	#[non_exhaustive]
-	pub enum GetTargetErrorKind {
-		/// Error getting target
-		#[error("error getting target")]
-		GetTarget(#[from] crate::source::wally::compat_util::errors::GetTargetError),
+	pub enum GetExportsErrorKind {
+		/// Error getting package exports
+		#[error("error getting package exports")]
+		GetExports(#[from] crate::source::wally::compat_util::errors::GetExportsError),
 	}
 }

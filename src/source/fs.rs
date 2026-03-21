@@ -1,7 +1,8 @@
-use crate::manifest::target::TargetKind;
 use crate::source::ADDITIONAL_FORBIDDEN_FILES;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
+use crate::source::Realm;
+use crate::source::RealmExt;
 use crate::util;
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
@@ -173,7 +174,7 @@ async fn package_fs_copy(src: &Path, destination: &Path) -> std::io::Result<()> 
 	let mut tasks = JoinSet::new();
 	let mut read_dir = fs::read_dir(src).await?;
 
-	'entry: while let Some(entry) = read_dir.next_entry().await? {
+	while let Some(entry) = read_dir.next_entry().await? {
 		let path = entry.path();
 		let relative_path = path.strip_prefix(src).unwrap();
 		let dest_path = destination.join(relative_path);
@@ -186,10 +187,11 @@ async fn package_fs_copy(src: &Path, destination: &Path) -> std::io::Result<()> 
 				continue;
 			}
 
-			for target in TargetKind::VARIANTS {
-				if target.packages_dir() == file_name {
-					continue 'entry;
-				}
+			if [None, Some(Realm::Shared), Some(Realm::Server)]
+				.map(RealmExt::packages_dir)
+				.contains(&file_name)
+			{
+				continue;
 			}
 
 			tasks.spawn(async move {

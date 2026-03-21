@@ -18,7 +18,7 @@ ser_display_deser_fromstr!(PathPackageRef);
 
 impl PackageRef for PathPackageRef {
 	fn structure_kind(&self) -> StructureKind {
-		StructureKind::PesdeV1
+		StructureKind::PesdeV2
 	}
 }
 

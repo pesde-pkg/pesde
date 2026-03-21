@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::errors;
-use crate::manifest::target::TargetKind;
 use crate::source::DependencySpecifiers;
 use crate::source::wally::specifier::WallyDependencySpecifier;
 use semver::Version;
@@ -14,19 +13,10 @@ use tracing::instrument;
 
 #[derive(Deserialize, Copy, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
-pub enum Realm {
+pub enum WallyRealm {
 	#[serde(alias = "dev")]
 	Shared,
 	Server,
-}
-
-impl Realm {
-	pub fn to_target(self) -> TargetKind {
-		match self {
-			Realm::Shared => TargetKind::Roblox,
-			Realm::Server => TargetKind::RobloxServer,
-		}
-	}
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -34,7 +24,8 @@ impl Realm {
 pub struct WallyPackage {
 	pub version: Version,
 	pub registry: url::Url,
-	pub realm: Realm,
+	#[allow(unused)]
+	pub realm: WallyRealm,
 }
 
 pub fn deserialize_specifiers<'de, D: Deserializer<'de>>(
@@ -55,6 +46,8 @@ pub fn deserialize_specifiers<'de, D: Deserializer<'de>>(
 					version: VersionReq::parse(version).map_err(serde::de::Error::custom)?,
 					// doesn't matter, will be replaced later
 					index: "".to_string(),
+					// Wally realms function differently to pesde's, so shared is the most reasonable default
+					realm: crate::source::Realm::Shared,
 				},
 			))
 		})
@@ -73,19 +66,21 @@ pub struct WallyManifest {
 	dev_dependencies: BTreeMap<Alias, WallyDependencySpecifier>,
 }
 
+type ResolveEntry = (
+	Version,
+	BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
+);
+
 impl WallyManifest {
 	/// Get all dependencies from the manifest
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
-	pub fn all_dependencies(
-		&mut self,
-	) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::AllDependenciesError>
-	{
+	pub fn into_resolve_entry(self) -> Result<ResolveEntry, errors::AllDependenciesError> {
 		let mut all_deps = BTreeMap::new();
 
-		for (deps, ty) in [
-			(&mut self.dependencies, DependencyType::Standard),
-			(&mut self.server_dependencies, DependencyType::Standard),
-			(&mut self.dev_dependencies, DependencyType::Dev),
+		for (mut deps, ty) in [
+			(self.dependencies, DependencyType::Standard),
+			(self.server_dependencies, DependencyType::Standard),
+			(self.dev_dependencies, DependencyType::Dev),
 		] {
 			while let Some((alias, mut spec)) = deps.pop_first() {
 				spec.index = self.package.registry.to_string();
@@ -99,6 +94,6 @@ impl WallyManifest {
 			}
 		}
 
-		Ok(all_deps)
+		Ok((self.package.version, all_deps))
 	}
 }

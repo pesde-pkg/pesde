@@ -10,7 +10,7 @@ use pesde::source::ids::PackageId;
 use std::path::PathBuf;
 use std::str::FromStr as _;
 
-use crate::cli::install::get_graph_loose;
+use crate::cli::install::get_graph;
 
 #[derive(Debug, Args)]
 pub struct PatchCommitCommand {
@@ -22,7 +22,7 @@ pub struct PatchCommitCommand {
 impl PatchCommitCommand {
 	pub async fn run(self, project: Project) -> anyhow::Result<()> {
 		let refreshed_sources = RefreshedSources::new();
-		let graph = get_graph_loose(&project, &refreshed_sources).await?;
+		let graph = get_graph(&project, &refreshed_sources).await?;
 
 		let id = self
 			.directory
