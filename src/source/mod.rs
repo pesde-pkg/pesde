@@ -166,13 +166,58 @@ macro_rules! impls {
 			)+
 
 			/// All possible dependency specifiers
-			#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+			#[derive(Debug, Serialize, Clone, PartialEq, Eq, Hash)]
 			#[serde(untagged)]
 			pub enum DependencySpecifiers {
 				$(
 					#[doc = concat!(stringify!($source), " dependency specifier")]
 					$source([< $source:lower >]::specifier::[<$source DependencySpecifier>])
 				),+
+			}
+
+			impl<'de> Deserialize<'de> for DependencySpecifiers {
+				fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+				where
+					D: serde::Deserializer<'de>,
+				{
+					struct DependencySpecifiersVisitor;
+
+					impl<'de> serde::de::Visitor<'de> for DependencySpecifiersVisitor {
+						type Value = DependencySpecifiers;
+
+						fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+							write!(formatter, "a dependency specifier")
+						}
+
+						fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+						where
+							A: serde::de::MapAccess<'de>,
+						{
+							use serde::de::Error;
+
+							let mut entries: Vec<(String, serde_json::Value)> = Vec::new();
+							while let Some((k, v)) = map.next_entry::<String, serde_json::Value>()? {
+								entries.push((k, v));
+							}
+
+							let keys: std::collections::HashSet<&str> =
+								entries.iter().map(|(k, _)| k.as_str()).collect();
+
+							$(
+								if keys.contains([< $source:lower >]::specifier::DISCRIMINATOR_FIELD) {
+									let map_de = serde_json::Map::from_iter(entries.into_iter());
+									return [< $source:lower >]::specifier::[< $source DependencySpecifier >]::deserialize(map_de)
+										.map(DependencySpecifiers::$source)
+										.map_err(A::Error::custom);
+								}
+							)+
+
+							Err(A::Error::custom("missing discriminator field for dependency specifier"))
+						}
+					}
+
+					deserializer.deserialize_map(DependencySpecifiersVisitor)
+				}
 			}
 
 			impl DependencySpecifier for DependencySpecifiers {

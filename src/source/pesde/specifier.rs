@@ -7,6 +7,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::fmt::Display;
 
+/// The field that discriminates pesde dependencies from other dependencies
+pub const DISCRIMINATOR_FIELD: &str = "name";
+
 /// The specifier for a pesde dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct PesdeDependencySpecifier {

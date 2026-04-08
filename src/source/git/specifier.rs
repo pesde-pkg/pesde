@@ -8,6 +8,9 @@ use crate::GixUrl;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
 
+/// The field that discriminates Git dependencies from other dependencies
+pub const DISCRIMINATOR_FIELD: &str = "repo";
+
 /// A specifier of a Git dependency's version
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]

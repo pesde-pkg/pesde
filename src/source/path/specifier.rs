@@ -5,6 +5,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::fmt::Display;
 
+/// The field that discriminates path dependencies from other dependencies
+pub const DISCRIMINATOR_FIELD: &str = "path";
+
 /// The specifier for a path dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct PathDependencySpecifier {

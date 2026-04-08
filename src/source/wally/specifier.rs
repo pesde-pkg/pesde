@@ -8,6 +8,13 @@ use crate::names::wally::WallyPackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
 
+fn default_realm() -> Realm {
+	Realm::Shared
+}
+
+/// The field that discriminates Wally dependencies from other dependencies
+pub const DISCRIMINATOR_FIELD: &str = "wally";
+
 /// The specifier for a Wally dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct WallyDependencySpecifier {
@@ -20,6 +27,7 @@ pub struct WallyDependencySpecifier {
 	#[serde(default = "crate::default_index_name")]
 	pub index: String,
 	/// The realm to use for the package
+	#[serde(default = "default_realm")]
 	pub realm: Realm,
 }
 impl DependencySpecifier for WallyDependencySpecifier {
