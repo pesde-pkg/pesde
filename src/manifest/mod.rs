@@ -76,9 +76,9 @@ pub struct Manifest {
 	/// The workspace configuration
 	#[serde(default)]
 	pub workspace: ManifestWorkspace,
-	/// The Roblox place of this project
+	/// The absolute paths of package directories in this project
 	#[serde(default)]
-	pub place: BTreeMap<Realm, String>,
+	pub absolute_paths: BTreeMap<Realm, String>,
 	/// The lib export of this package
 	#[serde(default)]
 	pub lib: Option<RelativePathBuf>,

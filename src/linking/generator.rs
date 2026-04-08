@@ -102,9 +102,8 @@ pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
 	format!("local module = require({path})\n{types}\nreturn module")
 }
 
-fn luau_style_path(path: &Path) -> String {
-	let path = path
-		.components()
+fn luau_style_path(path: &Path) -> impl Display {
+	path.components()
 		.with_position()
 		.filter_map(|(pos, ct)| match ct {
 			Component::CurDir => Some(".".into()),
@@ -124,10 +123,14 @@ fn luau_style_path(path: &Path) -> String {
 			}
 			_ => None,
 		})
-		.format("/");
+		.format("/")
+}
 
-	let require = format!("./{path}");
-	format!(r#""{}""#, require.escape_default())
+fn relative_luau_path(path: &Path) -> String {
+	format!(
+		r#""{}""#,
+		format!("./{}", luau_style_path(path)).escape_default()
+	)
 }
 
 /// Paths used for linking
@@ -159,52 +162,29 @@ pub fn get_lib_require_path(
 		StructureKind::PesdeV1(_) | StructureKind::PesdeV2 => lib_file.to_path(path),
 	};
 
-	let (prefix, path) = match realm {
-		Some(realm) if !dirs.destination.starts_with(&dirs.root_container) => (
-			project_manifest
-				.place
-				.get(&realm)
-				.ok_or(errors::GetLibRequirePathKind::RealmPathNotFound(realm))?
-				.as_str(),
-			match structure_kind {
-				StructureKind::Wally => Cow::Borrowed(dirs.container.as_path()),
-				StructureKind::PesdeV1(_) | StructureKind::PesdeV2 => {
-					Cow::Owned(lib_file.to_path(&dirs.container))
-				}
-			},
-		),
-		_ if structure_kind == StructureKind::Wally => ("script.Parent", Cow::Owned(path)),
-		_ => return Ok(luau_style_path(&path)),
+	let Some(realm) = realm.filter(|_| !dirs.destination.starts_with(&dirs.root_container)) else {
+		return Ok(relative_luau_path(&path));
 	};
 
-	let path = path
-		.components()
-		.with_position()
-		.filter_map(|(pos, component)| match component {
-			Component::ParentDir => Some(Cow::Borrowed(".Parent")),
-			Component::Normal(part) if part != "init.lua" && part != "init.luau" => {
-				let str = part.to_string_lossy();
+	let Some(absolute_prefix) = project_manifest.absolute_paths.get(&realm) else {
+		return Err(errors::GetLibRequirePathKind::RealmPathNotFound(realm).into());
+	};
+	let path = match structure_kind {
+		StructureKind::Wally => Cow::Borrowed(dirs.container.as_path()),
+		StructureKind::PesdeV1(_) | StructureKind::PesdeV2 => {
+			Cow::Owned(lib_file.to_path(&dirs.container))
+		}
+	};
 
-				Some(
-					format!(
-						r#":FindFirstChild("{}")"#,
-						if matches!(pos, Position::Last | Position::Only) {
-							str.strip_suffix(".luau")
-								.or(str.strip_suffix(".lua"))
-								.unwrap_or(&str)
-						} else {
-							&str
-						}
-						.escape_debug()
-					)
-					.into(),
-				)
-			}
-			_ => None,
-		})
-		.format("");
-
-	Ok(format!("{prefix}{path}"))
+	Ok(format!(
+		r#""{}""#,
+		format!(
+			"{}/{}",
+			absolute_prefix.strip_suffix('/').unwrap_or(absolute_prefix),
+			luau_style_path(&path)
+		)
+		.escape_default()
+	))
 }
 
 /// Generate a linking module for a binary
@@ -229,7 +209,7 @@ pub fn get_bin_require_path(
 	tracing::debug!("diffed bin path: {}", path.display());
 	let path = bin_file.to_path(path);
 
-	luau_style_path(&path)
+	relative_luau_path(&path)
 }
 
 /// Errors for the linking module utilities
