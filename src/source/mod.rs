@@ -32,11 +32,17 @@ pub const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 pub const IGNORED_DIRS: &[&str] = &[".git"];
 
 /// The result of resolving a package
-pub type ResolveResult = (
-	PackageSources,
-	PackageRefs,
-	BTreeMap<Version, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
-);
+#[derive(Debug, Clone)]
+pub struct ResolveResult {
+	/// The source which can be used to query information about the package
+	pub source: PackageSources,
+	/// The package reference to the package
+	pub pkg_ref: PackageRefs,
+	/// The package's structure kind
+	pub structure_kind: StructureKind,
+	/// All matching versions and their dependencies
+	pub versions: BTreeMap<Version, BTreeMap<Alias, (DependencySpecifiers, DependencyType)>>,
+}
 
 /// A type of structure
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -48,6 +54,7 @@ pub enum StructureKind {
 	/// Luau aliases in the directory containing the package's contents
 	PesdeV2,
 }
+ser_display_deser_fromstr!(StructureKind);
 
 impl Display for StructureKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -250,15 +257,7 @@ macro_rules! impls {
 			}
 			ser_display_deser_fromstr!(PackageRefs);
 
-			impl PackageRef for PackageRefs {
-				fn structure_kind(&self) -> StructureKind {
-					match self {
-						$(
-							Self::$source(pkg_ref) => pkg_ref.structure_kind()
-						),+
-					}
-				}
-			}
+			impl PackageRef for PackageRefs {}
 
 			impl Display for PackageRefs {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -574,10 +573,7 @@ mod tests {
 				PackageRefs::Wally("foo/bar".parse().unwrap()),
 				"wally:foo/bar",
 			),
-			(
-				PackageRefs::Git("abcdef+pesde_v1-lune".parse().unwrap()),
-				"git:abcdef+pesde_v1-lune",
-			),
+			(PackageRefs::Git("abcdef".parse().unwrap()), "git:abcdef"),
 			(
 				PackageRefs::Path("/dev/null".parse().unwrap()),
 				"path:/dev/null",

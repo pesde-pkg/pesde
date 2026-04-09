@@ -1,3 +1,4 @@
+use crate::cli::install::get_graph_locked;
 use crate::cli::style::CLI_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_PREFIX;
@@ -8,6 +9,7 @@ use console::style;
 use fs_err::tokio as fs;
 use pesde::MANIFEST_FILE_NAME;
 use pesde::Project;
+use pesde::RefreshedSources;
 use pesde::patches::setup_patches_repo;
 use pesde::source::ids::PackageId;
 use pesde::source::traits::DownloadOptions;
@@ -26,6 +28,13 @@ impl PatchCommand {
 			anyhow::bail!("cannot patch a local package")
 		}
 
+		let refreshed_sources = RefreshedSources::new();
+		let graph = get_graph_locked(&project, &refreshed_sources).await?;
+
+		let Some(node) = graph.nodes.get(&self.package) else {
+			anyhow::bail!("package not found in project");
+		};
+
 		let source = self.package.source();
 		let directory = project
 			.data_dir()
@@ -42,6 +51,7 @@ impl PatchCommand {
 					reqwest,
 					reporter: ().into(),
 					version: self.package.version(),
+					structure_kind: node.structure_kind,
 				},
 			)
 			.await?

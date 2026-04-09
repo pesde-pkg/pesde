@@ -33,6 +33,7 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
@@ -241,14 +242,15 @@ impl PackageSource for PesdePackageSource {
 			.into());
 		}
 
-		Ok((
-			PackageSources::Pesde(self.clone()),
-			PackageRefs::Pesde(PesdePackageRef {
+		Ok(ResolveResult {
+			source: PackageSources::Pesde(self.clone()),
+			pkg_ref: PackageRefs::Pesde(PesdePackageRef {
 				name: specifier.name.clone(),
 				target: specifier.target,
 			}),
+			structure_kind: StructureKind::PesdeV1(specifier.target),
 			versions,
-		))
+		})
 	}
 
 	#[instrument(skip_all, level = "debug")]

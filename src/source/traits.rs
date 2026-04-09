@@ -23,10 +23,7 @@ pub trait DependencySpecifier: Debug + Display {
 }
 
 /// A reference to a package
-pub trait PackageRef: Debug {
-	/// The kind of structure this package uses
-	fn structure_kind(&self) -> StructureKind;
-}
+pub trait PackageRef: Debug {}
 
 /// Options for refreshing a source
 #[derive(Debug, Clone)]
@@ -55,6 +52,8 @@ pub struct DownloadOptions<'a, R: DownloadProgressReporter> {
 	pub reporter: Arc<R>,
 	/// The version of the package to be downloaded
 	pub version: &'a Version,
+	/// The structure kind of the package
+	pub structure_kind: StructureKind,
 }
 
 /// Options for getting a package's Target
@@ -66,6 +65,8 @@ pub struct GetExportsOptions<'a> {
 	pub path: Arc<Path>,
 	/// The version of the package to be downloaded
 	pub version: &'a Version,
+	/// The structure kind of the package
+	pub structure_kind: StructureKind,
 }
 
 /// The exports of a package

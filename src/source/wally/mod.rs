@@ -9,6 +9,7 @@ use crate::source::IGNORED_FILES;
 use crate::source::PackageRefs;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
@@ -233,15 +234,16 @@ impl PackageSource for WallyPackageSource {
 			})
 			.collect::<Result<_, errors::ResolveError>>()?;
 
-		Ok((
-			PackageSources::Wally(WallyPackageSource {
+		Ok(ResolveResult {
+			source: PackageSources::Wally(WallyPackageSource {
 				repo_url: index_url,
 			}),
-			PackageRefs::Wally(WallyPackageRef {
+			pkg_ref: PackageRefs::Wally(WallyPackageRef {
 				name: specifier.name.clone(),
 			}),
+			structure_kind: StructureKind::Wally,
 			versions,
-		))
+		})
 	}
 
 	#[instrument(skip_all, level = "debug")]

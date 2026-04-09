@@ -17,7 +17,6 @@ use crate::source::fs::PackageFs;
 use crate::source::ids::PackageId;
 use crate::source::traits::GetExportsOptions;
 use crate::source::traits::PackageExports;
-use crate::source::traits::PackageRef as _;
 use crate::source::traits::PackageSource as _;
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
@@ -282,7 +281,10 @@ impl Project {
 			let _guard = span.enter();
 
 			let downloaded = self.download_graph(
-				graph_to_download.keys().cloned(),
+				graph_to_download
+					.keys()
+					.map(|id| (id.clone(), graph.nodes[id].structure_kind))
+					.collect::<Vec<_>>(),
 				download_graph_options.clone(),
 			)?;
 			pin!(downloaded);
@@ -398,7 +400,7 @@ impl Project {
 		let (wally_graph_to_download, other_graph_to_download) = graph_to_download
 			.iter()
 			.partition::<HashMap<_, _>, _>(|(id, _)| {
-				id.pkg_ref().structure_kind() == StructureKind::Wally
+				graph.nodes[id].structure_kind == StructureKind::Wally
 			});
 
 		let mut package_exports = HashMap::new();
@@ -420,6 +422,7 @@ impl Project {
 							.join(DependencyGraphNode::container_dir(id))
 							.into();
 						let project = self.clone();
+						let structure_kind = graph.nodes[id].structure_kind;
 						let id = id.clone();
 
 						async move {
@@ -431,6 +434,7 @@ impl Project {
 										project,
 										path: install_path,
 										version: id.version(),
+										structure_kind,
 									},
 								)
 								.await?;

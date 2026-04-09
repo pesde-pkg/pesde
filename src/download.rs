@@ -2,6 +2,7 @@ use crate::Project;
 use crate::RefreshedSources;
 use crate::reporters::DownloadProgressReporter as _;
 use crate::reporters::DownloadsReporter;
+use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::ids::PackageId;
 use crate::source::traits::DownloadOptions;
@@ -78,7 +79,7 @@ impl Project {
 	#[instrument(skip_all, level = "debug")]
 	pub(crate) fn download_graph<Reporter>(
 		&self,
-		graph: impl Iterator<Item = PackageId>,
+		graph: impl IntoIterator<Item = (PackageId, StructureKind)>,
 		options: DownloadGraphOptions<Reporter>,
 	) -> Result<
 		impl Stream<Item = Result<(PackageId, PackageFs), errors::DownloadGraphError>>,
@@ -97,7 +98,8 @@ impl Project {
 		let semaphore = Arc::new(Semaphore::new(network_concurrency.get()));
 
 		let mut tasks = graph
-			.map(|package_id| {
+			.into_iter()
+			.map(|(package_id, structure_kind)| {
 				let span = tracing::info_span!("download", package_id = package_id.to_string());
 
 				let project = self.clone();
@@ -138,6 +140,7 @@ impl Project {
 										project: project.clone(),
 										reqwest,
 										version: package_id.version(),
+										structure_kind,
 										reporter: progress_reporter.into(),
 									},
 								)
@@ -151,6 +154,7 @@ impl Project {
 										project: project.clone(),
 										reqwest,
 										version: package_id.version(),
+										structure_kind,
 										reporter: ().into(),
 									},
 								)

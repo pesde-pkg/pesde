@@ -4,7 +4,6 @@ use std::str::FromStr;
 use crate::names::wally::WallyPackageName;
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
-use crate::source::StructureKind;
 
 /// A Wally package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -14,11 +13,7 @@ pub struct WallyPackageRef {
 }
 ser_display_deser_fromstr!(WallyPackageRef);
 
-impl PackageRef for WallyPackageRef {
-	fn structure_kind(&self) -> StructureKind {
-		StructureKind::Wally
-	}
-}
+impl PackageRef for WallyPackageRef {}
 
 impl Display for WallyPackageRef {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

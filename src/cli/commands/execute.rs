@@ -13,11 +13,11 @@ use pesde::Subproject;
 use pesde::download_and_link::DownloadAndLinkOptions;
 use pesde::download_and_link::InstallDependenciesMode;
 use pesde::scripts::execute_script;
+use pesde::source::ResolveResult;
 use pesde::source::StructureKind;
 use pesde::source::ids::PackageId;
 use pesde::source::traits::DownloadOptions;
 use pesde::source::traits::GetExportsOptions;
-use pesde::source::traits::PackageRef as _;
 use pesde::source::traits::PackageSource as _;
 use pesde::source::traits::RefreshOptions;
 use pesde::source::traits::ResolveOptions;
@@ -80,7 +80,12 @@ impl ExecuteCommand {
 					.await
 					.context("failed to refresh source")?;
 
-				let (source, pkg_ref, mut versions) = source
+				let ResolveResult {
+					source,
+					pkg_ref,
+					structure_kind,
+					mut versions,
+				} = source
 					.resolve(
 						&specifier,
 						&ResolveOptions {
@@ -95,7 +100,7 @@ impl ExecuteCommand {
 					anyhow::bail!("no compatible package could be found");
 				};
 
-				if pkg_ref.structure_kind() == StructureKind::Wally {
+				if structure_kind == StructureKind::Wally {
 					anyhow::bail!("executing binaries from wally packages is not supported");
 				}
 
@@ -123,6 +128,7 @@ impl ExecuteCommand {
 							reqwest: reqwest.clone(),
 							reporter: ().into(),
 							version: id.version(),
+							structure_kind,
 						},
 					)
 					.await
@@ -140,6 +146,7 @@ impl ExecuteCommand {
 							project: subproject.project().clone(),
 							path: tempdir.path().into(),
 							version: id.version(),
+							structure_kind,
 						},
 					)
 					.await

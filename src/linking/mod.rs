@@ -10,7 +10,6 @@ use crate::source::fs::cas_path;
 use crate::source::fs::store_in_cas;
 use crate::source::ids::PackageId;
 use crate::source::traits::PackageExports;
-use crate::source::traits::PackageRef as _;
 use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
 use std::collections::HashMap;
@@ -113,34 +112,38 @@ impl Project {
 											.join(dependant_realm.packages_dir())
 											.join(PACKAGES_CONTAINER_NAME)
 											.join(DependencyGraphNode::container_dir(&dependant_id))
-											.join(match dependant_id.pkg_ref().structure_kind() {
-												StructureKind::Wally => "..",
-												StructureKind::PesdeV1(_) => match dep_id.pkg_ref()
-												{
-													PackageRefs::Pesde(pkg_ref) => {
-														pkg_ref.target.packages_dir()
-													}
-													PackageRefs::Wally(_) => panic!(
-														"unable to link wally package to pesde_v1 package, do not know how to link"
-													),
-													PackageRefs::Git(pkg_ref) => {
-														match pkg_ref.structure_kind {
-															StructureKind::Wally => "..",
-															StructureKind::PesdeV1(target) => {
-																target.packages_dir()
-															}
-															StructureKind::PesdeV2 => panic!(
-																"pesde_v1 depends on pesde_v2, do not know how to link"
-															),
+											.join(
+												match graph.nodes[&dependant_id].structure_kind {
+													StructureKind::Wally => "..",
+													StructureKind::PesdeV1(target) => match dep_id
+														.pkg_ref()
+													{
+														PackageRefs::Pesde(_) => {
+															target.packages_dir()
 														}
+														PackageRefs::Wally(_) => panic!(
+															"unable to link wally package to pesde_v1 package, do not know how to link"
+														),
+														PackageRefs::Git(_) => {
+															match graph.nodes[dep_id].structure_kind
+															{
+																StructureKind::Wally => "..",
+																StructureKind::PesdeV1(target) => {
+																	target.packages_dir()
+																}
+																StructureKind::PesdeV2 => panic!(
+																	"pesde_v1 depends on pesde_v2, do not know how to link"
+																),
+															}
+														}
+														PackageRefs::Path(_) => unreachable!(),
+													},
+													StructureKind::PesdeV2 => {
+														// TODO: use luaurc aliases
+														dependant_realm.packages_dir()
 													}
-													PackageRefs::Path(_) => unreachable!(),
 												},
-												StructureKind::PesdeV2 => {
-													// TODO: use luaurc aliases
-													dependant_realm.packages_dir()
-												}
-											}),
+											),
 										destination: dependencies_dir
 											.join(dep_realm.packages_dir())
 											.join(&container_dir),
@@ -155,6 +158,7 @@ impl Project {
 			.filter_map(|(subproject, alias, id, realm, dirs)| {
 				let exports = package_exports.get(&id).cloned()?;
 				let types = package_types.get(&id).cloned();
+				let structure_kind = graph.nodes[&id].structure_kind;
 
 				Some(async move {
 					let mut tasks = JoinSet::<Result<_, errors::LinkingError>>::new();
@@ -198,7 +202,7 @@ impl Project {
 									realm,
 									&lib_file,
 									&dirs,
-									id.pkg_ref().structure_kind(),
+									structure_kind,
 									&*subproject.deser_manifest().await?,
 								)
 								.map_err(|e| {

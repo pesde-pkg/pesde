@@ -103,7 +103,7 @@ impl OutdatedCommand {
 								)
 								.await
 								.context("failed to resolve package versions")?
-								.2
+								.versions
 								.pop_last()
 								.map(|(version, _)| version)
 								.with_context(|| format!("no versions of {spec} found"))?;

@@ -4,7 +4,6 @@ use std::str::FromStr;
 use crate::names::PackageName;
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
-use crate::source::StructureKind;
 use crate::source::pesde::target::TargetKind;
 
 /// A pesde package reference
@@ -17,11 +16,7 @@ pub struct PesdePackageRef {
 }
 ser_display_deser_fromstr!(PesdePackageRef);
 
-impl PackageRef for PesdePackageRef {
-	fn structure_kind(&self) -> StructureKind {
-		StructureKind::PesdeV1(self.target)
-	}
-}
+impl PackageRef for PesdePackageRef {}
 
 impl Display for PesdePackageRef {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

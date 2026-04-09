@@ -32,7 +32,6 @@ use crate::source::pesde::PesdeVersionedManifest;
 use crate::source::traits::DownloadOptions;
 use crate::source::traits::GetExportsOptions;
 use crate::source::traits::PackageExports;
-use crate::source::traits::PackageRef as _;
 use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
 use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
@@ -344,14 +343,12 @@ impl PackageSource for GitPackageSource {
 		.await
 		.unwrap()?;
 
-		Ok((
-			PackageSources::Git(self.clone()),
-			PackageRefs::Git(GitPackageRef {
-				tree_id,
-				structure_kind,
-			}),
-			BTreeMap::from([(version, dependencies)]),
-		))
+		Ok(ResolveResult {
+			source: PackageSources::Git(self.clone()),
+			pkg_ref: PackageRefs::Git(GitPackageRef { tree_id }),
+			structure_kind,
+			versions: BTreeMap::from([(version, dependencies)]),
+		})
 	}
 
 	#[instrument(skip_all, level = "debug")]
@@ -361,7 +358,10 @@ impl PackageSource for GitPackageSource {
 		options: &DownloadOptions<'_, R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let DownloadOptions {
-			project, reporter, ..
+			project,
+			reporter,
+			structure_kind,
+			..
 		} = options;
 
 		let index_file = project
@@ -456,7 +456,7 @@ impl PackageSource for GitPackageSource {
 					return false;
 				}
 
-				if pkg_ref.structure_kind() != StructureKind::Wally
+				if *structure_kind != StructureKind::Wally
 					&& ADDITIONAL_FORBIDDEN_FILES.contains(&name)
 				{
 					tracing::debug!(
@@ -513,10 +513,12 @@ impl PackageSource for GitPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn get_exports(
 		&self,
-		pkg_ref: &Self::Ref,
+		_pkg_ref: &Self::Ref,
 		options: &GetExportsOptions<'_>,
 	) -> Result<PackageExports, Self::GetExportsError> {
-		if pkg_ref.structure_kind == StructureKind::Wally {
+		let GetExportsOptions { structure_kind, .. } = options;
+
+		if *structure_kind == StructureKind::Wally {
 			return get_exports(options).await.map_err(Into::into);
 		}
 

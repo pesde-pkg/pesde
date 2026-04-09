@@ -11,6 +11,8 @@ use crate::matching_globs;
 use crate::source::DependencySpecifiers;
 use crate::source::PackageSources;
 use crate::source::Realm;
+use crate::source::ResolveResult;
+use crate::source::StructureKind;
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
 use crate::source::pesde::PesdePackageSource;
@@ -112,6 +114,8 @@ pub struct DependencyGraphNode {
 	/// The checksum of the package
 	#[serde(default, skip_serializing_if = "String::is_empty")]
 	pub checksum: String,
+	/// The structure kind of the package
+	pub structure_kind: StructureKind,
 }
 
 /// A graph of dependencies in a project
@@ -394,6 +398,7 @@ async fn prepare_queue(
 
 type ResolveVersionData = (
 	PackageId,
+	StructureKind,
 	BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 );
 
@@ -422,7 +427,12 @@ async fn resolve_version(
 			)
 			.await?;
 
-		let (source, pkg_ref, mut versions) = source
+		let ResolveResult {
+			source,
+			pkg_ref,
+			structure_kind,
+			mut versions,
+		} = source
 			.resolve(
 				specifier,
 				&ResolveOptions {
@@ -457,14 +467,14 @@ async fn resolve_version(
 			);
 		};
 
-		Ok::<_, errors::DependencyGraphError>((package_id, dependencies))
+		Ok::<_, errors::DependencyGraphError>((package_id, structure_kind, dependencies))
 	};
 
-	let (id, deps) = inner(specifier, pass_indices).await?;
+	let (id, structure_kind, deps) = inner(specifier, pass_indices).await?;
 	if let Some(specifier) = graph.overrides.get(&id) {
 		return inner(specifier, true).await;
 	}
-	Ok((id, deps))
+	Ok((id, structure_kind, deps))
 }
 
 impl Project {
@@ -500,7 +510,7 @@ impl Project {
 
 				tracing::debug!("resolving {} ({:?})", entry.specifier, entry.ty);
 
-				let (package_id, dependencies) = resolve_version(
+				let (package_id, structure_kind, dependencies) = resolve_version(
 					entry.subproject.clone(),
 					&graph,
 					refreshed_sources,
@@ -549,6 +559,7 @@ impl Project {
 						dependencies: Default::default(),
 						// will be filled out later, we don't have this information at this step
 						checksum: Default::default(),
+						structure_kind,
 					},
 				);
 

@@ -3,6 +3,7 @@ use std::str::FromStr as _;
 use anyhow::Context as _;
 use clap::Args;
 use pesde::source::Realm;
+use pesde::source::ResolveResult;
 
 use crate::cli::AnyPackageIdentifier;
 use crate::cli::dep_type_to_key;
@@ -85,7 +86,7 @@ impl AddCommand {
 			.await
 			.context("failed to refresh package source")?;
 
-		let (_, _, mut versions) = source
+		let ResolveResult { mut versions, .. } = source
 			.resolve(
 				&specifier,
 				&ResolveOptions {

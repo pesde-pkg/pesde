@@ -9,6 +9,7 @@ use crate::source::DependencySpecifiers;
 use crate::source::PackageRefs;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::path::pkg_ref::PathPackageRef;
 use crate::source::traits::DownloadOptions;
@@ -163,14 +164,15 @@ impl PackageSource for PathPackageSource {
 			})
 			.collect::<Result<_, errors::ResolveError>>()?;
 
-		Ok((
-			PackageSources::Path(*self),
-			PackageRefs::Path(PathPackageRef {
+		Ok(ResolveResult {
+			source: PackageSources::Path(*self),
+			pkg_ref: PackageRefs::Path(PathPackageRef {
 				path: specifier.path.clone(),
 				absolute_path: path,
 			}),
-			BTreeMap::from([(local_version(), dependencies)]),
-		))
+			structure_kind: StructureKind::PesdeV2,
+			versions: BTreeMap::from([(local_version(), dependencies)]),
+		})
 	}
 
 	#[instrument(skip_all, level = "debug")]

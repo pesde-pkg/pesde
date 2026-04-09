@@ -83,6 +83,15 @@ pub async fn get_graph(
 	Ok(graph)
 }
 
+pub async fn get_graph_locked(
+	project: &Project,
+	refreshed_sources: &RefreshedSources,
+) -> anyhow::Result<DependencyGraph> {
+	let (_, graph) = get_graph_internal(project, refreshed_sources, true, true).await?;
+
+	Ok(graph)
+}
+
 pub async fn install(
 	options: &InstallOptions,
 	project: &Project,
