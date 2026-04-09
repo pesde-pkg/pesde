@@ -36,9 +36,11 @@ use crate::source::ResolveResult;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
+use crate::source::git::specifier::GitDependencySpecifier;
 use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
+use crate::source::pesde::specifier::IndexPesdeDependencySpecifier;
 use crate::source::pesde::target::Target;
 use crate::source::pesde::target::TargetKind;
 use crate::source::traits::DownloadOptions;
@@ -46,6 +48,7 @@ use crate::source::traits::GetExportsOptions;
 use crate::source::traits::PackageExports;
 use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
+use crate::source::wally::specifier::WallyDependencySpecifier;
 use crate::util::hash;
 use crate::version_matches;
 use fs_err::tokio as fs;
@@ -194,7 +197,39 @@ impl PackageSource for PesdePackageSource {
 				suggestions.insert(v_id.target());
 			})
 			.filter(|(v_id, _)| specifier.target == v_id.target())
-			.map(|(v_id, entry)| (v_id.0, entry.dependencies))
+			.map(|(v_id, entry)| {
+				(
+					v_id.0,
+					entry
+						.dependencies
+						.into_iter()
+						.map(|(alias, (specifiers, dep_type))| {
+							(
+								alias,
+								(
+									match specifiers {
+										IndexDependencySpecifiers::Pesde(s) => {
+											DependencySpecifiers::Pesde(PesdeDependencySpecifier {
+												name: s.name,
+												version: s.version,
+												index: s.index,
+												target: s.target.unwrap_or(entry.target.kind()),
+											})
+										}
+										IndexDependencySpecifiers::Wally(s) => {
+											DependencySpecifiers::Wally(s)
+										}
+										IndexDependencySpecifiers::Git(s) => {
+											DependencySpecifiers::Git(s)
+										}
+									},
+									dep_type,
+								),
+							)
+						})
+						.collect(),
+				)
+			})
 			.collect::<BTreeMap<_, _>>();
 
 		if versions.is_empty() {
@@ -479,7 +514,19 @@ pub struct IndexFileEntry {
 
 	/// The dependencies of this package
 	#[serde(default)]
-	pub dependencies: BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
+	pub dependencies: BTreeMap<Alias, (IndexDependencySpecifiers, DependencyType)>,
+}
+
+/// The dependency specifiers for an index file entry
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum IndexDependencySpecifiers {
+	/// A pesde dependency specifier
+	Pesde(IndexPesdeDependencySpecifier),
+	/// A Wally dependency specifier
+	Wally(WallyDependencySpecifier),
+	/// A Git dependency specifier
+	Git(GitDependencySpecifier),
 }
 
 /// The package metadata in the index file

@@ -217,12 +217,12 @@ impl Project {
 					if let Some(node) = graph.nodes.get(&pkg_id)
 						&& visited.insert(pkg_id)
 					{
-						for (id, ty, _) in node.dependencies.values() {
+						for dep in node.dependencies.values() {
 							// don't need to download dev dependencies of dependencies
-							if *ty == DependencyType::Dev {
+							if dep.ty == DependencyType::Dev {
 								continue;
 							}
-							queue.push(id.clone());
+							queue.push(dep.id.clone());
 						}
 					}
 				}

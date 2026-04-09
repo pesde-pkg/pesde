@@ -51,7 +51,7 @@ impl Project {
 						&& expected_ids.insert(pkg_id.to_string())
 					{
 						for dep in node.dependencies.values() {
-							queue.push(&dep.0);
+							queue.push(&dep.id);
 						}
 					}
 				}

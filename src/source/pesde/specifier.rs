@@ -38,3 +38,16 @@ impl Display for PesdeDependencySpecifier {
 		write!(f, "{}@{} {}", self.name, self.version, self.target)
 	}
 }
+
+/// The specifier for a pesde dependency in the index
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct IndexPesdeDependencySpecifier {
+	/// The name of the package
+	pub name: PackageName,
+	/// The version requirement for the package
+	pub version: VersionReq,
+	/// The index to use for the package
+	pub index: String,
+	/// The target to use for the package
+	pub target: Option<TargetKind>,
+}

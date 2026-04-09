@@ -232,9 +232,7 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 			let mut queue = node
 				.dependencies
 				.iter()
-				.map(|(dep_alias, (dep_id, dep_ty, _))| {
-					(vec![(id, alias)], (dep_id, dep_alias), *dep_ty)
-				})
+				.map(|(dep_alias, dep)| (vec![(id, alias)], (&dep.id, dep_alias), dep.ty))
 				.collect::<Vec<_>>();
 
 			while let Some((path, (dep_id, dep_alias), dep_ty)) = queue.pop() {
@@ -252,7 +250,7 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 							new_graph.nodes[id]
 								.dependencies
 								.values()
-								.any(|(id, _, _)| id == dep_id)
+								.any(|dep| dep.id == *dep_id)
 						})
 					} else {
 						new.iter().any(|(_, (node_id, _, _))| node_id == dep_id)
@@ -271,14 +269,14 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 
 				if let Some(dep_node) = new_graph.nodes.get(dep_id) {
 					queue.extend(dep_node.dependencies.iter().map(
-						|(inner_dep_alias, (inner_dep_id, inner_dep_ty, _))| {
+						|(inner_dep_alias, inner_dep)| {
 							(
 								path.iter()
 									.copied()
 									.chain(std::iter::once((dep_id, dep_alias)))
 									.collect(),
-								(inner_dep_id, inner_dep_alias),
-								*inner_dep_ty,
+								(&inner_dep.id, inner_dep_alias),
+								inner_dep.ty,
 							)
 						},
 					));

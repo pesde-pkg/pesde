@@ -89,9 +89,9 @@ impl Project {
 							.values()
 							.filter_map(|(id, _, _)| graph.nodes.get(id).map(|node| (id, node)))
 							.flat_map(|(id, node)| {
-								node.dependencies.iter().map(|(dep_alias, (dep_id, _, _))| {
-									(id.clone(), dep_alias, dep_id)
-								})
+								node.dependencies
+									.iter()
+									.map(|(dep_alias, dep)| (id.clone(), dep_alias, &dep.id))
 							})
 							.map(|(dependant_id, dep_alias, dep_id)| {
 								let subproject = self.clone().subproject(importer.clone());
@@ -171,7 +171,11 @@ impl Project {
 
 						let bin_module = generator::generate_bin_linking_module(
 							&dirs.container,
-							&generator::get_bin_require_path(&dirs.base, bin_file, &dirs.container),
+							&generator::get_bin_require_path(
+								&dirs.base,
+								bin_file,
+								&dirs.root_container,
+							),
 						);
 						let cas_dir = subproject.project().cas_dir().to_path_buf();
 

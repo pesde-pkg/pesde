@@ -38,12 +38,77 @@ pub struct DependencyGraphImporter {
 	pub dependencies: BTreeMap<Alias, (PackageId, DependencySpecifiers, DependencyType)>,
 }
 
+/// A dependency graph node dependency
+#[derive(Debug, Clone)]
+pub struct DependencyGraphNodeDependency {
+	/// The package ID of the dependency
+	pub id: PackageId,
+	/// The type of the dependency
+	pub ty: DependencyType,
+	/// The realm of the dependency
+	pub realm: Option<Realm>,
+}
+
+// serialized as a tuple for increased readability in the lockfile since the toml crate doesn't support forcing inline tables
+// can't simply use a tuple struct because of the optional realm field, which the toml crate doesn't support
+
+impl Serialize for DependencyGraphNodeDependency {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		if let Some(realm) = &self.realm {
+			(&self.id, &self.ty, realm).serialize(serializer)
+		} else {
+			(&self.id, &self.ty).serialize(serializer)
+		}
+	}
+}
+
+impl<'de> Deserialize<'de> for DependencyGraphNodeDependency {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		struct Visitor;
+
+		impl<'de> serde::de::Visitor<'de> for Visitor {
+			type Value = DependencyGraphNodeDependency;
+
+			fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+				formatter.write_str(
+					"a tuple of (PackageId, DependencyType) or (PackageId, DependencyType, Realm)",
+				)
+			}
+
+			fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+			where
+				A: serde::de::SeqAccess<'de>,
+			{
+				let id: PackageId = seq
+					.next_element()?
+					.ok_or_else(|| serde::de::Error::invalid_length(0, &"2 or 3 elements"))?;
+
+				let ty: DependencyType = seq
+					.next_element()?
+					.ok_or_else(|| serde::de::Error::invalid_length(1, &"2 or 3 elements"))?;
+
+				let realm: Option<Realm> = seq.next_element()?;
+
+				Ok(DependencyGraphNodeDependency { id, ty, realm })
+			}
+		}
+
+		deserializer.deserialize_seq(Visitor)
+	}
+}
+
 /// A dependency graph node
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DependencyGraphNode {
 	/// The dependencies of the package
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies: BTreeMap<Alias, (PackageId, DependencyType, Option<Realm>)>,
+	pub dependencies: BTreeMap<Alias, DependencyGraphNodeDependency>,
 	/// The checksum of the package
 	#[serde(default, skip_serializing_if = "String::is_empty")]
 	pub checksum: String,
@@ -91,11 +156,11 @@ impl DependencyGraph {
 			if let Some(node) = self.nodes.get(pkg_id)
 				&& visited.insert(pkg_id)
 			{
-				for (id, _, realm) in node.dependencies.values() {
-					let Some(realm) = realm else {
+				for dep in node.dependencies.values() {
+					let Some(realm) = dep.realm else {
 						continue;
 					};
-					queue.push((id, *realm));
+					queue.push((&dep.id, realm));
 				}
 			}
 		}
@@ -267,7 +332,7 @@ async fn prepare_queue(
 				let mut queue = previous_graph.nodes[package_id]
 					.dependencies
 					.iter()
-					.map(|(dep_alias, dep)| (&dep.0, vec![alias.clone(), dep_alias.clone()]))
+					.map(|(dep_alias, dep)| (&dep.id, vec![alias.clone(), dep_alias.clone()]))
 					.collect::<VecDeque<_>>();
 
 				tracing::debug!("resolved {package_id} from old dependency graph");
@@ -299,7 +364,7 @@ async fn prepare_queue(
 						.iter()
 						.map(|(alias, dep)| {
 							(
-								&dep.0,
+								&dep.id,
 								path.iter()
 									.cloned()
 									.chain(std::iter::once(alias.clone()))
@@ -464,7 +529,11 @@ impl Project {
 						.dependencies
 						.insert(
 							alias.clone(),
-							(package_id.clone(), entry.ty, entry.specifier.realm()),
+							DependencyGraphNodeDependency {
+								id: package_id.clone(),
+								ty: entry.ty,
+								realm: entry.specifier.realm(),
+							},
 						);
 				}
 
