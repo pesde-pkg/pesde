@@ -280,6 +280,8 @@ impl Project {
 			let span = tracing::debug_span!("download");
 			let _guard = span.enter();
 
+			// mutable references right below, need to collect to satisfy the borrow checker
+			#[allow(clippy::needless_collect)]
 			let downloaded = self.download_graph(
 				graph_to_download
 					.keys()
