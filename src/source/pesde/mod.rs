@@ -32,12 +32,15 @@ use crate::source::IGNORED_FILES;
 use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
+use crate::source::Realm;
 use crate::source::ResolveResult;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::git::specifier::GitDependencySpecifier;
+use crate::source::git::specifier::GitVersionSpecifier;
+use crate::source::git::specifier::IndexGitDependencySpecifier;
 use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
@@ -49,6 +52,7 @@ use crate::source::traits::GetExportsOptions;
 use crate::source::traits::PackageExports;
 use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
+use crate::source::wally::specifier::IndexWallyDependencySpecifier;
 use crate::source::wally::specifier::WallyDependencySpecifier;
 use crate::util::hash;
 use crate::version_matches;
@@ -218,10 +222,21 @@ impl PackageSource for PesdePackageSource {
 											})
 										}
 										IndexDependencySpecifiers::Wally(s) => {
-											DependencySpecifiers::Wally(s)
+											DependencySpecifiers::Wally(WallyDependencySpecifier {
+												name: s.name,
+												version: s.version,
+												index: s.index,
+												realm: Realm::Shared,
+											})
 										}
 										IndexDependencySpecifiers::Git(s) => {
-											DependencySpecifiers::Git(s)
+											DependencySpecifiers::Git(GitDependencySpecifier {
+												repo: s.repo,
+												version_specifier: GitVersionSpecifier::Rev(s.rev),
+												path: s.path,
+												// no easy way to get this data, probably not worth it since this compat code is temporary
+												realm: None,
+											})
 										}
 									},
 									dep_type,
@@ -526,9 +541,9 @@ pub enum IndexDependencySpecifiers {
 	/// A pesde dependency specifier
 	Pesde(IndexPesdeDependencySpecifier),
 	/// A Wally dependency specifier
-	Wally(WallyDependencySpecifier),
+	Wally(IndexWallyDependencySpecifier),
 	/// A Git dependency specifier
-	Git(GitDependencySpecifier),
+	Git(IndexGitDependencySpecifier),
 }
 
 /// The package metadata in the index file

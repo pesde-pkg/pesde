@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workspaces are now integrated more deeply - they're no longer treated as a simple "run on" wrapper by @daimond113
 - Patches now apply to an entire workspace and must be specified in the root by @daimond113
 - Always recheck peer dependencies, even if reusing lockfile by @daimond113
+- String requires are now always used, even for Wally packages. This is possible
+because luau-lsp started using the sourcemap for string requires
+- In line with string requires, the `place` key of the manifest has been renamed
+to `absolute_paths` and is now used for building string requires
 
 ### Removed
 - Drop `build_files` ([RFC](https://github.com/pesde-pkg/pesde/issues/57)) by @daimond113

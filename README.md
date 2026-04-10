@@ -6,32 +6,18 @@
 
 <br>
 
-pesde is a package manager for the Luau programming language, supporting
-multiple runtimes including Roblox and Lune. pesde uses Git repositories for
-packages, however it can also use Wally as package sources. It has been designed
-with multiple targets in mind, namely Roblox, Lune, and Luau.
+pesde is a package manager for the Luau programming language, designed to
+prevent runtime lock-in.
 
 ## Installation
 
-pesde can be installed from GitHub Releases. You can find the latest release
-[here](https://github.com/pesde-pkg/pesde/releases). Once you have downloaded
-the binary, run the following command to install it:
-
-```sh
-pesde self-install
-```
-
-Note that pesde manages its own versions, so you can update it by running the
-following command:
-
-```sh
-pesde self-upgrade
-```
+pesde can be installed with your favourite toolchain manager. If you don't have
+a preference, [mise-en-place](https://github.com/jdx/mise) is recommended. 
 
 ## Documentation
 
 For more information about its usage, you can check the
-[documentation](https://docs.pesde.daimond113.com).
+[documentation](https://docs.pesde.dev).
 ## Previous art
 
 pesde is heavily inspired by [npm](https://www.npmjs.com/),

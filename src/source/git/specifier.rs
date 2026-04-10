@@ -57,3 +57,26 @@ impl Display for GitDependencySpecifier {
 		write!(f, "{}{}", self.repo, self.version_specifier)
 	}
 }
+
+fn deserialize_gix_url<'de, D>(deserializer: D) -> Result<GixUrl, D::Error>
+where
+	D: serde::Deserializer<'de>,
+{
+	let s = String::deserialize(deserializer)?;
+	s.try_into()
+		.map(GixUrl::new)
+		.map_err(serde::de::Error::custom)
+}
+
+/// The specifier for a Git dependency in the index
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct IndexGitDependencySpecifier {
+	/// The repository of the package
+	#[serde(deserialize_with = "deserialize_gix_url")]
+	pub repo: GixUrl,
+	/// The version specifier of the package
+	pub rev: String,
+	/// The path of the package in the repository
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub path: Option<RelativePathBuf>,
+}
