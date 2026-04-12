@@ -1,0 +1,11 @@
+[package]
+name = "pesde-registry"
+version = "0.2.3"
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+pesde = { path = "..", default-features = false }
