@@ -3,6 +3,7 @@ use crate::Project;
 use crate::resolver::DependencyGraph;
 use crate::source::Realm;
 use crate::source::RealmExt as _;
+use crate::util::ToEscaped as _;
 use crate::util::remove_empty_dir;
 use fs_err::tokio as fs;
 use std::collections::HashSet;
@@ -31,12 +32,11 @@ impl Project {
 					.join(realm.packages_dir())
 					.into();
 
-				let expected_aliases = graph.importers[&importer]
+				let expected_linkers = graph.importers[&importer]
 					.dependencies
 					.iter()
 					.filter(|(_, (id, _, _))| graph.realm_of(&importer, id) == realm)
-					.map(|(alias, _)| alias)
-					.cloned()
+					.map(|(alias, _)| format!("{alias}.luau"))
 					.collect::<HashSet<_>>();
 
 				let mut queue = graph.importers[&importer]
@@ -48,7 +48,7 @@ impl Project {
 
 				while let Some(pkg_id) = queue.pop() {
 					if let Some(node) = graph.nodes.get(pkg_id)
-						&& expected_ids.insert(pkg_id.to_string())
+						&& expected_ids.insert(pkg_id.to_string().escaped())
 					{
 						for dep in node.dependencies.values() {
 							queue.push(&dep.id);
@@ -110,10 +110,10 @@ impl Project {
 									continue;
 								}
 
-								if file_name.to_str().is_some_and(|name| {
-									name.parse()
-										.is_ok_and(|alias| expected_aliases.contains(&alias))
-								}) {
+								if file_name
+									.to_str()
+									.is_some_and(|name| expected_linkers.contains(name))
+								{
 									continue;
 								}
 
