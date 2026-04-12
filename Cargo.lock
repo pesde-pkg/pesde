@@ -3007,6 +3007,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "pesde-registry"
+version = "0.2.3"
+dependencies = [
+ "pesde",
+]
+
+[[package]]
 name = "petgraph"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
