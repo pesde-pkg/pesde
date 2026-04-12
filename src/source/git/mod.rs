@@ -329,12 +329,12 @@ impl PackageSource for GitPackageSource {
 					return Err(errors::ResolveErrorKind::DeserManifest(repo_url.clone(), e).into());
 				}
 			};
-			let (_, dependencies) = manifest
+			let (package, dependencies) = manifest
 				.into_resolve_entry()
 				.map_err(|e| errors::ResolveErrorKind::CollectDependencies(repo_url.clone(), e))?;
 
 			Ok((
-				StructureKind::Wally,
+				StructureKind::Wally(package.name.name().into()),
 				tree_version(),
 				dependencies,
 				tree.id.to_string(),
@@ -456,9 +456,7 @@ impl PackageSource for GitPackageSource {
 					return false;
 				}
 
-				if *structure_kind != StructureKind::Wally
-					&& ADDITIONAL_FORBIDDEN_FILES.contains(&name)
-				{
+				if !structure_kind.is_wally() && ADDITIONAL_FORBIDDEN_FILES.contains(&name) {
 					tracing::debug!(
 						"removing {name} from {}#{} at {path} - using new structure",
 						self.repo_url,
@@ -518,7 +516,7 @@ impl PackageSource for GitPackageSource {
 	) -> Result<PackageExports, Self::GetExportsError> {
 		let GetExportsOptions { structure_kind, .. } = options;
 
-		if *structure_kind == StructureKind::Wally {
+		if structure_kind.is_wally() {
 			return get_exports(options).await.map_err(Into::into);
 		}
 

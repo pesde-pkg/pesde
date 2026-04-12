@@ -51,7 +51,7 @@ impl PatchCommand {
 					reqwest,
 					reporter: ().into(),
 					version: self.package.version(),
-					structure_kind: node.structure_kind,
+					structure_kind: &node.structure_kind,
 				},
 			)
 			.await?

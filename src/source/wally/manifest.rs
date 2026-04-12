@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::errors;
+use crate::names::wally::WallyPackageName;
 use crate::source::DependencySpecifiers;
 use crate::source::wally::specifier::WallyDependencySpecifier;
 use semver::Version;
@@ -22,6 +23,7 @@ pub enum WallyRealm {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct WallyPackage {
+	pub name: WallyPackageName,
 	pub version: Version,
 	pub registry: url::Url,
 	#[allow(unused)]
@@ -67,14 +69,13 @@ pub struct WallyManifest {
 }
 
 type ResolveEntry = (
-	Version,
+	WallyPackage,
 	BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
 );
 
 impl WallyManifest {
-	/// Get all dependencies from the manifest
 	#[instrument(skip(self), ret(level = "trace"), level = "debug")]
-	pub fn into_resolve_entry(self) -> Result<ResolveEntry, errors::AllDependenciesError> {
+	pub(crate) fn into_resolve_entry(self) -> Result<ResolveEntry, errors::AllDependenciesError> {
 		let mut all_deps = BTreeMap::new();
 
 		for (mut deps, ty) in [
@@ -94,6 +95,6 @@ impl WallyManifest {
 			}
 		}
 
-		Ok((self.package.version, all_deps))
+		Ok((self.package, all_deps))
 	}
 }

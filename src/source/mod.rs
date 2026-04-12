@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// Packages' filesystems
 pub mod fs;
@@ -45,10 +46,10 @@ pub struct ResolveResult {
 }
 
 /// A type of structure
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StructureKind {
 	/// Linker files in the parent of the directory containing the package's contents
-	Wally,
+	Wally(Arc<str>),
 	/// `*_packages` directories inside the package's content directory
 	PesdeV1(crate::source::pesde::target::TargetKind),
 	/// Luau aliases in the directory containing the package's contents
@@ -56,11 +57,19 @@ pub enum StructureKind {
 }
 ser_display_deser_fromstr!(StructureKind);
 
+impl StructureKind {
+	/// Whether this is [StructureKind::Wally]
+	#[must_use]
+	pub fn is_wally(&self) -> bool {
+		matches!(self, Self::Wally(_))
+	}
+}
+
 impl Display for StructureKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			StructureKind::Wally => write!(f, "wally"),
-			StructureKind::PesdeV1(target) => write!(f, "pesde_v1-{target}"),
+			StructureKind::Wally(name) => write!(f, "wally:{name}"),
+			StructureKind::PesdeV1(target) => write!(f, "pesde_v1:{target}"),
 			StructureKind::PesdeV2 => write!(f, "pesde_v2"),
 		}
 	}
@@ -70,11 +79,11 @@ impl FromStr for StructureKind {
 	type Err = errors::StructureKindParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		if s == "wally" {
-			return Ok(Self::Wally);
+		if let Some(name) = s.strip_prefix("wally:") {
+			return Ok(Self::Wally(name.into()));
 		} else if s == "pesde_v2" {
 			return Ok(Self::PesdeV2);
-		} else if let Some(target) = s.strip_prefix("pesde_v1-") {
+		} else if let Some(target) = s.strip_prefix("pesde_v1:") {
 			return Ok(Self::PesdeV1(target.parse()?));
 		}
 

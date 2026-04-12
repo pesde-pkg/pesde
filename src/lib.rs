@@ -8,7 +8,6 @@ use crate::manifest::Manifest;
 use crate::source::PackageSources;
 use crate::source::traits::PackageSource as _;
 use crate::source::traits::RefreshOptions;
-use crate::util::hash;
 use fs_err::tokio as fs;
 use gix::bstr::ByteSlice as _;
 use relative_path::RelativePath;
@@ -152,7 +151,6 @@ impl Display for Importer {
 #[derive(Debug)]
 struct ProjectShared {
 	dir: PathBuf,
-	private_dir: PathBuf,
 	data_dir: PathBuf,
 	cas_dir: PathBuf,
 	auth_config: AuthConfig,
@@ -180,9 +178,6 @@ impl Project {
 
 		Project {
 			shared: ProjectShared {
-				private_dir: cas_dir
-					.join("projects")
-					.join(hash(dir.as_os_str().as_encoded_bytes())),
 				dir,
 				cas_dir,
 				data_dir: data_dir.into(),
@@ -197,12 +192,6 @@ impl Project {
 	#[must_use]
 	pub fn dir(&self) -> &Path {
 		&self.shared.dir
-	}
-
-	/// The directory in which private, that is, non-shared data (dependencies, bins, etc.) is stored
-	#[must_use]
-	pub fn private_dir(&self) -> &Path {
-		&self.shared.private_dir
 	}
 
 	/// The directory to store general-purpose data
@@ -292,18 +281,10 @@ impl Subproject {
 		self.importer().as_path().to_path(self.project().dir())
 	}
 
-	/// The private directory for this importer
-	#[must_use]
-	pub fn private_dir(&self) -> PathBuf {
-		self.importer()
-			.as_path()
-			.to_path(self.project().private_dir())
-	}
-
 	/// The dependencies directory
 	#[must_use]
 	pub fn dependencies_dir(&self) -> PathBuf {
-		self.private_dir().join("dependencies")
+		self.dir().join(env!("CARGO_PKG_NAME")).join("dependencies")
 	}
 
 	/// Read the manifest file

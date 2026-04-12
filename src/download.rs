@@ -140,7 +140,7 @@ impl Project {
 										project: project.clone(),
 										reqwest,
 										version: package_id.version(),
-										structure_kind,
+										structure_kind: &structure_kind,
 										reporter: progress_reporter.into(),
 									},
 								)
@@ -154,7 +154,7 @@ impl Project {
 										project: project.clone(),
 										reqwest,
 										version: package_id.version(),
-										structure_kind,
+										structure_kind: &structure_kind,
 										reporter: ().into(),
 									},
 								)

@@ -228,9 +228,12 @@ impl PackageSource for WallyPackageSource {
 			.into_iter()
 			.filter(|manifest| version_matches(&specifier.version, &manifest.package.version))
 			.map(|manifest| {
-				manifest.into_resolve_entry().map_err(|e| {
-					errors::ResolveErrorKind::AllDependencies(specifier.name.clone(), e).into()
-				})
+				manifest
+					.into_resolve_entry()
+					.map(|(package, deps)| (package.version, deps))
+					.map_err(|e| {
+						errors::ResolveErrorKind::AllDependencies(specifier.name.clone(), e).into()
+					})
 			})
 			.collect::<Result<_, errors::ResolveError>>()?;
 
@@ -241,7 +244,7 @@ impl PackageSource for WallyPackageSource {
 			pkg_ref: PackageRefs::Wally(WallyPackageRef {
 				name: specifier.name.clone(),
 			}),
-			structure_kind: StructureKind::Wally,
+			structure_kind: StructureKind::Wally(specifier.name.name().into()),
 			versions,
 		})
 	}

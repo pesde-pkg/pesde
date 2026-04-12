@@ -26,9 +26,13 @@ pub mod incremental;
 impl DependencyGraphNode {
 	/// Returns the directory to store the contents of the package in, e.g. foo+1.0.0/1.0.0
 	#[must_use]
-	pub fn container_dir(package_id: &PackageId) -> PathBuf {
-		PathBuf::from(package_id.to_string().escaped())
-			.join(package_id.version().to_string().escaped())
+	pub fn container_dir(package_id: &PackageId, structure_kind: &StructureKind) -> PathBuf {
+		let base = PathBuf::from(package_id.to_string().escaped());
+
+		match structure_kind {
+			StructureKind::Wally(name) => base.join(&**name),
+			_ => base.join(package_id.version().to_string().escaped()),
+		}
 	}
 }
 
@@ -67,8 +71,9 @@ impl Project {
 						let dependencies_dir =
 							subproject.dependencies_dir().join(realm.packages_dir());
 
-						let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME)
-							.join(DependencyGraphNode::container_dir(id));
+						let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME).join(
+							DependencyGraphNode::container_dir(id, &graph.nodes[id].structure_kind),
+						);
 
 						(
 							subproject,
@@ -98,8 +103,13 @@ impl Project {
 								let dep_realm = graph.realm_of(importer, dep_id);
 								let dependant_realm = graph.realm_of(importer, &dependant_id);
 
-								let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME)
-									.join(DependencyGraphNode::container_dir(dep_id));
+								let structure_kind = &graph.nodes[dep_id].structure_kind;
+								let dependant_structure_kind =
+									&graph.nodes[&dependant_id].structure_kind;
+
+								let container_dir = PathBuf::from(PACKAGES_CONTAINER_NAME).join(
+									DependencyGraphNode::container_dir(dep_id, structure_kind),
+								);
 
 								(
 									subproject,
@@ -108,42 +118,50 @@ impl Project {
 									dep_realm,
 									LinkDirs {
 										#[expect(deprecated)]
-										base: dependencies_dir
-											.join(dependant_realm.packages_dir())
-											.join(PACKAGES_CONTAINER_NAME)
-											.join(DependencyGraphNode::container_dir(&dependant_id))
-											.join(
-												match graph.nodes[&dependant_id].structure_kind {
-													StructureKind::Wally => "..",
-													StructureKind::PesdeV1(target) => match dep_id
-														.pkg_ref()
-													{
+										base: {
+											let mut path = dependencies_dir
+												.join(dependant_realm.packages_dir())
+												.join(PACKAGES_CONTAINER_NAME)
+												.join(DependencyGraphNode::container_dir(
+													&dependant_id,
+													dependant_structure_kind,
+												));
+
+											match dependant_structure_kind {
+												StructureKind::Wally(_) => {
+													path.pop();
+												}
+												StructureKind::PesdeV1(target) => {
+													match dep_id.pkg_ref() {
 														PackageRefs::Pesde(_) => {
-															target.packages_dir()
+															path.push(target.packages_dir());
 														}
 														PackageRefs::Wally(_) => panic!(
 															"unable to link wally package to pesde_v1 package, do not know how to link"
 														),
-														PackageRefs::Git(_) => {
-															match graph.nodes[dep_id].structure_kind
-															{
-																StructureKind::Wally => "..",
-																StructureKind::PesdeV1(target) => {
-																	target.packages_dir()
-																}
-																StructureKind::PesdeV2 => panic!(
-																	"pesde_v1 depends on pesde_v2, do not know how to link"
-																),
+														PackageRefs::Git(_) => match structure_kind
+														{
+															StructureKind::Wally(_) => {
+																path.pop();
 															}
-														}
+															StructureKind::PesdeV1(target) => {
+																path.push(target.packages_dir());
+															}
+															StructureKind::PesdeV2 => panic!(
+																"pesde_v1 depends on pesde_v2, do not know how to link"
+															),
+														},
 														PackageRefs::Path(_) => unreachable!(),
-													},
-													StructureKind::PesdeV2 => {
-														// TODO: use luaurc aliases
-														dependant_realm.packages_dir()
 													}
-												},
-											),
+												}
+												StructureKind::PesdeV2 => {
+													// TODO: use luaurc aliases
+													path.push(dependant_realm.packages_dir());
+												}
+											}
+
+											path
+										},
 										destination: dependencies_dir
 											.join(dep_realm.packages_dir())
 											.join(&container_dir),
@@ -158,7 +176,7 @@ impl Project {
 			.filter_map(|(subproject, alias, id, realm, dirs)| {
 				let exports = package_exports.get(&id).cloned()?;
 				let types = package_types.get(&id).cloned();
-				let structure_kind = graph.nodes[&id].structure_kind;
+				let structure_kind = graph.nodes[&id].structure_kind.clone();
 
 				Some(async move {
 					let mut tasks = JoinSet::<Result<_, errors::LinkingError>>::new();
@@ -174,11 +192,11 @@ impl Project {
 							.with_added_extension("bin.luau");
 
 						let bin_module = generator::generate_bin_linking_module(
-							&dirs.container,
+							&dirs.destination,
 							&generator::get_bin_require_path(
 								&dirs.base,
 								bin_file,
-								&dirs.root_container,
+								&dirs.destination,
 							),
 						);
 						let cas_dir = subproject.project().cas_dir().to_path_buf();
@@ -202,7 +220,7 @@ impl Project {
 									realm,
 									&lib_file,
 									&dirs,
-									structure_kind,
+									&structure_kind,
 									&*subproject.deser_manifest().await?,
 								)
 								.map_err(|e| {

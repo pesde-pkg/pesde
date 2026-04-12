@@ -14,7 +14,6 @@ use pesde::download_and_link::DownloadAndLinkOptions;
 use pesde::download_and_link::InstallDependenciesMode;
 use pesde::scripts::execute_script;
 use pesde::source::ResolveResult;
-use pesde::source::StructureKind;
 use pesde::source::ids::PackageId;
 use pesde::source::traits::DownloadOptions;
 use pesde::source::traits::GetExportsOptions;
@@ -100,7 +99,7 @@ impl ExecuteCommand {
 					anyhow::bail!("no compatible package could be found");
 				};
 
-				if structure_kind == StructureKind::Wally {
+				if structure_kind.is_wally() {
 					anyhow::bail!("executing binaries from wally packages is not supported");
 				}
 
@@ -128,7 +127,7 @@ impl ExecuteCommand {
 							reqwest: reqwest.clone(),
 							reporter: ().into(),
 							version: id.version(),
-							structure_kind,
+							structure_kind: &structure_kind,
 						},
 					)
 					.await
@@ -146,7 +145,7 @@ impl ExecuteCommand {
 							project: subproject.project().clone(),
 							path: tempdir.path().into(),
 							version: id.version(),
-							structure_kind,
+							structure_kind: &structure_kind,
 						},
 					)
 					.await

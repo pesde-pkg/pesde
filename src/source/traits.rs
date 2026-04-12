@@ -53,7 +53,7 @@ pub struct DownloadOptions<'a, R: DownloadProgressReporter> {
 	/// The version of the package to be downloaded
 	pub version: &'a Version,
 	/// The structure kind of the package
-	pub structure_kind: StructureKind,
+	pub structure_kind: &'a StructureKind,
 }
 
 /// Options for getting a package's Target
@@ -66,7 +66,7 @@ pub struct GetExportsOptions<'a> {
 	/// The version of the package to be downloaded
 	pub version: &'a Version,
 	/// The structure kind of the package
-	pub structure_kind: StructureKind,
+	pub structure_kind: &'a StructureKind,
 }
 
 /// The exports of a package

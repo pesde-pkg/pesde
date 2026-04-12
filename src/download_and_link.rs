@@ -11,7 +11,6 @@ use crate::reporters::PatchesReporter;
 use crate::resolver::DependencyGraph;
 use crate::resolver::DependencyGraphNode;
 use crate::source::RealmExt as _;
-use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::ids::PackageId;
@@ -252,7 +251,10 @@ impl Project {
 							.dependencies_dir()
 							.join(graph.realm_of(&importer, &id).packages_dir())
 							.join(PACKAGES_CONTAINER_NAME)
-							.join(DependencyGraphNode::container_dir(&id));
+							.join(DependencyGraphNode::container_dir(
+								&id,
+								&graph.nodes[&id].structure_kind,
+							));
 						async move {
 							if id.pkg_ref().is_local() {
 								return (importer, id, false);
@@ -285,7 +287,7 @@ impl Project {
 			let downloaded = self.download_graph(
 				graph_to_download
 					.keys()
-					.map(|id| (id.clone(), graph.nodes[id].structure_kind))
+					.map(|id| (id.clone(), graph.nodes[id].structure_kind.clone()))
 					.collect::<Vec<_>>(),
 				download_graph_options.clone(),
 			)?;
@@ -320,7 +322,10 @@ impl Project {
 						.dependencies_dir()
 						.join(graph.realm_of(importer, &id).packages_dir())
 						.join(PACKAGES_CONTAINER_NAME)
-						.join(DependencyGraphNode::container_dir(&id));
+						.join(DependencyGraphNode::container_dir(
+							&id,
+							&graph.nodes[&id].structure_kind,
+						));
 
 					let id = id.clone();
 					let fs = fs.clone();
@@ -375,7 +380,10 @@ impl Project {
 							.dependencies_dir()
 							.join(graph.realm_of(importer, &id).packages_dir())
 							.join(PACKAGES_CONTAINER_NAME)
-							.join(DependencyGraphNode::container_dir(&id));
+							.join(DependencyGraphNode::container_dir(
+								&id,
+								&graph.nodes[&id].structure_kind,
+							));
 
 						async move {
 							match reporter {
@@ -401,9 +409,7 @@ impl Project {
 
 		let (wally_graph_to_download, other_graph_to_download) = graph_to_download
 			.iter()
-			.partition::<HashMap<_, _>, _>(|(id, _)| {
-				graph.nodes[id].structure_kind == StructureKind::Wally
-			});
+			.partition::<HashMap<_, _>, _>(|(id, _)| graph.nodes[id].structure_kind.is_wally());
 
 		let mut package_exports = HashMap::new();
 
@@ -417,14 +423,14 @@ impl Project {
 							.clone()
 							// importer does not matter here, as it is the same package being linked in different places
 							.subproject(importers.iter().next().unwrap().clone());
+						let structure_kind = graph.nodes[id].structure_kind.clone();
 						let install_path = subproject
 							.dependencies_dir()
 							.join(graph.realm_of(subproject.importer(), id).packages_dir())
 							.join(PACKAGES_CONTAINER_NAME)
-							.join(DependencyGraphNode::container_dir(id))
+							.join(DependencyGraphNode::container_dir(id, &structure_kind))
 							.into();
 						let project = self.clone();
-						let structure_kind = graph.nodes[id].structure_kind;
 						let id = id.clone();
 
 						async move {
@@ -436,7 +442,7 @@ impl Project {
 										project,
 										path: install_path,
 										version: id.version(),
-										structure_kind,
+										structure_kind: &structure_kind,
 									},
 								)
 								.await?;
@@ -470,25 +476,23 @@ impl Project {
 
 		let mut tasks = package_exports
 			.iter()
-			.map(|(package_id, exports)| {
+			.map(|(id, exports)| {
 				// importer does not matter here, as it is the same package being linked in different places
 				let subproject = self
 					.clone()
-					.subproject(graph_to_download[package_id].iter().next().unwrap().clone());
+					.subproject(graph_to_download[id].iter().next().unwrap().clone());
 				let install_path = subproject
 					.dependencies_dir()
-					.join(
-						graph
-							.realm_of(subproject.importer(), package_id)
-							.packages_dir(),
-					)
+					.join(graph.realm_of(subproject.importer(), id).packages_dir())
 					.join(PACKAGES_CONTAINER_NAME)
-					.join(DependencyGraphNode::container_dir(package_id));
+					.join(DependencyGraphNode::container_dir(
+						id,
+						&graph.nodes[id].structure_kind,
+					));
 
-				let span =
-					tracing::info_span!("extract types", package_id = package_id.to_string());
+				let span = tracing::info_span!("extract types", package_id = id.to_string());
 
-				let package_id = package_id.clone();
+				let package_id = id.clone();
 				let exports = exports.clone();
 
 				async move {

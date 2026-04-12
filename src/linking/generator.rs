@@ -152,13 +152,13 @@ pub fn get_lib_require_path(
 	realm: Option<Realm>,
 	lib_file: &RelativePath,
 	dirs: &LinkDirs,
-	structure_kind: StructureKind,
+	structure_kind: &StructureKind,
 	project_manifest: &Manifest,
 ) -> Result<String, errors::GetLibRequirePath> {
 	let path = pathdiff::diff_paths(&dirs.destination, &dirs.base).unwrap();
 	tracing::debug!("diffed lib path: {}", path.display());
 	let path = match structure_kind {
-		StructureKind::Wally => path,
+		StructureKind::Wally(_) => path,
 		StructureKind::PesdeV1(_) | StructureKind::PesdeV2 => lib_file.to_path(path),
 	};
 
@@ -170,7 +170,7 @@ pub fn get_lib_require_path(
 		return Err(errors::GetLibRequirePathKind::RealmPathNotFound(realm).into());
 	};
 	let path = match structure_kind {
-		StructureKind::Wally => Cow::Borrowed(dirs.container.as_path()),
+		StructureKind::Wally(_) => Cow::Borrowed(dirs.container.as_path()),
 		StructureKind::PesdeV1(_) | StructureKind::PesdeV2 => {
 			Cow::Owned(lib_file.to_path(&dirs.container))
 		}
