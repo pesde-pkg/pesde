@@ -1,12 +1,12 @@
+//! Linking packages
 use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
+use crate::graph::DependencyGraph;
+use crate::graph::DependencyGraphNode;
 use crate::linking::generator::LinkDirs;
-use crate::resolver::DependencyGraph;
-use crate::resolver::DependencyGraphNode;
 use crate::source::PackageRefs;
 use crate::source::RealmExt as _;
 use crate::source::StructureKind;
-use crate::source::fs::cas_path;
 use crate::source::fs::store_in_cas;
 use crate::source::ids::PackageId;
 use crate::source::traits::PackageExports;
@@ -18,9 +18,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 
-/// Generates linking modules for a project
 pub mod generator;
-/// Incremental installs
 pub mod incremental;
 
 impl DependencyGraphNode {
@@ -37,7 +35,7 @@ impl DependencyGraphNode {
 }
 
 async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std::io::Result<()> {
-	let hash = store_in_cas(cas_dir, contents.as_bytes()).await?;
+	let (cas_path, _) = store_in_cas(cas_dir, contents.as_bytes()).await?;
 
 	match fs::remove_file(&destination).await {
 		Ok(_) => {}
@@ -48,7 +46,7 @@ async fn write_cas(destination: PathBuf, cas_dir: &Path, contents: &str) -> std:
 		Err(e) => return Err(e),
 	}
 
-	fs::hard_link(cas_path(&hash, cas_dir), destination).await
+	fs::hard_link(cas_path, destination).await
 }
 
 impl Project {
@@ -117,7 +115,6 @@ impl Project {
 									dep_id.clone(),
 									dep_realm,
 									LinkDirs {
-										#[expect(deprecated)]
 										base: {
 											let mut path = dependencies_dir
 												.join(dependant_realm.packages_dir())
@@ -131,29 +128,27 @@ impl Project {
 												StructureKind::Wally(_) => {
 													path.pop();
 												}
-												StructureKind::PesdeV1(target) => {
-													match dep_id.pkg_ref() {
-														PackageRefs::Pesde(_) => {
+												#[expect(deprecated)]
+												StructureKind::PesdeV1(target) => match dep_id.pkg_ref() {
+													PackageRefs::Pesde(_) => {
+														path.push(target.packages_dir());
+													}
+													PackageRefs::Wally(_) => panic!(
+														"unable to link wally package to pesde_v1 package, do not know how to link"
+													),
+													PackageRefs::Git(_) => match structure_kind {
+														StructureKind::Wally(_) => {
+															path.pop();
+														}
+														StructureKind::PesdeV1(target) => {
 															path.push(target.packages_dir());
 														}
-														PackageRefs::Wally(_) => panic!(
-															"unable to link wally package to pesde_v1 package, do not know how to link"
+														StructureKind::PesdeV2 => panic!(
+															"pesde_v1 depends on pesde_v2, do not know how to link"
 														),
-														PackageRefs::Git(_) => match structure_kind
-														{
-															StructureKind::Wally(_) => {
-																path.pop();
-															}
-															StructureKind::PesdeV1(target) => {
-																path.push(target.packages_dir());
-															}
-															StructureKind::PesdeV2 => panic!(
-																"pesde_v1 depends on pesde_v2, do not know how to link"
-															),
-														},
-														PackageRefs::Path(_) => unreachable!(),
-													}
-												}
+													},
+													PackageRefs::Path(_) => unreachable!(),
+												},
 												StructureKind::PesdeV2 => {
 													// TODO: use luaurc aliases
 													path.push(dependant_realm.packages_dir());

@@ -1,3 +1,4 @@
+//! Code that we want to share between the lib and bin without exposing it in the public API
 use fs_err::tokio as fs;
 use serde::Deserialize;
 use serde::Deserializer;

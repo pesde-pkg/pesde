@@ -1,3 +1,4 @@
+//! Path dependency specifier
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
 use crate::source::path::RelativeOrAbsolutePath;

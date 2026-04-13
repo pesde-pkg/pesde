@@ -1,3 +1,4 @@
+//! Path package reference
 use std::path::PathBuf;
 
 use crate::ser_display_deser_fromstr;

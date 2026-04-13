@@ -1,6 +1,7 @@
+//! Incremental installs
 use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
-use crate::resolver::DependencyGraph;
+use crate::graph::DependencyGraph;
 use crate::source::Realm;
 use crate::source::RealmExt as _;
 use crate::util::ToEscaped as _;

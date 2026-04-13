@@ -1,4 +1,4 @@
-#![expect(deprecated)]
+//! Git package source
 use crate::GixUrl;
 use crate::MANIFEST_FILE_NAME;
 use crate::Project;
@@ -56,9 +56,7 @@ use tokio::task::JoinSet;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 
-/// The Git package reference
 pub mod pkg_ref;
-/// The Git dependency specifier
 pub mod specifier;
 
 /// The Git package source
@@ -476,7 +474,7 @@ impl PackageSource for GitPackageSource {
 						return Ok::<_, errors::DownloadError>((path, FsEntry::Directory));
 					};
 
-					let hash = store_in_cas(project.cas_dir(), contents.as_slice()).await?;
+					let (_, hash) = store_in_cas(project.cas_dir(), contents.as_slice()).await?;
 
 					Ok((path, FsEntry::File(hash)))
 				}

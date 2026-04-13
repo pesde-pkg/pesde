@@ -1,3 +1,4 @@
+//! Git package reference
 use std::str::FromStr;
 
 use crate::ser_display_deser_fromstr;

@@ -1,3 +1,4 @@
+//! Package sources
 #![expect(deprecated)]
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
@@ -14,13 +15,9 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// Packages' filesystems
 pub mod fs;
-/// Git index-based package source utilities
 pub mod git_index;
-/// Package identifiers for different contexts
 pub mod ids;
-/// Traits for sources and packages
 pub mod traits;
 
 /// Files that will not be stored when downloading a package. These are only files which break pesde's functionality, or are meaningless and possibly heavy (e.g. `.DS_Store`)
@@ -177,7 +174,6 @@ macro_rules! impls {
 	($($source:ident),+) => {
 		paste::paste! {
 			$(
-				#[doc = concat!(stringify!($source), " package source")]
 				pub mod [< $source:lower >];
 			)+
 

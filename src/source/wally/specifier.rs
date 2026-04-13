@@ -1,3 +1,4 @@
+//! Wally dependency specifier
 use std::fmt::Display;
 
 use semver::VersionReq;

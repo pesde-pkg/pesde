@@ -1,3 +1,4 @@
+//! Git dependency specifier
 use relative_path::RelativePathBuf;
 use semver::VersionReq;
 use serde::Deserialize;

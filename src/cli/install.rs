@@ -12,9 +12,9 @@ use pesde::Project;
 use pesde::RefreshedSources;
 use pesde::download_and_link::DownloadAndLinkOptions;
 use pesde::download_and_link::InstallDependenciesMode;
+use pesde::graph::DependencyGraph;
 use pesde::lockfile::Lockfile;
 use pesde::manifest::DependencyType;
-use pesde::resolver::DependencyGraph;
 use pesde::source::PackageRefs;
 use pesde::source::PackageSources;
 use pesde::source::traits::RefreshOptions;
@@ -301,7 +301,7 @@ pub fn print_install_summary(old_graph: Option<DependencyGraph>, new_graph: Depe
 		let groups = new
 			.into_iter()
 			.merge_join_by(
-				old.into_iter(),
+				old,
 				|(new_alias, (new_id, _, _)), (old_alias, (old_id, _, _))| {
 					new_alias.cmp(old_alias).then(if new_id == old_id {
 						Ordering::Equal

@@ -1,3 +1,4 @@
+//! Generates linking modules for a project
 use std::borrow::Cow;
 use std::fmt::Display;
 use std::path::Component;

@@ -34,29 +34,19 @@ use tokio::sync::RwLock;
 use tracing::instrument;
 use wax::Program as _;
 
-/// Downloading packages
 pub mod download;
-/// Utility for downloading and linking in the correct order
 pub mod download_and_link;
-/// Hashing
+pub mod graph;
 pub mod hash;
-/// Linking packages
 pub mod linking;
-/// Lockfile
 pub mod lockfile;
-/// Manifest
 pub mod manifest;
-/// Package names
 pub mod names;
-/// Patching packages
 #[cfg(feature = "patches")]
 pub mod patches;
 pub mod reporters;
-/// Resolving packages
 pub mod resolver;
-/// Running scripts
 pub mod scripts;
-/// Package sources
 pub mod source;
 pub(crate) mod util;
 

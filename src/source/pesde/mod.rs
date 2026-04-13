@@ -1,3 +1,4 @@
+//! pesde package source
 #![deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
 #![expect(deprecated)]
 use relative_path::RelativePathBuf;
@@ -63,9 +64,7 @@ use tokio::pin;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 
-/// The pesde package reference
 pub mod pkg_ref;
-/// The pesde dependency specifier
 pub mod specifier;
 /// Targets
 pub mod target;
@@ -369,7 +368,7 @@ impl PackageSource for PesdePackageSource {
 				continue;
 			}
 
-			let hash = store_in_cas(project.cas_dir(), entry)
+			let (_, hash) = store_in_cas(project.cas_dir(), entry)
 				.await
 				.map_err(errors::DownloadErrorKind::Store)?;
 			entries.insert(path, FsEntry::File(hash));

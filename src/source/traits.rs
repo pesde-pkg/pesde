@@ -1,3 +1,4 @@
+//! Traits for sources and packages
 use relative_path::RelativePathBuf;
 use semver::Version;
 

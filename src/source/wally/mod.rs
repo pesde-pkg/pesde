@@ -1,3 +1,4 @@
+//! Wally package source
 use crate::GixUrl;
 use crate::Project;
 use crate::hash::Hash;
@@ -44,9 +45,7 @@ use tracing::instrument;
 
 pub(crate) mod compat_util;
 pub(crate) mod manifest;
-/// The Wally package reference
 pub mod pkg_ref;
-/// The Wally dependency specifier
 pub mod specifier;
 
 /// The Wally package source
@@ -352,7 +351,7 @@ impl PackageSource for WallyPackageSource {
 
 			let entry_reader = archive.reader_without_entry(index).await?;
 
-			let hash = store_in_cas(project.cas_dir(), entry_reader.compat()).await?;
+			let (_, hash) = store_in_cas(project.cas_dir(), entry_reader.compat()).await?;
 
 			entries.insert(relative_path, FsEntry::File(hash));
 		}

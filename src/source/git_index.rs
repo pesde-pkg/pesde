@@ -1,3 +1,4 @@
+//! Git index-based package source utilities
 #![allow(async_fn_in_trait)]
 
 use crate::GixUrl;

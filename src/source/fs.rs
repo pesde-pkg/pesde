@@ -1,3 +1,4 @@
+//! Packages' filesystems
 use crate::hash::Hash;
 use crate::hash::HashAlgorithm;
 use crate::source::ADDITIONAL_FORBIDDEN_FILES;
@@ -70,8 +71,10 @@ async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
 	fs::set_permissions(path, permissions).await
 }
 
-pub(crate) fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
-	let (prefix, rest) = hash.hash().split_at(hash.optimal_prefix_length());
+fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
+	let (prefix, rest) = hash
+		.hash()
+		.split_at(hash.algorithm().optimal_prefix_length());
 	cas_dir
 		.join(hash.algorithm().to_string())
 		.join(prefix)
@@ -81,8 +84,10 @@ pub(crate) fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
 pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
 	cas_dir: impl AsRef<Path>,
 	mut contents: R,
-) -> std::io::Result<Hash> {
-	let tmp_dir = cas_dir.as_ref().join(".tmp");
+) -> std::io::Result<(PathBuf, Hash)> {
+	let cas_dir = cas_dir.as_ref();
+
+	let tmp_dir = cas_dir.join(".tmp");
 	fs::create_dir_all(&tmp_dir).await?;
 
 	let hash_algorithm = HashAlgorithm::default();
@@ -110,7 +115,7 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
 
 	let hash = Hash::from_hash_bytes(hash_algorithm, hasher.finalize());
 
-	let cas_path = cas_path(&hash, cas_dir.as_ref());
+	let cas_path = cas_path(&hash, cas_dir);
 	fs::create_dir_all(cas_path.parent().unwrap()).await?;
 
 	match temp_path.persist_noclobber(&cas_path) {
@@ -121,7 +126,7 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
 		Err(e) => return Err(e.error),
 	}
 
-	Ok(hash)
+	Ok((cas_path, hash))
 }
 
 async fn package_fs_cas(

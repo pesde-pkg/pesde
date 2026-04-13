@@ -1,3 +1,4 @@
+//! Downloading packages
 use crate::Project;
 use crate::RefreshedSources;
 use crate::reporters::DownloadProgressReporter as _;

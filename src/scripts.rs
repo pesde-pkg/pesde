@@ -1,3 +1,4 @@
+//! Running scripts
 use croshet::ShellPipeReader;
 use croshet::ShellPipeWriter;
 use std::convert::Infallible;

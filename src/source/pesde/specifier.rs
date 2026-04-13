@@ -1,3 +1,4 @@
+//! pesde dependency specifier
 use super::target::TargetKind;
 use crate::names::PackageName;
 use crate::source::DependencySpecifier;

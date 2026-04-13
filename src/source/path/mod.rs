@@ -1,4 +1,4 @@
-#![expect(deprecated)]
+//! Path package source
 use crate::MANIFEST_FILE_NAME;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
@@ -30,9 +30,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use tracing::instrument;
 
-/// The path package reference
 pub mod pkg_ref;
-/// The path dependency specifier
 pub mod specifier;
 
 pub(crate) fn local_version() -> Version {

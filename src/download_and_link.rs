@@ -1,15 +1,16 @@
+//! Full project setup process - downloading packages and linking them
 use crate::Importer;
 use crate::LINK_LIB_NO_FILE_FOUND;
 use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::download::DownloadGraphOptions;
+use crate::graph::DependencyGraph;
+use crate::graph::DependencyGraphNode;
 use crate::linking::generator::get_file_types;
 use crate::manifest::DependencyType;
 use crate::reporters::DownloadsReporter;
 use crate::reporters::PatchesReporter;
-use crate::resolver::DependencyGraph;
-use crate::resolver::DependencyGraphNode;
 use crate::source::RealmExt as _;
 use crate::source::ids::PackageId;
 use crate::source::traits::GetExportsOptions;

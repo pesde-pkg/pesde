@@ -1,3 +1,4 @@
+//! Manifest
 use crate::GixUrl;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;

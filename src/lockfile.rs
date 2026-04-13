@@ -1,5 +1,5 @@
-#![allow(deprecated)]
-use crate::resolver::DependencyGraph;
+//! Lockfile
+use crate::graph::DependencyGraph;
 use serde::Deserialize;
 use serde::Serialize;
 

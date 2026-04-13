@@ -1,3 +1,4 @@
+//! Hashing
 use std::fmt::Display;
 use std::str::FromStr;
 
@@ -23,6 +24,12 @@ impl HashAlgorithm {
 		match self {
 			HashAlgorithm::Sha256 => Box::new(Sha256::default()),
 		}
+	}
+
+	/// Returns the optimal prefix length of the hash for storage in the CAS
+	#[must_use]
+	pub fn optimal_prefix_length(self) -> usize {
+		2
 	}
 }
 
@@ -89,12 +96,6 @@ impl Hash {
 	#[must_use]
 	pub fn hash(&self) -> &str {
 		&self.hash
-	}
-
-	/// Returns the optimal prefix length of the hash for storage in the CAS
-	#[must_use]
-	pub fn optimal_prefix_length(&self) -> usize {
-		2
 	}
 }
 

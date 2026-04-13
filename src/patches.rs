@@ -1,3 +1,4 @@
+//! Patching packages
 use crate::MANIFEST_FILE_NAME;
 use crate::reporters::PatchProgressReporter as _;
 use crate::reporters::PatchesReporter;

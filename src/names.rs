@@ -1,3 +1,4 @@
+//! Package names
 #![expect(deprecated)]
 use crate::ser_display_deser_fromstr;
 use std::fmt::Display;

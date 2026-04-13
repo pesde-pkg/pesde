@@ -1,3 +1,4 @@
+//! Package identifiers for various contexts
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRefs;
 use crate::source::PackageSources;

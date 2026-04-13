@@ -1,3 +1,4 @@
+//! pesde package reference
 use std::fmt::Display;
 use std::str::FromStr;
 
