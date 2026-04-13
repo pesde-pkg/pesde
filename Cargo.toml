@@ -97,6 +97,7 @@ async-trait = "0.1.89"
 
 digest = "0.10.7"
 sha2 = "0.10.9"
+hex = "0.4.3"
 
 # TODO: remove this when gitoxide adds support for creating & applying diffs
 git2 = { version = "0.20.4", optional = true }

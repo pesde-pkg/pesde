@@ -105,7 +105,7 @@ impl GitPackageSource {
 	}
 
 	fn as_hash(&self) -> Hash {
-		Hash::from_bytes(Default::default(), self.repo_url.to_string().into_bytes())
+		Hash::from_bytes(Default::default(), self.repo_url.to_string())
 	}
 }
 

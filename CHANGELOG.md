@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Patches now apply to an entire workspace and must be specified in the root by @daimond113
 - Always recheck peer dependencies, even if reusing lockfile by @daimond113
 - String requires are now always used, even for Wally packages by @daimond113
-    - This is possible
-because luau-lsp started using the sourcemap for string requires
+    - This is possible because luau-lsp started using the sourcemap for string
+    requires
 - In line with string requires, the `place` key of the manifest has been renamed
 to `absolute_paths` and is now used for building string requires by @daimond113
 - The CAS has been restructured and now has support for versioning by @daimond113

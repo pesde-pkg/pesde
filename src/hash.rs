@@ -1,7 +1,6 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use digest::Digest as _;
 use digest::DynDigest;
 use sha2::Sha256;
 
@@ -9,6 +8,7 @@ use crate::ser_display_deser_fromstr;
 
 /// Hash algorithms that are supported for verifying the integrity of data
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
 pub enum HashAlgorithm {
 	/// The SHA-256 hash algorithm
 	#[default]
@@ -56,19 +56,27 @@ pub struct Hash {
 ser_display_deser_fromstr!(Hash);
 
 impl Hash {
-	/// Creates a new hash from the given algorithm and hash value
+	/// Creates a new Hash from the given algorithm and hash value
 	#[must_use]
 	pub fn new(algorithm: HashAlgorithm, hash: String) -> Self {
 		Self { algorithm, hash }
 	}
 
-	/// Creates a new hash from the given algorithm and bytes
+	/// Creates a new Hash from the given algorithm and hash bytes
 	#[must_use]
-	pub fn from_bytes(algorithm: HashAlgorithm, bytes: impl AsRef<[u8]>) -> Self {
+	pub fn from_hash_bytes(algorithm: HashAlgorithm, bytes: impl AsRef<[u8]>) -> Self {
 		Self {
 			algorithm,
-			hash: format!("{:x}", Sha256::digest(bytes.as_ref())),
+			hash: hex::encode(bytes),
 		}
+	}
+
+	/// Creates a new Hash from the given algorithm and bytes
+	#[must_use]
+	pub fn from_bytes(algorithm: HashAlgorithm, bytes: impl AsRef<[u8]>) -> Self {
+		let mut hasher = algorithm.hasher();
+		hasher.update(bytes.as_ref());
+		Self::from_hash_bytes(algorithm, hasher.finalize())
 	}
 
 	/// Returns the hash algorithm used to create this hash
