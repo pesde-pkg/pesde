@@ -11,15 +11,12 @@ use crate::reporters::PatchesReporter;
 use crate::resolver::DependencyGraph;
 use crate::resolver::DependencyGraphNode;
 use crate::source::RealmExt as _;
-use crate::source::fs::FsEntry;
-use crate::source::fs::PackageFs;
 use crate::source::ids::PackageId;
 use crate::source::traits::GetExportsOptions;
 use crate::source::traits::PackageExports;
 use crate::source::traits::PackageSource as _;
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
-use sha2::Digest as _;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -150,7 +147,7 @@ impl Project {
 	)]
 	pub async fn download_and_link<Reporter>(
 		&self,
-		graph: &mut DependencyGraph,
+		graph: &DependencyGraph,
 		options: DownloadAndLinkOptions<Reporter>,
 	) -> Result<HashMap<PackageId, Arc<PackageExports>>, errors::DownloadAndLinkError>
 	where
@@ -296,23 +293,6 @@ impl Project {
 			let mut tasks = JoinSet::new();
 
 			while let Some((id, fs)) = downloaded.try_next().await? {
-				if let PackageFs::Cached(entries) = &fs {
-					let mut checksum = sha2::Sha256::new();
-					for (path, entry) in entries {
-						checksum.update(path.as_str());
-						match entry {
-							FsEntry::Directory => checksum.update(b"directory"),
-							FsEntry::File(hash) => checksum.update(hash),
-						}
-					}
-					let checksum = checksum.finalize();
-					let checksum = format!("{checksum:x}");
-					let node = graph.nodes.get_mut(&id).unwrap();
-					if !node.checksum.is_empty() && node.checksum != checksum {
-						return Err(errors::DownloadAndLinkErrorKind::BadChecksum(id).into());
-					}
-					node.checksum = checksum;
-				}
 				let fs = Arc::new(fs);
 
 				for importer in &graph_to_download[&id] {

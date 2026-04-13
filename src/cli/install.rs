@@ -109,7 +109,7 @@ pub async fn install(
 			root_progress.reset();
 			root_progress.set_message("resolve");
 
-			let (old_graph, mut graph) = get_graph_internal(
+			let (old_graph, graph) = get_graph_internal(
 				project,
 				&refreshed_sources,
 				options.locked,
@@ -177,7 +177,7 @@ pub async fn install(
 
 				project
 					.download_and_link(
-						&mut graph,
+						&graph,
 						DownloadAndLinkOptions::<CliReporter>::new(reqwest.clone())
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources.clone())

@@ -2967,6 +2967,7 @@ dependencies = [
  "clap",
  "console",
  "croshet",
+ "digest",
  "dirs",
  "fs-err",
  "full_moon",

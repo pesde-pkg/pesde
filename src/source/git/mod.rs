@@ -5,6 +5,7 @@ use crate::Project;
 use crate::Subproject;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
+use crate::hash::Hash;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::Manifest;
@@ -37,7 +38,6 @@ use crate::source::traits::ResolveOptions;
 use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
 use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
-use crate::util::hash;
 use crate::util::simplify_path;
 use crate::version_matches;
 use fs_err::tokio as fs;
@@ -50,7 +50,6 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::hash::Hash;
 use std::path::PathBuf;
 use std::str::FromStr;
 use tokio::task::JoinSet;
@@ -85,10 +84,12 @@ impl FromStr for GitPackageSource {
 
 impl GitBasedSource for GitPackageSource {
 	fn path(&self, project: &Project) -> PathBuf {
+		let hash = self.as_hash();
 		project
 			.data_dir()
 			.join("git_repos")
-			.join(hash(self.as_bytes()))
+			.join(hash.algorithm().to_string())
+			.join(hash.hash())
 	}
 
 	fn repo_url(&self) -> &GixUrl {
@@ -103,8 +104,8 @@ impl GitPackageSource {
 		Self { repo_url }
 	}
 
-	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.to_string().into_bytes()
+	fn as_hash(&self) -> Hash {
+		Hash::from_bytes(Default::default(), self.repo_url.to_string().into_bytes())
 	}
 }
 
@@ -366,8 +367,8 @@ impl PackageSource for GitPackageSource {
 
 		let index_file = project
 			.cas_dir()
-			.join("git_index")
-			.join(hash(self.as_bytes()))
+			.join("index")
+			.join("git")
 			.join(&pkg_ref.tree_id);
 
 		let repo_url = self.repo_url.clone();

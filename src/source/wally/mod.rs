@@ -1,5 +1,6 @@
 use crate::GixUrl;
 use crate::Project;
+use crate::hash::Hash;
 use crate::names::wally::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::reporters::response_to_async_read;
@@ -25,7 +26,7 @@ use crate::source::traits::ResolveOptions;
 use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
 use crate::source::wally::pkg_ref::WallyPackageRef;
-use crate::util::hash;
+use crate::util::ToEscaped as _;
 use crate::version_matches;
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
@@ -71,10 +72,12 @@ impl FromStr for WallyPackageSource {
 
 impl GitBasedSource for WallyPackageSource {
 	fn path(&self, project: &Project) -> PathBuf {
+		let hash = self.as_hash();
 		project
 			.data_dir()
 			.join("wally_indices")
-			.join(hash(self.as_bytes()))
+			.join(hash.algorithm().to_string())
+			.join(hash.hash())
 	}
 
 	fn repo_url(&self) -> &GixUrl {
@@ -89,8 +92,8 @@ impl WallyPackageSource {
 		Self { repo_url }
 	}
 
-	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.to_string().into_bytes()
+	fn as_hash(&self) -> Hash {
+		Hash::from_bytes(Default::default(), self.repo_url.to_string().into_bytes())
 	}
 
 	/// Reads the config file
@@ -266,8 +269,9 @@ impl PackageSource for WallyPackageSource {
 		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
-			.join("wally_index")
-			.join(hash(self.as_bytes()))
+			.join("index")
+			.join("wally")
+			.join(self.repo_url.to_string().escaped())
 			.join(pkg_ref.name.escaped())
 			.join(version.to_string());
 

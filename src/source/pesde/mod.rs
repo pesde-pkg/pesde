@@ -10,7 +10,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::hash::Hash;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -19,6 +18,7 @@ use specifier::PesdeDependencySpecifier;
 
 use crate::GixUrl;
 use crate::Project;
+use crate::hash::Hash;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::Manifest;
@@ -54,7 +54,7 @@ use crate::source::traits::RefreshOptions;
 use crate::source::traits::ResolveOptions;
 use crate::source::wally::specifier::IndexWallyDependencySpecifier;
 use crate::source::wally::specifier::WallyDependencySpecifier;
-use crate::util::hash;
+use crate::util::ToEscaped as _;
 use crate::version_matches;
 use fs_err::tokio as fs;
 use futures::StreamExt as _;
@@ -93,10 +93,12 @@ impl FromStr for PesdePackageSource {
 
 impl GitBasedSource for PesdePackageSource {
 	fn path(&self, project: &Project) -> PathBuf {
+		let hash = self.as_hash();
 		project
 			.data_dir()
 			.join("indices")
-			.join(hash(self.as_bytes()))
+			.join(hash.algorithm().to_string())
+			.join(hash.hash())
 	}
 
 	fn repo_url(&self) -> &GixUrl {
@@ -111,8 +113,8 @@ impl PesdePackageSource {
 		Self { repo_url }
 	}
 
-	fn as_bytes(&self) -> Vec<u8> {
-		self.repo_url.to_string().into_bytes()
+	fn as_hash(&self) -> Hash {
+		Hash::from_bytes(Default::default(), self.repo_url.to_string().into_bytes())
 	}
 
 	/// Reads the config file
@@ -286,7 +288,8 @@ impl PackageSource for PesdePackageSource {
 		let index_file = project
 			.cas_dir()
 			.join("index")
-			.join(hash(self.as_bytes()))
+			.join("pesde")
+			.join(self.repo_url.to_string().escaped())
 			.join(pkg_ref.name.escaped())
 			.join(version.to_string())
 			.join(pkg_ref.target.to_string());

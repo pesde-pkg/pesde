@@ -38,6 +38,8 @@ use wax::Program as _;
 pub mod download;
 /// Utility for downloading and linking in the correct order
 pub mod download_and_link;
+/// Hashing
+pub mod hash;
 /// Linking packages
 pub mod linking;
 /// Lockfile
@@ -174,12 +176,11 @@ impl Project {
 		auth_config: AuthConfig,
 	) -> Self {
 		let dir = dir.into();
-		let cas_dir = cas_dir.into();
 
 		Project {
 			shared: ProjectShared {
 				dir,
-				cas_dir,
+				cas_dir: cas_dir.into().join("v1"),
 				data_dir: data_dir.into(),
 				auth_config,
 				manifests: Default::default(),

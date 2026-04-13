@@ -11,12 +11,16 @@ use futures::Stream;
 use futures::StreamExt as _;
 use futures::future::BoxFuture;
 use pesde::Subproject;
+use pesde::hash::Hash;
+use pesde::hash::HashAlgorithm;
 use pesde::source::fs::FsEntry;
 use pesde::source::fs::PackageFs;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr as _;
+use std::sync::Arc;
 use tokio::task::JoinSet;
 
 #[derive(Debug, Args)]
@@ -91,79 +95,62 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 	anyhow::bail!("unsupported platform")
 }
 
+// CAS structure:
+// /<hash algorithm>/<first part of hash>/<rest of hash>
+// /index/pesde/hash/name/version/target
+// /index/wally/hash/name/version
+// /index/git/hash
+// the deepest part of the non hash paths is a file containing the serialized PackageFs
+
 async fn discover_cas_packages(cas_dir: &Path) -> anyhow::Result<HashMap<PathBuf, PackageFs>> {
 	fn read_entry(
-		entry: fs::DirEntry,
+		path: PathBuf,
 	) -> BoxFuture<'static, anyhow::Result<HashMap<PathBuf, PackageFs>>> {
 		async move {
-			if entry
-				.metadata()
-				.await
-				.context("failed to read entry metadata")?
-				.is_dir()
-			{
-				let mut tasks = read_dir_stream(&entry.path())
-					.await
-					.context("failed to read entry directory")?
-					.map(|entry| async move {
-						read_entry(entry.context("failed to read inner cas index dir entry")?).await
-					})
-					.collect::<JoinSet<Result<_, anyhow::Error>>>()
-					.await;
+			match fs::read_to_string(&path).await {
+				Ok(contents) => {
+					let fs =
+						toml::from_str(&contents).context("failed to deserialize PackageFs")?;
 
-				let mut res = HashMap::new();
-				while let Some(entry) = tasks.join_next().await {
-					res.extend(entry.unwrap()?);
+					return Ok(HashMap::from([(path, fs)]));
 				}
-
-				return Ok(res);
+				Err(e) if e.kind() == std::io::ErrorKind::IsADirectory => {}
+				Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
+				Err(e) => return Err(e).context("failed to read PackageFs file"),
 			}
 
-			let contents = fs::read_to_string(entry.path()).await?;
-			let fs = toml::from_str(&contents).context("failed to deserialize PackageFs")?;
-
-			Ok(HashMap::from([(entry.path(), fs)]))
-		}
-		.boxed()
-	}
-
-	let mut tasks = ["index", "wally_index", "git_index"]
-		.into_iter()
-		.map(|index| cas_dir.join(index))
-		.map(|index| async move {
-			let mut res = HashMap::new();
-
-			let tasks = match read_dir_stream(&index).await {
-				Ok(tasks) => tasks,
-				Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(res),
-				Err(e) => return Err(e).context("failed to read cas index directory"),
-			};
-
-			let mut tasks = tasks
+			let mut tasks = read_dir_stream(&path)
+				.await
+				.context("failed to read entry directory")?
 				.map(|entry| async move {
-					read_entry(entry.context("failed to read cas index dir entry")?).await
+					read_entry(
+						entry
+							.context("failed to read inner cas index dir entry")?
+							.path(),
+					)
+					.await
 				})
 				.collect::<JoinSet<Result<_, anyhow::Error>>>()
 				.await;
 
-			while let Some(task) = tasks.join_next().await {
-				res.extend(task.unwrap()?);
+			let mut res = HashMap::new();
+			while let Some(entry) = tasks.join_next().await {
+				res.extend(entry.unwrap()?);
 			}
 
 			Ok(res)
-		})
-		.collect::<JoinSet<Result<_, anyhow::Error>>>();
-
-	let mut cas_entries = HashMap::new();
-
-	while let Some(task) = tasks.join_next().await {
-		cas_entries.extend(task.unwrap()?);
+		}
+		.boxed()
 	}
+
+	let cas_entries = read_entry(cas_dir.join("index"))
+		.await
+		.context("failed to read index directory")?;
 
 	Ok(cas_entries)
 }
 
-async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
+async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<Hash>> {
 	let mut res = HashSet::new();
 
 	let tasks = match read_dir_stream(cas_dir).await {
@@ -173,57 +160,76 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
 	};
 
 	let mut tasks = tasks
-		.map(|cas_entry| async move {
-			let cas_entry = cas_entry.context("failed to read cas dir entry")?;
-			let prefix = cas_entry.file_name();
-			let Some(prefix) = prefix.to_str() else {
-				return Ok(None);
-			};
-			// we only want hash directories
-			if prefix.len() != 2 {
+		.map(|algorithm_entry| async move {
+			let algorithm_entry = algorithm_entry.context("failed to read cas dir entry")?;
+			let algorithm = algorithm_entry.file_name();
+			let algorithm = algorithm.to_str().context("non-UTF-8 cas algorithm name")?;
+			if algorithm == "index" {
 				return Ok(None);
 			}
 
-			let mut tasks = read_dir_stream(&cas_entry.path())
+			let Ok(algorithm) = HashAlgorithm::from_str(algorithm) else {
+				tracing::warn!("skipping unrecognized hash algorithm directory `{algorithm}`");
+				return Ok(None);
+			};
+
+			let mut tasks = read_dir_stream(&algorithm_entry.path())
 				.await
 				.context("failed to read hash directory")?
-				.map(|hash_entry| {
-					let prefix = prefix.to_string();
-					async move {
-						let hash_entry = hash_entry.context("failed to read hash dir entry")?;
-						let hash = hash_entry.file_name();
-						let hash = hash.to_str().expect("non-UTF-8 hash");
-						let hash = format!("{prefix}{hash}");
+				.map(|prefix_entry| async move {
+					let prefix_entry = prefix_entry.context("failed to read prefix dir entry")?;
+					let prefix = prefix_entry.file_name();
+					let prefix: Arc<str> = prefix.to_str().context("non-UTF-8 hash prefix")?.into();
 
-						let path = hash_entry.path();
-						let nlinks = get_nlinks(&path)
-							.await
-							.context("failed to count file usage")?;
-						if nlinks > 1 {
-							return Ok(None);
-						}
+					let mut tasks = read_dir_stream(&prefix_entry.path())
+						.await
+						.context("failed to read prefix directory")?
+						.map(|rest_entry| (rest_entry, prefix.clone()))
+						.map(|(rest_entry, prefix)| async move {
+							let rest_entry = rest_entry.context("failed to read rest dir entry")?;
+							let rest = rest_entry.file_name();
+							let rest = rest.to_str().context("non-UTF-8 hash rest")?;
+							let path = rest_entry.path();
 
-						fs::remove_file(&path)
-							.await
-							.context("failed to remove unused file")?;
+							let nlinks = get_nlinks(&path)
+								.await
+								.context("failed to count file usage")?;
+							if nlinks > 1 {
+								return Ok(None);
+							}
 
-						if let Some(parent) = path.parent() {
-							remove_empty_dir(parent).await?;
-						}
+							let hash = Hash::new(algorithm, format!("{prefix}{rest}"));
 
-						Ok(Some(hash))
+							fs::remove_file(&path)
+								.await
+								.context("failed to remove unused file")?;
+
+							if let Some(parent) = path.parent() {
+								remove_empty_dir(parent).await?;
+							}
+
+							Ok(Some(hash))
+						})
+						.collect::<JoinSet<Result<_, anyhow::Error>>>()
+						.await;
+
+					let mut removed_hashes = HashSet::new();
+					while let Some(removed_hash) = tasks.join_next().await {
+						let Some(hash) = removed_hash.unwrap()? else {
+							continue;
+						};
+
+						removed_hashes.insert(hash);
 					}
+
+					Ok(removed_hashes)
 				})
 				.collect::<JoinSet<Result<_, anyhow::Error>>>()
 				.await;
 
 			let mut removed_hashes = HashSet::new();
-			while let Some(removed_hash) = tasks.join_next().await {
-				let Some(hash) = removed_hash.unwrap()? else {
-					continue;
-				};
-
-				removed_hashes.insert(hash);
+			while let Some(hashes) = tasks.join_next().await {
+				removed_hashes.extend(hashes.unwrap()?);
 			}
 
 			Ok(Some(removed_hashes))
@@ -244,13 +250,6 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<String>> {
 
 impl PruneCommand {
 	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
-		// CAS structure:
-		// /2 first chars of hash/rest of hash
-		// /index/hash/name/version/target
-		// /wally_index/hash/name/version
-		// /git_index/hash/hash
-		// the last thing in the path is the serialized PackageFs
-
 		let (cas_entries, removed_hashes) = run_with_reporter(|_, root_progress, _| async {
 			let root_progress = root_progress;
 			root_progress.reset();

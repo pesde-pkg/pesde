@@ -158,7 +158,7 @@ impl ExecuteCommand {
 					subproject.project().auth_config().clone(),
 				);
 
-				let mut graph = project
+				let graph = project
 					.dependency_graph(None, &refreshed_sources, true)
 					.await
 					.context("failed to build dependency graph")?
@@ -166,7 +166,7 @@ impl ExecuteCommand {
 
 				project
 					.download_and_link(
-						&mut graph,
+						&graph,
 						DownloadAndLinkOptions::<CliReporter<Stderr>>::new(reqwest.clone())
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources)

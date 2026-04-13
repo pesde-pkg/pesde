@@ -1,3 +1,5 @@
+use crate::hash::Hash;
+use crate::hash::HashAlgorithm;
 use crate::source::ADDITIONAL_FORBIDDEN_FILES;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
@@ -8,8 +10,6 @@ use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
-use sha2::Digest as _;
-use sha2::Sha256;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::path::Path;
@@ -26,7 +26,7 @@ use tracing::instrument;
 pub enum FsEntry {
 	/// A file with the given hash
 	#[serde(rename = "f")]
-	File(String),
+	File(Hash),
 	/// A directory
 	#[serde(rename = "d")]
 	Directory,
@@ -70,18 +70,23 @@ async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
 	fs::set_permissions(path, permissions).await
 }
 
-pub(crate) fn cas_path(hash: &str, cas_dir: &Path) -> PathBuf {
-	let (prefix, rest) = hash.split_at(2);
-	cas_dir.join(prefix).join(rest)
+pub(crate) fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
+	let (prefix, rest) = hash.hash().split_at(hash.optimal_prefix_length());
+	cas_dir
+		.join(hash.algorithm().to_string())
+		.join(prefix)
+		.join(rest)
 }
 
 pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
 	cas_dir: impl AsRef<Path>,
 	mut contents: R,
-) -> std::io::Result<String> {
+) -> std::io::Result<Hash> {
 	let tmp_dir = cas_dir.as_ref().join(".tmp");
 	fs::create_dir_all(&tmp_dir).await?;
-	let mut hasher = Sha256::new();
+
+	let hash_algorithm = HashAlgorithm::default();
+	let mut hasher = hash_algorithm.hasher();
 	let mut buf = [0; 8 * 1024];
 
 	let temp_path = Builder::new()
@@ -103,7 +108,7 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
 		file_writer.write_all(bytes).await?;
 	}
 
-	let hash = format!("{:x}", hasher.finalize());
+	let hash = Hash::from_bytes(hash_algorithm, hasher.finalize());
 
 	let cas_path = cas_path(&hash, cas_dir.as_ref());
 	fs::create_dir_all(cas_path.parent().unwrap()).await?;
