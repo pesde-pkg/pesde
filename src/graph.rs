@@ -6,6 +6,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::Importer;
+use crate::hash::Hash;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::source::DependencySpecifiers;
@@ -94,8 +95,8 @@ pub struct DependencyGraphNode {
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub dependencies: BTreeMap<Alias, DependencyGraphNodeDependency>,
 	/// The checksum of the package
-	#[serde(default, skip_serializing_if = "String::is_empty")]
-	pub checksum: String,
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub checksum: Option<Hash>,
 	/// The structure kind of the package
 	pub structure_kind: StructureKind,
 }
