@@ -1,6 +1,6 @@
 [package]
 name = "pesde-registry"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2024"
 publish = false
 
@@ -8,4 +8,21 @@ publish = false
 workspace = true
 
 [dependencies]
+actix-web = "4.13.0"
+actix-cors = "0.7.1"
+sqlx = { version = "0.8.6", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "macros",
+    "migrate",
+    "sqlite",
+] }
+fs-err = { version = "3.3.0", features = ["tokio"] }
+thiserror = "2.0.18"
+dotenvy = "0.15.7"
+
+tracing = { version = "0.1.44", features = ["attributes"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-actix-web = "0.7.21"
+
 pesde = { path = "..", default-features = false }
