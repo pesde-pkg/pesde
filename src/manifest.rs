@@ -4,9 +4,7 @@ use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::PackageExports;
 use crate::source::Realm;
-#[cfg(feature = "patches")]
 use crate::source::ids::PackageId;
-#[cfg(feature = "patches")]
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
