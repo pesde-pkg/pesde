@@ -9,6 +9,7 @@ use crate::graph::DependencyGraph;
 use crate::graph::DependencyGraphNode;
 use crate::linking::generator::get_file_types;
 use crate::manifest::DependencyType;
+
 use crate::reporters::DownloadsReporter;
 use crate::reporters::PatchesReporter;
 use crate::source::PackageExports;
@@ -21,7 +22,6 @@ use futures::TryStreamExt as _;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::sync::Arc;
 use tokio::pin;
 use tokio::task::JoinSet;
@@ -335,7 +335,7 @@ impl Project {
 							(
 								id,
 								importers,
-								Arc::<Path>::from(patch_path.to_path(self.dir())),
+								Arc::<std::path::Path>::from(patch_path.to_path(self.dir())),
 							)
 						})
 					})
