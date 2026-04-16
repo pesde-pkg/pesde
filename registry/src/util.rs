@@ -1,7 +1,6 @@
 use fs_err::tokio as fs;
 use std::env::VarError;
 use std::fmt::Display;
-use std::path::PathBuf;
 use std::str::FromStr;
 
 pub struct Env {
