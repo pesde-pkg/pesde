@@ -7,6 +7,7 @@ use crate::names::wally::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::reporters::response_to_async_read;
 use crate::ser_display_deser_fromstr;
+use crate::source::DependencySpecifiers;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
 use crate::source::PackageExports;
@@ -124,8 +125,6 @@ impl WallyPackageSource {
 }
 
 impl PackageSource for WallyPackageSource {
-	type Specifier = specifier::WallyDependencySpecifier;
-	type Ref = WallyPackageRef;
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
@@ -140,9 +139,13 @@ impl PackageSource for WallyPackageSource {
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
-		specifier: &Self::Specifier,
+		specifier: &DependencySpecifiers,
 		refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
+		let DependencySpecifiers::Wally(specifier) = specifier else {
+			unreachable!("invalid specifier type for Wally package source");
+		};
+
 		let mut string = self
 			.read_index_file(subproject.project(), specifier.name.clone())
 			.await?;
@@ -235,11 +238,15 @@ impl PackageSource for WallyPackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		project: &Project,
-		pkg_ref: &Self::Ref,
+		pkg_ref: &PackageRefs,
 		reporter: Arc<R>,
 		version: &Version,
 		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
+		let PackageRefs::Wally(pkg_ref) = pkg_ref else {
+			unreachable!("invalid package ref type for Wally package source");
+		};
+
 		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
@@ -351,7 +358,7 @@ impl PackageSource for WallyPackageSource {
 	async fn get_exports(
 		&self,
 		project: &Project,
-		_pkg_ref: &Self::Ref,
+		_pkg_ref: &PackageRefs,
 		path: &Path,
 		_version: &Version,
 		_structure_kind: &StructureKind,

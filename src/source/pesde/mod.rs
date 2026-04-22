@@ -151,8 +151,6 @@ impl PesdePackageSource {
 }
 
 impl PackageSource for PesdePackageSource {
-	type Specifier = PesdeDependencySpecifier;
-	type Ref = PesdePackageRef;
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
@@ -167,9 +165,13 @@ impl PackageSource for PesdePackageSource {
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
-		specifier: &Self::Specifier,
+		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
+		let DependencySpecifiers::Pesde(specifier) = specifier else {
+			unreachable!("invalid specifier type for pesde package source");
+		};
+
 		let Some(IndexFile { entries, .. }) = self
 			.read_index_file(specifier.name.clone(), subproject.project())
 			.await?
@@ -259,11 +261,15 @@ impl PackageSource for PesdePackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		project: &Project,
-		pkg_ref: &Self::Ref,
+		pkg_ref: &PackageRefs,
 		reporter: Arc<R>,
 		version: &Version,
 		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
+		let PackageRefs::Pesde(pkg_ref) = pkg_ref else {
+			unreachable!("invalid package ref type for pesde package source");
+		};
+
 		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
@@ -377,11 +383,15 @@ impl PackageSource for PesdePackageSource {
 	async fn get_exports(
 		&self,
 		project: &Project,
-		pkg_ref: &Self::Ref,
+		pkg_ref: &PackageRefs,
 		_path: &Path,
 		version: &Version,
 		_structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
+		let PackageRefs::Pesde(pkg_ref) = pkg_ref else {
+			unreachable!("invalid package ref type for pesde package source");
+		};
+
 		let Some(IndexFile { mut entries, .. }) =
 			self.read_index_file(pkg_ref.name.clone(), project).await?
 		else {

@@ -53,10 +53,6 @@ pub struct PackageExports {
 
 /// A source of packages
 pub trait PackageSource: Debug {
-	/// The specifier type for this source
-	type Specifier: DependencySpecifier;
-	/// The reference type for this source
-	type Ref: PackageRef;
 	/// The error type for refreshing this source
 	type RefreshError: std::error::Error + Send + Sync + 'static;
 	/// The error type for resolving a package from this source
@@ -78,7 +74,7 @@ pub trait PackageSource: Debug {
 	fn resolve(
 		&self,
 		subproject: &Subproject,
-		specifier: &Self::Specifier,
+		specifier: &DependencySpecifiers,
 		refreshed_sources: &RefreshedSources,
 	) -> impl Future<Output = Result<ResolveResult, Self::ResolveError>> + Send;
 
@@ -86,7 +82,7 @@ pub trait PackageSource: Debug {
 	fn download<R: DownloadProgressReporter>(
 		&self,
 		project: &Project,
-		pkg_ref: &Self::Ref,
+		pkg_ref: &PackageRefs,
 		reporter: Arc<R>,
 		version: &Version,
 		structure_kind: &StructureKind,
@@ -96,7 +92,7 @@ pub trait PackageSource: Debug {
 	fn get_exports(
 		&self,
 		project: &Project,
-		pkg_ref: &Self::Ref,
+		pkg_ref: &PackageRefs,
 		path: &Path,
 		version: &Version,
 		structure_kind: &StructureKind,
@@ -376,8 +372,6 @@ macro_rules! impls {
 			ser_display_deser_fromstr!(PackageSources);
 
 			impl PackageSource for PackageSources {
-				type Specifier = DependencySpecifiers;
-				type Ref = PackageRefs;
 				type RefreshError = errors::RefreshError;
 				type ResolveError = errors::ResolveError;
 				type DownloadError = errors::DownloadError;
@@ -401,17 +395,15 @@ macro_rules! impls {
 				async fn resolve(
 					&self,
 					subproject: &Subproject,
-					specifier: &Self::Specifier,
+					specifier: &DependencySpecifiers,
 					refreshed_sources: &RefreshedSources,
 				) -> Result<ResolveResult, Self::ResolveError> {
-					match (self, specifier) {
+					match self {
 						$(
-							(PackageSources::$source(source), DependencySpecifiers::$source(specifier)) => {
+							PackageSources::$source(source) => {
 								source.resolve(subproject, specifier, refreshed_sources).await.map_err(errors::ResolveErrorKind::$source)
 							}
 						)+
-
-						_ => Err(errors::ResolveErrorKind::Mismatch.into()),
 					}
 					.map_err(Into::into)
 				}
@@ -419,19 +411,17 @@ macro_rules! impls {
 				async fn download<R: DownloadProgressReporter>(
 					&self,
 					project: &Project,
-					pkg_ref: &Self::Ref,
+					pkg_ref: &PackageRefs,
 					reporter: Arc<R>,
 					version: &Version,
 					structure_kind: &StructureKind,
 				) -> Result<PackageFs, Self::DownloadError> {
-					match (self, pkg_ref) {
+					match self {
 						$(
-							(PackageSources::$source(source), PackageRefs::$source(pkg_ref)) => {
+							PackageSources::$source(source) => {
 								source.download(project, pkg_ref, reporter, version, structure_kind).await.map_err(errors::DownloadErrorKind::$source)
 							}
 						)+
-
-						_ => Err(errors::DownloadErrorKind::Mismatch.into()),
 					}
 					.map_err(Into::into)
 				}
@@ -439,20 +429,18 @@ macro_rules! impls {
 				async fn get_exports(
 					&self,
 					project: &Project,
-					pkg_ref: &Self::Ref,
+					pkg_ref: &PackageRefs,
 					path: &Path,
 					version: &Version,
 					structure_kind: &StructureKind,
 				) -> Result<PackageExports, Self::GetExportsError> {
-					match (self, pkg_ref) {
+					match self {
 						$(
-							(PackageSources::$source(source), PackageRefs::$source(pkg_ref)) => source
+							PackageSources::$source(source) => source
 								.get_exports(project, pkg_ref, path, version, structure_kind)
 								.await
 								.map_err(errors::GetExportsErrorKind::$source),
 						)+
-
-						_ => Err(errors::GetExportsErrorKind::Mismatch.into()),
 					}
 					.map_err(Into::into)
 				}
@@ -551,10 +539,6 @@ macro_rules! impls {
 				#[thiserror_ext(newtype(name = ResolveError))]
 				#[non_exhaustive]
 				pub enum ResolveErrorKind {
-					/// The dependency specifier does not match the source (if using the CLI, this is a bug - file an issue)
-					#[error("mismatched dependency specifier for source")]
-					Mismatch,
-
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to resolve")]
 						#[error("error resolving {} package", stringify!([< $source:lower >]))]
@@ -567,10 +551,6 @@ macro_rules! impls {
 				#[thiserror_ext(newtype(name = DownloadError))]
 				#[non_exhaustive]
 				pub enum DownloadErrorKind {
-					/// The package ref does not match the source (if using the CLI, this is a bug - file an issue)
-					#[error("mismatched package ref for source")]
-					Mismatch,
-
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to download")]
 						#[error("error downloading {} package", stringify!([< $source:lower >]))]
@@ -583,10 +563,6 @@ macro_rules! impls {
 				#[thiserror_ext(newtype(name = GetExportsError))]
 				#[non_exhaustive]
 				pub enum GetExportsErrorKind {
-					/// The package ref does not match the source (if using the CLI, this is a bug - file an issue)
-					#[error("mismatched package ref for source")]
-					Mismatch,
-
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to get exports")]
 						#[error("error getting exports for {} package", stringify!([< $source:lower >]))]
