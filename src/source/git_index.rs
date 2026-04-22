@@ -3,7 +3,6 @@
 
 use crate::GixUrl;
 use crate::Project;
-use crate::source::traits::RefreshOptions;
 use fs_err::tokio as fs;
 use gix::remote::Direction;
 use std::fmt::Debug;
@@ -19,8 +18,8 @@ pub trait GitBasedSource {
 	fn repo_url(&self) -> &GixUrl;
 
 	/// Refreshes the repository
-	async fn refresh(&self, options: &RefreshOptions) -> Result<(), errors::RefreshError> {
-		let path = self.path(&options.project);
+	async fn refresh(&self, project: &Project) -> Result<(), errors::RefreshError> {
+		let path = self.path(project);
 		let repo_url = self.repo_url().clone();
 
 		if fs::metadata(&path).await.is_ok() {

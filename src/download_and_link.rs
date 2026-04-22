@@ -4,18 +4,16 @@ use crate::LINK_LIB_NO_FILE_FOUND;
 use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
 use crate::RefreshedSources;
-use crate::download::DownloadGraphOptions;
 use crate::graph::DependencyGraph;
 use crate::graph::DependencyGraphNode;
 use crate::linking::generator::get_file_types;
 use crate::manifest::DependencyType;
 use crate::reporters::DownloadsReporter;
 use crate::reporters::PatchesReporter;
+use crate::source::PackageExports;
+use crate::source::PackageSource as _;
 use crate::source::RealmExt as _;
 use crate::source::ids::PackageId;
-use crate::source::traits::GetExportsOptions;
-use crate::source::traits::PackageExports;
-use crate::source::traits::PackageSource as _;
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
 
@@ -55,8 +53,6 @@ impl InstallDependenciesMode {
 /// Options for downloading and linking.
 #[derive(Debug)]
 pub struct DownloadAndLinkOptions<Reporter = ()> {
-	/// The reqwest client.
-	pub reqwest: reqwest::Client,
 	/// The downloads reporter.
 	pub reporter: Option<Arc<Reporter>>,
 	/// The refreshed sources.
@@ -69,21 +65,29 @@ pub struct DownloadAndLinkOptions<Reporter = ()> {
 	pub force: bool,
 }
 
-impl<Reporter> DownloadAndLinkOptions<Reporter>
+impl<Reporter> Default for DownloadAndLinkOptions<Reporter>
 where
 	Reporter: DownloadsReporter + PatchesReporter + Send + Sync + 'static,
 {
-	/// Creates a new download options with the given reqwest client and reporter.
-	#[must_use]
-	pub fn new(reqwest: reqwest::Client) -> Self {
+	fn default() -> Self {
 		Self {
-			reqwest,
 			reporter: None,
 			refreshed_sources: Default::default(),
 			install_dependencies_mode: InstallDependenciesMode::All,
 			network_concurrency: NonZeroUsize::new(16).unwrap(),
 			force: false,
 		}
+	}
+}
+
+impl<Reporter> DownloadAndLinkOptions<Reporter>
+where
+	Reporter: DownloadsReporter + PatchesReporter + Send + Sync + 'static,
+{
+	/// Creates a new download options.
+	#[must_use]
+	pub fn new() -> Self {
+		Self::default()
 	}
 
 	/// Sets the downloads reporter.
@@ -128,7 +132,6 @@ where
 impl Clone for DownloadAndLinkOptions {
 	fn clone(&self) -> Self {
 		Self {
-			reqwest: self.reqwest.clone(),
 			reporter: self.reporter.clone(),
 			refreshed_sources: self.refreshed_sources.clone(),
 			install_dependencies_mode: self.install_dependencies_mode,
@@ -140,7 +143,6 @@ impl Clone for DownloadAndLinkOptions {
 
 impl Project {
 	/// Downloads a graph of dependencies and links them in the correct order
-	/// Fills the DependencyGraphNode::checksum field
 	#[instrument(
 		skip_all,
 		fields(install_dependencies = debug(options.install_dependencies_mode)),
@@ -155,15 +157,12 @@ impl Project {
 		Reporter: DownloadsReporter + PatchesReporter + 'static,
 	{
 		let DownloadAndLinkOptions {
-			reqwest,
 			reporter,
 			refreshed_sources,
 			install_dependencies_mode,
 			network_concurrency,
 			force,
 		} = options;
-
-		let reqwest = reqwest.clone();
 
 		if force {
 			let mut tasks = graph
@@ -189,14 +188,6 @@ impl Project {
 
 		// step 1. download dependencies
 		let graph_to_download = {
-			let mut download_graph_options = DownloadGraphOptions::<Reporter>::new(reqwest.clone())
-				.refreshed_sources(refreshed_sources.clone())
-				.network_concurrency(network_concurrency);
-
-			if let Some(reporter) = reporter.clone() {
-				download_graph_options = download_graph_options.reporter(reporter);
-			}
-
 			let mut importer_deps = HashMap::<PackageId, HashSet<Importer>>::new();
 			let mut visited = HashSet::new();
 			let mut queue = vec![];
@@ -287,7 +278,9 @@ impl Project {
 					.keys()
 					.map(|id| (id.clone(), graph.nodes[id].structure_kind.clone()))
 					.collect::<Vec<_>>(),
-				download_graph_options.clone(),
+				reporter.as_ref(),
+				&refreshed_sources,
+				network_concurrency,
 			)?;
 			pin!(downloaded);
 
@@ -409,22 +402,18 @@ impl Project {
 							.dependencies_dir()
 							.join(graph.realm_of(subproject.importer(), id).packages_dir())
 							.join(PACKAGES_CONTAINER_NAME)
-							.join(DependencyGraphNode::container_dir(id, &structure_kind))
-							.into();
-						let project = self.clone();
+							.join(DependencyGraphNode::container_dir(id, &structure_kind));
 						let id = id.clone();
 
 						async move {
 							let exports = id
 								.source()
 								.get_exports(
+									subproject.project(),
 									id.pkg_ref(),
-									&GetExportsOptions {
-										project,
-										path: install_path,
-										version: id.version(),
-										structure_kind: &structure_kind,
-									},
+									&install_path,
+									id.version(),
+									&structure_kind,
 								)
 								.await?;
 

@@ -5,9 +5,8 @@
 
 use crate::lockfile::Lockfile;
 use crate::manifest::Manifest;
+use crate::source::PackageSource as _;
 use crate::source::PackageSources;
-use crate::source::traits::PackageSource as _;
-use crate::source::traits::RefreshOptions;
 use fs_err::tokio as fs;
 use gix::bstr::ByteSlice as _;
 use relative_path::RelativePath;
@@ -147,10 +146,11 @@ struct ProjectShared {
 	cas_dir: PathBuf,
 	auth_config: AuthConfig,
 	manifests: Mutex<HashMap<Importer, Arc<RwLock<Manifest>>>>,
+	reqwest: reqwest::Client,
 }
 
 /// The main struct of the pesde library, representing a project
-/// Unlike `ProjectShared`, this struct is `Send` and `Sync` and is cheap to clone because it is `Arc`-backed
+// Unlike `ProjectShared`, this struct is `Send` and `Sync` and is cheap to clone because it is `Arc`-backed
 #[derive(Debug, Clone)]
 pub struct Project {
 	shared: Arc<ProjectShared>,
@@ -164,6 +164,7 @@ impl Project {
 		data_dir: impl Into<PathBuf>,
 		cas_dir: impl Into<PathBuf>,
 		auth_config: AuthConfig,
+		reqwest: reqwest::Client,
 	) -> Self {
 		let dir = dir.into();
 
@@ -174,6 +175,7 @@ impl Project {
 				data_dir: data_dir.into(),
 				auth_config,
 				manifests: Default::default(),
+				reqwest,
 			}
 			.into(),
 		}
@@ -201,6 +203,12 @@ impl Project {
 	#[must_use]
 	pub fn auth_config(&self) -> &AuthConfig {
 		&self.shared.auth_config
+	}
+
+	/// The reqwest client
+	#[must_use]
+	pub fn reqwest(&self) -> &reqwest::Client {
+		&self.shared.reqwest
 	}
 
 	/// Create a subproject for an importer
@@ -373,7 +381,7 @@ impl RefreshedSources {
 	pub async fn refresh(
 		&self,
 		source: &PackageSources,
-		options: &RefreshOptions,
+		project: &Project,
 	) -> Result<(), source::errors::RefreshError> {
 		let mut hasher = std::hash::DefaultHasher::new();
 		source.hash(&mut hasher);
@@ -382,7 +390,7 @@ impl RefreshedSources {
 		let mut refreshed_sources = self.0.lock().await;
 
 		if refreshed_sources.insert(hash) {
-			source.refresh(options).await
+			source.refresh(project).await
 		} else {
 			Ok(())
 		}

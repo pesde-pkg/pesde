@@ -29,7 +29,7 @@ pub struct InstallCommand {
 }
 
 impl InstallCommand {
-	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		let install_dependencies_mode = match (self.prod, self.dev) {
 			(true, true) => anyhow::bail!("cannot have both prod and dev flags enabled"),
 			(true, false) => InstallDependenciesMode::Prod,
@@ -46,7 +46,7 @@ impl InstallCommand {
 			force: self.force,
 		};
 
-		install(&options, subproject.project(), reqwest.clone()).await?;
+		install(&options, subproject.project()).await?;
 
 		Ok(())
 	}

@@ -32,13 +32,15 @@ pub enum AuthCommands {
 }
 
 impl AuthSubcommand {
-	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		let index_url = get_index(&subproject, self.index.as_deref()).await?;
 
 		match self.command {
-			AuthCommands::Login(login) => login.run(index_url, subproject, reqwest).await,
+			AuthCommands::Login(login) => login.run(index_url, subproject).await,
 			AuthCommands::Logout(logout) => logout.run(index_url).await,
-			AuthCommands::WhoAmI(whoami) => whoami.run(index_url, reqwest).await,
+			AuthCommands::WhoAmI(whoami) => {
+				whoami.run(index_url, subproject.project().reqwest()).await
+			}
 			AuthCommands::Token(token) => token.run(index_url).await,
 		}
 	}

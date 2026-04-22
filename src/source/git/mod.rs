@@ -2,6 +2,7 @@
 use crate::GixUrl;
 use crate::MANIFEST_FILE_NAME;
 use crate::Project;
+use crate::RefreshedSources;
 use crate::Subproject;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
@@ -15,6 +16,7 @@ use crate::source::ADDITIONAL_FORBIDDEN_FILES;
 use crate::source::DependencySpecifiers;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
+use crate::source::PackageExports;
 use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
@@ -30,11 +32,6 @@ use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
 use crate::source::path::RelativeOrAbsolutePath;
 use crate::source::pesde::PesdeVersionedManifest;
-use crate::source::traits::DownloadOptions;
-use crate::source::traits::GetExportsOptions;
-use crate::source::traits::PackageExports;
-use crate::source::traits::RefreshOptions;
-use crate::source::traits::ResolveOptions;
 use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
 use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
@@ -50,8 +47,10 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::task::JoinSet;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
@@ -175,18 +174,17 @@ impl PackageSource for GitPackageSource {
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
-		GitBasedSource::refresh(self, options).await
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+		GitBasedSource::refresh(self, project).await
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
+		subproject: &Subproject,
 		specifier: &Self::Specifier,
-		options: &ResolveOptions,
+		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
-		let ResolveOptions { subproject, .. } = options;
-
 		let path = self.path(subproject.project());
 		let repo_url = self.repo_url.clone();
 		let specifier = specifier.clone();
@@ -353,16 +351,12 @@ impl PackageSource for GitPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn download<R: DownloadProgressReporter>(
 		&self,
+		project: &Project,
 		pkg_ref: &Self::Ref,
-		options: &DownloadOptions<'_, R>,
+		reporter: Arc<R>,
+		_version: &Version,
+		structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let DownloadOptions {
-			project,
-			reporter,
-			structure_kind,
-			..
-		} = options;
-
 		let index_file = project
 			.cas_dir()
 			.join("index")
@@ -510,20 +504,21 @@ impl PackageSource for GitPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn get_exports(
 		&self,
+		project: &Project,
 		_pkg_ref: &Self::Ref,
-		options: &GetExportsOptions<'_>,
+		path: &Path,
+		_version: &Version,
+		structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
-		let GetExportsOptions { structure_kind, .. } = options;
-
 		if structure_kind.is_wally() {
-			return get_exports(options).await.map_err(Into::into);
+			return get_exports(project, path).await.map_err(Into::into);
 		}
 
-		let manifest = fs::read_to_string(options.path.join(MANIFEST_FILE_NAME))
+		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
 			.await
 			.map_err(|e| ManifestReadError::from(ManifestReadErrorKind::Io(e)))?;
 		let manifest: PesdeVersionedManifest = toml::from_str(&manifest).map_err(|e| {
-			ManifestReadError::from(ManifestReadErrorKind::Serde((*options.path).into(), e))
+			ManifestReadError::from(ManifestReadErrorKind::Serde(path.to_path_buf(), e))
 		})?;
 
 		Ok(manifest.as_exports())

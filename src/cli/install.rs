@@ -17,7 +17,6 @@ use pesde::lockfile::Lockfile;
 use pesde::manifest::DependencyType;
 use pesde::source::PackageRefs;
 use pesde::source::PackageSources;
-use pesde::source::traits::RefreshOptions;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -92,11 +91,7 @@ pub async fn get_graph_locked(
 	Ok(graph)
 }
 
-pub async fn install(
-	options: &InstallOptions,
-	project: &Project,
-	reqwest: reqwest::Client,
-) -> anyhow::Result<()> {
+pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Result<()> {
 	let start = Instant::now();
 
 	let refreshed_sources = RefreshedSources::new();
@@ -135,12 +130,7 @@ pub async fn install(
 
 					Some(async move {
 						refreshed_sources
-							.refresh(
-								&PackageSources::Pesde(source.clone()),
-								&RefreshOptions {
-									project: project.clone(),
-								},
-							)
+							.refresh(&PackageSources::Pesde(source.clone()), &project)
 							.await
 							.context("failed to refresh source")?;
 
@@ -178,7 +168,7 @@ pub async fn install(
 				project
 					.download_and_link(
 						&graph,
-						DownloadAndLinkOptions::<CliReporter>::new(reqwest.clone())
+						DownloadAndLinkOptions::<CliReporter>::new()
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources.clone())
 							.install_dependencies_mode(options.install_dependencies_mode)

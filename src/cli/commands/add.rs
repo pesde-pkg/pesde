@@ -13,11 +13,9 @@ use pesde::Subproject;
 use pesde::manifest::Alias;
 use pesde::manifest::DependencyType;
 use pesde::source::DependencySpecifiers;
+use pesde::source::PackageSource as _;
 use pesde::source::git::specifier::GitVersionSpecifier;
 use pesde::source::path::RelativeOrAbsolutePath;
-use pesde::source::traits::PackageSource as _;
-use pesde::source::traits::RefreshOptions;
-use pesde::source::traits::ResolveOptions;
 
 #[derive(Debug, Args)]
 pub struct AddCommand {
@@ -77,23 +75,12 @@ impl AddCommand {
 		let refreshed_sources = RefreshedSources::new();
 
 		refreshed_sources
-			.refresh(
-				&source,
-				&RefreshOptions {
-					project: subproject.project().clone(),
-				},
-			)
+			.refresh(&source, subproject.project())
 			.await
 			.context("failed to refresh package source")?;
 
 		let ResolveResult { mut versions, .. } = source
-			.resolve(
-				&specifier,
-				&ResolveOptions {
-					subproject: subproject.clone(),
-					refreshed_sources,
-				},
-			)
+			.resolve(&subproject, &specifier, &refreshed_sources)
 			.await
 			.context("failed to resolve package")?;
 

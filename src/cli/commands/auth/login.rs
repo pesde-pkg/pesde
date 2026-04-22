@@ -15,9 +15,8 @@ use crate::cli::auth::set_token;
 use crate::cli::style::URL_STYLE;
 use pesde::GixUrl;
 use pesde::Subproject;
+use pesde::source::PackageSource as _;
 use pesde::source::pesde::PesdePackageSource;
-use pesde::source::traits::PackageSource as _;
-use pesde::source::traits::RefreshOptions;
 
 #[derive(Debug, Args)]
 pub struct LoginCommand {
@@ -57,15 +56,12 @@ impl LoginCommand {
 		&self,
 		index_url: GixUrl,
 		subproject: &Subproject,
-		reqwest: &reqwest::Client,
 	) -> anyhow::Result<String> {
 		println!("logging in into {index_url}");
 
 		let source = PesdePackageSource::new(index_url);
 		source
-			.refresh(&RefreshOptions {
-				project: subproject.project().clone(),
-			})
+			.refresh(subproject.project())
 			.await
 			.context("failed to refresh index")?;
 
@@ -77,7 +73,9 @@ impl LoginCommand {
 			anyhow::bail!("index not configured for Github oauth.");
 		};
 
-		let response = reqwest
+		let response = subproject
+			.project()
+			.reqwest()
 			.post(Url::parse_with_params(
 				"https://github.com/login/device/code",
 				&[("client_id", &client_id)],
@@ -121,7 +119,9 @@ impl LoginCommand {
 			sleep(interval).await;
 			time_left = time_left.saturating_sub(interval.as_secs());
 
-			let response = reqwest
+			let response = subproject
+				.project()
+				.reqwest()
 				.post(Url::parse_with_params(
 					"https://github.com/login/oauth/access_token",
 					[
@@ -164,17 +164,12 @@ impl LoginCommand {
 		anyhow::bail!("code expired, please re-run the login command");
 	}
 
-	pub async fn run(
-		self,
-		index_url: GixUrl,
-		subproject: Subproject,
-		reqwest: reqwest::Client,
-	) -> anyhow::Result<()> {
+	pub async fn run(self, index_url: GixUrl, subproject: Subproject) -> anyhow::Result<()> {
 		let token_given = self.token.is_some();
 		let token = match self.token {
 			Some(token) => token,
 			None => {
-				self.authenticate_device_flow(index_url.clone(), &subproject, &reqwest)
+				self.authenticate_device_flow(index_url.clone(), &subproject)
 					.await?
 			}
 		};
@@ -186,7 +181,7 @@ impl LoginCommand {
 			let token = format!("Bearer {token}");
 			println!(
 				"logged in as {} for {index_url}",
-				style(get_token_login(&reqwest, &token).await?).bold()
+				style(get_token_login(subproject.project().reqwest(), &token).await?).bold()
 			);
 
 			token

@@ -1,6 +1,8 @@
 //! Wally package source
 use crate::GixUrl;
 use crate::Project;
+use crate::RefreshedSources;
+use crate::Subproject;
 use crate::hash::Hash;
 use crate::names::wally::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
@@ -8,7 +10,9 @@ use crate::reporters::response_to_async_read;
 use crate::ser_display_deser_fromstr;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
+use crate::source::PackageExports;
 use crate::source::PackageRefs;
+use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::StructureKind;
@@ -18,12 +22,6 @@ use crate::source::fs::store_in_cas;
 use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
-use crate::source::traits::DownloadOptions;
-use crate::source::traits::GetExportsOptions;
-use crate::source::traits::PackageExports;
-use crate::source::traits::PackageSource;
-use crate::source::traits::RefreshOptions;
-use crate::source::traits::ResolveOptions;
 use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
 use crate::source::wally::pkg_ref::WallyPackageRef;
@@ -32,11 +30,14 @@ use crate::version_matches;
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
+use semver::Version;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fmt::Display;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::io::AsyncReadExt as _;
 use tokio::pin;
 use tokio::task::spawn_blocking;
@@ -144,22 +145,17 @@ impl PackageSource for WallyPackageSource {
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
-		GitBasedSource::refresh(self, options).await
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+		GitBasedSource::refresh(self, project).await
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
+		subproject: &Subproject,
 		specifier: &Self::Specifier,
-		options: &ResolveOptions,
+		refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
-		let ResolveOptions {
-			subproject,
-			refreshed_sources,
-			..
-		} = options;
-
 		let mut string = self
 			.read_index_file(subproject.project(), specifier.name.clone())
 			.await?;
@@ -171,9 +167,6 @@ impl PackageSource for WallyPackageSource {
 				specifier.name
 			);
 			let config = self.config(subproject.project()).await?;
-			let refresh_options = RefreshOptions {
-				project: subproject.project().clone(),
-			};
 
 			for url in config.fallback_registries {
 				let url = match url.parse() {
@@ -186,7 +179,7 @@ impl PackageSource for WallyPackageSource {
 				let source = WallyPackageSource::new(url);
 
 				match refreshed_sources
-					.refresh(&PackageSources::Wally(source.clone()), &refresh_options)
+					.refresh(&PackageSources::Wally(source.clone()), subproject.project())
 					.await
 					.map_err(super::errors::RefreshError::into_inner)
 				{
@@ -254,17 +247,12 @@ impl PackageSource for WallyPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn download<R: DownloadProgressReporter>(
 		&self,
+		project: &Project,
 		pkg_ref: &Self::Ref,
-		options: &DownloadOptions<'_, R>,
+		reporter: Arc<R>,
+		version: &Version,
+		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let DownloadOptions {
-			project,
-			reqwest,
-			reporter,
-			version,
-			..
-		} = options;
-
 		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
@@ -291,7 +279,8 @@ impl PackageSource for WallyPackageSource {
 
 		let (scope, name) = pkg_ref.name.as_str();
 
-		let mut request = reqwest
+		let mut request = project
+			.reqwest()
 			.get(format!(
 				"{}/v1/package-contents/{}/{}/{}",
 				config.api.as_str().trim_end_matches('/'),
@@ -374,10 +363,13 @@ impl PackageSource for WallyPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn get_exports(
 		&self,
+		project: &Project,
 		_pkg_ref: &Self::Ref,
-		options: &GetExportsOptions<'_>,
+		path: &Path,
+		_version: &Version,
+		_structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
-		get_exports(options).await.map_err(Into::into)
+		get_exports(project, path).await.map_err(Into::into)
 	}
 }
 

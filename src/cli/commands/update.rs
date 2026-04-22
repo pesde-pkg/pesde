@@ -21,7 +21,7 @@ pub struct UpdateCommand {
 }
 
 impl UpdateCommand {
-	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		let options = InstallOptions {
 			locked: false,
 			install_dependencies_mode: InstallDependenciesMode::All,
@@ -31,7 +31,7 @@ impl UpdateCommand {
 			force: self.force,
 		};
 
-		install(&options, subproject.project(), reqwest.clone()).await?;
+		install(&options, subproject.project()).await?;
 
 		Ok(())
 	}

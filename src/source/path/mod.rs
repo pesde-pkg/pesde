@@ -1,22 +1,22 @@
 //! Path package source
 use crate::MANIFEST_FILE_NAME;
+use crate::Project;
+use crate::RefreshedSources;
+use crate::Subproject;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
 use crate::manifest::Manifest;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
+use crate::source::PackageExports;
 use crate::source::PackageRefs;
+use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::path::pkg_ref::PathPackageRef;
-use crate::source::traits::DownloadOptions;
-use crate::source::traits::GetExportsOptions;
-use crate::source::traits::PackageExports;
-use crate::source::traits::PackageSource;
-use crate::source::traits::ResolveOptions;
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
 use semver::BuildMetadata;
@@ -26,8 +26,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fmt::Display;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use tracing::instrument;
 
 pub mod pkg_ref;
@@ -88,11 +90,10 @@ impl PackageSource for PathPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
+		subproject: &Subproject,
 		specifier: &Self::Specifier,
-		options: &ResolveOptions,
+		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
-		let ResolveOptions { subproject, .. } = options;
-
 		let path = match &specifier.path {
 			RelativeOrAbsolutePath::Relative(rel_path) => {
 				rel_path.to_path(subproject.project().dir())
@@ -176,11 +177,12 @@ impl PackageSource for PathPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn download<R: DownloadProgressReporter>(
 		&self,
+		_project: &Project,
 		pkg_ref: &Self::Ref,
-		options: &DownloadOptions<'_, R>,
+		reporter: Arc<R>,
+		_version: &Version,
+		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let DownloadOptions { reporter, .. } = options;
-
 		reporter.report_done();
 
 		// safety: path packages are always resolved freshly by the resolver, so the path is always set to a proper value
@@ -190,11 +192,12 @@ impl PackageSource for PathPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn get_exports(
 		&self,
+		_project: &Project,
 		_pkg_ref: &Self::Ref,
-		options: &GetExportsOptions<'_>,
+		path: &Path,
+		_version: &Version,
+		_structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
-		let GetExportsOptions { path, .. } = options;
-
 		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
 			.await
 			.map_err(|e| ManifestReadError::from(ManifestReadErrorKind::Io(e)))?;

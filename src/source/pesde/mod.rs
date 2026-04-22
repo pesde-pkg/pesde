@@ -11,14 +11,18 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use pkg_ref::PesdePackageRef;
 use specifier::PesdeDependencySpecifier;
 
 use crate::GixUrl;
 use crate::Project;
+use crate::RefreshedSources;
+use crate::Subproject;
 use crate::hash::Hash;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
@@ -30,6 +34,7 @@ use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
+use crate::source::PackageExports;
 use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
@@ -48,11 +53,6 @@ use crate::source::git_index::root_tree;
 use crate::source::pesde::specifier::IndexPesdeDependencySpecifier;
 use crate::source::pesde::target::Target;
 use crate::source::pesde::target::TargetKind;
-use crate::source::traits::DownloadOptions;
-use crate::source::traits::GetExportsOptions;
-use crate::source::traits::PackageExports;
-use crate::source::traits::RefreshOptions;
-use crate::source::traits::ResolveOptions;
 use crate::source::wally::specifier::IndexWallyDependencySpecifier;
 use crate::source::wally::specifier::WallyDependencySpecifier;
 use crate::util::ToEscaped as _;
@@ -172,18 +172,17 @@ impl PackageSource for PesdePackageSource {
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
-		GitBasedSource::refresh(self, options).await
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+		GitBasedSource::refresh(self, project).await
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
+		subproject: &Subproject,
 		specifier: &Self::Specifier,
-		options: &ResolveOptions,
+		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
-		let ResolveOptions { subproject, .. } = options;
-
 		let Some(IndexFile { entries, .. }) = self
 			.read_index_file(specifier.name.clone(), subproject.project())
 			.await?
@@ -272,17 +271,12 @@ impl PackageSource for PesdePackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn download<R: DownloadProgressReporter>(
 		&self,
+		project: &Project,
 		pkg_ref: &Self::Ref,
-		options: &DownloadOptions<'_, R>,
+		reporter: Arc<R>,
+		version: &Version,
+		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let DownloadOptions {
-			project,
-			reporter,
-			reqwest,
-			version,
-			..
-		} = options;
-
 		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
@@ -321,7 +315,10 @@ impl PackageSource for PesdePackageSource {
 				&urlencoding::encode(&pkg_ref.target.to_string()),
 			);
 
-		let mut request = reqwest.get(&url).header(ACCEPT, "application/octet-stream");
+		let mut request = project
+			.reqwest()
+			.get(&url)
+			.header(ACCEPT, "application/octet-stream");
 
 		if let Some(token) = project.auth_config().tokens().get(&self.repo_url) {
 			tracing::debug!("using token for {}", self.repo_url);
@@ -392,18 +389,20 @@ impl PackageSource for PesdePackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn get_exports(
 		&self,
+		project: &Project,
 		pkg_ref: &Self::Ref,
-		options: &GetExportsOptions<'_>,
+		_path: &Path,
+		version: &Version,
+		_structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
-		let Some(IndexFile { mut entries, .. }) = self
-			.read_index_file(pkg_ref.name.clone(), &options.project)
-			.await?
+		let Some(IndexFile { mut entries, .. }) =
+			self.read_index_file(pkg_ref.name.clone(), project).await?
 		else {
 			return Err(errors::GetExportsErrorKind::NotFound(pkg_ref.name.clone()).into());
 		};
 
 		let entry = entries
-			.remove(&VersionId::new(options.version.clone(), pkg_ref.target))
+			.remove(&VersionId::new(version.clone(), pkg_ref.target))
 			.ok_or_else(|| errors::GetExportsErrorKind::NotFound(pkg_ref.name.clone()))?;
 
 		Ok(entry.target.into_exports())

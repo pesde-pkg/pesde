@@ -11,9 +11,8 @@ use pesde::MANIFEST_FILE_NAME;
 use pesde::Project;
 use pesde::RefreshedSources;
 use pesde::patches::setup_patches_repo;
+use pesde::source::PackageSource as _;
 use pesde::source::ids::PackageId;
-use pesde::source::traits::DownloadOptions;
-use pesde::source::traits::PackageSource as _;
 
 #[derive(Debug, Args)]
 pub struct PatchCommand {
@@ -23,7 +22,7 @@ pub struct PatchCommand {
 }
 
 impl PatchCommand {
-	pub async fn run(self, project: Project, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, project: Project) -> anyhow::Result<()> {
 		if self.package.pkg_ref().is_local() {
 			anyhow::bail!("cannot patch a local package")
 		}
@@ -45,14 +44,11 @@ impl PatchCommand {
 
 		source
 			.download(
+				&project,
 				self.package.pkg_ref(),
-				&DownloadOptions {
-					project: project.clone(),
-					reqwest,
-					reporter: ().into(),
-					version: self.package.version(),
-					structure_kind: &node.structure_kind,
-				},
+				().into(),
+				self.package.version(),
+				&node.structure_kind,
 			)
 			.await?
 			.write_to(&directory, project.cas_dir(), false)

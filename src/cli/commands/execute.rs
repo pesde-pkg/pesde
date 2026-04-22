@@ -13,13 +13,9 @@ use pesde::Subproject;
 use pesde::download_and_link::DownloadAndLinkOptions;
 use pesde::download_and_link::InstallDependenciesMode;
 use pesde::scripts::execute_script;
+use pesde::source::PackageSource as _;
 use pesde::source::ResolveResult;
 use pesde::source::ids::PackageId;
-use pesde::source::traits::DownloadOptions;
-use pesde::source::traits::GetExportsOptions;
-use pesde::source::traits::PackageSource as _;
-use pesde::source::traits::RefreshOptions;
-use pesde::source::traits::ResolveOptions;
 use std::ffi::OsString;
 use std::io::Stderr;
 use tempfile::TempDir;
@@ -40,11 +36,7 @@ pub struct ExecuteCommand {
 }
 
 impl ExecuteCommand {
-	pub async fn run(
-		mut self,
-		subproject: Subproject,
-		reqwest: reqwest::Client,
-	) -> anyhow::Result<()> {
+	pub async fn run(mut self, subproject: Subproject) -> anyhow::Result<()> {
 		let multi_progress = MultiProgress::new();
 		crate::PROGRESS_BARS
 			.lock()
@@ -70,12 +62,7 @@ impl ExecuteCommand {
 
 				let refreshed_sources = RefreshedSources::new();
 				refreshed_sources
-					.refresh(
-						&source,
-						&RefreshOptions {
-							project: subproject.project().clone(),
-						},
-					)
+					.refresh(&source, subproject.project())
 					.await
 					.context("failed to refresh source")?;
 
@@ -85,13 +72,7 @@ impl ExecuteCommand {
 					structure_kind,
 					mut versions,
 				} = source
-					.resolve(
-						&specifier,
-						&ResolveOptions {
-							subproject: subproject.clone(),
-							refreshed_sources: refreshed_sources.clone(),
-						},
-					)
+					.resolve(&subproject, &specifier, &refreshed_sources)
 					.await
 					.context("failed to resolve package")?;
 
@@ -121,14 +102,11 @@ impl ExecuteCommand {
 				let fs = id
 					.source()
 					.download(
+						subproject.project(),
 						id.pkg_ref(),
-						&DownloadOptions {
-							project: subproject.project().clone(),
-							reqwest: reqwest.clone(),
-							reporter: ().into(),
-							version: id.version(),
-							structure_kind: &structure_kind,
-						},
+						().into(),
+						id.version(),
+						&structure_kind,
 					)
 					.await
 					.context("failed to download package")?;
@@ -140,13 +118,11 @@ impl ExecuteCommand {
 				let exports = id
 					.source()
 					.get_exports(
+						subproject.project(),
 						id.pkg_ref(),
-						&GetExportsOptions {
-							project: subproject.project().clone(),
-							path: tempdir.path().into(),
-							version: id.version(),
-							structure_kind: &structure_kind,
-						},
+						tempdir.path(),
+						id.version(),
+						&structure_kind,
 					)
 					.await
 					.context("failed to get package exports")?;
@@ -156,6 +132,7 @@ impl ExecuteCommand {
 					subproject.project().data_dir(),
 					subproject.project().cas_dir(),
 					subproject.project().auth_config().clone(),
+					subproject.project().reqwest().clone(),
 				);
 
 				let graph = project
@@ -167,7 +144,7 @@ impl ExecuteCommand {
 				project
 					.download_and_link(
 						&graph,
-						DownloadAndLinkOptions::<CliReporter<Stderr>>::new(reqwest.clone())
+						DownloadAndLinkOptions::<CliReporter<Stderr>>::new()
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources)
 							.install_dependencies_mode(InstallDependenciesMode::Prod),

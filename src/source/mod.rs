@@ -1,24 +1,28 @@
 //! Package sources
 #![expect(deprecated)]
+use crate::Project;
+use crate::RefreshedSources;
+use crate::Subproject;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::fs::PackageFs;
-use crate::source::traits::*;
+use relative_path::RelativePathBuf;
 use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::future;
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 
 pub mod fs;
 pub mod git_index;
 pub mod ids;
-pub mod traits;
 
 /// Files that will not be stored when downloading a package. These are only files which break pesde's functionality, or are meaningless and possibly heavy (e.g. `.DS_Store`)
 pub const IGNORED_FILES: &[&str] = &["foreman.toml", "aftman.toml", "rokit.toml", ".DS_Store"];
@@ -28,6 +32,76 @@ pub const ADDITIONAL_FORBIDDEN_FILES: &[&str] = &["default.project.json"];
 
 /// Directories that will not be stored when downloading a package. These are only directories which break pesde's functionality, or are meaningless and possibly heavy
 pub const IGNORED_DIRS: &[&str] = &[".git"];
+
+/// A specifier for a dependency
+pub trait DependencySpecifier: Debug + Display {
+	/// The realm this dependency is for, if any
+	fn realm(&self) -> Option<Realm>;
+}
+
+/// A reference to a package
+pub trait PackageRef: Debug {}
+
+/// The exports of a package
+#[derive(Debug, Clone)]
+pub struct PackageExports {
+	/// The path to the lib export file
+	pub lib_file: Option<RelativePathBuf>,
+	/// The path to the bin export file
+	pub bin_file: Option<RelativePathBuf>,
+}
+
+/// A source of packages
+pub trait PackageSource: Debug {
+	/// The specifier type for this source
+	type Specifier: DependencySpecifier;
+	/// The reference type for this source
+	type Ref: PackageRef;
+	/// The error type for refreshing this source
+	type RefreshError: std::error::Error + Send + Sync + 'static;
+	/// The error type for resolving a package from this source
+	type ResolveError: std::error::Error + Send + Sync + 'static;
+	/// The error type for downloading a package from this source
+	type DownloadError: std::error::Error + Send + Sync + 'static;
+	/// The error type for getting a package's exports from this source
+	type GetExportsError: std::error::Error + Send + Sync + 'static;
+
+	/// Refreshes the source
+	fn refresh(
+		&self,
+		_project: &Project,
+	) -> impl Future<Output = Result<(), Self::RefreshError>> + Send {
+		future::ready(Ok(()))
+	}
+
+	/// Resolves a specifier to a reference
+	fn resolve(
+		&self,
+		subproject: &Subproject,
+		specifier: &Self::Specifier,
+		refreshed_sources: &RefreshedSources,
+	) -> impl Future<Output = Result<ResolveResult, Self::ResolveError>> + Send;
+
+	/// Downloads a package
+	fn download<R: DownloadProgressReporter>(
+		&self,
+		project: &Project,
+		pkg_ref: &Self::Ref,
+		reporter: Arc<R>,
+		version: &Version,
+		structure_kind: &StructureKind,
+	) -> impl Future<Output = Result<PackageFs, Self::DownloadError>> + Send;
+
+	/// Gets the exports of a package
+	fn get_exports(
+		&self,
+		project: &Project,
+		pkg_ref: &Self::Ref,
+		path: &Path,
+		version: &Version,
+		structure_kind: &StructureKind,
+	) -> impl Future<Output = Result<PackageExports, Self::GetExportsError>> + Send;
+}
 
 /// The result of resolving a package
 #[derive(Debug, Clone)]
@@ -309,11 +383,14 @@ macro_rules! impls {
 				type DownloadError = errors::DownloadError;
 				type GetExportsError = errors::GetExportsError;
 
-				async fn refresh(&self, options: &RefreshOptions) -> Result<(), Self::RefreshError> {
+				async fn refresh(
+					&self,
+					project: &Project,
+				) -> Result<(), Self::RefreshError> {
 					match self {
 						$(
 							PackageSources::$source(source) => source
-								.refresh(options)
+								.refresh(project)
 								.await
 								.map_err(errors::RefreshErrorKind::$source)
 						),+
@@ -323,13 +400,14 @@ macro_rules! impls {
 
 				async fn resolve(
 					&self,
+					subproject: &Subproject,
 					specifier: &Self::Specifier,
-					options: &ResolveOptions,
+					refreshed_sources: &RefreshedSources,
 				) -> Result<ResolveResult, Self::ResolveError> {
 					match (self, specifier) {
 						$(
 							(PackageSources::$source(source), DependencySpecifiers::$source(specifier)) => {
-								source.resolve(specifier, options).await.map_err(errors::ResolveErrorKind::$source)
+								source.resolve(subproject, specifier, refreshed_sources).await.map_err(errors::ResolveErrorKind::$source)
 							}
 						)+
 
@@ -340,13 +418,16 @@ macro_rules! impls {
 
 				async fn download<R: DownloadProgressReporter>(
 					&self,
+					project: &Project,
 					pkg_ref: &Self::Ref,
-					options: &DownloadOptions<'_, R>,
+					reporter: Arc<R>,
+					version: &Version,
+					structure_kind: &StructureKind,
 				) -> Result<PackageFs, Self::DownloadError> {
 					match (self, pkg_ref) {
 						$(
 							(PackageSources::$source(source), PackageRefs::$source(pkg_ref)) => {
-								source.download(pkg_ref, options).await.map_err(errors::DownloadErrorKind::$source)
+								source.download(project, pkg_ref, reporter, version, structure_kind).await.map_err(errors::DownloadErrorKind::$source)
 							}
 						)+
 
@@ -357,13 +438,16 @@ macro_rules! impls {
 
 				async fn get_exports(
 					&self,
+					project: &Project,
 					pkg_ref: &Self::Ref,
-					options: &GetExportsOptions<'_>,
+					path: &Path,
+					version: &Version,
+					structure_kind: &StructureKind,
 				) -> Result<PackageExports, Self::GetExportsError> {
 					match (self, pkg_ref) {
 						$(
 							(PackageSources::$source(source), PackageRefs::$source(pkg_ref)) => source
-								.get_exports(pkg_ref, options)
+								.get_exports(project, pkg_ref, path, version, structure_kind)
 								.await
 								.map_err(errors::GetExportsErrorKind::$source),
 						)+

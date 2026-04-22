@@ -2,10 +2,10 @@
 use crate::GixUrl;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
+use crate::source::PackageExports;
 use crate::source::Realm;
 #[cfg(feature = "patches")]
 use crate::source::ids::PackageId;
-use crate::source::traits::PackageExports;
 #[cfg(feature = "patches")]
 use relative_path::RelativePathBuf;
 use serde::Deserialize;

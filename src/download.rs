@@ -3,12 +3,10 @@ use crate::Project;
 use crate::RefreshedSources;
 use crate::reporters::DownloadProgressReporter as _;
 use crate::reporters::DownloadsReporter;
+use crate::source::PackageSource as _;
 use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::ids::PackageId;
-use crate::source::traits::DownloadOptions;
-use crate::source::traits::PackageSource as _;
-use crate::source::traits::RefreshOptions;
 use async_stream::try_stream;
 use futures::Stream;
 use std::num::NonZeroUsize;
@@ -18,70 +16,15 @@ use tokio::task::JoinSet;
 use tracing::Instrument as _;
 use tracing::instrument;
 
-/// Options for downloading.
-#[derive(Debug)]
-pub(crate) struct DownloadGraphOptions<Reporter> {
-	/// The reqwest client.
-	pub reqwest: reqwest::Client,
-	/// The downloads reporter.
-	pub reporter: Option<Arc<Reporter>>,
-	/// The refreshed sources.
-	pub refreshed_sources: RefreshedSources,
-	/// The max number of concurrent network requests.
-	pub network_concurrency: NonZeroUsize,
-}
-
-impl<Reporter> DownloadGraphOptions<Reporter>
-where
-	Reporter: DownloadsReporter + Send + Sync + 'static,
-{
-	/// Creates a new download options with the given reqwest client and reporter.
-	pub(crate) fn new(reqwest: reqwest::Client) -> Self {
-		Self {
-			reqwest,
-			reporter: None,
-			refreshed_sources: Default::default(),
-			network_concurrency: NonZeroUsize::new(16).unwrap(),
-		}
-	}
-
-	/// Sets the downloads reporter.
-	pub(crate) fn reporter(mut self, reporter: impl Into<Arc<Reporter>>) -> Self {
-		self.reporter.replace(reporter.into());
-		self
-	}
-
-	/// Sets the refreshed sources.
-	pub(crate) fn refreshed_sources(mut self, refreshed_sources: RefreshedSources) -> Self {
-		self.refreshed_sources = refreshed_sources;
-		self
-	}
-
-	/// Sets the max number of concurrent network requests.
-	pub(crate) fn network_concurrency(mut self, network_concurrency: NonZeroUsize) -> Self {
-		self.network_concurrency = network_concurrency;
-		self
-	}
-}
-
-impl<Reporter> Clone for DownloadGraphOptions<Reporter> {
-	fn clone(&self) -> Self {
-		Self {
-			reqwest: self.reqwest.clone(),
-			reporter: self.reporter.clone(),
-			refreshed_sources: self.refreshed_sources.clone(),
-			network_concurrency: self.network_concurrency,
-		}
-	}
-}
-
 impl Project {
 	/// Downloads a graph of dependencies.
 	#[instrument(skip_all, level = "debug")]
 	pub(crate) fn download_graph<Reporter>(
 		&self,
 		graph: impl IntoIterator<Item = (PackageId, StructureKind)>,
-		options: DownloadGraphOptions<Reporter>,
+		reporter: Option<&Arc<Reporter>>,
+		refreshed_sources: &RefreshedSources,
+		network_concurrency: NonZeroUsize,
 	) -> Result<
 		impl Stream<Item = Result<(PackageId, PackageFs), errors::DownloadGraphError>>,
 		errors::DownloadGraphError,
@@ -89,13 +32,6 @@ impl Project {
 	where
 		Reporter: DownloadsReporter + Send + Sync + 'static,
 	{
-		let DownloadGraphOptions {
-			reqwest,
-			reporter,
-			refreshed_sources,
-			network_concurrency,
-		} = options;
-
 		let semaphore = Arc::new(Semaphore::new(network_concurrency.get()));
 
 		let mut tasks = graph
@@ -104,8 +40,7 @@ impl Project {
 				let span = tracing::info_span!("download", package_id = package_id.to_string());
 
 				let project = self.clone();
-				let reqwest = reqwest.clone();
-				let reporter = reporter.clone();
+				let reporter = reporter.cloned();
 				let refreshed_sources = refreshed_sources.clone();
 				let semaphore = semaphore.clone();
 
@@ -121,14 +56,7 @@ impl Project {
 					}
 
 					let source = package_id.source();
-					refreshed_sources
-						.refresh(
-							source,
-							&RefreshOptions {
-								project: project.clone(),
-							},
-						)
-						.await?;
+					refreshed_sources.refresh(source, &project).await?;
 
 					tracing::debug!("downloading");
 
@@ -136,28 +64,22 @@ impl Project {
 						Some(progress_reporter) => {
 							source
 								.download(
+									&project,
 									package_id.pkg_ref(),
-									&DownloadOptions {
-										project: project.clone(),
-										reqwest,
-										version: package_id.version(),
-										structure_kind: &structure_kind,
-										reporter: progress_reporter.into(),
-									},
+									progress_reporter.into(),
+									package_id.version(),
+									&structure_kind,
 								)
 								.await
 						}
 						None => {
 							source
 								.download(
+									&project,
 									package_id.pkg_ref(),
-									&DownloadOptions {
-										project: project.clone(),
-										reqwest,
-										version: package_id.version(),
-										structure_kind: &structure_kind,
-										reporter: ().into(),
-									},
+									().into(),
+									package_id.version(),
+									&structure_kind,
 								)
 								.await
 						}

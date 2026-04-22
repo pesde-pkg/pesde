@@ -186,14 +186,6 @@ async fn run() -> anyhow::Result<()> {
 
 	tracing::debug!("using cas dir in {}", cas_dir.display());
 
-	let subproject = Project::new(
-		project_dir,
-		data_dir()?,
-		cas_dir,
-		AuthConfig::new().with_tokens(get_tokens().await?),
-	)
-	.subproject(importer);
-
 	let reqwest = reqwest::Client::builder()
 		.user_agent(concat!(
 			env!("CARGO_PKG_NAME"),
@@ -202,9 +194,18 @@ async fn run() -> anyhow::Result<()> {
 		))
 		.build()?;
 
+	let subproject = Project::new(
+		project_dir,
+		data_dir()?,
+		cas_dir,
+		AuthConfig::new().with_tokens(get_tokens().await?),
+		reqwest,
+	)
+	.subproject(importer);
+
 	let cli = Cli::parse();
 
-	cli.subcommand.run(subproject, reqwest).await
+	cli.subcommand.run(subproject).await
 }
 
 #[tokio::main]

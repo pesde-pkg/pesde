@@ -13,10 +13,8 @@ use pesde::RefreshedSources;
 use pesde::Subproject;
 use pesde::manifest::Alias;
 use pesde::source::DependencySpecifiers;
+use pesde::source::PackageSource as _;
 use pesde::source::git::specifier::GitVersionSpecifier;
-use pesde::source::traits::PackageSource as _;
-use pesde::source::traits::RefreshOptions;
-use pesde::source::traits::ResolveOptions;
 use semver::Version;
 use semver::VersionReq;
 use tokio::task::JoinSet;
@@ -83,24 +81,13 @@ impl OutdatedCommand {
 						}
 						async move {
 							refreshed_sources
-								.refresh(
-									id.source(),
-									&RefreshOptions {
-										project: subproject.project().clone(),
-									},
-								)
+								.refresh(id.source(), subproject.project())
 								.await
 								.context("failed to refresh source")?;
 
 							let new_version = id
 								.source()
-								.resolve(
-									&spec,
-									&ResolveOptions {
-										subproject: subproject.clone(),
-										refreshed_sources: refreshed_sources.clone(),
-									},
-								)
+								.resolve(&subproject, &spec, &refreshed_sources)
 								.await
 								.context("failed to resolve package versions")?
 								.versions

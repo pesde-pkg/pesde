@@ -9,11 +9,11 @@ use crate::Importer;
 use crate::hash::Hash;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
+use crate::source::DependencySpecifier as _;
 use crate::source::DependencySpecifiers;
 use crate::source::Realm;
 use crate::source::StructureKind;
 use crate::source::ids::PackageId;
-use crate::source::traits::DependencySpecifier as _;
 
 /// A dependency graph importer
 #[derive(Serialize, Deserialize, Debug, Clone)]

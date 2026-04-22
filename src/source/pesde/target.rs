@@ -1,5 +1,5 @@
 use crate::ser_display_deser_fromstr;
-use crate::source::traits::PackageExports;
+use crate::source::PackageExports;
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 use serde::Serialize;

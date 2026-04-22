@@ -13,17 +13,15 @@ use crate::manifest::DependencyType;
 use crate::manifest::ManifestIndices;
 use crate::manifest::OverrideSpecifier;
 use crate::matching_globs;
+use crate::source::DependencySpecifier as _;
 use crate::source::DependencySpecifiers;
+use crate::source::PackageSource as _;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::StructureKind;
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
 use crate::source::pesde::PesdePackageSource;
-use crate::source::traits::DependencySpecifier as _;
-use crate::source::traits::PackageSource as _;
-use crate::source::traits::RefreshOptions;
-use crate::source::traits::ResolveOptions;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
@@ -279,12 +277,7 @@ async fn resolve_version(
 		let source = specifier_to_source(manifest.as_ref().map(|m| &m.indices), specifier)?;
 
 		refreshed_sources
-			.refresh(
-				&source,
-				&RefreshOptions {
-					project: subproject.project().clone(),
-				},
-			)
+			.refresh(&source, subproject.project())
 			.await?;
 
 		let ResolveResult {
@@ -293,13 +286,7 @@ async fn resolve_version(
 			structure_kind,
 			mut versions,
 		} = source
-			.resolve(
-				specifier,
-				&ResolveOptions {
-					subproject: subproject.clone(),
-					refreshed_sources: refreshed_sources.clone(),
-				},
-			)
+			.resolve(&subproject, specifier, refreshed_sources)
 			.await?;
 
 		let Some((package_id, dependencies)) = graph

@@ -2,7 +2,7 @@ use std::io::BufRead as _;
 use std::io::BufReader;
 use std::io::PipeReader;
 use std::io::Read as _;
-use std::path::PathBuf;
+use std::path::Path;
 
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
@@ -12,8 +12,7 @@ use crate::LINK_LIB_NO_FILE_FOUND;
 use crate::Project;
 use crate::scripts::ExecuteScriptHooks;
 use crate::scripts::execute_script;
-use crate::source::traits::GetExportsOptions;
-use crate::source::traits::PackageExports;
+use crate::source::PackageExports;
 use tracing::instrument;
 
 #[derive(Deserialize)]
@@ -89,7 +88,7 @@ impl ExecuteScriptHooks for SourcemapGeneratorHooks {
 
 async fn find_lib_path(
 	project: Project,
-	package_dir: PathBuf,
+	package_dir: &Path,
 ) -> Result<Option<RelativePathBuf>, errors::GetExportsError> {
 	let subproject = project.subproject(Importer::root());
 	let manifest = subproject.deser_manifest().await?;
@@ -106,7 +105,7 @@ async fn find_lib_path(
 		&subproject,
 		sourcemap_generator,
 		&mut hooks,
-		vec![package_dir.into_os_string()],
+		vec![package_dir.as_os_str().to_os_string()],
 	)
 	.await?;
 	if exit_code != 0i32 {
@@ -125,11 +124,10 @@ pub(crate) const WALLY_MANIFEST_FILE_NAME: &str = "wally.toml";
 
 #[instrument(skip_all, level = "debug")]
 pub(crate) async fn get_exports(
-	options: &GetExportsOptions<'_>,
+	project: &Project,
+	path: &Path,
 ) -> Result<PackageExports, errors::GetExportsError> {
-	let GetExportsOptions { project, path, .. } = options;
-
-	let lib_file = find_lib_path(project.clone(), path.to_path_buf())
+	let lib_file = find_lib_path(project.clone(), path)
 		.await?
 		.or_else(|| Some(RelativePathBuf::from(LINK_LIB_NO_FILE_FOUND)));
 

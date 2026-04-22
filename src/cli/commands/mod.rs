@@ -69,24 +69,24 @@ pub enum Subcommand {
 }
 
 impl Subcommand {
-	pub async fn run(self, subproject: Subproject, reqwest: reqwest::Client) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		match self {
-			Subcommand::Auth(auth) => auth.run(subproject, reqwest).await,
+			Subcommand::Auth(auth) => auth.run(subproject).await,
 			Subcommand::Config(config) => config.run().await,
 			Subcommand::Cas(cas) => cas.run(subproject).await,
 			Subcommand::Init(init) => init.run(subproject).await,
 			Subcommand::Add(add) => add.run(subproject).await,
 			Subcommand::Remove(remove) => remove.run(subproject).await,
-			Subcommand::Install(install) => install.run(subproject, reqwest).await,
-			Subcommand::Update(update) => update.run(subproject, reqwest).await,
+			Subcommand::Install(install) => install.run(subproject).await,
+			Subcommand::Update(update) => update.run(subproject).await,
 			Subcommand::Outdated(outdated) => outdated.run(subproject).await,
 			Subcommand::List(list) => list.run(subproject).await,
 			Subcommand::Run(run) => run.run(subproject).await,
 			#[cfg(feature = "patches")]
-			Subcommand::Patch(patch) => patch.run(subproject.project().clone(), reqwest).await,
+			Subcommand::Patch(patch) => patch.run(subproject.project().clone()).await,
 			#[cfg(feature = "patches")]
 			Subcommand::PatchCommit(patch_commit) => patch_commit.run(subproject.project().clone()).await,
-			Subcommand::Execute(execute) => execute.run(subproject, reqwest).await,
+			Subcommand::Execute(execute) => execute.run(subproject).await,
 		}
 	}
 }
