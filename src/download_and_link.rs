@@ -281,7 +281,7 @@ impl Project {
 			let downloaded = self.download_graph(
 				graph_to_download
 					.keys()
-					.map(|id| (id.clone(), graph.nodes[id].structure_kind.clone()))
+					.map(|id| graph.resolved_package(id).unwrap())
 					.collect::<Vec<_>>(),
 				reporter.as_ref(),
 				&refreshed_sources,
@@ -388,23 +388,17 @@ impl Project {
 							.clone()
 							// importer does not matter here, as it is the same package being linked in different places
 							.subproject(importers.iter().next().unwrap().clone());
-						let structure_kind = graph.nodes[id].structure_kind.clone();
 						let install_path = container_dir(&subproject, id);
-						let id = id.clone();
+						let package = graph.resolved_package(id).unwrap();
 
 						async move {
-							let exports = id
+							let exports = package
+								.id
 								.source()
-								.get_exports(
-									subproject.project(),
-									id.pkg_ref(),
-									&install_path,
-									id.version(),
-									&structure_kind,
-								)
+								.get_exports(subproject.project(), &package, &install_path)
 								.await?;
 
-							Ok::<_, errors::DownloadAndLinkError>((id, exports))
+							Ok::<_, errors::DownloadAndLinkError>((package.id, exports))
 						}
 					})
 					.collect::<JoinSet<_>>();

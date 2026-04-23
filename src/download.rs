@@ -4,7 +4,7 @@ use crate::RefreshedSources;
 use crate::reporters::DownloadProgressReporter as _;
 use crate::reporters::DownloadsReporter;
 use crate::source::PackageSource as _;
-use crate::source::StructureKind;
+use crate::source::ResolvedPackage;
 use crate::source::fs::PackageFs;
 use crate::source::ids::PackageId;
 use async_stream::try_stream;
@@ -21,7 +21,7 @@ impl Project {
 	#[instrument(skip_all, level = "debug")]
 	pub(crate) fn download_graph<Reporter>(
 		&self,
-		graph: impl IntoIterator<Item = (PackageId, StructureKind)>,
+		graph: impl IntoIterator<Item = ResolvedPackage>,
 		reporter: Option<&Arc<Reporter>>,
 		refreshed_sources: &RefreshedSources,
 		network_concurrency: NonZeroUsize,
@@ -36,8 +36,8 @@ impl Project {
 
 		let mut tasks = graph
 			.into_iter()
-			.map(|(package_id, structure_kind)| {
-				let span = tracing::info_span!("download", package_id = package_id.to_string());
+			.map(|package| {
+				let span = tracing::info_span!("download", package_id = package.id.to_string());
 
 				let project = self.clone();
 				let reporter = reporter.cloned();
@@ -49,13 +49,13 @@ impl Project {
 
 					let progress_reporter = reporter
 						.clone()
-						.map(|reporter| reporter.report_download(package_id.to_string()));
+						.map(|reporter| reporter.report_download(package.id.to_string()));
 
 					if let Some(progress_reporter) = &progress_reporter {
 						progress_reporter.report_start();
 					}
 
-					let source = package_id.source();
+					let source = package.id.source();
 					refreshed_sources.refresh(source, &project).await?;
 
 					tracing::debug!("downloading");
@@ -63,31 +63,15 @@ impl Project {
 					let fs = match progress_reporter {
 						Some(progress_reporter) => {
 							source
-								.download(
-									&project,
-									package_id.pkg_ref(),
-									progress_reporter.into(),
-									package_id.version(),
-									&structure_kind,
-								)
+								.download(&project, &package, progress_reporter.into())
 								.await
 						}
-						None => {
-							source
-								.download(
-									&project,
-									package_id.pkg_ref(),
-									().into(),
-									package_id.version(),
-									&structure_kind,
-								)
-								.await
-						}
+						None => source.download(&project, &package, ().into()).await,
 					}?;
 
 					tracing::debug!("downloaded");
 
-					Ok((package_id, fs))
+					Ok((package.id, fs))
 				}
 				.instrument(span)
 			})

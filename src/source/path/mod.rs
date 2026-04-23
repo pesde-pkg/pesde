@@ -14,6 +14,7 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::path::pkg_ref::PathPackageRef;
@@ -80,8 +81,6 @@ impl FromStr for RelativeOrAbsolutePath {
 pub struct PathPackageSource;
 
 impl PackageSource for PathPackageSource {
-	type Specifier = specifier::PathDependencySpecifier;
-	type Ref = PathPackageRef;
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
@@ -91,9 +90,13 @@ impl PackageSource for PathPackageSource {
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
-		specifier: &Self::Specifier,
+		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
+		let DependencySpecifiers::Path(specifier) = specifier else {
+			unreachable!("invalid specifier type for path package source");
+		};
+
 		let path = match &specifier.path {
 			RelativeOrAbsolutePath::Relative(rel_path) => {
 				rel_path.to_path(subproject.project().dir())
@@ -178,11 +181,13 @@ impl PackageSource for PathPackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		_project: &Project,
-		pkg_ref: &Self::Ref,
+		package: &ResolvedPackage,
 		reporter: Arc<R>,
-		_version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
+		let PackageRefs::Path(pkg_ref) = package.id.pkg_ref() else {
+			unreachable!("invalid package ref type for path package source");
+		};
+
 		reporter.report_done();
 
 		// safety: path packages are always resolved freshly by the resolver, so the path is always set to a proper value
@@ -193,10 +198,8 @@ impl PackageSource for PathPackageSource {
 	async fn get_exports(
 		&self,
 		_project: &Project,
-		_pkg_ref: &Self::Ref,
+		_package: &ResolvedPackage,
 		path: &Path,
-		_version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
 		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
 			.await

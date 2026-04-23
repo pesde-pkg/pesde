@@ -7,6 +7,7 @@ use crate::names::wally::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::reporters::response_to_async_read;
 use crate::ser_display_deser_fromstr;
+use crate::source::DependencySpecifiers;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
 use crate::source::PackageExports;
@@ -14,6 +15,7 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
@@ -29,7 +31,6 @@ use crate::version_matches;
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
-use semver::Version;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -124,8 +125,6 @@ impl WallyPackageSource {
 }
 
 impl PackageSource for WallyPackageSource {
-	type Specifier = specifier::WallyDependencySpecifier;
-	type Ref = WallyPackageRef;
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
@@ -140,9 +139,13 @@ impl PackageSource for WallyPackageSource {
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
-		specifier: &Self::Specifier,
+		specifier: &DependencySpecifiers,
 		refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
+		let DependencySpecifiers::Wally(specifier) = specifier else {
+			unreachable!("invalid specifier type for Wally package source");
+		};
+
 		let mut string = self
 			.read_index_file(subproject.project(), specifier.name.clone())
 			.await?;
@@ -235,11 +238,13 @@ impl PackageSource for WallyPackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		project: &Project,
-		pkg_ref: &Self::Ref,
+		package: &ResolvedPackage,
 		reporter: Arc<R>,
-		version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
+		let PackageRefs::Wally(pkg_ref) = package.id.pkg_ref() else {
+			unreachable!("invalid package ref type for Wally package source");
+		};
+
 		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
@@ -247,13 +252,14 @@ impl PackageSource for WallyPackageSource {
 			.join("wally")
 			.join(self.repo_url.to_string().escaped())
 			.join(pkg_ref.name.escaped())
-			.join(version.to_string());
+			.join(package.id.version().to_string());
 
 		match fs::read_to_string(&index_file).await {
 			Ok(s) => {
 				tracing::debug!(
-					"using cached index file for package {}@{version}",
-					pkg_ref.name
+					"using cached index file for package {}@{}",
+					pkg_ref.name,
+					package.id.version()
 				);
 
 				reporter.report_done();
@@ -273,7 +279,7 @@ impl PackageSource for WallyPackageSource {
 				config.api.as_str().trim_end_matches('/'),
 				urlencoding::encode(scope),
 				urlencoding::encode(name),
-				urlencoding::encode(&version.to_string())
+				urlencoding::encode(&package.id.version().to_string())
 			))
 			.header(
 				"Wally-Version",
@@ -351,10 +357,8 @@ impl PackageSource for WallyPackageSource {
 	async fn get_exports(
 		&self,
 		project: &Project,
-		_pkg_ref: &Self::Ref,
+		_package: &ResolvedPackage,
 		path: &Path,
-		_version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
 		get_exports(project, path).await.map_err(Into::into)
 	}

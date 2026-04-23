@@ -15,6 +15,7 @@ use pesde::download_and_link::InstallDependenciesMode;
 use pesde::scripts::execute_script;
 use pesde::source::PackageSource as _;
 use pesde::source::ResolveResult;
+use pesde::source::ResolvedPackage;
 use pesde::source::ids::PackageId;
 use std::ffi::OsString;
 use std::io::Stderr;
@@ -84,11 +85,15 @@ impl ExecuteCommand {
 					anyhow::bail!("executing binaries from wally packages is not supported");
 				}
 
-				let id = PackageId::new(source, pkg_ref, version);
+				let package = ResolvedPackage {
+					id: PackageId::new(source, pkg_ref, version),
+					structure_kind,
+				};
+
 				multi_progress.suspend(|| {
 					eprintln!(
 						"{}",
-						style(format_args!("using {}", style(&id).bold())).dim()
+						style(format_args!("using {}", style(&package.id).bold())).dim()
 					);
 				});
 
@@ -99,15 +104,10 @@ impl ExecuteCommand {
 				let tempdir = TempDir::new_in(subproject.project().cas_dir().join(".tmp"))
 					.context("failed to create temporary directory")?;
 
-				let fs = id
+				let fs = package
+					.id
 					.source()
-					.download(
-						subproject.project(),
-						id.pkg_ref(),
-						().into(),
-						id.version(),
-						&structure_kind,
-					)
+					.download(subproject.project(), &package, ().into())
 					.await
 					.context("failed to download package")?;
 
@@ -115,15 +115,10 @@ impl ExecuteCommand {
 					.await
 					.context("failed to write package contents")?;
 
-				let exports = id
+				let exports = package
+					.id
 					.source()
-					.get_exports(
-						subproject.project(),
-						id.pkg_ref(),
-						tempdir.path(),
-						id.version(),
-						&structure_kind,
-					)
+					.get_exports(subproject.project(), &package, tempdir.path())
 					.await
 					.context("failed to get package exports")?;
 

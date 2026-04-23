@@ -20,12 +20,12 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::git::pkg_ref::GitPackageRef;
-use crate::source::git::specifier::GitDependencySpecifier;
 use crate::source::git::specifier::GitVersionSpecifier;
 use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
@@ -153,8 +153,6 @@ fn transform_pesde_dependencies(
 }
 
 impl PackageSource for GitPackageSource {
-	type Specifier = GitDependencySpecifier;
-	type Ref = GitPackageRef;
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
@@ -169,9 +167,13 @@ impl PackageSource for GitPackageSource {
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
-		specifier: &Self::Specifier,
+		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
+		let DependencySpecifiers::Git(specifier) = specifier else {
+			unreachable!("invalid specifier type for Git package source");
+		};
+
 		let path = self.path(subproject.project());
 		let repo_url = self.repo_url.clone();
 		let specifier = specifier.clone();
@@ -339,11 +341,13 @@ impl PackageSource for GitPackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		project: &Project,
-		pkg_ref: &Self::Ref,
+		package: &ResolvedPackage,
 		reporter: Arc<R>,
-		_version: &Version,
-		structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
+		let PackageRefs::Git(pkg_ref) = package.id.pkg_ref() else {
+			unreachable!("invalid package ref type for Git package source");
+		};
+
 		let index_file = project
 			.cas_dir()
 			.join("index")
@@ -424,6 +428,7 @@ impl PackageSource for GitPackageSource {
 		.await
 		.unwrap()?;
 
+		let is_wally = package.structure_kind.is_wally();
 		let mut tasks = records
 			.into_iter()
 			.filter(|(path, contents)| {
@@ -436,7 +441,7 @@ impl PackageSource for GitPackageSource {
 					return false;
 				}
 
-				if !structure_kind.is_wally() && ADDITIONAL_FORBIDDEN_FILES.contains(&name) {
+				if !is_wally && ADDITIONAL_FORBIDDEN_FILES.contains(&name) {
 					tracing::debug!(
 						"removing {name} from {}#{} at {path} - using new structure",
 						self.repo_url,
@@ -492,12 +497,10 @@ impl PackageSource for GitPackageSource {
 	async fn get_exports(
 		&self,
 		project: &Project,
-		_pkg_ref: &Self::Ref,
+		package: &ResolvedPackage,
 		path: &Path,
-		_version: &Version,
-		structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
-		if structure_kind.is_wally() {
+		if package.structure_kind.is_wally() {
 			return get_exports(project, path).await.map_err(Into::into);
 		}
 

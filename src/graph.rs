@@ -12,6 +12,7 @@ use crate::manifest::DependencyType;
 use crate::source::DependencySpecifier as _;
 use crate::source::DependencySpecifiers;
 use crate::source::Realm;
+use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
 use crate::source::ids::PackageId;
 
@@ -153,5 +154,14 @@ impl DependencyGraph {
 		}
 
 		ret
+	}
+
+	/// Returns the resolved package for a given package ID, if it exists in the graph
+	#[must_use]
+	pub fn resolved_package(&self, package_id: &PackageId) -> Option<ResolvedPackage> {
+		self.nodes.get(package_id).map(|node| ResolvedPackage {
+			id: package_id.clone(),
+			structure_kind: node.structure_kind.clone(),
+		})
 	}
 }

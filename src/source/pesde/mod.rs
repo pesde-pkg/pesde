@@ -38,6 +38,7 @@ use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::Realm;
 use crate::source::ResolveResult;
+use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
@@ -151,8 +152,6 @@ impl PesdePackageSource {
 }
 
 impl PackageSource for PesdePackageSource {
-	type Specifier = PesdeDependencySpecifier;
-	type Ref = PesdePackageRef;
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
@@ -167,9 +166,13 @@ impl PackageSource for PesdePackageSource {
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
-		specifier: &Self::Specifier,
+		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
+		let DependencySpecifiers::Pesde(specifier) = specifier else {
+			unreachable!("invalid specifier type for pesde package source");
+		};
+
 		let Some(IndexFile { entries, .. }) = self
 			.read_index_file(specifier.name.clone(), subproject.project())
 			.await?
@@ -259,11 +262,13 @@ impl PackageSource for PesdePackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		project: &Project,
-		pkg_ref: &Self::Ref,
+		package: &ResolvedPackage,
 		reporter: Arc<R>,
-		version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
+		let PackageRefs::Pesde(pkg_ref) = package.id.pkg_ref() else {
+			unreachable!("invalid package ref type for pesde package source");
+		};
+
 		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
@@ -271,14 +276,15 @@ impl PackageSource for PesdePackageSource {
 			.join("pesde")
 			.join(self.repo_url.to_string().escaped())
 			.join(pkg_ref.name.escaped())
-			.join(version.to_string())
+			.join(package.id.version().to_string())
 			.join(pkg_ref.target.to_string());
 
 		match fs::read_to_string(&index_file).await {
 			Ok(s) => {
 				tracing::debug!(
-					"using cached index file for package {}@{version} {}",
+					"using cached index file for package {}@{} {}",
 					pkg_ref.name,
+					package.id.version(),
 					pkg_ref.target
 				);
 
@@ -295,7 +301,7 @@ impl PackageSource for PesdePackageSource {
 			.replace("{PACKAGE}", &urlencoding::encode(&pkg_ref.name.to_string()))
 			.replace(
 				"{PACKAGE_VERSION}",
-				&urlencoding::encode(&version.to_string()),
+				&urlencoding::encode(&package.id.version().to_string()),
 			)
 			.replace(
 				"{PACKAGE_TARGET}",
@@ -377,11 +383,13 @@ impl PackageSource for PesdePackageSource {
 	async fn get_exports(
 		&self,
 		project: &Project,
-		pkg_ref: &Self::Ref,
+		package: &ResolvedPackage,
 		_path: &Path,
-		version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
+		let PackageRefs::Pesde(pkg_ref) = package.id.pkg_ref() else {
+			unreachable!("invalid package ref type for pesde package source");
+		};
+
 		let Some(IndexFile { mut entries, .. }) =
 			self.read_index_file(pkg_ref.name.clone(), project).await?
 		else {
@@ -389,7 +397,10 @@ impl PackageSource for PesdePackageSource {
 		};
 
 		let entry = entries
-			.remove(&VersionId::new(version.clone(), pkg_ref.target))
+			.remove(&VersionId::new(
+				package.id.version().clone(),
+				pkg_ref.target,
+			))
 			.ok_or_else(|| errors::GetExportsErrorKind::NotFound(pkg_ref.name.clone()))?;
 
 		Ok(entry.target.into_exports())
