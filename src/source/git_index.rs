@@ -3,6 +3,7 @@
 
 use crate::GixUrl;
 use crate::Project;
+use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
 use gix::remote::Direction;
 use std::fmt::Debug;
@@ -11,11 +12,21 @@ use tracing::instrument;
 
 /// A trait for sources that are based on Git repositories
 pub trait GitBasedSource {
-	/// The path to the index
-	fn path(&self, project: &Project) -> std::path::PathBuf;
+	/// The scope to store the index under, e.g. "pesde" or "wally"
+	// TODO: is this needed? perhaps just the repository url is enough?
+	const INDEX_SCOPE: &'static str;
 
 	/// The URL of the repository
 	fn repo_url(&self) -> &GixUrl;
+
+	/// The path to the index
+	fn path(&self, project: &Project) -> std::path::PathBuf {
+		project
+			.data_dir()
+			.join("git_repos")
+			.join(Self::INDEX_SCOPE)
+			.join(self.repo_url().to_string().escaped())
+	}
 
 	/// Refreshes the repository
 	async fn refresh(&self, project: &Project) -> Result<(), errors::RefreshError> {

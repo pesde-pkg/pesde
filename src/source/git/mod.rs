@@ -6,7 +6,6 @@ use crate::RefreshedSources;
 use crate::Subproject;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
-use crate::hash::Hash;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::Manifest;
@@ -48,7 +47,6 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::path::Path;
-use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -80,14 +78,7 @@ impl FromStr for GitPackageSource {
 }
 
 impl GitBasedSource for GitPackageSource {
-	fn path(&self, project: &Project) -> PathBuf {
-		let hash = self.as_hash();
-		project
-			.data_dir()
-			.join("git_repos")
-			.join(hash.algorithm().to_string())
-			.join(hash.hash())
-	}
+	const INDEX_SCOPE: &'static str = "git";
 
 	fn repo_url(&self) -> &GixUrl {
 		&self.repo_url
@@ -99,10 +90,6 @@ impl GitPackageSource {
 	#[must_use]
 	pub fn new(repo_url: GixUrl) -> Self {
 		Self { repo_url }
-	}
-
-	fn as_hash(&self) -> Hash {
-		Hash::from_bytes(Default::default(), self.repo_url.to_string())
 	}
 }
 

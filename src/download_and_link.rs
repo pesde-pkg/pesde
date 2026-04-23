@@ -4,6 +4,7 @@ use crate::LINK_LIB_NO_FILE_FOUND;
 use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
 use crate::RefreshedSources;
+use crate::Subproject;
 use crate::graph::DependencyGraph;
 use crate::graph::DependencyGraphNode;
 use crate::linking::generator::get_file_types;
@@ -186,6 +187,17 @@ impl Project {
 			}
 		}
 
+		let container_dir = |subproject: &Subproject, id: &PackageId| {
+			subproject
+				.dependencies_dir()
+				.join(graph.realm_of(subproject.importer(), id).packages_dir())
+				.join(PACKAGES_CONTAINER_NAME)
+				.join(DependencyGraphNode::container_dir(
+					id,
+					&graph.nodes[id].structure_kind,
+				))
+		};
+
 		// step 1. download dependencies
 		let graph_to_download = {
 			let mut importer_deps = HashMap::<PackageId, HashSet<Importer>>::new();
@@ -235,15 +247,8 @@ impl Project {
 							.map(move |importer| (importer, id.clone()))
 					})
 					.map(|(importer, id)| {
-						let subproject = self.clone().subproject(importer.clone());
-						let container_dir = subproject
-							.dependencies_dir()
-							.join(graph.realm_of(&importer, &id).packages_dir())
-							.join(PACKAGES_CONTAINER_NAME)
-							.join(DependencyGraphNode::container_dir(
-								&id,
-								&graph.nodes[&id].structure_kind,
-							));
+						let container_dir =
+							container_dir(&self.clone().subproject(importer.clone()), &id);
 						async move {
 							if id.pkg_ref().is_local() {
 								return (importer, id, false);
@@ -292,14 +297,7 @@ impl Project {
 				for importer in &graph_to_download[&id] {
 					let subproject = self.clone().subproject(importer.clone());
 
-					let container_dir = subproject
-						.dependencies_dir()
-						.join(graph.realm_of(importer, &id).packages_dir())
-						.join(PACKAGES_CONTAINER_NAME)
-						.join(DependencyGraphNode::container_dir(
-							&id,
-							&graph.nodes[&id].structure_kind,
-						));
+					let container_dir = container_dir(&subproject, &id);
 
 					let id = id.clone();
 					let fs = fs.clone();
@@ -347,17 +345,10 @@ impl Project {
 							.map(move |importer| (id.clone(), importer, patch_path.clone()))
 					})
 					.map(|(id, importer, patch_path)| {
-						let subproject = self.clone().subproject(importer.clone());
 						let reporter = reporter.clone();
 
-						let container_dir = subproject
-							.dependencies_dir()
-							.join(graph.realm_of(importer, &id).packages_dir())
-							.join(PACKAGES_CONTAINER_NAME)
-							.join(DependencyGraphNode::container_dir(
-								&id,
-								&graph.nodes[&id].structure_kind,
-							));
+						let container_dir =
+							container_dir(&self.clone().subproject(importer.clone()), &id);
 
 						async move {
 							match reporter {
@@ -398,11 +389,7 @@ impl Project {
 							// importer does not matter here, as it is the same package being linked in different places
 							.subproject(importers.iter().next().unwrap().clone());
 						let structure_kind = graph.nodes[id].structure_kind.clone();
-						let install_path = subproject
-							.dependencies_dir()
-							.join(graph.realm_of(subproject.importer(), id).packages_dir())
-							.join(PACKAGES_CONTAINER_NAME)
-							.join(DependencyGraphNode::container_dir(id, &structure_kind));
+						let install_path = container_dir(&subproject, id);
 						let id = id.clone();
 
 						async move {
@@ -451,14 +438,7 @@ impl Project {
 				let subproject = self
 					.clone()
 					.subproject(graph_to_download[id].iter().next().unwrap().clone());
-				let install_path = subproject
-					.dependencies_dir()
-					.join(graph.realm_of(subproject.importer(), id).packages_dir())
-					.join(PACKAGES_CONTAINER_NAME)
-					.join(DependencyGraphNode::container_dir(
-						id,
-						&graph.nodes[id].structure_kind,
-					));
+				let install_path = container_dir(&subproject, id);
 
 				let span = tracing::info_span!("extract types", package_id = id.to_string());
 
