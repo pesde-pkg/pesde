@@ -14,6 +14,7 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::path::pkg_ref::PathPackageRef;
@@ -180,12 +181,10 @@ impl PackageSource for PathPackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		_project: &Project,
-		pkg_ref: &PackageRefs,
+		package: &ResolvedPackage,
 		reporter: Arc<R>,
-		_version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let PackageRefs::Path(pkg_ref) = pkg_ref else {
+		let PackageRefs::Path(pkg_ref) = package.id.pkg_ref() else {
 			unreachable!("invalid package ref type for path package source");
 		};
 
@@ -199,10 +198,8 @@ impl PackageSource for PathPackageSource {
 	async fn get_exports(
 		&self,
 		_project: &Project,
-		_pkg_ref: &PackageRefs,
+		_package: &ResolvedPackage,
 		path: &Path,
-		_version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
 		let manifest = fs::read_to_string(path.join(MANIFEST_FILE_NAME))
 			.await

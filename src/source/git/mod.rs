@@ -20,6 +20,7 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
@@ -340,12 +341,10 @@ impl PackageSource for GitPackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		project: &Project,
-		pkg_ref: &PackageRefs,
+		package: &ResolvedPackage,
 		reporter: Arc<R>,
-		_version: &Version,
-		structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let PackageRefs::Git(pkg_ref) = pkg_ref else {
+		let PackageRefs::Git(pkg_ref) = package.id.pkg_ref() else {
 			unreachable!("invalid package ref type for Git package source");
 		};
 
@@ -429,6 +428,7 @@ impl PackageSource for GitPackageSource {
 		.await
 		.unwrap()?;
 
+		let is_wally = package.structure_kind.is_wally();
 		let mut tasks = records
 			.into_iter()
 			.filter(|(path, contents)| {
@@ -441,7 +441,7 @@ impl PackageSource for GitPackageSource {
 					return false;
 				}
 
-				if !structure_kind.is_wally() && ADDITIONAL_FORBIDDEN_FILES.contains(&name) {
+				if !is_wally && ADDITIONAL_FORBIDDEN_FILES.contains(&name) {
 					tracing::debug!(
 						"removing {name} from {}#{} at {path} - using new structure",
 						self.repo_url,
@@ -497,12 +497,10 @@ impl PackageSource for GitPackageSource {
 	async fn get_exports(
 		&self,
 		project: &Project,
-		_pkg_ref: &PackageRefs,
+		package: &ResolvedPackage,
 		path: &Path,
-		_version: &Version,
-		structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
-		if structure_kind.is_wally() {
+		if package.structure_kind.is_wally() {
 			return get_exports(project, path).await.map_err(Into::into);
 		}
 

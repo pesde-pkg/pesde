@@ -30,7 +30,7 @@ impl PatchCommand {
 		let refreshed_sources = RefreshedSources::new();
 		let graph = get_graph_locked(&project, &refreshed_sources).await?;
 
-		let Some(node) = graph.nodes.get(&self.package) else {
+		let Some(package) = graph.resolved_package(&self.package) else {
 			anyhow::bail!("package not found in project");
 		};
 
@@ -43,13 +43,7 @@ impl PatchCommand {
 		fs::create_dir_all(&directory).await?;
 
 		source
-			.download(
-				&project,
-				self.package.pkg_ref(),
-				().into(),
-				self.package.version(),
-				&node.structure_kind,
-			)
+			.download(&project, &package, ().into())
 			.await?
 			.write_to(&directory, project.cas_dir(), false)
 			.await

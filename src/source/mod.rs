@@ -8,6 +8,7 @@ use crate::manifest::DependencyType;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::fs::PackageFs;
+use crate::source::ids::PackageId;
 use relative_path::RelativePathBuf;
 use semver::Version;
 use serde::Deserialize;
@@ -51,6 +52,15 @@ pub struct PackageExports {
 	pub bin_file: Option<RelativePathBuf>,
 }
 
+/// A resolved package
+#[derive(Debug, Clone)]
+pub struct ResolvedPackage {
+	/// The package id
+	pub id: PackageId,
+	/// The structure kind of the package
+	pub structure_kind: StructureKind,
+}
+
 /// A source of packages
 pub trait PackageSource: Debug {
 	/// The error type for refreshing this source
@@ -82,20 +92,16 @@ pub trait PackageSource: Debug {
 	fn download<R: DownloadProgressReporter>(
 		&self,
 		project: &Project,
-		pkg_ref: &PackageRefs,
+		package: &ResolvedPackage,
 		reporter: Arc<R>,
-		version: &Version,
-		structure_kind: &StructureKind,
 	) -> impl Future<Output = Result<PackageFs, Self::DownloadError>> + Send;
 
 	/// Gets the exports of a package
 	fn get_exports(
 		&self,
 		project: &Project,
-		pkg_ref: &PackageRefs,
+		package: &ResolvedPackage,
 		path: &Path,
-		version: &Version,
-		structure_kind: &StructureKind,
 	) -> impl Future<Output = Result<PackageExports, Self::GetExportsError>> + Send;
 }
 
@@ -411,15 +417,13 @@ macro_rules! impls {
 				async fn download<R: DownloadProgressReporter>(
 					&self,
 					project: &Project,
-					pkg_ref: &PackageRefs,
+					package: &ResolvedPackage,
 					reporter: Arc<R>,
-					version: &Version,
-					structure_kind: &StructureKind,
 				) -> Result<PackageFs, Self::DownloadError> {
 					match self {
 						$(
 							PackageSources::$source(source) => {
-								source.download(project, pkg_ref, reporter, version, structure_kind).await.map_err(errors::DownloadErrorKind::$source)
+								source.download(project, package, reporter).await.map_err(errors::DownloadErrorKind::$source)
 							}
 						)+
 					}
@@ -429,15 +433,13 @@ macro_rules! impls {
 				async fn get_exports(
 					&self,
 					project: &Project,
-					pkg_ref: &PackageRefs,
+					package: &ResolvedPackage,
 					path: &Path,
-					version: &Version,
-					structure_kind: &StructureKind,
 				) -> Result<PackageExports, Self::GetExportsError> {
 					match self {
 						$(
 							PackageSources::$source(source) => source
-								.get_exports(project, pkg_ref, path, version, structure_kind)
+								.get_exports(project, package, path)
 								.await
 								.map_err(errors::GetExportsErrorKind::$source),
 						)+

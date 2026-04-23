@@ -15,6 +15,7 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
+use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
@@ -30,7 +31,6 @@ use crate::version_matches;
 use fs_err::tokio as fs;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
-use semver::Version;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fmt::Display;
@@ -238,12 +238,10 @@ impl PackageSource for WallyPackageSource {
 	async fn download<R: DownloadProgressReporter>(
 		&self,
 		project: &Project,
-		pkg_ref: &PackageRefs,
+		package: &ResolvedPackage,
 		reporter: Arc<R>,
-		version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let PackageRefs::Wally(pkg_ref) = pkg_ref else {
+		let PackageRefs::Wally(pkg_ref) = package.id.pkg_ref() else {
 			unreachable!("invalid package ref type for Wally package source");
 		};
 
@@ -254,13 +252,14 @@ impl PackageSource for WallyPackageSource {
 			.join("wally")
 			.join(self.repo_url.to_string().escaped())
 			.join(pkg_ref.name.escaped())
-			.join(version.to_string());
+			.join(package.id.version().to_string());
 
 		match fs::read_to_string(&index_file).await {
 			Ok(s) => {
 				tracing::debug!(
-					"using cached index file for package {}@{version}",
-					pkg_ref.name
+					"using cached index file for package {}@{}",
+					pkg_ref.name,
+					package.id.version()
 				);
 
 				reporter.report_done();
@@ -280,7 +279,7 @@ impl PackageSource for WallyPackageSource {
 				config.api.as_str().trim_end_matches('/'),
 				urlencoding::encode(scope),
 				urlencoding::encode(name),
-				urlencoding::encode(&version.to_string())
+				urlencoding::encode(&package.id.version().to_string())
 			))
 			.header(
 				"Wally-Version",
@@ -358,10 +357,8 @@ impl PackageSource for WallyPackageSource {
 	async fn get_exports(
 		&self,
 		project: &Project,
-		_pkg_ref: &PackageRefs,
+		_package: &ResolvedPackage,
 		path: &Path,
-		_version: &Version,
-		_structure_kind: &StructureKind,
 	) -> Result<PackageExports, Self::GetExportsError> {
 		get_exports(project, path).await.map_err(Into::into)
 	}
