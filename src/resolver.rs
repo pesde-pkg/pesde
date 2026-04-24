@@ -150,7 +150,7 @@ async fn prepare_queue(
 		})
 		.collect::<JoinSet<Result<_, errors::DependencyGraphError>>>();
 
-	// TODO: handle this more efficiently
+	// overrides can affect the graph at any level, so it's much easier and safer to ignore the previous graph if there are differences in overrides
 	let previous_graph = previous_graph.filter(|previous| previous.overrides == graph.overrides);
 
 	let mut queue = VecDeque::<ResolveEntry>::new();

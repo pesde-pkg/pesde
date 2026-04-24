@@ -98,9 +98,7 @@ impl PackageSource for PathPackageSource {
 		};
 
 		let path = match &specifier.path {
-			RelativeOrAbsolutePath::Relative(rel_path) => {
-				rel_path.to_path(subproject.project().dir())
-			}
+			RelativeOrAbsolutePath::Relative(rel_path) => rel_path.to_path(subproject.dir()),
 			RelativeOrAbsolutePath::Absolute(abs_path) => abs_path.clone(),
 		};
 
@@ -116,16 +114,6 @@ impl PackageSource for PathPackageSource {
 				crate::errors::ManifestReadErrorKind::Serde(path.clone(), e).into(),
 			)
 		})?;
-
-		// let (path_package_dir, path_workspace_dir) = find_roots(specifier.path.clone()).await?;
-		// let path_project = Project::new(
-		// 	path_package_dir,
-		// 	path_workspace_dir,
-		// 	// these don't matter, we're not using any functionality which uses them
-		// 	project.data_dir(),
-		// 	project.cas_dir(),
-		// 	project.auth_config().clone(),
-		// );
 
 		let dependencies = manifest
 			.all_dependencies()?
@@ -169,8 +157,11 @@ impl PackageSource for PathPackageSource {
 		Ok(ResolveResult {
 			source: PackageSources::Path(*self),
 			pkg_ref: PackageRefs::Path(PathPackageRef {
-				path: specifier.path.clone(),
-				absolute_path: path,
+				path: if let Ok(path) = path.strip_prefix(subproject.project().dir()) {
+					path.to_path_buf()
+				} else {
+					path.clone()
+				},
 			}),
 			structure_kind: StructureKind::PesdeV2,
 			versions: BTreeMap::from([(local_version(), dependencies)]),
@@ -180,7 +171,7 @@ impl PackageSource for PathPackageSource {
 	#[instrument(skip_all, level = "debug")]
 	async fn download<R: DownloadProgressReporter>(
 		&self,
-		_project: &Project,
+		project: &Project,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
@@ -190,8 +181,11 @@ impl PackageSource for PathPackageSource {
 
 		reporter.report_done();
 
-		// safety: path packages are always resolved freshly by the resolver, so the path is always set to a proper value
-		Ok(PackageFs::Copy(pkg_ref.absolute_path.clone()))
+		Ok(PackageFs::Copy(if pkg_ref.path.is_absolute() {
+			pkg_ref.path.clone()
+		} else {
+			project.dir().join(&pkg_ref.path)
+		}))
 	}
 
 	#[instrument(skip_all, level = "debug")]
