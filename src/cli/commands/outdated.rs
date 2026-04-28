@@ -14,7 +14,6 @@ use pesde::Subproject;
 use pesde::manifest::Alias;
 use pesde::source::DependencySpecifiers;
 use pesde::source::PackageSource as _;
-use pesde::source::git::specifier::GitVersionSpecifier;
 use semver::Version;
 use semver::VersionReq;
 use tokio::task::JoinSet;
@@ -67,15 +66,7 @@ impl OutdatedCommand {
 								DependencySpecifiers::Wally(spec) => {
 									spec.version = VersionReq::STAR;
 								}
-								DependencySpecifiers::Git(spec) => {
-									if matches!(
-										spec.version_specifier,
-										GitVersionSpecifier::VersionReq(_)
-									) {
-										spec.version_specifier =
-											GitVersionSpecifier::VersionReq(VersionReq::STAR);
-									}
-								}
+								DependencySpecifiers::Git(_) => {}
 								DependencySpecifiers::Path(_) => {}
 							}
 						}

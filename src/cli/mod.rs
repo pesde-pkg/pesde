@@ -14,7 +14,6 @@ use pesde::source::PackageSources;
 use pesde::source::Realm;
 use pesde::source::git::GitPackageSource;
 use pesde::source::git::specifier::GitDependencySpecifier;
-use pesde::source::git::specifier::GitVersionSpecifier;
 use pesde::source::path::PathPackageSource;
 use pesde::source::path::RelativeOrAbsolutePath;
 use pesde::source::path::specifier::PathDependencySpecifier;
@@ -75,7 +74,7 @@ impl FromStr for VersionedPackageNames {
 #[derive(Debug, Clone)]
 enum AnyPackageIdentifier {
 	PackageNames(VersionedPackageNames),
-	Git((GixUrl, GitVersionSpecifier)),
+	Git((GixUrl, String)),
 	Path(RelativeOrAbsolutePath),
 }
 
@@ -123,7 +122,7 @@ impl AnyPackageIdentifier {
 				PackageSources::Git(GitPackageSource::new(url.clone())),
 				DependencySpecifiers::Git(GitDependencySpecifier {
 					repo: url.clone(),
-					version_specifier: ver.clone(),
+					rev: ver.clone(),
 					path: None,
 					realm,
 				}),
@@ -146,20 +145,11 @@ impl FromStr for AnyPackageIdentifier {
 		if let Some(rest) = s.strip_prefix("path:") {
 			Ok(AnyPackageIdentifier::Path(rest.parse().unwrap()))
 		} else if s.contains(':') {
-			let (repo, ver) = match s.split_once('#') {
-				Some((repo, rev)) => (repo, GitVersionSpecifier::Rev(rev.to_string())),
-				None => match s.split_once('@') {
-					Some((repo, req)) => (
-						repo,
-						GitVersionSpecifier::VersionReq(
-							req.parse().context("failed to parse version requirement")?,
-						),
-					),
-					None => anyhow::bail!("invalid format. expected url separated by # or @"),
-				},
-			};
+			let (repo, rev) = s
+				.split_once('#')
+				.context("invalid format. expected url separated by #")?;
 
-			Ok(AnyPackageIdentifier::Git((repo.parse()?, ver)))
+			Ok(AnyPackageIdentifier::Git((repo.parse()?, rev.to_string())))
 		} else {
 			Ok(AnyPackageIdentifier::PackageNames(s.parse()?))
 		}

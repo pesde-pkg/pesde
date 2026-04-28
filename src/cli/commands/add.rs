@@ -14,7 +14,6 @@ use pesde::manifest::Alias;
 use pesde::manifest::DependencyType;
 use pesde::source::DependencySpecifiers;
 use pesde::source::PackageSource as _;
-use pesde::source::git::specifier::GitVersionSpecifier;
 use pesde::source::path::RelativeOrAbsolutePath;
 
 #[derive(Debug, Args)]
@@ -162,17 +161,9 @@ impl AddCommand {
 			}
 			DependencySpecifiers::Git(spec) => {
 				field["repo"] = toml_edit::value(spec.repo.to_string());
-				match spec.version_specifier.clone() {
-					GitVersionSpecifier::Rev(rev) => field["rev"] = toml_edit::value(rev),
-					GitVersionSpecifier::VersionReq(req) => {
-						field["version"] = toml_edit::value(req.to_string());
-					}
-				}
+				field["rev"] = toml_edit::value(&spec.rev);
 
-				println!(
-					"added git {}{} to {dependency_key}",
-					spec.repo, spec.version_specifier
-				);
+				println!("added git {}#{} to {dependency_key}", spec.repo, spec.rev);
 			}
 			DependencySpecifiers::Path(spec) => {
 				field["path"] = toml_edit::value(spec.path.to_string());

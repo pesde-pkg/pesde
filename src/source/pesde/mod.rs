@@ -44,7 +44,6 @@ use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::git::specifier::GitDependencySpecifier;
-use crate::source::git::specifier::GitVersionSpecifier;
 use crate::source::git::specifier::IndexGitDependencySpecifier;
 use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
@@ -216,13 +215,14 @@ impl PackageSource for PesdePackageSource {
 												name: s.name,
 												version: s.version,
 												index: s.index,
+												// TODO: query WallyPackageSource for realm based on the package's canonical value (WallyPackage.realm)
 												realm: Realm::Shared,
 											})
 										}
 										IndexDependencySpecifiers::Git(s) => {
 											DependencySpecifiers::Git(GitDependencySpecifier {
 												repo: s.repo,
-												version_specifier: GitVersionSpecifier::Rev(s.rev),
+												rev: s.rev,
 												path: s.path,
 												// no easy way to get this data, probably not worth it since this compat code is temporary
 												realm: None,

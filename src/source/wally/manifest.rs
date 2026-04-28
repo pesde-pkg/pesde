@@ -48,7 +48,7 @@ pub fn deserialize_specifiers<'de, D: Deserializer<'de>>(
 					version: VersionReq::parse(version).map_err(serde::de::Error::custom)?,
 					// doesn't matter, will be replaced later
 					index: "".to_string(),
-					// Wally realms function differently to pesde's, so shared is the most reasonable default
+					// replaced in into_resolve_entry based on the package's registry field
 					realm: crate::source::Realm::Shared,
 				},
 			))
@@ -85,6 +85,8 @@ impl WallyManifest {
 		] {
 			while let Some((alias, mut spec)) = deps.pop_first() {
 				spec.index = self.package.registry.to_string();
+
+				// TODO: update realm based on the package's canonical value (WallyPackage.realm)
 
 				if all_deps
 					.insert(alias.clone(), (DependencySpecifiers::Wally(spec), ty))

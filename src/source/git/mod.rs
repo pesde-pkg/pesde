@@ -26,7 +26,6 @@ use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::git::pkg_ref::GitPackageRef;
-use crate::source::git::specifier::GitVersionSpecifier;
 use crate::source::git_index::GitBasedSource;
 use crate::source::git_index::read_file;
 use crate::source::path::RelativeOrAbsolutePath;
@@ -35,14 +34,12 @@ use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
 use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
 use crate::util::simplify_path;
-use crate::version_matches;
 use fs_err::tokio as fs;
 use gix::ObjectId;
 use gix::traverse::tree::Recorder;
 use relative_path::RelativePathBuf;
 use semver::BuildMetadata;
 use semver::Version;
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -185,55 +182,9 @@ impl PackageSource for GitPackageSource {
 		>(move || {
 			let repo = gix::open(path)
 				.map_err(|e| errors::ResolveErrorKind::OpenRepo(repo_url.clone(), e))?;
-			let (rev, resolved_version) = match specifier.version_specifier {
-				GitVersionSpecifier::Rev(rev_str) => (
-					repo.rev_parse_single(rev_str.as_bytes()).map_err(|e| {
-						errors::ResolveErrorKind::ParseRev(rev_str.clone(), repo_url.clone(), e)
-					})?,
-					None,
-				),
-				GitVersionSpecifier::VersionReq(req) => {
-					let prefix = if let Some(path) = &specifier.path {
-						Cow::Owned(format!("refs/tags/{path}/v"))
-					} else {
-						Cow::Borrowed("refs/tags/v")
-					};
-
-					let (mut refe, version) = repo
-						.references()
-						.map_err(|e| errors::ResolveErrorKind::RefIter(repo_url.clone(), e))?
-						.prefixed(prefix.as_ref())
-						.map_err(|e| errors::ResolveErrorKind::RefSetup(repo_url.clone(), e))?
-						.collect::<Result<Vec<_>, _>>()
-						.map_err(|e| errors::ResolveErrorKind::IterRefs(repo_url.clone(), e))?
-						.into_iter()
-						.filter_map(|r| {
-							str::from_utf8(
-								r.name().as_bstr().strip_prefix(prefix.as_bytes()).unwrap(),
-							)
-							.ok()
-							.and_then(|ver| Version::parse(ver).ok())
-							.map(|v| (r, v))
-						})
-						.filter(|(_, v)| version_matches(&req, v))
-						.max_by(|(_, v1), (_, v2)| v1.cmp(v2))
-						.ok_or_else(|| {
-							errors::ResolveErrorKind::NoMatchingVersion(
-								req.to_string(),
-								repo_url.clone(),
-							)
-						})?;
-
-					(
-						refe.peel_to_id().map_err(|e| {
-							errors::ResolveErrorKind::RevToId(req.to_string(), repo_url.clone(), e)
-						})?,
-						Some(version),
-					)
-				}
-			};
-
-			// TODO: possibly use the search algorithm from src/main.rs to find the workspace root
+			let rev = repo.rev_parse_single(&*specifier.rev).map_err(|e| {
+				errors::ResolveErrorKind::ParseRev(specifier.rev.clone(), repo_url.clone(), e)
+			})?;
 
 			let root_tree = rev
 				.object()
@@ -258,7 +209,7 @@ impl PackageSource for GitPackageSource {
 				root_tree
 			};
 
-			let tree_version = || Version {
+			let tree_version = Version {
 				major: 0,
 				minor: 0,
 				patch: 0,
@@ -269,26 +220,6 @@ impl PackageSource for GitPackageSource {
 			if let Some(m) = read_file(&tree, [MANIFEST_FILE_NAME])
 				.map_err(|e| errors::ResolveErrorKind::ReadManifest(repo_url.clone(), e))?
 			{
-				if let Some(resolved_version) = resolved_version {
-					match toml::from_str::<Manifest>(&m) {
-						Ok(m) => {
-							return Ok((
-								StructureKind::PesdeV2,
-								resolved_version,
-								transform_pesde_dependencies(&subproject, &m, &repo_url)?,
-								tree.id.to_string(),
-							));
-						}
-						Err(e) => {
-							return Err(errors::ResolveErrorKind::DeserManifest(
-								repo_url.clone(),
-								e,
-							)
-							.into());
-						}
-					}
-				}
-
 				let manifest = toml::from_str::<PesdeVersionedManifest>(&m)
 					.map_err(|e| errors::ResolveErrorKind::DeserManifest(repo_url.clone(), e))?;
 				return Ok((
@@ -296,7 +227,7 @@ impl PackageSource for GitPackageSource {
 						PesdeVersionedManifest::V1(m) => StructureKind::PesdeV1(m.target.kind()),
 						PesdeVersionedManifest::V2(_) => StructureKind::PesdeV2,
 					},
-					tree_version(),
+					tree_version,
 					transform_pesde_dependencies(&subproject, manifest.as_manifest(), &repo_url)?,
 					tree.id.to_string(),
 				));
@@ -321,7 +252,7 @@ impl PackageSource for GitPackageSource {
 
 			Ok((
 				StructureKind::Wally(package.name.name().into()),
-				tree_version(),
+				tree_version,
 				dependencies,
 				tree.id.to_string(),
 			))
