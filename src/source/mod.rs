@@ -475,18 +475,7 @@ macro_rules! impls {
 					UnknownRealm(String),
 				}
 
-				/// Errors that can occur when parsing a Git package reference
-				#[derive(Debug, Error, thiserror_ext::Box)]
-				#[thiserror_ext(newtype(name = GitPackageRefParseError))]
-				pub enum GitPackageRefParseErrorKind {
-					/// The format of the Git package reference is invalid
-					#[error("invalid Git package reference format")]
-					InvalidFormat,
-
-					/// An error occurred while parsing the structure kind
-					#[error("failed to parse structure kind")]
-					StructureKindParseError(#[from] StructureKindParseError),
-				}
+				
 
 				/// Errors that can occur when parsing a package reference
 				#[derive(Debug, Error, thiserror_ext::Box)]

@@ -243,7 +243,7 @@ impl PackageSource for PesdePackageSource {
 				return toml::from_str::<PackageFs>(&s).map_err(Into::into);
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-			Err(e) => return Err(errors::DownloadErrorKind::Store(e).into()),
+			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
 		}
 
 		let version_id = VersionId::new(package.id.version().clone(), pkg_ref.target);
@@ -275,7 +275,7 @@ impl PackageSource for PesdePackageSource {
 
 			let (_, hash) = store_in_cas(project.cas_dir(), &*contents)
 				.await
-				.map_err(errors::DownloadErrorKind::Store)?;
+				.map_err(errors::DownloadErrorKind::WriteIndex)?;
 			entries.insert(path, FsEntry::File(hash));
 		}
 
@@ -284,12 +284,12 @@ impl PackageSource for PesdePackageSource {
 		if let Some(parent) = index_file.parent() {
 			fs::create_dir_all(parent)
 				.await
-				.map_err(errors::DownloadErrorKind::Store)?;
+				.map_err(errors::DownloadErrorKind::WriteIndex)?;
 		}
 
 		fs::write(&index_file, toml::to_string(&fs)?)
 			.await
-			.map_err(errors::DownloadErrorKind::Store)?;
+			.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
 		Ok(fs)
 	}
@@ -421,9 +421,9 @@ pub mod errors {
 		#[error("error from backend")]
 		Backend(#[from] crate::source::pesde::backend::errors::DownloadError),
 
-		/// Error storing file in CAS
-		#[error("error storing file in CAS")]
-		Store(#[source] std::io::Error),
+		/// Error reading index file
+		#[error("error reading index file")]
+		ReadIndex(#[source] std::io::Error),
 
 		/// Error writing index file
 		#[error("error writing index file")]
@@ -436,10 +436,6 @@ pub mod errors {
 		/// Error deserializing index file
 		#[error("error deserializing index file")]
 		DeserializeIndex(#[from] toml::de::Error),
-
-		/// Error reading index file
-		#[error("error reading index file")]
-		ReadIndex(#[source] std::io::Error),
 	}
 
 	/// Errors that can occur when getting the target for a package from a pesde package source

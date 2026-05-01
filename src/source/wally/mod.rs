@@ -248,7 +248,9 @@ impl PackageSource for WallyPackageSource {
 				continue;
 			}
 
-			let (_, hash) = store_in_cas(project.cas_dir(), &*contents).await?;
+			let (_, hash) = store_in_cas(project.cas_dir(), &*contents)
+				.await
+				.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
 			entries.insert(path, FsEntry::File(hash));
 		}
@@ -341,10 +343,6 @@ pub mod errors {
 		#[error("error decompressing archive")]
 		Decompress(#[from] async_zip::error::ZipError),
 
-		/// Error interacting with the filesystem
-		#[error("error interacting with the filesystem")]
-		Io(#[from] std::io::Error),
-
 		/// Error serializing index file
 		#[error("error serializing index file")]
 		SerializeIndex(#[from] toml::ser::Error),
@@ -352,10 +350,6 @@ pub mod errors {
 		/// Error getting package exports
 		#[error("error getting package exports")]
 		GetExports(#[from] crate::source::wally::compat_util::errors::GetExportsError),
-
-		/// Error storing in CAS
-		#[error("error storing in CAS")]
-		Store(#[source] std::io::Error),
 
 		/// Error writing index file
 		#[error("error writing index file")]

@@ -225,7 +225,7 @@ impl PackageSource for GitPackageSource {
 				});
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-			Err(e) => return Err(errors::DownloadErrorKind::Io(e).into()),
+			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
 		}
 
 		let entries = self
@@ -282,7 +282,7 @@ impl PackageSource for GitPackageSource {
 
 				let (_, hash) = store_in_cas(project.cas_dir(), &*contents)
 					.await
-					.map_err(errors::DownloadErrorKind::Store)?;
+					.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
 				Ok::<_, errors::DownloadError>((entry.path, FsEntry::File(hash)))
 			});
@@ -296,7 +296,9 @@ impl PackageSource for GitPackageSource {
 		let fs = PackageFs::Cached(fs_entries);
 
 		if let Some(parent) = index_file.parent() {
-			fs::create_dir_all(parent).await?;
+			fs::create_dir_all(parent)
+				.await
+				.map_err(errors::DownloadErrorKind::WriteIndex)?;
 		}
 
 		fs::write(
@@ -305,7 +307,7 @@ impl PackageSource for GitPackageSource {
 				.map_err(|e| errors::DownloadErrorKind::SerializeIndex(self.repo.to_string(), e))?,
 		)
 		.await
-		.map_err(errors::DownloadErrorKind::Io)?;
+		.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
 		reporter.report_done();
 
@@ -413,10 +415,6 @@ pub mod errors {
 		#[error("error deserializing file in backend {0}")]
 		DeserializeFile(String, #[source] toml::de::Error),
 
-		/// An error occurred interacting with the file system
-		#[error("error interacting with the file system")]
-		Io(#[from] std::io::Error),
-
 		/// An error occurred getting Wally exports
 		#[error("error getting wally exports")]
 		WallyGetExports(#[from] crate::source::wally::compat_util::errors::GetExportsError),
@@ -429,9 +427,13 @@ pub mod errors {
 		#[error("error listing tree from backend")]
 		ListTree(#[from] crate::source::git::backend::errors::ListTreeError),
 
-		/// An error occurred storing in CAS
-		#[error("error storing in CAS")]
-		Store(#[source] std::io::Error),
+		/// An error occurred reading the index file
+		#[error("error reading index file")]
+		ReadIndex(#[source] std::io::Error),
+
+		/// An error occurred writing the index file
+		#[error("error writing index file")]
+		WriteIndex(#[source] std::io::Error),
 
 		/// The file at the specified path was missing
 		#[error("missing file at {0}")]
