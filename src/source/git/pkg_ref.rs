@@ -3,12 +3,13 @@ use std::str::FromStr;
 
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
+use crate::source::git::backend::TreeId;
 
 /// A Git package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GitPackageRef {
 	/// The id of the package's tree
-	pub tree_id: String,
+	pub tree_id: TreeId,
 }
 ser_display_deser_fromstr!(GitPackageRef);
 
@@ -28,8 +29,6 @@ impl FromStr for GitPackageRef {
 	type Err = GitPackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		Ok(GitPackageRef {
-			tree_id: s.to_string(),
-		})
+		Ok(GitPackageRef { tree_id: s.into() })
 	}
 }

@@ -25,6 +25,11 @@ pub mod fs;
 pub mod git_index;
 pub mod ids;
 
+pub mod git;
+pub mod path;
+pub mod pesde;
+pub mod wally;
+
 /// Files that will not be stored when downloading a package. These are only files which break pesde's functionality, or are meaningless and possibly heavy (e.g. `.DS_Store`)
 pub const IGNORED_FILES: &[&str] = &["foreman.toml", "aftman.toml", "rokit.toml", ".DS_Store"];
 
@@ -89,7 +94,7 @@ pub trait PackageSource: Debug {
 	) -> impl Future<Output = Result<ResolveResult, Self::ResolveError>> + Send;
 
 	/// Downloads a package
-	fn download<R: DownloadProgressReporter>(
+	fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
 		package: &ResolvedPackage,
@@ -249,10 +254,6 @@ impl FromStr for PackageSources {
 macro_rules! impls {
 	($($source:ident),+) => {
 		paste::paste! {
-			$(
-				pub mod [< $source:lower >];
-			)+
-
 			/// All possible dependency specifiers
 			#[derive(Debug, Serialize, Clone, PartialEq, Eq, Hash)]
 			#[serde(untagged)]
@@ -414,7 +415,7 @@ macro_rules! impls {
 					.map_err(Into::into)
 				}
 
-				async fn download<R: DownloadProgressReporter>(
+				async fn download<R: DownloadProgressReporter + 'static>(
 					&self,
 					project: &Project,
 					package: &ResolvedPackage,
@@ -519,9 +520,17 @@ macro_rules! impls {
 					#[error("unknown source")]
 					Unknown,
 
-					/// Parsing the URL failed
-					#[error("error parsing url")]
-					UrlParse(#[from] crate::errors::GixUrlError),
+					/// Parsing pesde source failed
+					#[error("error parsing pesde source")]
+					PesdeParse(#[from] crate::source::pesde::backend::errors::ParseBackendError),
+
+					/// Parsing Wally source failed
+					#[error("error parsing wally source")]
+					WallyParse(#[from] crate::source::wally::backend::errors::ParseBackendError),
+
+					/// Parsing Git source failed
+					#[error("error parsing git source")]
+					GitParse(#[from] crate::source::git::backend::errors::ParseBackendError),
 				}
 
 				/// Errors that occur when refreshing a package source

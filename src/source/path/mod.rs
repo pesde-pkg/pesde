@@ -169,7 +169,7 @@ impl PackageSource for PathPackageSource {
 	}
 
 	#[instrument(skip_all, level = "debug")]
-	async fn download<R: DownloadProgressReporter>(
+	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
 		package: &ResolvedPackage,

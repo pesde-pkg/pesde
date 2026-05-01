@@ -67,7 +67,7 @@ pub trait PatchProgressReporter: Send + Sync {
 
 impl PatchProgressReporter for () {}
 
-pub(crate) fn response_to_async_read<R: DownloadProgressReporter>(
+pub(crate) fn response_to_async_buf_read<R: DownloadProgressReporter>(
 	response: reqwest::Response,
 	reporter: Arc<R>,
 ) -> impl AsyncBufRead {

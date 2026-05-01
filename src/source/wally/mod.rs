@@ -3,9 +3,7 @@ use crate::GixUrl;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
-use crate::names::wally::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
-use crate::reporters::response_to_async_read;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::IGNORED_DIRS;
@@ -20,29 +18,24 @@ use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
-use crate::source::git_index::GitBasedSource;
-use crate::source::git_index::read_file;
-use crate::source::git_index::root_tree;
+use crate::source::wally::backend::GitWallyPackageSourceBackend;
+use crate::source::wally::backend::WallyPackageBackends;
+use crate::source::wally::backend::WallyPackageSourceBackend as _;
 use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
 use crate::source::wally::pkg_ref::WallyPackageRef;
 use crate::util::ToEscaped as _;
 use crate::version_matches;
 use fs_err::tokio as fs;
-use relative_path::RelativePathBuf;
-use reqwest::header::AUTHORIZATION;
-use serde::Deserialize;
+use futures::StreamExt as _;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::io::AsyncReadExt as _;
-use tokio::pin;
-use tokio::task::spawn_blocking;
-use tokio_util::compat::FuturesAsyncReadCompatExt as _;
 use tracing::instrument;
 
+pub mod backend;
 pub(crate) mod compat_util;
 pub(crate) mod manifest;
 pub mod pkg_ref;
@@ -51,76 +44,43 @@ pub mod specifier;
 /// The Wally package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct WallyPackageSource {
-	repo_url: GixUrl,
+	repo: WallyPackageBackends,
 }
 ser_display_deser_fromstr!(WallyPackageSource);
 
 impl Display for WallyPackageSource {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.repo_url)
+		write!(f, "{}", self.repo)
 	}
 }
 
 impl FromStr for WallyPackageSource {
-	type Err = crate::errors::GixUrlError;
+	type Err = crate::source::wally::backend::errors::ParseBackendError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		s.parse().map(Self::new)
 	}
 }
 
-impl GitBasedSource for WallyPackageSource {
-	const INDEX_SCOPE: &'static str = "wally";
-
-	fn repo_url(&self) -> &GixUrl {
-		&self.repo_url
-	}
-}
-
 impl WallyPackageSource {
 	/// Creates a new Wally package source
 	#[must_use]
-	pub fn new(repo_url: GixUrl) -> Self {
-		Self { repo_url }
+	pub fn new(repo: WallyPackageBackends) -> Self {
+		Self { repo }
 	}
 
-	/// Reads the config file
-	#[instrument(skip_all, ret(level = "trace"), level = "debug")]
-	pub async fn config(&self, project: &Project) -> Result<WallyIndexConfig, errors::ConfigError> {
-		let repo_url = self.repo_url.clone();
-		let path = self.path(project);
-
-		spawn_blocking(move || {
-			let repo = gix::open(&path)?;
-			let tree = root_tree(&repo)?;
-			let file = read_file(&tree, ["config.json"])?;
-
-			match file {
-				Some(s) => serde_json::from_str(&s).map_err(Into::into),
-				None => Err(errors::ConfigErrorKind::Missing(repo_url).into()),
-			}
-		})
-		.await
-		.unwrap()
+	/// Creates a Wally package source from a URL
+	#[must_use]
+	pub fn from_url(repo_url: GixUrl) -> Self {
+		Self::new(WallyPackageBackends::Git(
+			GitWallyPackageSourceBackend::new(repo_url),
+		))
 	}
 
-	pub(crate) async fn read_index_file(
-		&self,
-		project: &Project,
-		pkg_name: WallyPackageName,
-	) -> Result<Option<String>, errors::ResolveError> {
-		let path = self.path(project);
-
-		spawn_blocking(move || {
-			let repo = gix::open(&path)?;
-			let tree = root_tree(&repo)?;
-			let (scope, name) = pkg_name.as_str();
-
-			read_file(&tree, [scope, name])
-				.map_err(|e| errors::ResolveErrorKind::Read(pkg_name, e).into())
-		})
-		.await
-		.unwrap()
+	/// Gets the repository backend
+	#[must_use]
+	pub fn repo(&self) -> &WallyPackageBackends {
+		&self.repo
 	}
 }
 
@@ -132,7 +92,7 @@ impl PackageSource for WallyPackageSource {
 
 	#[instrument(skip_all, level = "debug")]
 	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-		GitBasedSource::refresh(self, project).await
+		self.repo.refresh(project).await
 	}
 
 	#[instrument(skip_all, level = "debug")]
@@ -147,29 +107,24 @@ impl PackageSource for WallyPackageSource {
 		};
 
 		let mut string = self
+			.repo
 			.read_index_file(subproject.project(), specifier.name.clone())
 			.await?;
-		let mut index_url = self.repo_url.clone();
+		let mut repo = self.repo.clone();
 
 		if string.is_none() {
 			tracing::debug!(
 				"{} not found in Wally registry. searching in backup registries",
 				specifier.name
 			);
-			let config = self.config(subproject.project()).await?;
+			let config = self.repo.config(subproject.project()).await?;
 
-			for url in config.fallback_registries {
-				let url = match url.parse() {
-					Ok(u) => u,
-					Err(e) => {
-						tracing::warn!("invalid fallback registry URL {url}: {e}");
-						continue;
-					}
-				};
-				let source = WallyPackageSource::new(url);
-
+			for fallback_repo in config.fallback_registries {
 				match refreshed_sources
-					.refresh(&PackageSources::Wally(source.clone()), subproject.project())
+					.refresh(
+						&PackageSources::Wally(WallyPackageSource::new(fallback_repo.clone())),
+						subproject.project(),
+					)
 					.await
 					.map_err(super::errors::RefreshError::into_inner)
 				{
@@ -180,19 +135,19 @@ impl PackageSource for WallyPackageSource {
 					Err(e) => panic!("unexpected error: {e:?}"),
 				}
 
-				match source
+				match fallback_repo
 					.read_index_file(subproject.project(), specifier.name.clone())
 					.await
 				{
 					Ok(Some(res)) => {
 						string = Some(res);
-						index_url = source.repo_url;
+						repo = fallback_repo;
 						break;
 					}
 					Ok(None) => {
-						tracing::debug!("{} not found in {}", specifier.name, source.repo_url);
+						tracing::debug!("{} not found in {}", specifier.name, fallback_repo);
 					}
-					Err(e) => return Err(e),
+					Err(e) => return Err(errors::ResolveErrorKind::ReadIndex(e).into()),
 				}
 			}
 		}
@@ -223,9 +178,7 @@ impl PackageSource for WallyPackageSource {
 			.collect::<Result<_, errors::ResolveError>>()?;
 
 		Ok(ResolveResult {
-			source: PackageSources::Wally(WallyPackageSource {
-				repo_url: index_url,
-			}),
+			source: PackageSources::Wally(WallyPackageSource { repo }),
 			pkg_ref: PackageRefs::Wally(WallyPackageRef {
 				name: specifier.name.clone(),
 			}),
@@ -235,7 +188,7 @@ impl PackageSource for WallyPackageSource {
 	}
 
 	#[instrument(skip_all, level = "debug")]
-	async fn download<R: DownloadProgressReporter>(
+	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
 		package: &ResolvedPackage,
@@ -245,12 +198,11 @@ impl PackageSource for WallyPackageSource {
 			unreachable!("invalid package ref type for Wally package source");
 		};
 
-		let config = self.config(project).await?;
 		let index_file = project
 			.cas_dir()
 			.join("index")
 			.join("wally")
-			.join(self.repo_url.to_string().escaped())
+			.join(self.repo.to_string().escaped())
 			.join(pkg_ref.name.escaped())
 			.join(package.id.version().to_string());
 
@@ -270,72 +222,35 @@ impl PackageSource for WallyPackageSource {
 			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
 		}
 
-		let (scope, name) = pkg_ref.name.as_str();
-
-		let mut request = project
-			.reqwest()
-			.get(format!(
-				"{}/v1/package-contents/{}/{}/{}",
-				config.api.as_str().trim_end_matches('/'),
-				urlencoding::encode(scope),
-				urlencoding::encode(name),
-				urlencoding::encode(&package.id.version().to_string())
-			))
-			.header(
-				"Wally-Version",
-				std::env::var("PESDE_WALLY_VERSION")
-					.as_deref()
-					.unwrap_or("0.3.2"),
-			);
-
-		if let Some(token) = project.auth_config().tokens().get(&self.repo_url) {
-			tracing::debug!("using token for {}", self.repo_url);
-			request = request.header(AUTHORIZATION, token);
-		}
-
-		let response = request.send().await?.error_for_status()?;
-
-		let total_len = response.content_length().unwrap_or(0);
-		let bytes = response_to_async_read(response, reporter.clone());
-		pin!(bytes);
-
-		let mut buf = Vec::with_capacity(total_len as usize);
-		bytes.read_to_end(&mut buf).await?;
-
-		let mut archive =
-			async_zip::tokio::read::seek::ZipFileReader::with_tokio(std::io::Cursor::new(&mut buf))
-				.await?;
-
-		let archive_entries = (0..archive.file().entries().len())
-			.map(|index| {
-				let entry = archive.file().entries().get(index).unwrap();
-				let relative_path = RelativePathBuf::from_path(entry.filename().as_str()?).unwrap();
-				Ok::<_, errors::DownloadError>((index, entry.dir()?, relative_path))
-			})
-			.collect::<Result<Vec<_>, _>>()?;
+		let entries_stream = self
+			.repo
+			.download_entries(project, &pkg_ref.name, package.id.version(), reporter)
+			.await?;
+		tokio::pin!(entries_stream);
 
 		let mut entries = BTreeMap::new();
 
-		for (index, is_dir, relative_path) in archive_entries {
-			let name = relative_path.file_name().unwrap_or("");
-			if if is_dir {
-				IGNORED_DIRS.contains(&name)
-			} else {
-				IGNORED_FILES.contains(&name)
-			} {
+		while let Some(entry_result) = entries_stream.next().await {
+			let (path, contents) = entry_result?;
+			let Some(name) = path.file_name() else {
+				continue;
+			};
+
+			let Some(contents) = contents else {
+				if IGNORED_DIRS.contains(&name) {
+					continue;
+				}
+				entries.insert(path, FsEntry::Directory);
+				continue;
+			};
+
+			if IGNORED_FILES.contains(&name) {
 				continue;
 			}
 
-			if is_dir {
-				entries.insert(relative_path, FsEntry::Directory);
-				continue;
-			}
+			let (_, hash) = store_in_cas(project.cas_dir(), &*contents).await?;
 
-			let entry_reader = archive.reader_without_entry(index).await?;
-
-			let (_, hash) = store_in_cas(project.cas_dir(), entry_reader.compat()).await?;
-
-			entries.insert(relative_path, FsEntry::File(hash));
+			entries.insert(path, FsEntry::File(hash));
 		}
 
 		let fs = PackageFs::Cached(entries);
@@ -364,45 +279,22 @@ impl PackageSource for WallyPackageSource {
 	}
 }
 
-/// A Wally index config
-#[derive(Debug, Clone, Deserialize)]
-pub struct WallyIndexConfig {
-	api: url::Url,
-	#[serde(default)]
-	fallback_registries: Vec<String>,
-}
-
 /// Errors that can occur when interacting with a Wally package source
 pub mod errors {
+	use crate::names::wally::WallyPackageName;
 	use thiserror::Error;
 
-	use crate::GixUrl;
-	use crate::names::wally::WallyPackageName;
-	use crate::source::git_index::errors::ReadFile;
-
 	/// Errors that can occur when refreshing the Wally package source
-	pub type RefreshError = crate::source::git_index::errors::RefreshError;
+	pub type RefreshError = crate::source::wally::backend::errors::RefreshError;
 
 	/// Errors that can occur when resolving a package from a Wally package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = ResolveError))]
 	#[non_exhaustive]
 	pub enum ResolveErrorKind {
-		/// Error opening repository
-		#[error("error opening repository")]
-		Open(#[from] gix::open::Error),
-
-		/// Error getting tree
-		#[error("error getting tree")]
-		Tree(#[from] crate::source::git_index::errors::TreeError),
-
 		/// Package not found in index
 		#[error("package {0} not found")]
 		NotFound(WallyPackageName),
-
-		/// Error reading file for package
-		#[error("error reading file for {0}")]
-		Read(WallyPackageName, #[source] ReadFile),
 
 		/// Error parsing file for package
 		#[error("error parsing file for {0}")]
@@ -415,57 +307,27 @@ pub mod errors {
 			#[source] crate::manifest::errors::AllDependenciesError,
 		),
 
-		/// Error reading config file
-		#[error("error reading config file")]
-		Config(#[from] ConfigError),
+		/// Error from backend
+		#[error("error from backend")]
+		Backend(#[from] crate::source::wally::backend::errors::ConfigError),
 
-		/// Error refreshing backup registry source
-		#[error("error refreshing backup registry source")]
-		Refresh(#[from] crate::source::git_index::errors::RefreshError),
+		/// Error reading index file
+		#[error("error reading index file")]
+		ReadIndex(#[from] crate::source::wally::backend::errors::ReadIndexFileError),
 
-		/// Error resolving package in backup registries
-		#[error("error resolving package in backup registries")]
-		BackupResolve(#[from] Box<ResolveErrorKind>),
-	}
-
-	/// Errors that can occur when reading the config file for a Wally package source
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = ConfigError))]
-	#[non_exhaustive]
-	pub enum ConfigErrorKind {
-		/// Error opening repository
-		#[error("error opening repository")]
-		Open(#[from] gix::open::Error),
-
-		/// Error getting tree
-		#[error("error getting tree")]
-		Tree(#[from] crate::source::git_index::errors::TreeError),
-
-		/// Error reading file
-		#[error("error reading config file")]
-		ReadFile(#[from] ReadFile),
-
-		/// Error parsing config file
-		#[error("error parsing config file")]
-		Parse(#[from] serde_json::Error),
-
-		/// The config file is missing
-		#[error("missing config file for index at {0}")]
-		Missing(GixUrl),
+		/// Error refreshing
+		#[error("error refreshing")]
+		Refresh(#[from] crate::source::wally::backend::errors::RefreshError),
 	}
 
 	/// Errors that can occur when downloading a package from a Wally package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = DownloadError))]
+	#[thiserror_ext(newtype(name = WallyDownloadError))]
 	#[non_exhaustive]
 	pub enum DownloadErrorKind {
-		/// Error reading index file
-		#[error("error reading config file")]
-		ReadFile(#[from] ConfigError),
-
-		/// Error downloading package
-		#[error("error downloading package")]
-		Download(#[from] reqwest::Error),
+		/// Error from backend
+		#[error("error from backend")]
+		Backend(#[from] crate::source::wally::backend::errors::DownloadError),
 
 		/// Error deserializing index file
 		#[error("error deserializing index file")]
@@ -487,16 +349,23 @@ pub mod errors {
 		#[error("error serializing index file")]
 		SerializeIndex(#[from] toml::ser::Error),
 
-		/// Error getting the package exports
+		/// Error getting package exports
 		#[error("error getting package exports")]
 		GetExports(#[from] crate::source::wally::compat_util::errors::GetExportsError),
+
+		/// Error storing in CAS
+		#[error("error storing in CAS")]
+		Store(#[source] std::io::Error),
 
 		/// Error writing index file
 		#[error("error writing index file")]
 		WriteIndex(#[source] std::io::Error),
 	}
 
-	/// Errors that can occur when getting a target from a Wally package source
+	/// The error type for downloading a package from a Wally package source
+	pub type DownloadError = WallyDownloadError;
+
+	/// Errors that can occur when getting exports from a Wally package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = GetExportsError))]
 	#[non_exhaustive]

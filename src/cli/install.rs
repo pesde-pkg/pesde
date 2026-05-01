@@ -17,6 +17,8 @@ use pesde::lockfile::Lockfile;
 use pesde::manifest::DependencyType;
 use pesde::source::PackageRefs;
 use pesde::source::PackageSources;
+#[expect(deprecated)]
+use pesde::source::pesde::backend::PesdePackageSourceBackend as _;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -135,7 +137,8 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 							.context("failed to refresh source")?;
 
 						let file = source
-							.read_index_file(name.clone(), &project)
+							.repo()
+							.read_index_file(&project, name.clone())
 							.await
 							.context("failed to read package index file")?
 							.context("package not found in index")?;

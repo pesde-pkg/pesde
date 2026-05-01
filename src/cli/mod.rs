@@ -90,7 +90,7 @@ impl AnyPackageIdentifier {
 					#[expect(deprecated)]
 					PackageNames::Pesde(name) => {
 						let (index_name, index_url) = get_index(true).await?;
-						let source = PackageSources::Pesde(PesdePackageSource::new(index_url));
+						let source = PackageSources::Pesde(PesdePackageSource::from_url(index_url));
 						let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
 							name: name.clone(),
 							version: version.clone().unwrap_or(VersionReq::STAR),
@@ -106,7 +106,7 @@ impl AnyPackageIdentifier {
 					}
 					PackageNames::Wally(name) => {
 						let (index_name, index_url) = get_index(false).await?;
-						let source = PackageSources::Wally(WallyPackageSource::new(index_url));
+						let source = PackageSources::Wally(WallyPackageSource::from_url(index_url));
 						let specifier = DependencySpecifiers::Wally(WallyDependencySpecifier {
 							name: name.clone(),
 							version: version.clone().unwrap_or(VersionReq::STAR),
@@ -119,7 +119,7 @@ impl AnyPackageIdentifier {
 				}
 			}
 			AnyPackageIdentifier::Git((url, ver)) => (
-				PackageSources::Git(GitPackageSource::new(url.clone())),
+				PackageSources::Git(GitPackageSource::from_url(url.clone())),
 				DependencySpecifiers::Git(GitDependencySpecifier {
 					repo: url.clone(),
 					rev: ver.clone(),

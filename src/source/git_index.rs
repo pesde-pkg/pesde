@@ -2,106 +2,85 @@
 #![allow(async_fn_in_trait)]
 
 use crate::GixUrl;
-use crate::Project;
-use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
 use gix::remote::Direction;
 use std::fmt::Debug;
+use std::path::PathBuf;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 
-/// A trait for sources that are based on Git repositories
-pub trait GitBasedSource {
-	/// The scope to store the index under, e.g. "pesde" or "wally"
-	// TODO: is this needed? perhaps just the repository url is enough?
-	const INDEX_SCOPE: &'static str;
-
-	/// The URL of the repository
-	fn repo_url(&self) -> &GixUrl;
-
-	/// The path to the index
-	fn path(&self, project: &Project) -> std::path::PathBuf {
-		project
-			.data_dir()
-			.join("git_repos")
-			.join(Self::INDEX_SCOPE)
-			.join(self.repo_url().to_string().escaped())
-	}
-
-	/// Refreshes the repository
-	async fn refresh(&self, project: &Project) -> Result<(), errors::RefreshError> {
-		let path = self.path(project);
-		let repo_url = self.repo_url().clone();
-
-		if fs::metadata(&path).await.is_ok() {
-			spawn_blocking(move || {
-				let repo = match gix::open_opts(&path, gix::open::Options::isolated()) {
-					Ok(repo) => repo,
-					Err(e) => return Err(errors::RefreshErrorKind::Open(path, e).into()),
-				};
-				let remote = match repo.find_default_remote(Direction::Fetch) {
-					Some(Ok(remote)) => remote,
-					Some(Err(e)) => {
-						return Err(errors::RefreshErrorKind::GetDefaultRemote(path, e).into());
-					}
-					None => {
-						return Err(errors::RefreshErrorKind::NoDefaultRemote(path).into());
-					}
-				};
-
-				let connection = remote
-					.connect(Direction::Fetch)
-					.map_err(|e| errors::RefreshErrorKind::Connect(repo_url.clone(), e))?;
-
-				let fetch = match connection
-					.prepare_fetch(gix::progress::Discard, Default::default())
-				{
-					Ok(fetch) => fetch,
-					Err(e) => {
-						return Err(
-							errors::RefreshErrorKind::PrepareFetch(repo_url.clone(), e).into()
-						);
-					}
-				};
-
-				match fetch.receive(gix::progress::Discard, &false.into()) {
-					Ok(_) => Ok::<_, errors::RefreshError>(()),
-					Err(e) => Err(errors::RefreshErrorKind::Read(repo_url.clone(), e).into()),
-				}
-			})
-			.await
-			.unwrap()?;
-
-			return Ok(());
-		}
-
-		fs::create_dir_all(&path).await?;
-
+#[instrument(skip_all, level = "debug")]
+pub(crate) async fn refresh_git_repo(
+	path: PathBuf,
+	repo_url: GixUrl,
+) -> Result<(), errors::RefreshError> {
+	if fs::metadata(&path).await.is_ok() {
 		spawn_blocking(move || {
-			gix::clone::PrepareFetch::new(
-				repo_url.as_url().clone(),
-				path,
-				gix::create::Kind::Bare,
-				gix::create::Options::default(),
-				gix::open::Options::isolated(),
-			)
-			.map_err(|e| {
-				errors::RefreshError::from(errors::RefreshErrorKind::Clone(repo_url.clone(), e))
-			})?
-			.fetch_only(gix::progress::Discard, &false.into())
-			.map_err(|e| {
-				errors::RefreshError::from(errors::RefreshErrorKind::Fetch(repo_url.clone(), e))
-			})
+			let repo = match gix::open_opts(&path, gix::open::Options::isolated()) {
+				Ok(repo) => repo,
+				Err(e) => return Err(errors::RefreshErrorKind::Open(path, e).into()),
+			};
+			let remote = match repo.find_default_remote(Direction::Fetch) {
+				Some(Ok(remote)) => remote,
+				Some(Err(e)) => {
+					return Err(errors::RefreshErrorKind::GetDefaultRemote(path, e).into());
+				}
+				None => {
+					return Err(errors::RefreshErrorKind::NoDefaultRemote(path).into());
+				}
+			};
+
+			let connection = remote
+				.connect(Direction::Fetch)
+				.map_err(|e| errors::RefreshErrorKind::Connect(repo_url.clone(), e))?;
+
+			let fetch = match connection.prepare_fetch(gix::progress::Discard, Default::default()) {
+				Ok(fetch) => fetch,
+				Err(e) => {
+					return Err(errors::RefreshErrorKind::PrepareFetch(repo_url.clone(), e).into());
+				}
+			};
+
+			match fetch.receive(gix::progress::Discard, &false.into()) {
+				Ok(_) => Ok::<_, errors::RefreshError>(()),
+				Err(e) => Err(errors::RefreshErrorKind::Read(repo_url.clone(), e).into()),
+			}
 		})
 		.await
-		.unwrap()
-		.map(|_| ())
+		.unwrap()?;
+
+		return Ok(());
 	}
+
+	fs::create_dir_all(&path).await?;
+
+	spawn_blocking(move || {
+		gix::clone::PrepareFetch::new(
+			repo_url.as_url().clone(),
+			path,
+			gix::create::Kind::Bare,
+			gix::create::Options::default(),
+			gix::open::Options::isolated(),
+		)
+		.map_err(|e| {
+			errors::RefreshError::from(errors::RefreshErrorKind::Clone(repo_url.clone(), e))
+		})?
+		.fetch_only(gix::progress::Discard, &false.into())
+		.map_err(|e| {
+			errors::RefreshError::from(errors::RefreshErrorKind::Fetch(repo_url.clone(), e))
+		})
+	})
+	.await
+	.unwrap()
+	.map(|_| ())
 }
 
 /// Reads a file from a tree
 #[instrument(skip(tree), ret, level = "trace")]
-pub fn read_file<I: IntoIterator<Item = P> + Debug, P: ToString + PartialEq<gix::bstr::BStr>>(
+pub(crate) fn read_file<
+	I: IntoIterator<Item = P> + Debug,
+	P: ToString + PartialEq<gix::bstr::BStr>,
+>(
 	tree: &gix::Tree,
 	file_path: I,
 ) -> Result<Option<String>, errors::ReadFile> {
@@ -130,7 +109,7 @@ pub fn read_file<I: IntoIterator<Item = P> + Debug, P: ToString + PartialEq<gix:
 
 /// Gets the root tree of a repository
 #[instrument(skip(repo), level = "trace")]
-pub fn root_tree(repo: &gix::Repository) -> Result<gix::Tree<'_>, errors::TreeError> {
+pub(crate) fn root_tree(repo: &gix::Repository) -> Result<gix::Tree<'_>, errors::TreeError> {
 	// this is a bare repo, so this is the actual path
 	let path = repo.path().to_path_buf();
 

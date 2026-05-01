@@ -56,7 +56,7 @@ fn specifier_to_source(
 					.unwrap()
 			};
 
-			PackageSources::Pesde(PesdePackageSource::new(index_url))
+			PackageSources::Pesde(PesdePackageSource::from_url(index_url))
 		}
 		DependencySpecifiers::Wally(specifier) => {
 			let index_url = if let Some(indices) = indices {
@@ -78,10 +78,12 @@ fn specifier_to_source(
 					.unwrap()
 			};
 
-			PackageSources::Wally(crate::source::wally::WallyPackageSource::new(index_url))
+			PackageSources::Wally(crate::source::wally::WallyPackageSource::from_url(
+				index_url,
+			))
 		}
 		DependencySpecifiers::Git(specifier) => PackageSources::Git(
-			crate::source::git::GitPackageSource::new(specifier.repo.clone()),
+			crate::source::git::GitPackageSource::from_url(specifier.repo.clone()),
 		),
 		DependencySpecifiers::Path(_) => {
 			PackageSources::Path(crate::source::path::PathPackageSource)

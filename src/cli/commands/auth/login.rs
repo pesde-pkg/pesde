@@ -2,6 +2,7 @@
 use anyhow::Context as _;
 use clap::Args;
 use console::style;
+use pesde::source::pesde::backend::PesdePackageSourceBackend as _;
 use reqwest::header::ACCEPT;
 use serde::Deserialize;
 use std::thread::spawn;
@@ -59,13 +60,14 @@ impl LoginCommand {
 	) -> anyhow::Result<String> {
 		println!("logging in into {index_url}");
 
-		let source = PesdePackageSource::new(index_url);
+		let source = PesdePackageSource::from_url(index_url);
 		source
 			.refresh(subproject.project())
 			.await
 			.context("failed to refresh index")?;
 
 		let config = source
+			.repo()
 			.config(subproject.project())
 			.await
 			.context("failed to read index config")?;
