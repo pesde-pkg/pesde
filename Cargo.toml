@@ -31,7 +31,6 @@ bin = [
     "dep:open",
     "dep:windows-registry",
     "dep:windows",
-    "dep:base64",
     "gix/worktree-mutation",
     "fs-err/expose_original_error",
     "tokio/rt",
@@ -99,6 +98,12 @@ digest = "0.10.7"
 sha2 = "0.10.9"
 hex = "0.4.3"
 
+base64 = "0.22.1"
+ssh-key = { version = "0.6.7", default-features = false, features = [
+    "std",
+    "ed25519",
+] }
+
 # TODO: remove this when gitoxide adds support for creating & applying diffs
 git2 = { version = "0.20.4", optional = true }
 
@@ -122,7 +127,6 @@ inquire = { version = "0.9.4", default-features = false, features = [
     "console",
     "one-liners",
 ], optional = true }
-base64 = { version = "0.22.1", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-registry = { version = "0.6.1", optional = true }

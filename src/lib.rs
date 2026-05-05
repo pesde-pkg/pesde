@@ -45,6 +45,7 @@ pub mod patches;
 pub mod reporters;
 pub mod resolver;
 pub mod scripts;
+pub mod signature;
 pub mod source;
 pub(crate) mod util;
 
