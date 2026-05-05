@@ -18,7 +18,7 @@ use pesde::manifest::DependencyType;
 use pesde::source::PackageRefs;
 use pesde::source::PackageSources;
 #[expect(deprecated)]
-use pesde::source::pesde::backend::PesdePackageSourceBackend as _;
+use pesde::source::legacy_pesde::backend::LegacyPesdePackageSourceBackend as _;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
@@ -119,10 +119,10 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 				.nodes
 				.keys()
 				.filter_map(|id| {
-					let PackageSources::Pesde(source) = id.source() else {
+					let PackageSources::LegacyPesde(source) = id.source() else {
 						return None;
 					};
-					let PackageRefs::Pesde(pkg_ref) = id.pkg_ref() else {
+					let PackageRefs::LegacyPesde(pkg_ref) = id.pkg_ref() else {
 						return None;
 					};
 					let source = source.clone();
@@ -132,7 +132,7 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 
 					Some(async move {
 						refreshed_sources
-							.refresh(&PackageSources::Pesde(source.clone()), &project)
+							.refresh(&PackageSources::LegacyPesde(source.clone()), &project)
 							.await
 							.context("failed to refresh source")?;
 

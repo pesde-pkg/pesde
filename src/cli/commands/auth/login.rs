@@ -1,23 +1,22 @@
 #![expect(deprecated)]
-use anyhow::Context as _;
-use clap::Args;
-use console::style;
-use pesde::source::pesde::backend::PesdePackageSourceBackend as _;
-use reqwest::header::ACCEPT;
-use serde::Deserialize;
-use std::thread::spawn;
-use tokio::time::sleep;
-use url::Url;
-
 use crate::cli::GITHUB_URL;
 use crate::cli::auth::get_token_login;
 use crate::cli::auth::get_tokens;
 use crate::cli::auth::set_token;
 use crate::cli::style::URL_STYLE;
+use anyhow::Context as _;
+use clap::Args;
+use console::style;
 use pesde::GixUrl;
 use pesde::Subproject;
 use pesde::source::PackageSource as _;
-use pesde::source::pesde::PesdePackageSource;
+use pesde::source::legacy_pesde::LegacyPesdePackageSource;
+use pesde::source::legacy_pesde::backend::LegacyPesdePackageSourceBackend as _;
+use reqwest::header::ACCEPT;
+use serde::Deserialize;
+use std::thread::spawn;
+use tokio::time::sleep;
+use url::Url;
 
 #[derive(Debug, Args)]
 pub struct LoginCommand {
@@ -60,7 +59,7 @@ impl LoginCommand {
 	) -> anyhow::Result<String> {
 		println!("logging in into {index_url}");
 
-		let source = PesdePackageSource::from_url(index_url);
+		let source = LegacyPesdePackageSource::from_url(index_url);
 		source
 			.refresh(subproject.project())
 			.await

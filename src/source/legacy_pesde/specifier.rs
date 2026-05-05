@@ -1,4 +1,4 @@
-//! pesde dependency specifier
+//! Legacy pesde dependency specifier
 use super::target::TargetKind;
 use crate::names::PackageName;
 use crate::source::DependencySpecifier;
@@ -8,12 +8,12 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::fmt::Display;
 
-/// The field that discriminates pesde dependencies from other dependencies
-pub const DISCRIMINATOR_FIELD: &str = "name";
+/// The field that discriminates legacy pesde dependencies from other dependencies
+pub const DISCRIMINATOR_FIELD: &str = "target";
 
-/// The specifier for a pesde dependency
+/// The specifier for a legacy pesde dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct PesdeDependencySpecifier {
+pub struct LegacyPesdeDependencySpecifier {
 	/// The name of the package
 	pub name: PackageName,
 	/// The version requirement for the package
@@ -24,7 +24,7 @@ pub struct PesdeDependencySpecifier {
 	/// The target to use for the package
 	pub target: TargetKind,
 }
-impl DependencySpecifier for PesdeDependencySpecifier {
+impl DependencySpecifier for LegacyPesdeDependencySpecifier {
 	fn realm(&self) -> Option<Realm> {
 		match self.target {
 			TargetKind::Roblox => Some(Realm::Shared),
@@ -34,15 +34,15 @@ impl DependencySpecifier for PesdeDependencySpecifier {
 	}
 }
 
-impl Display for PesdeDependencySpecifier {
+impl Display for LegacyPesdeDependencySpecifier {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}@{} {}", self.name, self.version, self.target)
 	}
 }
 
-/// The specifier for a pesde dependency in the index
+/// The specifier for a legacy pesde dependency in the index
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct IndexPesdeDependencySpecifier {
+pub struct IndexLegacyPesdeDependencySpecifier {
 	/// The name of the package
 	pub name: PackageName,
 	/// The version requirement for the package

@@ -16,15 +16,15 @@ use pesde::source::PackageSources;
 use pesde::source::Realm;
 use pesde::source::git::GitPackageSource;
 use pesde::source::git::specifier::GitDependencySpecifier;
+#[expect(deprecated)]
+use pesde::source::legacy_pesde::LegacyPesdePackageSource;
+#[expect(deprecated)]
+use pesde::source::legacy_pesde::specifier::LegacyPesdeDependencySpecifier;
+#[expect(deprecated)]
+use pesde::source::legacy_pesde::target::TargetKind;
 use pesde::source::path::PathPackageSource;
 use pesde::source::path::RelativeOrAbsolutePath;
 use pesde::source::path::specifier::PathDependencySpecifier;
-#[expect(deprecated)]
-use pesde::source::pesde::PesdePackageSource;
-#[expect(deprecated)]
-use pesde::source::pesde::specifier::PesdeDependencySpecifier;
-#[expect(deprecated)]
-use pesde::source::pesde::target::TargetKind;
 use pesde::source::wally::WallyPackageSource;
 use pesde::source::wally::specifier::WallyDependencySpecifier;
 use semver::VersionReq;
@@ -96,8 +96,9 @@ impl AnyPackageIdentifier {
 			#[expect(deprecated)]
 			AnyPackageIdentifier::PesdePackageName(VersionedPackageName(name, version)) => {
 				let (index_name, index_url) = get_index(true).await?;
-				let source = PackageSources::Pesde(PesdePackageSource::from_url(index_url));
-				let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
+				let source =
+					PackageSources::LegacyPesde(LegacyPesdePackageSource::from_url(index_url));
+				let specifier = DependencySpecifiers::LegacyPesde(LegacyPesdeDependencySpecifier {
 					name: name.clone(),
 					version: version.clone().unwrap_or(VersionReq::STAR),
 					index: index_name,

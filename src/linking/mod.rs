@@ -129,27 +129,27 @@ impl Project {
 													path.pop();
 												}
 												#[expect(deprecated)]
-												StructureKind::PesdeV1(target) => match dep_id.pkg_ref() {
-													PackageRefs::Pesde(_) => {
+												StructureKind::LegacyPesde(target) => match dep_id.pkg_ref() {
+													PackageRefs::LegacyPesde(_) => {
 														path.push(target.packages_dir());
 													}
 													PackageRefs::Wally(_) => panic!(
-														"unable to link wally package to pesde_v1 package, do not know how to link"
+														"unable to link wally package to legacy_pesde package, do not know how to link"
 													),
 													PackageRefs::Git(_) => match structure_kind {
 														StructureKind::Wally(_) => {
 															path.pop();
 														}
-														StructureKind::PesdeV1(target) => {
+														StructureKind::LegacyPesde(target) => {
 															path.push(target.packages_dir());
 														}
-														StructureKind::PesdeV2 => panic!(
-															"pesde_v1 depends on pesde_v2, do not know how to link"
+														StructureKind::Pesde => panic!(
+															"legacy_pesde depends on pesde, do not know how to link"
 														),
 													},
 													PackageRefs::Path(_) => unreachable!(),
 												},
-												StructureKind::PesdeV2 => {
+												StructureKind::Pesde => {
 													// TODO: use luaurc aliases
 													path.push(dependant_realm.packages_dir());
 												}

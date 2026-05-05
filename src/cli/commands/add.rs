@@ -133,7 +133,7 @@ impl AddCommand {
 
 		match specifier {
 			#[expect(deprecated)]
-			DependencySpecifiers::Pesde(spec) => {
+			DependencySpecifiers::LegacyPesde(spec) => {
 				field["name"] = toml_edit::value(spec.name.to_string());
 				field["version"] = toml_edit::value(format!("^{version}"));
 
