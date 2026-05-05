@@ -198,7 +198,11 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<Hash>> {
 								return Ok(None);
 							}
 
-							let hash = Hash::new(algorithm, format!("{prefix}{rest}"));
+							let hash = Hash::new(
+								algorithm,
+								hex::decode(format!("{prefix}{rest}"))
+									.context("failed to decode hash from path")?,
+							);
 
 							fs::remove_file(&path)
 								.await

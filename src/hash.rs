@@ -1,6 +1,7 @@
 //! Hashing
 use std::fmt::Display;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use digest::DynDigest;
 use sha2::Sha256;
@@ -58,23 +59,17 @@ impl FromStr for HashAlgorithm {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Hash {
 	algorithm: HashAlgorithm,
-	hash: String,
+	hash: Arc<[u8]>,
 }
 ser_display_deser_fromstr!(Hash);
 
 impl Hash {
 	/// Creates a new Hash from the given algorithm and hash value
 	#[must_use]
-	pub fn new(algorithm: HashAlgorithm, hash: String) -> Self {
-		Self { algorithm, hash }
-	}
-
-	/// Creates a new Hash from the given algorithm and hash bytes
-	#[must_use]
-	pub fn from_hash_bytes(algorithm: HashAlgorithm, bytes: impl AsRef<[u8]>) -> Self {
+	pub fn new(algorithm: HashAlgorithm, hash: impl Into<Arc<[u8]>>) -> Self {
 		Self {
 			algorithm,
-			hash: hex::encode(bytes),
+			hash: hash.into(),
 		}
 	}
 
@@ -83,7 +78,7 @@ impl Hash {
 	pub fn from_bytes(algorithm: HashAlgorithm, bytes: impl AsRef<[u8]>) -> Self {
 		let mut hasher = algorithm.hasher();
 		hasher.update(bytes.as_ref());
-		Self::from_hash_bytes(algorithm, hasher.finalize())
+		Self::new(algorithm, hasher.finalize())
 	}
 
 	/// Returns the hash algorithm used to create this hash
@@ -94,14 +89,14 @@ impl Hash {
 
 	/// Returns the hash value
 	#[must_use]
-	pub fn hash(&self) -> &str {
+	pub fn hash(&self) -> &[u8] {
 		&self.hash
 	}
 }
 
 impl Display for Hash {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}:{}", self.algorithm, self.hash)
+		write!(f, "{}:{}", self.algorithm, hex::encode(&self.hash))
 	}
 }
 
@@ -115,7 +110,7 @@ impl FromStr for Hash {
 
 		Ok(Self {
 			algorithm: algorithm.parse()?,
-			hash: hash.to_string(),
+			hash: hex::decode(hash)?.into(),
 		})
 	}
 }
@@ -146,5 +141,9 @@ pub mod errors {
 		/// Error parsing the hash algorithm        
 		#[error("error parsing hash algorithm")]
 		HashAlgorithmFromStr(#[from] HashAlgorithmFromStrError),
+
+		/// Error parsing the hash value
+		#[error("error parsing hash value")]
+		InvalidHashValue(#[from] hex::FromHexError),
 	}
 }
