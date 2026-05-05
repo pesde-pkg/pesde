@@ -1,6 +1,5 @@
-//! pesde package source
-#![deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
-#![expect(deprecated)]
+//! Legacy pesde package source
+#![deprecated = "pesde has redesigned its registries. See https://github.com/pesde-pkg/pesde/issues/69"]
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -10,16 +9,16 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use backend::GitPesdePackageSourceBackend;
+use backend::GitLegacyPesdePackageSourceBackend;
 use backend::IndexDependencySpecifiers;
 use backend::IndexFile;
-use backend::PesdePackageBackends;
-use backend::PesdePackageSourceBackend as _;
+use backend::LegacyPesdePackageBackends;
+use backend::LegacyPesdePackageSourceBackend as _;
 use backend::VersionId;
 use futures::StreamExt as _;
-use pkg_ref::PesdePackageRef;
+use pkg_ref::LegacyPesdePackageRef;
 use serde::Deserialize;
-use specifier::PesdeDependencySpecifier;
+use specifier::LegacyPesdeDependencySpecifier;
 
 use crate::GixUrl;
 use crate::Project;
@@ -43,7 +42,7 @@ use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::git::specifier::GitDependencySpecifier;
-use crate::source::pesde::target::Target;
+use crate::source::legacy_pesde::target::Target;
 use crate::source::wally::specifier::WallyDependencySpecifier;
 use crate::util::ToEscaped as _;
 use crate::version_matches;
@@ -57,50 +56,50 @@ pub mod specifier;
 /// Targets
 pub mod target;
 
-/// The pesde package source
+/// The legacy pesde package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
-pub struct PesdePackageSource {
-	repo: PesdePackageBackends,
+pub struct LegacyPesdePackageSource {
+	repo: LegacyPesdePackageBackends,
 }
-ser_display_deser_fromstr!(PesdePackageSource);
+ser_display_deser_fromstr!(LegacyPesdePackageSource);
 
-impl Display for PesdePackageSource {
+impl Display for LegacyPesdePackageSource {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.repo)
 	}
 }
 
-impl FromStr for PesdePackageSource {
-	type Err = crate::source::pesde::backend::errors::ParseBackendError;
+impl FromStr for LegacyPesdePackageSource {
+	type Err = crate::source::legacy_pesde::backend::errors::ParseBackendError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		s.parse().map(Self::new)
 	}
 }
 
-impl PesdePackageSource {
-	/// Creates a new pesde package source
+impl LegacyPesdePackageSource {
+	/// Creates a new legacy pesde package source
 	#[must_use]
-	pub fn new(repo: PesdePackageBackends) -> Self {
+	pub fn new(repo: LegacyPesdePackageBackends) -> Self {
 		Self { repo }
 	}
 
-	/// Creates a pesde package source from a URL
+	/// Creates a legacy pesde package source from a URL
 	#[must_use]
 	pub fn from_url(repo_url: GixUrl) -> Self {
-		Self::new(PesdePackageBackends::Git(
-			GitPesdePackageSourceBackend::new(repo_url),
+		Self::new(LegacyPesdePackageBackends::Git(
+			GitLegacyPesdePackageSourceBackend::new(repo_url),
 		))
 	}
 
 	/// Gets the repository backend
 	#[must_use]
-	pub fn repo(&self) -> &PesdePackageBackends {
+	pub fn repo(&self) -> &LegacyPesdePackageBackends {
 		&self.repo
 	}
 }
 
-impl PackageSource for PesdePackageSource {
+impl PackageSource for LegacyPesdePackageSource {
 	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
@@ -118,8 +117,8 @@ impl PackageSource for PesdePackageSource {
 		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
-		let DependencySpecifiers::Pesde(specifier) = specifier else {
-			unreachable!("invalid specifier type for pesde package source");
+		let DependencySpecifiers::LegacyPesde(specifier) = specifier else {
+			unreachable!("invalid specifier type for legacy pesde package source");
 		};
 
 		let Some(IndexFile { entries, .. }) = self
@@ -153,13 +152,15 @@ impl PackageSource for PesdePackageSource {
 								alias,
 								(
 									match specifiers {
-										IndexDependencySpecifiers::Pesde(s) => {
-											DependencySpecifiers::Pesde(PesdeDependencySpecifier {
-												name: s.name,
-												version: s.version,
-												index: s.index,
-												target: s.target.unwrap_or(entry.target.kind()),
-											})
+										IndexDependencySpecifiers::LegacyPesde(s) => {
+											DependencySpecifiers::LegacyPesde(
+												LegacyPesdeDependencySpecifier {
+													name: s.name,
+													version: s.version,
+													index: s.index,
+													target: s.target.unwrap_or(entry.target.kind()),
+												},
+											)
 										}
 										IndexDependencySpecifiers::Wally(s) => {
 											DependencySpecifiers::Wally(WallyDependencySpecifier {
@@ -199,12 +200,12 @@ impl PackageSource for PesdePackageSource {
 		}
 
 		Ok(ResolveResult {
-			source: PackageSources::Pesde(self.clone()),
-			pkg_ref: PackageRefs::Pesde(PesdePackageRef {
+			source: PackageSources::LegacyPesde(self.clone()),
+			pkg_ref: PackageRefs::LegacyPesde(LegacyPesdePackageRef {
 				name: specifier.name.clone(),
 				target: specifier.target,
 			}),
-			structure_kind: StructureKind::PesdeV1(specifier.target),
+			structure_kind: StructureKind::LegacyPesde(specifier.target),
 			versions,
 		})
 	}
@@ -216,7 +217,7 @@ impl PackageSource for PesdePackageSource {
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
-		let PackageRefs::Pesde(pkg_ref) = package.id.pkg_ref() else {
+		let PackageRefs::LegacyPesde(pkg_ref) = package.id.pkg_ref() else {
 			unreachable!("invalid package ref type for pesde package source");
 		};
 
@@ -302,8 +303,8 @@ impl PackageSource for PesdePackageSource {
 		package: &ResolvedPackage,
 		_path: &Path,
 	) -> Result<PackageExports, Self::GetExportsError> {
-		let PackageRefs::Pesde(pkg_ref) = package.id.pkg_ref() else {
-			unreachable!("invalid package ref type for pesde package source");
+		let PackageRefs::LegacyPesde(pkg_ref) = package.id.pkg_ref() else {
+			unreachable!("invalid package ref type for legacy pesde package source");
 		};
 
 		let Some(IndexFile { mut entries, .. }) = self
@@ -325,14 +326,14 @@ impl PackageSource for PesdePackageSource {
 	}
 }
 
-/// A pesde v1 (<0.8) manifest
+/// A legacy pesde (<0.8) manifest
 #[derive(Debug, Deserialize)]
-pub struct PesdeV1Manifest {
+pub struct LegacyPesdeManifest {
 	/// The version
 	pub version: Version,
 	/// The target
 	pub target: Target,
-	/// The pesde v2-compatible fields
+	/// The modern pesde compatible fields
 	#[serde(flatten)]
 	pub manifest: Manifest,
 	/// Any extra fields
@@ -345,9 +346,9 @@ pub struct PesdeV1Manifest {
 #[serde(untagged)]
 pub enum PesdeVersionedManifest {
 	/// [Manifest]
-	V2(Manifest),
-	/// [PesdeV1Manifest]
-	V1(PesdeV1Manifest),
+	Modern(Manifest),
+	/// [LegacyPesdeManifest]
+	Legacy(LegacyPesdeManifest),
 }
 
 impl PesdeVersionedManifest {
@@ -355,8 +356,8 @@ impl PesdeVersionedManifest {
 	#[must_use]
 	pub fn as_manifest(&self) -> &Manifest {
 		match self {
-			Self::V1(m) => &m.manifest,
-			Self::V2(m) => m,
+			Self::Legacy(m) => &m.manifest,
+			Self::Modern(m) => m,
 		}
 	}
 
@@ -364,8 +365,8 @@ impl PesdeVersionedManifest {
 	#[must_use]
 	pub fn into_manifest(self) -> Manifest {
 		match self {
-			Self::V1(m) => m.manifest,
-			Self::V2(m) => m,
+			Self::Legacy(m) => m.manifest,
+			Self::Modern(m) => m,
 		}
 	}
 
@@ -373,13 +374,13 @@ impl PesdeVersionedManifest {
 	#[must_use]
 	pub fn as_exports(&self) -> PackageExports {
 		match self {
-			Self::V1(m) => m.target.clone().into_exports(),
-			Self::V2(m) => m.as_exports(),
+			Self::Legacy(m) => m.target.clone().into_exports(),
+			Self::Modern(m) => m.as_exports(),
 		}
 	}
 }
 
-/// Errors that can occur when interacting with the pesde package source
+/// Errors that can occur when interacting with the legacy pesde package source
 pub mod errors {
 	use std::collections::BTreeSet;
 
@@ -389,12 +390,12 @@ pub mod errors {
 	use super::backend::errors::ReadIndexFileError;
 	use super::target::TargetKind;
 	use crate::names::PackageName;
-	use crate::source::pesde::specifier::PesdeDependencySpecifier;
+	use crate::source::legacy_pesde::specifier::LegacyPesdeDependencySpecifier;
 
 	pub use super::backend::errors::RefreshError;
 	pub use super::backend::errors::VersionIdParseError;
 
-	/// Errors that can occur when resolving a package from a pesde package source
+	/// Errors that can occur when resolving a package from a legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = ResolveError))]
 	#[non_exhaustive]
@@ -406,21 +407,25 @@ pub mod errors {
 		// custom error to provide the user with target suggestions
 		/// No matching version was found for a specifier
 		#[error("no matching version found for {0} {1}. available targets: {suggestions}", suggestions = .2.iter().format(", "))]
-		NoMatchingVersion(PesdeDependencySpecifier, TargetKind, BTreeSet<TargetKind>),
+		NoMatchingVersion(
+			LegacyPesdeDependencySpecifier,
+			TargetKind,
+			BTreeSet<TargetKind>,
+		),
 
 		/// Error reading index file
 		#[error("error reading index file")]
 		ReadIndex(#[from] ReadIndexFileError),
 	}
 
-	/// Errors that can occur when downloading a package from a pesde package source
+	/// Errors that can occur when downloading a package from a legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = DownloadError))]
 	#[non_exhaustive]
 	pub enum DownloadErrorKind {
 		/// Error from backend
 		#[error("error from backend")]
-		Backend(#[from] crate::source::pesde::backend::errors::DownloadError),
+		Backend(#[from] crate::source::legacy_pesde::backend::errors::DownloadError),
 
 		/// Error reading index file
 		#[error("error reading index file")]
@@ -439,7 +444,7 @@ pub mod errors {
 		DeserializeIndex(#[from] toml::de::Error),
 	}
 
-	/// Errors that can occur when getting the target for a package from a pesde package source
+	/// Errors that can occur when getting the target for a package from a legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = GetExportsError))]
 	#[non_exhaustive]

@@ -1,58 +1,58 @@
-//! pesde package reference
+//! Legacy pesde package reference
 use std::fmt::Display;
 use std::str::FromStr;
 
 use crate::names::PackageName;
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
-use crate::source::pesde::target::TargetKind;
+use crate::source::legacy_pesde::target::TargetKind;
 
-/// A pesde package reference
+/// A legacy pesde package reference
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PesdePackageRef {
+pub struct LegacyPesdePackageRef {
 	/// The name of the package
 	pub name: PackageName,
 	/// The target of the package
 	pub target: TargetKind,
 }
-ser_display_deser_fromstr!(PesdePackageRef);
+ser_display_deser_fromstr!(LegacyPesdePackageRef);
 
-impl PackageRef for PesdePackageRef {}
+impl PackageRef for LegacyPesdePackageRef {}
 
-impl Display for PesdePackageRef {
+impl Display for LegacyPesdePackageRef {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}+{}", self.name, self.target)
 	}
 }
 
-/// Errors that can occur when parsing a pesde package reference
-pub type PesdePackageRefParseError = errors::PesdePackageRefParseError;
+/// Errors that can occur when parsing a legacy pesde package reference
+pub type LegacyPesdePackageRefParseError = errors::LegacyPesdePackageRefParseError;
 
-impl FromStr for PesdePackageRef {
-	type Err = PesdePackageRefParseError;
+impl FromStr for LegacyPesdePackageRef {
+	type Err = LegacyPesdePackageRefParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let Some((name, target)) = s.split_once('+') else {
-			return Err(errors::PesdePackageRefParseErrorKind::InvalidFormat.into());
+			return Err(errors::LegacyPesdePackageRefParseErrorKind::InvalidFormat.into());
 		};
 
-		Ok(PesdePackageRef {
+		Ok(LegacyPesdePackageRef {
 			name: name.parse()?,
 			target: target.parse()?,
 		})
 	}
 }
 
-/// Error that can occur when parsing a pesde package reference from a string
+/// Error that can occur when parsing a legacy pesde package reference from a string
 pub mod errors {
 	use crate::names::errors::PackageNameError;
 	use thiserror::Error;
 
-	/// Error that can occur when parsing a pesde package reference from a string
+	/// Error that can occur when parsing a legacy pesde package reference from a string
 	#[allow(clippy::enum_variant_names)]
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = PesdePackageRefParseError))]
-	pub enum PesdePackageRefParseErrorKind {
+	#[thiserror_ext(newtype(name = LegacyPesdePackageRefParseError))]
+	pub enum LegacyPesdePackageRefParseErrorKind {
 		/// The format of the package reference is invalid
 		#[error("invalid format for pesde package reference")]
 		InvalidFormat,
@@ -63,6 +63,6 @@ pub mod errors {
 
 		/// The target is invalid
 		#[error("invalid target")]
-		InvalidTarget(#[from] crate::source::pesde::target::errors::TargetKindFromStr),
+		InvalidTarget(#[from] crate::source::legacy_pesde::target::errors::TargetKindFromStr),
 	}
 }

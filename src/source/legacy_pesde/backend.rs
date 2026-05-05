@@ -1,4 +1,4 @@
-//! pesde package source backend abstraction
+//! Legacy pesde package source backend abstraction
 #![allow(async_fn_in_trait)]
 
 use crate::GixUrl;
@@ -10,9 +10,9 @@ use crate::reporters::DownloadProgressReporter;
 use crate::source::git::specifier::IndexGitDependencySpecifier;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
-use crate::source::pesde::specifier::IndexPesdeDependencySpecifier;
-use crate::source::pesde::target::Target;
-use crate::source::pesde::target::TargetKind;
+use crate::source::legacy_pesde::specifier::IndexLegacyPesdeDependencySpecifier;
+use crate::source::legacy_pesde::target::Target;
+use crate::source::legacy_pesde::target::TargetKind;
 use crate::source::wally::specifier::IndexWallyDependencySpecifier;
 use crate::util::ToEscaped as _;
 use async_stream::try_stream;
@@ -163,8 +163,8 @@ pub struct IndexFileEntry {
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum IndexDependencySpecifiers {
-	/// A pesde dependency specifier
-	Pesde(IndexPesdeDependencySpecifier),
+	/// A legacy pesde dependency specifier
+	LegacyPesde(IndexLegacyPesdeDependencySpecifier),
 	/// A Wally dependency specifier
 	Wally(IndexWallyDependencySpecifier),
 	/// A Git dependency specifier
@@ -255,8 +255,8 @@ impl VersionId {
 	}
 }
 
-/// A source of pesde packages
-pub trait PesdePackageSourceBackend: Debug + Display + Send + Sync {
+/// A source of  legacy pesde packages
+pub trait LegacyPesdePackageSourceBackend: Debug + Display + Send + Sync {
 	/// The error type for refreshing this backend
 	type RefreshError: std::error::Error + Send + Sync + 'static;
 	/// The error type for reading config
@@ -297,19 +297,19 @@ pub trait PesdePackageSourceBackend: Debug + Display + Send + Sync {
 	> + Send;
 }
 
-/// A Git-based pesde package source backend
+/// A Git-based legacy pesde package source backend
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct GitPesdePackageSourceBackend {
+pub struct GitLegacyPesdePackageSourceBackend {
 	repo_url: GixUrl,
 }
 
-impl Display for GitPesdePackageSourceBackend {
+impl Display for GitLegacyPesdePackageSourceBackend {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.repo_url)
 	}
 }
 
-impl FromStr for GitPesdePackageSourceBackend {
+impl FromStr for GitLegacyPesdePackageSourceBackend {
 	type Err = crate::errors::GixUrlError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -317,10 +317,10 @@ impl FromStr for GitPesdePackageSourceBackend {
 	}
 }
 
-crate::ser_display_deser_fromstr!(GitPesdePackageSourceBackend);
+crate::ser_display_deser_fromstr!(GitLegacyPesdePackageSourceBackend);
 
-impl GitPesdePackageSourceBackend {
-	/// Creates a new Git pesde package source backend
+impl GitLegacyPesdePackageSourceBackend {
+	/// Creates a new Git legacy pesde package source backend
 	#[must_use]
 	pub fn new(repo_url: GixUrl) -> Self {
 		Self { repo_url }
@@ -335,7 +335,7 @@ impl GitPesdePackageSourceBackend {
 	}
 }
 
-impl PesdePackageSourceBackend for GitPesdePackageSourceBackend {
+impl LegacyPesdePackageSourceBackend for GitLegacyPesdePackageSourceBackend {
 	type RefreshError = crate::source::git_index::errors::RefreshError;
 	type ConfigError = errors::GitConfigError;
 	type ReadIndexFileError = errors::GitReadIndexFileError;
@@ -464,25 +464,25 @@ impl PesdePackageSourceBackend for GitPesdePackageSourceBackend {
 /// All available pesde package backends
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[non_exhaustive]
-pub enum PesdePackageBackends {
-	/// A Git-based pesde package source backend
-	Git(GitPesdePackageSourceBackend),
+pub enum LegacyPesdePackageBackends {
+	/// A Git-based legacy pesde package source backend
+	Git(GitLegacyPesdePackageSourceBackend),
 }
 
-impl Display for PesdePackageBackends {
+impl Display for LegacyPesdePackageBackends {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			PesdePackageBackends::Git(repo) => write!(f, "{repo}"),
+			LegacyPesdePackageBackends::Git(repo) => write!(f, "{repo}"),
 		}
 	}
 }
 
-impl FromStr for PesdePackageBackends {
+impl FromStr for LegacyPesdePackageBackends {
 	type Err = errors::ParseBackendError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let git_err = match s.parse::<GitPesdePackageSourceBackend>() {
-			Ok(repo) => return Ok(PesdePackageBackends::Git(repo)),
+		let git_err = match s.parse::<GitLegacyPesdePackageSourceBackend>() {
+			Ok(repo) => return Ok(LegacyPesdePackageBackends::Git(repo)),
 			Err(e) => e,
 		};
 
@@ -490,9 +490,9 @@ impl FromStr for PesdePackageBackends {
 	}
 }
 
-crate::ser_display_deser_fromstr!(PesdePackageBackends);
+crate::ser_display_deser_fromstr!(LegacyPesdePackageBackends);
 
-impl PesdePackageSourceBackend for PesdePackageBackends {
+impl LegacyPesdePackageSourceBackend for LegacyPesdePackageBackends {
 	type RefreshError = errors::RefreshError;
 	type ConfigError = errors::ConfigError;
 	type ReadIndexFileError = errors::ReadIndexFileError;
@@ -500,13 +500,15 @@ impl PesdePackageSourceBackend for PesdePackageBackends {
 
 	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
 		match self {
-			PesdePackageBackends::Git(repo) => repo.refresh(project).await.map_err(Into::into),
+			LegacyPesdePackageBackends::Git(repo) => {
+				repo.refresh(project).await.map_err(Into::into)
+			}
 		}
 	}
 
 	async fn config(&self, project: &Project) -> Result<IndexConfig, Self::ConfigError> {
 		match self {
-			PesdePackageBackends::Git(repo) => repo.config(project).await.map_err(Into::into),
+			LegacyPesdePackageBackends::Git(repo) => repo.config(project).await.map_err(Into::into),
 		}
 	}
 
@@ -516,7 +518,7 @@ impl PesdePackageSourceBackend for PesdePackageBackends {
 		name: PackageName,
 	) -> Result<Option<IndexFile>, Self::ReadIndexFileError> {
 		match self {
-			PesdePackageBackends::Git(repo) => repo
+			LegacyPesdePackageBackends::Git(repo) => repo
 				.read_index_file(project, name)
 				.await
 				.map_err(Into::into),
@@ -534,7 +536,7 @@ impl PesdePackageSourceBackend for PesdePackageBackends {
 		Self::DownloadError,
 	> {
 		match self {
-			PesdePackageBackends::Git(repo) => {
+			LegacyPesdePackageBackends::Git(repo) => {
 				let stream = repo
 					.download_entries(project, package, version_id, reporter)
 					.await?;
@@ -544,15 +546,15 @@ impl PesdePackageSourceBackend for PesdePackageBackends {
 	}
 }
 
-/// Errors that can occur when interacting with pesde package source backends
+/// Errors that can occur when interacting with legacy pesde package source backends
 pub mod errors {
 	use crate::GixUrl;
 	use crate::source::git_index::errors::ReadFile;
 	use crate::source::git_index::errors::TreeError;
-	use crate::source::pesde::target::errors::TargetKindFromStr;
+	use crate::source::legacy_pesde::target::errors::TargetKindFromStr;
 	use thiserror::Error;
 
-	/// Errors that can occur when parsing a pesde package source backend
+	/// Errors that can occur when parsing a legacy pesde package source backend
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = ParseBackendError))]
 	pub enum ParseBackendErrorKind {
@@ -561,7 +563,7 @@ pub mod errors {
 		NoMatch(String, #[source] crate::errors::GixUrlError),
 	}
 
-	/// Errors that can occur when refreshing a pesde package source
+	/// Errors that can occur when refreshing a legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = RefreshError))]
 	#[non_exhaustive]
@@ -571,7 +573,7 @@ pub mod errors {
 		Git(#[from] crate::source::git_index::errors::RefreshError),
 	}
 
-	/// Errors that can occur when reading the config file for a pesde package source
+	/// Errors that can occur when reading the config file for a legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = ConfigError))]
 	#[non_exhaustive]
@@ -581,7 +583,7 @@ pub mod errors {
 		Git(#[from] GitConfigError),
 	}
 
-	/// Errors that can occur when reading an index file for a pesde package source
+	/// Errors that can occur when reading an index file for a legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = ReadIndexFileError))]
 	#[non_exhaustive]
@@ -591,7 +593,7 @@ pub mod errors {
 		Git(#[from] GitReadIndexFileError),
 	}
 
-	/// Errors that can occur when downloading a package from a pesde package source
+	/// Errors that can occur when downloading a package from a legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = DownloadError))]
 	#[non_exhaustive]
@@ -601,7 +603,7 @@ pub mod errors {
 		Git(#[from] GitDownloadError),
 	}
 
-	/// Errors that can occur when downloading a package from a Git-based pesde package source
+	/// Errors that can occur when downloading a package from a Git-based legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = GitDownloadError))]
 	#[non_exhaustive]
@@ -627,7 +629,7 @@ pub mod errors {
 		InvalidPath,
 	}
 
-	/// Errors that can occur when reading the config file from a Git-based pesde package source
+	/// Errors that can occur when reading the config file from a Git-based legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = GitConfigError))]
 	#[non_exhaustive]
@@ -653,7 +655,7 @@ pub mod errors {
 		Missing(GixUrl),
 	}
 
-	/// Errors that can occur when reading an index file from a Git-based pesde package source
+	/// Errors that can occur when reading an index file from a Git-based legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = GitReadIndexFileError))]
 	#[non_exhaustive]

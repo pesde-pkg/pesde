@@ -29,8 +29,8 @@ use crate::source::git::backend::GitPackageBackends;
 use crate::source::git::backend::GitPackageSourceBackend as _;
 use crate::source::git::backend::GixPackageSourceBackend;
 use crate::source::git::pkg_ref::GitPackageRef;
+use crate::source::legacy_pesde::PesdeVersionedManifest;
 use crate::source::path::RelativeOrAbsolutePath;
-use crate::source::pesde::PesdeVersionedManifest;
 use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
 use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
@@ -148,8 +148,8 @@ impl PackageSource for GitPackageSource {
 					.map_err(errors::ResolveErrorKind::DeserManifest)?;
 
 			let structure_kind = match &manifest {
-				PesdeVersionedManifest::V1(m) => StructureKind::PesdeV1(m.target.kind()),
-				PesdeVersionedManifest::V2(_) => StructureKind::PesdeV2,
+				PesdeVersionedManifest::Legacy(m) => StructureKind::LegacyPesde(m.target.kind()),
+				PesdeVersionedManifest::Modern(_) => StructureKind::Pesde,
 			};
 
 			let dependencies = transform_pesde_dependencies(
@@ -349,7 +349,7 @@ fn transform_pesde_dependencies(
 		.into_iter()
 		.map(|(alias, (mut spec, ty))| {
 			match &mut spec {
-				DependencySpecifiers::Pesde(specifier) => {
+				DependencySpecifiers::LegacyPesde(specifier) => {
 					specifier.index = manifest
 						.indices
 						.pesde
