@@ -26,8 +26,8 @@ pub mod git_index;
 pub mod ids;
 
 pub mod git;
+pub mod legacy_pesde;
 pub mod path;
-pub mod pesde;
 pub mod wally;
 
 /// Files that will not be stored when downloading a package. These are only files which break pesde's functionality, or are meaningless and possibly heavy (e.g. `.DS_Store`)
@@ -129,9 +129,9 @@ pub enum StructureKind {
 	/// Linker files in the parent of the directory containing the package's contents
 	Wally(Arc<str>),
 	/// `*_packages` directories inside the package's content directory
-	PesdeV1(crate::source::pesde::target::TargetKind),
+	LegacyPesde(crate::source::legacy_pesde::target::TargetKind),
 	/// Luau aliases in the directory containing the package's contents
-	PesdeV2,
+	Pesde,
 }
 ser_display_deser_fromstr!(StructureKind);
 
@@ -147,8 +147,8 @@ impl Display for StructureKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			StructureKind::Wally(name) => write!(f, "wally:{name}"),
-			StructureKind::PesdeV1(target) => write!(f, "pesde_v1:{target}"),
-			StructureKind::PesdeV2 => write!(f, "pesde_v2"),
+			StructureKind::LegacyPesde(target) => write!(f, "legacy_pesde:{target}"),
+			StructureKind::Pesde => write!(f, "pesde"),
 		}
 	}
 }
@@ -159,10 +159,10 @@ impl FromStr for StructureKind {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		if let Some(name) = s.strip_prefix("wally:") {
 			return Ok(Self::Wally(name.into()));
-		} else if s == "pesde_v2" {
-			return Ok(Self::PesdeV2);
-		} else if let Some(target) = s.strip_prefix("pesde_v1:") {
-			return Ok(Self::PesdeV1(target.parse()?));
+		} else if s == "pesde" {
+			return Ok(Self::Pesde);
+		} else if let Some(target) = s.strip_prefix("legacy_pesde:") {
+			return Ok(Self::LegacyPesde(target.parse()?));
 		}
 
 		Err(errors::StructureKindParseErrorKind::UnknownKind(s.to_string()).into())
@@ -227,7 +227,7 @@ impl RealmExt for Option<Realm> {
 impl Display for PackageSources {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Pesde(source) => write!(f, "pesde:{source}"),
+			Self::LegacyPesde(source) => write!(f, "legacy_pesde:{source}"),
 			Self::Wally(source) => write!(f, "wally:{source}"),
 			Self::Git(source) => write!(f, "git:{source}"),
 			Self::Path(..) => write!(f, "path"),
@@ -242,7 +242,7 @@ impl FromStr for PackageSources {
 		let (tag, source) = s.split_once(':').unwrap_or((s, ""));
 
 		Ok(match tag {
-			"pesde" => Self::Pesde(source.parse()?),
+			"legacy_pesde" => Self::LegacyPesde(source.parse()?),
 			"wally" => Self::Wally(source.parse()?),
 			"git" => Self::Git(source.parse()?),
 			"path" if source.is_empty() => Self::Path(path::PathPackageSource),
@@ -260,7 +260,7 @@ macro_rules! impls {
 			pub enum DependencySpecifiers {
 				$(
 					#[doc = concat!(stringify!($source), " dependency specifier")]
-					$source([< $source:lower >]::specifier::[<$source DependencySpecifier>])
+					$source([< $source:snake >]::specifier::[<$source DependencySpecifier>])
 				),+
 			}
 
@@ -293,9 +293,9 @@ macro_rules! impls {
 								entries.iter().map(|(k, _)| k.as_str()).collect();
 
 							$(
-								if keys.contains([< $source:lower >]::specifier::DISCRIMINATOR_FIELD) {
+								if keys.contains([< $source:snake >]::specifier::DISCRIMINATOR_FIELD) {
 									let map_de = serde_json::Map::from_iter(entries.into_iter());
-									return [< $source:lower >]::specifier::[< $source DependencySpecifier >]::deserialize(map_de)
+									return [< $source:snake >]::specifier::[< $source DependencySpecifier >]::deserialize(map_de)
 										.map(DependencySpecifiers::$source)
 										.map_err(A::Error::custom);
 								}
@@ -334,7 +334,7 @@ macro_rules! impls {
 			pub enum PackageRefs {
 				$(
 					#[doc = concat!(stringify!($source), " package ref")]
-					$source([< $source:lower >]::pkg_ref::[<$source PackageRef>])
+					$source([< $source:snake >]::pkg_ref::[<$source PackageRef>])
 				),+
 			}
 			ser_display_deser_fromstr!(PackageRefs);
@@ -345,7 +345,7 @@ macro_rules! impls {
 				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 					match self {
 						$(
-							PackageRefs::$source(pkg_ref) => write!(f, "{}:{pkg_ref}", stringify!([< $source:lower >]))
+							PackageRefs::$source(pkg_ref) => write!(f, "{}:{pkg_ref}", stringify!([< $source:snake >]))
 						),+
 					}
 				}
@@ -361,7 +361,7 @@ macro_rules! impls {
 
 					match source {
 						$(
-							stringify!([< $source:lower >]) => Ok(PackageRefs::$source(pkg_ref.parse().map_err(errors::PackageRefParseErrorKind::[< $source PackageRef >])?)),
+							stringify!([< $source:snake >]) => Ok(PackageRefs::$source(pkg_ref.parse().map_err(errors::PackageRefParseErrorKind::[< $source PackageRef >])?)),
 						)+
 						_ => Err(errors::PackageRefParseErrorKind::UnknownSource(source.to_string()).into()),
 					}
@@ -373,7 +373,7 @@ macro_rules! impls {
 			pub enum PackageSources {
 				$(
 					#[doc = concat!(stringify!($source), " package source")]
-					$source([< $source:lower >]::[<$source PackageSource>])
+					$source([< $source:snake >]::[<$source PackageSource>])
 				),+
 			}
 			ser_display_deser_fromstr!(PackageSources);
@@ -461,9 +461,9 @@ macro_rules! impls {
 					#[error("unknown structure kind {0}")]
 					UnknownKind(String),
 
-					/// The target in a pesde_v1 structure kind is invalid
-					#[error("invalid target in pesde_v1 structure kind")]
-					InvalidPesdeV1Target(#[from] crate::source::pesde::target::errors::TargetKindFromStr),
+					/// The target in a  structure kind is invalid
+					#[error("invalid target in legacy_pesde structure kind")]
+					InvalidLegacyPesdeTarget(#[from] crate::source::legacy_pesde::target::errors::TargetKindFromStr),
 				}
 
 				/// Errors that can occur when parsing a realm from a string
@@ -489,8 +489,8 @@ macro_rules! impls {
 
 					$(
 						#[doc = concat!(stringify!($source), " package reference parsing failed")]
-						#[error("error parsing {} package reference", stringify!([< $source:lower >]))]
-						[< $source PackageRef >](#[from] crate::source::[< $source:lower >]::pkg_ref::[<$source PackageRefParseError>])
+						#[error("error parsing {} package reference", stringify!([< $source:snake >]))]
+						[< $source PackageRef >](#[from] crate::source::[< $source:snake >]::pkg_ref::[<$source PackageRefParseError>])
 					),+
 				}
 
@@ -507,9 +507,9 @@ macro_rules! impls {
 					#[error("unknown source")]
 					Unknown,
 
-					/// Parsing pesde source failed
-					#[error("error parsing pesde source")]
-					PesdeParse(#[from] crate::source::pesde::backend::errors::ParseBackendError),
+					/// Parsing legacy pesde source failed
+					#[error("error parsing legacy pesde source")]
+					LegacyPesdeParse(#[from] crate::source::legacy_pesde::backend::errors::ParseBackendError),
 
 					/// Parsing Wally source failed
 					#[error("error parsing wally source")]
@@ -527,8 +527,8 @@ macro_rules! impls {
 				pub enum RefreshErrorKind {
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to refresh")]
-						#[error("error refreshing {} package", stringify!([< $source:lower >]))]
-						$source(#[source] crate::source::[< $source:lower >]::errors::RefreshError)
+						#[error("error refreshing {} package", stringify!([< $source:snake >]))]
+						$source(#[source] crate::source::[< $source:snake >]::errors::RefreshError)
 					),+
 				}
 
@@ -539,8 +539,8 @@ macro_rules! impls {
 				pub enum ResolveErrorKind {
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to resolve")]
-						#[error("error resolving {} package", stringify!([< $source:lower >]))]
-						$source(#[source] crate::source::[< $source:lower >]::errors::ResolveError)
+						#[error("error resolving {} package", stringify!([< $source:snake >]))]
+						$source(#[source] crate::source::[< $source:snake >]::errors::ResolveError)
 					),+
 				}
 
@@ -551,8 +551,8 @@ macro_rules! impls {
 				pub enum DownloadErrorKind {
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to download")]
-						#[error("error downloading {} package", stringify!([< $source:lower >]))]
-						$source(#[source] crate::source::[< $source:lower >]::errors::DownloadError)
+						#[error("error downloading {} package", stringify!([< $source:snake >]))]
+						$source(#[source] crate::source::[< $source:snake >]::errors::DownloadError)
 					),+
 				}
 
@@ -563,8 +563,8 @@ macro_rules! impls {
 				pub enum GetExportsErrorKind {
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to get exports")]
-						#[error("error getting exports for {} package", stringify!([< $source:lower >]))]
-						$source(#[source] crate::source::[< $source:lower >]::errors::GetExportsError)
+						#[error("error getting exports for {} package", stringify!([< $source:snake >]))]
+						$source(#[source] crate::source::[< $source:snake >]::errors::GetExportsError)
 					),+
 				}
 			}
@@ -572,7 +572,7 @@ macro_rules! impls {
 	}
 }
 
-impls!(Pesde, Wally, Git, Path);
+impls!(LegacyPesde, Wally, Git, Path);
 
 impl DependencySpecifiers {
 	/// Returns whether this dependency specifier is for a local dependency
@@ -599,8 +599,8 @@ mod tests {
 	fn serde_package_sources() {
 		let sources = [
 			(
-				PackageSources::Pesde("https://github.com/pesde-pkg/index".parse().unwrap()),
-				"pesde:https://github.com/pesde-pkg/index",
+				PackageSources::LegacyPesde("https://github.com/pesde-pkg/index".parse().unwrap()),
+				"legacy_pesde:https://github.com/pesde-pkg/index",
 			),
 			(
 				PackageSources::Wally("https://github.com/pesde-pkg/index".parse().unwrap()),
@@ -629,8 +629,8 @@ mod tests {
 	fn serde_package_refs() {
 		let refs = [
 			(
-				PackageRefs::Pesde("foo/bar+lune".parse().unwrap()),
-				"pesde:foo/bar+lune",
+				PackageRefs::LegacyPesde("foo/bar+lune".parse().unwrap()),
+				"legacy_pesde:foo/bar+lune",
 			),
 			(
 				PackageRefs::Wally("foo/bar".parse().unwrap()),

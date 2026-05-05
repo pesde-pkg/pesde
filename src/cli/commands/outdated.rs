@@ -60,7 +60,7 @@ impl OutdatedCommand {
 						if !self.strict {
 							match &mut spec {
 								#[expect(deprecated)]
-								DependencySpecifiers::Pesde(spec) => {
+								DependencySpecifiers::LegacyPesde(spec) => {
 									spec.version = VersionReq::STAR;
 								}
 								DependencySpecifiers::Wally(spec) => {

@@ -131,7 +131,6 @@ impl Display for ErrorPart {
 }
 
 /// A pesde package name
-#[deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PackageName(Arc<(Scope, Name)>);
 

@@ -20,7 +20,7 @@ use crate::source::ResolveResult;
 use crate::source::StructureKind;
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
-use crate::source::pesde::PesdePackageSource;
+use crate::source::legacy_pesde::LegacyPesdePackageSource;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
@@ -36,7 +36,7 @@ fn specifier_to_source(
 ) -> Result<PackageSources, errors::DependencyGraphError> {
 	let source = match &specifier {
 		#[expect(deprecated)]
-		DependencySpecifiers::Pesde(specifier) => {
+		DependencySpecifiers::LegacyPesde(specifier) => {
 			let index_url = if let Some(indices) = indices {
 				indices
 					.pesde
@@ -54,7 +54,7 @@ fn specifier_to_source(
 					.unwrap()
 			};
 
-			PackageSources::Pesde(PesdePackageSource::from_url(index_url))
+			PackageSources::LegacyPesde(LegacyPesdePackageSource::from_url(index_url))
 		}
 		DependencySpecifiers::Wally(specifier) => {
 			let index_url = if let Some(indices) = indices {

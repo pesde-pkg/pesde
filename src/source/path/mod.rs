@@ -120,7 +120,7 @@ impl PackageSource for PathPackageSource {
 			.into_iter()
 			.map(|(alias, (mut spec, ty))| {
 				match &mut spec {
-					DependencySpecifiers::Pesde(spec) => {
+					DependencySpecifiers::LegacyPesde(spec) => {
 						spec.index = manifest
 							.indices
 							.pesde
@@ -163,7 +163,7 @@ impl PackageSource for PathPackageSource {
 					path.clone()
 				},
 			}),
-			structure_kind: StructureKind::PesdeV2,
+			structure_kind: StructureKind::Pesde,
 			versions: BTreeMap::from([(local_version(), dependencies)]),
 		})
 	}
