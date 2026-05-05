@@ -475,8 +475,6 @@ macro_rules! impls {
 					UnknownRealm(String),
 				}
 
-				
-
 				/// Errors that can occur when parsing a package reference
 				#[derive(Debug, Error, thiserror_ext::Box)]
 				#[thiserror_ext(newtype(name = PackageRefParseError))]
