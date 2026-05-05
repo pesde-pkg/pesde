@@ -121,6 +121,7 @@ impl DependencyGraph {
 	/// if the package is never depended on with a realm, it has no realm
 	/// if the package is depended on as a shared dependency anywhere in the graph, it is a shared package
 	/// otherwise, it is a server package
+	/// Shared dependencies of server dependencies are considered to be server dependencies
 	#[must_use]
 	pub fn realm_of(&self, importer: &Importer, package_id: &PackageId) -> Option<Realm> {
 		let graph_importer = self.importers.get(importer)?;
@@ -130,10 +131,13 @@ impl DependencyGraph {
 		let mut queue = graph_importer
 			.dependencies
 			.values()
-			.filter_map(|(id, spec, _)| spec.realm().map(|realm| (id, realm)))
+			.filter_map(|(id, spec, _)| {
+				spec.realm()
+					.map(|realm| (id, realm, realm == Realm::Server))
+			})
 			.collect::<Vec<_>>();
 
-		while let Some((pkg_id, realm)) = queue.pop() {
+		while let Some((pkg_id, realm, is_server)) = queue.pop() {
 			if pkg_id == package_id {
 				match realm {
 					Realm::Shared => return Some(Realm::Shared),
@@ -142,13 +146,22 @@ impl DependencyGraph {
 			}
 
 			if let Some(node) = self.nodes.get(pkg_id)
-				&& visited.insert(pkg_id)
+				// scoped by is_server as well in order to correctly handle graphs where a package is depended on as both a shared and server dependency
+				&& visited.insert((pkg_id, is_server))
 			{
 				for dep in node.dependencies.values() {
 					let Some(realm) = dep.realm else {
 						continue;
 					};
-					queue.push((&dep.id, realm));
+
+					// bump the realm (as per the rules in this method's doc comment)
+					let realm = if is_server && realm == Realm::Shared {
+						Realm::Server
+					} else {
+						realm
+					};
+
+					queue.push((&dep.id, realm, realm == Realm::Server));
 				}
 			}
 		}
