@@ -349,10 +349,23 @@ fn transform_pesde_dependencies(
 		.into_iter()
 		.map(|(alias, (mut spec, ty))| {
 			match &mut spec {
+				DependencySpecifiers::Pesde(specifier) => {
+					specifier.registry = manifest
+						.urls
+						.pesde_registries
+						.get(&specifier.registry)
+						.ok_or_else(|| {
+							errors::ResolveErrorKind::PesdeRegistryNotFound(
+								specifier.registry.clone(),
+								repo_url.clone(),
+							)
+						})?
+						.to_string();
+				}
 				DependencySpecifiers::LegacyPesde(specifier) => {
 					specifier.index = manifest
-						.indices
-						.pesde
+						.urls
+						.pesde_indices
 						.get(&specifier.index)
 						.ok_or_else(|| {
 							errors::ResolveErrorKind::PesdeIndexNotFound(
@@ -364,8 +377,8 @@ fn transform_pesde_dependencies(
 				}
 				DependencySpecifiers::Wally(specifier) => {
 					specifier.index = manifest
-						.indices
-						.wally
+						.urls
+						.wally_indices
 						.get(&specifier.index)
 						.ok_or_else(|| {
 							errors::ResolveErrorKind::WallyIndexNotFound(
@@ -469,16 +482,20 @@ pub mod errors {
 		#[error("no manifest found in backend {0}")]
 		NoManifest(GixUrl),
 
-		/// A pesde index was not found in the backend
-		#[error("pesde index {0} not found in backend {1}")]
+		/// A pesde registry specified in the manifest was not found
+		#[error("pesde registry {0} not found in {1}")]
+		PesdeRegistryNotFound(String, GixUrl),
+
+		/// A pesde index specified in the manifest was not found
+		#[error("pesde index {0} not found in {1}")]
 		PesdeIndexNotFound(String, GixUrl),
 
-		/// A Wally index was not found in the backend
-		#[error("wally index {0} not found in backend {1}")]
+		/// A Wally index specified in the manifest was not found
+		#[error("wally index {0} not found in {1}")]
 		WallyIndexNotFound(String, GixUrl),
 
-		/// The package depends on a path package that escapes the backend
-		#[error("path dependency in backend {0} is not allowed")]
+		/// The package depends on a path package that escapes the subproject
+		#[error("path dependency in {0} is not allowed")]
 		Path(GixUrl),
 	}
 

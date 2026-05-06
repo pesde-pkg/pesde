@@ -120,10 +120,23 @@ impl PackageSource for PathPackageSource {
 			.into_iter()
 			.map(|(alias, (mut spec, ty))| {
 				match &mut spec {
+					DependencySpecifiers::Pesde(spec) => {
+						spec.registry = manifest
+							.urls
+							.pesde_registries
+							.get(&spec.registry)
+							.ok_or_else(|| {
+								errors::ResolveErrorKind::RegistryNotFound(
+									spec.registry.clone(),
+									path.clone(),
+								)
+							})?
+							.to_string();
+					}
 					DependencySpecifiers::LegacyPesde(spec) => {
 						spec.index = manifest
-							.indices
-							.pesde
+							.urls
+							.pesde_indices
 							.get(&spec.index)
 							.ok_or_else(|| {
 								errors::ResolveErrorKind::IndexNotFound(
@@ -135,11 +148,11 @@ impl PackageSource for PathPackageSource {
 					}
 					DependencySpecifiers::Wally(spec) => {
 						spec.index = manifest
-							.indices
-							.wally
+							.urls
+							.wally_indices
 							.get(&spec.index)
 							.ok_or_else(|| {
-								errors::ResolveErrorKind::IndexNotFound(
+								errors::ResolveErrorKind::WallyIndexNotFound(
 									spec.index.clone(),
 									path.clone(),
 								)
@@ -230,9 +243,17 @@ pub mod errors {
 		#[error("failed to get all dependencies")]
 		AllDependencies(#[from] crate::manifest::errors::AllDependenciesError),
 
-		/// An index of the package was not found
+		/// A registry specified in the manifest was not found
+		#[error("registry {0} not found in package {1}")]
+		RegistryNotFound(String, PathBuf),
+
+		/// An index specified in the manifest was not found
 		#[error("index {0} not found in package {1}")]
 		IndexNotFound(String, PathBuf),
+
+		/// A Wally index specified in the manifest was not found
+		#[error("wally index {0} not found in package {1}")]
+		WallyIndexNotFound(String, PathBuf),
 	}
 
 	/// Errors that can occur when downloading a path package

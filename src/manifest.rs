@@ -16,15 +16,18 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tracing::instrument;
 
-/// Indices specified in a manifest
+/// URLs specified in a manifest
 #[derive(Deserialize, Debug, Clone)]
-pub struct ManifestIndices {
+pub struct ManifestUrls {
+	/// The registries to use for the package
+	#[serde(default, rename = "registries")]
+	pub pesde_registries: BTreeMap<String, GixUrl>,
 	/// The indices to use for the package
 	#[serde(default, rename = "indices")]
-	pub pesde: BTreeMap<String, GixUrl>,
+	pub pesde_indices: BTreeMap<String, GixUrl>,
 	/// The indices to use for the package's Wally dependencies
 	#[serde(default, rename = "wally_indices")]
-	pub wally: BTreeMap<String, GixUrl>,
+	pub wally_indices: BTreeMap<String, GixUrl>,
 }
 
 /// A specifier for an override
@@ -66,9 +69,9 @@ pub struct Manifest {
 	/// The scripts of the package
 	#[serde(default)]
 	pub scripts: BTreeMap<String, String>,
-	/// The indices this package uses
+	/// The URLs this package uses
 	#[serde(flatten)]
-	pub indices: ManifestIndices,
+	pub urls: ManifestUrls,
 	/// The files to include in the package
 	#[serde(default)]
 	pub includes: Vec<String>,

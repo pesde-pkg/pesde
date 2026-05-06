@@ -53,14 +53,14 @@ pub(crate) mod util;
 pub const MANIFEST_FILE_NAME: &str = "pesde.toml";
 /// The name of the lockfile
 pub const LOCKFILE_FILE_NAME: &str = "pesde.lock";
-/// The name of the default index
-pub const DEFAULT_INDEX_NAME: &str = "default";
+/// The key of the default URL in manifests (indices and registries)
+pub const DEFAULT_URL_KEY: &str = "default";
 /// The name of the packages container
 pub const PACKAGES_CONTAINER_NAME: &str = ".pesde";
 pub(crate) const LINK_LIB_NO_FILE_FOUND: &str = "____pesde_no_export_file_found";
 
-pub(crate) fn default_index_name() -> String {
-	DEFAULT_INDEX_NAME.into()
+pub(crate) fn default_url_key() -> String {
+	DEFAULT_URL_KEY.into()
 }
 
 #[derive(Debug, Default)]

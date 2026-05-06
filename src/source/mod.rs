@@ -28,6 +28,7 @@ pub mod ids;
 pub mod git;
 pub mod legacy_pesde;
 pub mod path;
+pub mod pesde;
 pub mod wally;
 
 /// Files that will not be stored when downloading a package. These are only files which break pesde's functionality, or are meaningless and possibly heavy (e.g. `.DS_Store`)
@@ -227,6 +228,7 @@ impl RealmExt for Option<Realm> {
 impl Display for PackageSources {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
+			Self::Pesde(source) => write!(f, "pesde:{source}"),
 			Self::LegacyPesde(source) => write!(f, "legacy_pesde:{source}"),
 			Self::Wally(source) => write!(f, "wally:{source}"),
 			Self::Git(source) => write!(f, "git:{source}"),
@@ -242,6 +244,7 @@ impl FromStr for PackageSources {
 		let (tag, source) = s.split_once(':').unwrap_or((s, ""));
 
 		Ok(match tag {
+			"pesde" => Self::Pesde(source.parse()?),
 			"legacy_pesde" => Self::LegacyPesde(source.parse()?),
 			"wally" => Self::Wally(source.parse()?),
 			"git" => Self::Git(source.parse()?),
@@ -507,6 +510,10 @@ macro_rules! impls {
 					#[error("unknown source")]
 					Unknown,
 
+					/// Parsing pesde source failed
+					#[error("error parsing pesde source")]
+					PesdeParse(#[from] crate::source::pesde::backend::errors::ParseBackendError),
+
 					/// Parsing legacy pesde source failed
 					#[error("error parsing legacy pesde source")]
 					LegacyPesdeParse(#[from] crate::source::legacy_pesde::backend::errors::ParseBackendError),
@@ -572,7 +579,7 @@ macro_rules! impls {
 	}
 }
 
-impls!(LegacyPesde, Wally, Git, Path);
+impls!(Pesde, LegacyPesde, Wally, Git, Path);
 
 impl DependencySpecifiers {
 	/// Returns whether this dependency specifier is for a local dependency

@@ -21,7 +21,7 @@ pub struct WallyDependencySpecifier {
 	/// The version requirement for the package
 	pub version: VersionReq,
 	/// The index to use for the package
-	#[serde(default = "crate::default_index_name")]
+	#[serde(default = "crate::default_url_key")]
 	pub index: String,
 	/// The realm to use for the package
 	pub realm: Realm,
