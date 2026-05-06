@@ -9,7 +9,7 @@ use crate::graph::DependencyGraphNode;
 use crate::graph::DependencyGraphNodeDependency;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
-use crate::manifest::ManifestIndices;
+use crate::manifest::ManifestUrls;
 use crate::manifest::OverrideSpecifier;
 use crate::matching_globs;
 use crate::source::DependencySpecifier as _;
@@ -21,6 +21,7 @@ use crate::source::StructureKind;
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
 use crate::source::legacy_pesde::LegacyPesdePackageSource;
+use crate::source::pesde::PesdePackageSource;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
@@ -31,15 +32,38 @@ use tracing::Instrument as _;
 use tracing::instrument;
 
 fn specifier_to_source(
-	indices: Option<&ManifestIndices>,
+	urls: Option<&ManifestUrls>,
 	specifier: &DependencySpecifiers,
 ) -> Result<PackageSources, errors::DependencyGraphError> {
 	let source = match &specifier {
+		DependencySpecifiers::Pesde(specifier) => {
+			let url = if let Some(indices) = urls {
+				indices
+					.pesde_registries
+					.get(&specifier.registry)
+					.ok_or_else(|| {
+						errors::DependencyGraphErrorKind::RegistryNotFound(
+							specifier.registry.clone(),
+						)
+					})?
+					.clone()
+			} else {
+				specifier
+					.registry
+					.as_str()
+					.try_into()
+					.map(GixUrl::new)
+					// specifiers in indices store the index url in this field
+					.unwrap()
+			};
+
+			PackageSources::Pesde(PesdePackageSource::from_url(url))
+		}
 		#[expect(deprecated)]
 		DependencySpecifiers::LegacyPesde(specifier) => {
-			let index_url = if let Some(indices) = indices {
+			let index_url = if let Some(indices) = urls {
 				indices
-					.pesde
+					.pesde_indices
 					.get(&specifier.index)
 					.ok_or_else(|| {
 						errors::DependencyGraphErrorKind::IndexNotFound(specifier.index.clone())
@@ -57,9 +81,9 @@ fn specifier_to_source(
 			PackageSources::LegacyPesde(LegacyPesdePackageSource::from_url(index_url))
 		}
 		DependencySpecifiers::Wally(specifier) => {
-			let index_url = if let Some(indices) = indices {
+			let index_url = if let Some(indices) = urls {
 				indices
-					.wally
+					.wally_indices
 					.get(&specifier.index)
 					.ok_or_else(|| {
 						errors::DependencyGraphErrorKind::WallyIndexNotFound(
@@ -274,7 +298,7 @@ async fn resolve_version(
 		if pass_indices && manifest.is_none() {
 			manifest = Some(subproject.deser_manifest().await?);
 		}
-		let source = specifier_to_source(manifest.as_ref().map(|m| &m.indices), specifier)?;
+		let source = specifier_to_source(manifest.as_ref().map(|m| &m.urls), specifier)?;
 
 		refreshed_sources
 			.refresh(&source, subproject.project())
@@ -468,6 +492,10 @@ pub mod errors {
 		/// An error occurred while reading all dependencies from the manifest
 		#[error("error getting all project dependencies")]
 		AllDependencies(#[from] crate::manifest::errors::AllDependenciesError),
+
+		/// A registry was not found in the manifest
+		#[error("registry `{0}` not found in manifest")]
+		RegistryNotFound(String),
 
 		/// An index was not found in the manifest
 		#[error("index named `{0}` not found in manifest")]
