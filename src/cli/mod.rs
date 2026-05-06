@@ -3,7 +3,7 @@ use crate::cli::style::ERROR_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_STYLE;
 use anyhow::Context as _;
-use pesde::DEFAULT_INDEX_NAME;
+use pesde::DEFAULT_URL_KEY;
 use pesde::GixUrl;
 use pesde::Subproject;
 use pesde::errors::ManifestReadErrorKind;
@@ -222,12 +222,12 @@ pub async fn get_index(subproject: &Subproject, index: Option<&str>) -> anyhow::
 		return Ok(url);
 	}
 
-	let index_name = index.unwrap_or(DEFAULT_INDEX_NAME);
+	let index_name = index.unwrap_or(DEFAULT_URL_KEY);
 
 	manifest
 		.unwrap()
 		.indices
-		.pesde
+		.pesde_indices
 		.get(index_name)
 		.with_context(|| format!("index {index_name} not found in manifest"))
 		.cloned()

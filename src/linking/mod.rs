@@ -130,6 +130,9 @@ impl Project {
 												}
 												#[expect(deprecated)]
 												StructureKind::LegacyPesde(target) => match dep_id.pkg_ref() {
+													PackageRefs::Pesde(_) => panic!(
+														"legacy_pesde depends on pesde, do not know how to link"
+													),
 													PackageRefs::LegacyPesde(_) => {
 														path.push(target.packages_dir());
 													}

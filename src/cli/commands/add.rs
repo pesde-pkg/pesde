@@ -7,7 +7,7 @@ use pesde::source::ResolveResult;
 
 use crate::cli::AnyPackageIdentifier;
 use crate::cli::dep_type_to_key;
-use pesde::DEFAULT_INDEX_NAME;
+use pesde::DEFAULT_URL_KEY;
 use pesde::RefreshedSources;
 use pesde::Subproject;
 use pesde::manifest::Alias;
@@ -54,12 +54,12 @@ impl AddCommand {
 					.context("failed to read manifest")?;
 
 				let indices = if pesde {
-					&manifest.indices.pesde
+					&manifest.indices.pesde_indices
 				} else {
-					&manifest.indices.wally
+					&manifest.indices.wally_indices
 				};
 
-				let name = self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
+				let name = self.index.as_deref().unwrap_or(DEFAULT_URL_KEY);
 				Ok((
 					name.to_string(),
 					indices
@@ -139,7 +139,7 @@ impl AddCommand {
 
 				field["target"] = toml_edit::value(spec.target.to_string());
 
-				if spec.index != DEFAULT_INDEX_NAME {
+				if spec.index != DEFAULT_URL_KEY {
 					field["index"] = toml_edit::value(spec.index);
 				}
 
@@ -154,7 +154,7 @@ impl AddCommand {
 				field["wally"] = toml_edit::value(name_str);
 				field["version"] = toml_edit::value(format!("^{version}"));
 
-				if spec.index != DEFAULT_INDEX_NAME {
+				if spec.index != DEFAULT_URL_KEY {
 					field["index"] = toml_edit::value(spec.index);
 				}
 
