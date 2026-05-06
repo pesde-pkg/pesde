@@ -20,6 +20,9 @@ sqlx = { version = "0.8.6", default-features = false, features = [
 fs-err = { version = "3.3.0", features = ["tokio"] }
 thiserror = "2.0.18"
 dotenvy = "0.15.7"
+anyhow = "1.0.102"
+async-trait = "0.1.89"
+semver = { version = "1.0.28" }
 
 tracing = { version = "0.1.44", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
