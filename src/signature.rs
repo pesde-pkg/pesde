@@ -153,7 +153,9 @@ impl Signature {
 					return false;
 				};
 
-				let Ok(signature) = ssh_key::SshSig::from_pem(&self.data) else {
+				// we skip the PEM format to save on some bytes since the signature data isn't meant to be human-readable, and the format is already implied by the signature kind
+				use ssh_encoding::Decode;
+				let Ok(signature) = ssh_key::SshSig::decode(&mut &*self.data) else {
 					return false;
 				};
 
