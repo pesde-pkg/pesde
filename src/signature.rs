@@ -1,4 +1,4 @@
-//! Signatures
+//! Signatures and public keys
 
 use std::fmt::Display;
 use std::str::FromStr;
@@ -7,6 +7,129 @@ use std::sync::Arc;
 use base64::Engine as _;
 
 use crate::ser_display_deser_fromstr;
+
+/// A key kind
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum KeyKind {
+	/// An SSH key
+	Ssh(SshKeyKind),
+}
+ser_display_deser_fromstr!(KeyKind);
+
+impl Display for KeyKind {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			KeyKind::Ssh(ssh_kind) => write!(f, "ssh-{ssh_kind}"),
+		}
+	}
+}
+
+impl FromStr for KeyKind {
+	type Err = errors::KeyKindParseError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if let Some(ssh_kind) = s.strip_prefix("ssh-") {
+			Ok(Self::Ssh(ssh_kind.parse()?))
+		} else {
+			Err(errors::KeyKindParseErrorKind::UnknownKeyKind(s.to_string()).into())
+		}
+	}
+}
+
+impl Default for KeyKind {
+	fn default() -> Self {
+		Self::Ssh(Default::default())
+	}
+}
+
+/// An SSH key kind
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
+pub enum SshKeyKind {
+	/// An Ed25519 key
+	#[default]
+	Ed25519,
+}
+ser_display_deser_fromstr!(SshKeyKind);
+
+impl Display for SshKeyKind {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			SshKeyKind::Ed25519 => write!(f, "ed25519"),
+		}
+	}
+}
+
+impl FromStr for SshKeyKind {
+	type Err = errors::SshKeyKindParseError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s {
+			"ed25519" => Ok(Self::Ed25519),
+			_ => Err(errors::SshKeyKindParseErrorKind::UnknownSshKeyKind(s.to_string()).into()),
+		}
+	}
+}
+
+/// A public key
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PublicKey {
+	kind: KeyKind,
+	data: Arc<[u8]>,
+}
+ser_display_deser_fromstr!(PublicKey);
+
+impl Display for PublicKey {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(
+			f,
+			"{} {}",
+			self.kind,
+			base64::engine::general_purpose::STANDARD_NO_PAD.encode(&self.data)
+		)
+	}
+}
+
+impl FromStr for PublicKey {
+	type Err = errors::PublicKeyParseError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let (kind, data) = s
+			.split_once(' ')
+			.ok_or(errors::PublicKeyParseErrorKind::InvalidFormat)?;
+
+		Ok(Self {
+			kind: kind.parse()?,
+			data: base64::engine::general_purpose::STANDARD_NO_PAD
+				.decode(data)?
+				.into(),
+		})
+	}
+}
+
+impl PublicKey {
+	/// Constructs a new public key
+	#[must_use]
+	pub fn new(kind: KeyKind, data: impl Into<Arc<[u8]>>) -> Self {
+		Self {
+			kind,
+			data: data.into(),
+		}
+	}
+
+	/// Returns the kind of key
+	#[must_use]
+	pub fn kind(&self) -> KeyKind {
+		self.kind
+	}
+
+	/// Returns the raw key data
+	#[must_use]
+	pub fn data(&self) -> &[u8] {
+		&self.data
+	}
+}
 
 /// A signature kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -142,10 +265,11 @@ impl Signature {
 	/// Verifies the signature
 	/// Information about the validity of data (e.g. formats) is not important to this crate, so they are silently ignored by returning false on invalid data
 	#[must_use]
-	pub fn verify(&self, public_key: &[u8], msg: &[u8]) -> bool {
-		match self.kind {
-			SignatureKind::Ssh(SshSignatureKind::Ed25519) => {
-				let Ok(public_key) = public_key
+	pub fn verify(&self, public_key: &PublicKey, msg: &[u8]) -> bool {
+		match (self.kind, public_key.kind()) {
+			(SignatureKind::Ssh(SshSignatureKind::Ed25519), KeyKind::Ssh(SshKeyKind::Ed25519)) => {
+				let Ok(key_data) = public_key
+					.data()
 					.try_into()
 					.map(ssh_key::public::KeyData::Ed25519)
 					.map(ssh_key::PublicKey::from)
@@ -159,17 +283,66 @@ impl Signature {
 					return false;
 				};
 
-				public_key
+				key_data
 					.verify(Self::SSH_NAMESPACE, msg, &signature)
 					.is_ok()
 			}
+			#[expect(unreachable_patterns)]
+			_ => false,
 		}
 	}
 }
 
-/// Errors related to signatures
+/// Errors related to signatures and public keys
 pub mod errors {
 	use thiserror::Error;
+
+	/// Errors which can occur when parsing a key kind
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = KeyKindParseError))]
+	pub enum KeyKindParseErrorKind {
+		/// The key kind is in an invalid format
+		#[error("invalid key kind format")]
+		InvalidFormat,
+
+		/// The key kind is unknown
+		#[error("unknown key kind `{0}`")]
+		UnknownKeyKind(String),
+
+		/// The SSH key kind could not be parsed
+		#[error("invalid SSH key kind format")]
+		SshKeyKindParseError(#[from] SshKeyKindParseError),
+	}
+
+	/// Errors which can occur when parsing an SSH key kind
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = SshKeyKindParseError))]
+	pub enum SshKeyKindParseErrorKind {
+		/// The SSH key kind is in an invalid format
+		#[error("invalid SSH key kind format")]
+		InvalidFormat,
+
+		/// The SSH key kind is unknown
+		#[error("unknown SSH key kind `{0}`")]
+		UnknownSshKeyKind(String),
+	}
+
+	/// Errors which can occur when parsing a public key
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = PublicKeyParseError))]
+	pub enum PublicKeyParseErrorKind {
+		/// The public key is in an invalid format
+		#[error("invalid public key format")]
+		InvalidFormat,
+
+		/// The key kind is not valid
+		#[error("invalid key kind")]
+		InvalidKeyKind(#[from] KeyKindParseError),
+
+		/// The key data is not valid base64
+		#[error("invalid base64 in public key data")]
+		InvalidBase64(#[from] base64::DecodeError),
+	}
 
 	/// Errors which can occur when parsing a signature kind
 	#[derive(Debug, Error, thiserror_ext::Box)]
