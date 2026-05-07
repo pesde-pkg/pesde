@@ -103,9 +103,7 @@ impl FromStr for PackageId {
 		let version = version.parse()?;
 
 		let source = match tag {
-			"pesde" => {
-				PackageSources::LegacyPesde(source.parse().map_err(PackageSourcesFromStr::from)?)
-			}
+			"pesde" => PackageSources::Pesde(source.parse().map_err(PackageSourcesFromStr::from)?),
 			"legacy_pesde" => {
 				PackageSources::LegacyPesde(source.parse().map_err(PackageSourcesFromStr::from)?)
 			}
