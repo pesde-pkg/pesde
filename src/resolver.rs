@@ -51,8 +51,7 @@ fn specifier_to_source(
 				specifier
 					.registry
 					.as_str()
-					.try_into()
-					.map(GixUrl::new)
+					.parse()
 					// specifiers in indices store the index url in this field
 					.unwrap()
 			};

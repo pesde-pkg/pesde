@@ -59,6 +59,9 @@ impl OutdatedCommand {
 						let refreshed_sources = refreshed_sources.clone();
 						if !self.strict {
 							match &mut spec {
+								DependencySpecifiers::Pesde(spec) => {
+									spec.version = VersionReq::STAR;
+								}
 								#[expect(deprecated)]
 								DependencySpecifiers::LegacyPesde(spec) => {
 									spec.version = VersionReq::STAR;
