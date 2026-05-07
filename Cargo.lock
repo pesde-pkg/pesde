@@ -704,6 +704,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cbor-core"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b3721af5de4d021750ac363e32042a5b1cf9ea24d7931512a1397c0ef73f00f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3679,6 +3688,7 @@ dependencies = [
  "async-trait",
  "async_zip",
  "base64",
+ "cbor-core",
  "clap",
  "console",
  "croshet",
