@@ -242,6 +242,7 @@ impl Signature {
 	pub const SSH_NAMESPACE: &str = "pesde signature";
 
 	/// Constructs a new signature
+	/// Does NOT validate if the data is valid for the given kind. This is left to the caller since validating it would be unnecessarily complex
 	#[must_use]
 	pub fn new(kind: SignatureKind, data: impl Into<Arc<[u8]>>) -> Self {
 		Self {
@@ -278,7 +279,7 @@ impl Signature {
 				};
 
 				// we skip the PEM format to save on some bytes since the signature data isn't meant to be human-readable, and the format is already implied by the signature kind
-				use ssh_encoding::Decode;
+				use ssh_encoding::Decode as _;
 				let Ok(signature) = ssh_key::SshSig::decode(&mut &*self.data) else {
 					return false;
 				};

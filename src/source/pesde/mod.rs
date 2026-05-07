@@ -66,9 +66,10 @@ impl PesdePackageSource {
 	/// Creates a pesde package source from a URL
 	#[must_use]
 	pub fn from_url(repo_url: GixUrl) -> Self {
-		Self::new(PesdePackageBackends::Git(
-			GitPesdePackageSourceBackend::new(repo_url),
-		))
+		// Self::new(PesdePackageBackends::Git(
+		// 	GitPesdePackageSourceBackend::new(repo_url),
+		// ))
+		todo!()
 	}
 
 	/// Gets the repository backend
@@ -115,7 +116,8 @@ impl PackageSource for PesdePackageSource {
 			.join("index")
 			.join("pesde")
 			.join(self.repo.to_string().escaped())
-			.join(pkg_ref.name.escaped())
+			.join(pkg_ref.name.scope().to_string().escaped())
+			.join(pkg_ref.name.name().to_string().escaped())
 			.join(package.id.version().to_string());
 
 		match fs::read_to_string(&index_file).await {
