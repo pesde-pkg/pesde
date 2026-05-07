@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::errors;
-use crate::names::wally::WallyPackageName;
+use crate::names::WallyPackageName;
 use crate::source::DependencySpecifiers;
 use crate::source::wally::specifier::WallyDependencySpecifier;
 use semver::Version;

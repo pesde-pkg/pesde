@@ -3,7 +3,7 @@
 
 use crate::GixUrl;
 use crate::Project;
-use crate::names::wally::WallyPackageName;
+use crate::names::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
@@ -169,8 +169,7 @@ impl WallyPackageSourceBackend for GitWallyPackageSourceBackend {
 			let tree: Result<gix::Tree, errors::GitReadIndexFileError> =
 				root_tree(&repo).map_err(|e| errors::GitReadIndexFileErrorKind::Tree(e).into());
 			let tree = tree?;
-			let (scope, name) = pkg_name.as_str();
-			read_file(&tree, [scope, name])
+			read_file(&tree, [pkg_name.scope(), pkg_name.name()])
 				.map_err(|e| errors::GitReadIndexFileErrorKind::ReadFile(e).into())
 		})
 		.await
@@ -189,15 +188,13 @@ impl WallyPackageSourceBackend for GitWallyPackageSourceBackend {
 	> {
 		let config = self.config(project).await?;
 
-		let (scope, name) = pkg_name.as_str();
-
 		let mut request = project
 			.reqwest()
 			.get(format!(
 				"{}/v1/package-contents/{}/{}/{}",
 				config.api.as_str().trim_end_matches('/'),
-				urlencoding::encode(scope),
-				urlencoding::encode(name),
+				urlencoding::encode(pkg_name.scope()),
+				urlencoding::encode(pkg_name.name()),
 				urlencoding::encode(&version.to_string())
 			))
 			.header(

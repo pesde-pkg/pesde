@@ -5,7 +5,7 @@ use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::names::wally::WallyPackageName;
+use crate::names::WallyPackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
 

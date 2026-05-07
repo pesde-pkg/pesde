@@ -373,10 +373,9 @@ impl PesdePackageSourceBackend for GitPesdePackageSourceBackend {
 		let path = self.path(project);
 
 		spawn_blocking(move || {
-			let (scope, name) = name.as_str();
 			let repo = gix::open(&path)?;
 			let tree = root_tree(&repo)?;
-			let string = match read_file(&tree, [scope, name]) {
+			let string = match read_file(&tree, [name.scope().as_str(), name.name().as_str()]) {
 				Ok(Some(s)) => s,
 				Ok(None) => return Ok(None),
 				Err(e) => {

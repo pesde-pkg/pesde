@@ -203,7 +203,8 @@ impl PackageSource for WallyPackageSource {
 			.join("index")
 			.join("wally")
 			.join(self.repo.to_string().escaped())
-			.join(pkg_ref.name.escaped())
+			.join(pkg_ref.name.scope().to_string().escaped())
+			.join(pkg_ref.name.name().to_string().escaped())
 			.join(package.id.version().to_string());
 
 		match fs::read_to_string(&index_file).await {
@@ -283,7 +284,7 @@ impl PackageSource for WallyPackageSource {
 
 /// Errors that can occur when interacting with a Wally package source
 pub mod errors {
-	use crate::names::wally::WallyPackageName;
+	use crate::names::WallyPackageName;
 	use thiserror::Error;
 
 	/// Errors that can occur when refreshing the Wally package source

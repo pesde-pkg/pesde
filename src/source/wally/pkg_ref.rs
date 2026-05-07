@@ -2,7 +2,7 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use crate::names::wally::WallyPackageName;
+use crate::names::WallyPackageName;
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRef;
 

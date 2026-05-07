@@ -8,7 +8,9 @@ use pesde::GixUrl;
 use pesde::Subproject;
 use pesde::errors::ManifestReadErrorKind;
 use pesde::manifest::DependencyType;
-use pesde::names::PackageNames;
+#[expect(deprecated)]
+use pesde::names::PackageName;
+use pesde::names::WallyPackageName;
 use pesde::source::DependencySpecifiers;
 use pesde::source::PackageSources;
 use pesde::source::Realm;
@@ -57,9 +59,13 @@ pub fn data_dir() -> anyhow::Result<PathBuf> {
 }
 
 #[derive(Debug, Clone)]
-struct VersionedPackageNames(PackageNames, Option<VersionReq>);
+struct VersionedPackageName<Name: FromStr>(Name, Option<VersionReq>);
 
-impl FromStr for VersionedPackageNames {
+impl<Name> FromStr for VersionedPackageName<Name>
+where
+	Name: FromStr,
+	Name::Err: Into<anyhow::Error>,
+{
 	type Err = anyhow::Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -67,13 +73,15 @@ impl FromStr for VersionedPackageNames {
 		let name = parts.next().unwrap();
 		let version = parts.next().map(FromStr::from_str).transpose()?;
 
-		Ok(VersionedPackageNames(name.parse()?, version))
+		Ok(Self(name.parse().map_err(Into::into)?, version))
 	}
 }
 
 #[derive(Debug, Clone)]
 enum AnyPackageIdentifier {
-	PackageNames(VersionedPackageNames),
+	#[expect(deprecated)]
+	PesdePackageName(VersionedPackageName<PackageName>),
+	WallyPackageName(VersionedPackageName<WallyPackageName>),
 	Git((GixUrl, String)),
 	Path(RelativeOrAbsolutePath),
 }
@@ -85,38 +93,34 @@ impl AnyPackageIdentifier {
 		get_index: impl AsyncFnOnce(bool) -> anyhow::Result<(String, GixUrl)>,
 	) -> anyhow::Result<(PackageSources, DependencySpecifiers)> {
 		Ok(match self {
-			AnyPackageIdentifier::PackageNames(VersionedPackageNames(name, version)) => {
-				match name {
-					#[expect(deprecated)]
-					PackageNames::Pesde(name) => {
-						let (index_name, index_url) = get_index(true).await?;
-						let source = PackageSources::Pesde(PesdePackageSource::from_url(index_url));
-						let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
-							name: name.clone(),
-							version: version.clone().unwrap_or(VersionReq::STAR),
-							index: index_name,
-							target: match realm {
-								Some(Realm::Shared) => TargetKind::Roblox,
-								Some(Realm::Server) => TargetKind::RobloxServer,
-								None => TargetKind::Luau,
-							},
-						});
+			#[expect(deprecated)]
+			AnyPackageIdentifier::PesdePackageName(VersionedPackageName(name, version)) => {
+				let (index_name, index_url) = get_index(true).await?;
+				let source = PackageSources::Pesde(PesdePackageSource::from_url(index_url));
+				let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
+					name: name.clone(),
+					version: version.clone().unwrap_or(VersionReq::STAR),
+					index: index_name,
+					target: match realm {
+						Some(Realm::Shared) => TargetKind::Roblox,
+						Some(Realm::Server) => TargetKind::RobloxServer,
+						None => TargetKind::Luau,
+					},
+				});
 
-						(source, specifier)
-					}
-					PackageNames::Wally(name) => {
-						let (index_name, index_url) = get_index(false).await?;
-						let source = PackageSources::Wally(WallyPackageSource::from_url(index_url));
-						let specifier = DependencySpecifiers::Wally(WallyDependencySpecifier {
-							name: name.clone(),
-							version: version.clone().unwrap_or(VersionReq::STAR),
-							index: index_name,
-							realm: realm.context("wally packages require a realm")?,
-						});
+				(source, specifier)
+			}
+			AnyPackageIdentifier::WallyPackageName(VersionedPackageName(name, version)) => {
+				let (index_name, index_url) = get_index(false).await?;
+				let source = PackageSources::Wally(WallyPackageSource::from_url(index_url));
+				let specifier = DependencySpecifiers::Wally(WallyDependencySpecifier {
+					name: name.clone(),
+					version: version.clone().unwrap_or(VersionReq::STAR),
+					index: index_name,
+					realm: realm.context("wally packages require a realm")?,
+				});
 
-						(source, specifier)
-					}
-				}
+				(source, specifier)
 			}
 			AnyPackageIdentifier::Git((url, ver)) => (
 				PackageSources::Git(GitPackageSource::from_url(url.clone())),
@@ -150,8 +154,14 @@ impl FromStr for AnyPackageIdentifier {
 				.context("invalid format. expected url separated by #")?;
 
 			Ok(AnyPackageIdentifier::Git((repo.parse()?, rev.to_string())))
+		} else if let Some(name) = s
+			.strip_prefix("wally#")
+			// pesde names cannot contain `-`, so if the string contains it we can assume it's a wally name
+			.or_else(|| s.contains('-').then_some(s))
+		{
+			Ok(AnyPackageIdentifier::WallyPackageName(name.parse()?))
 		} else {
-			Ok(AnyPackageIdentifier::PackageNames(s.parse()?))
+			Ok(AnyPackageIdentifier::PesdePackageName(s.parse()?))
 		}
 	}
 }

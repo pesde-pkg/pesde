@@ -1,24 +1,131 @@
 //! Package names
+// TODO: remove this module and put the structs in their appropriate source modules
 #![expect(deprecated)]
 use crate::ser_display_deser_fromstr;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// The invalid part of a package name
+/// A validated package scope (3–32 chars, a-z/0-9/_, no leading/trailing _, not all digits)
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Scope(Arc<str>);
+
+ser_display_deser_fromstr!(Scope);
+
+impl FromStr for Scope {
+	type Err = errors::PackageNameError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if !(3..=32).contains(&s.len()) {
+			return Err(errors::PackageNameErrorKind::InvalidScopeLength(s.to_string()).into());
+		}
+		if s.chars().all(|c| c.is_ascii_digit()) {
+			return Err(
+				errors::PackageNameErrorKind::OnlyDigits(ErrorPart::Scope, s.to_string()).into(),
+			);
+		}
+		if s.starts_with('_') || s.ends_with('_') {
+			return Err(errors::PackageNameErrorKind::PrePostfixUnderscore(
+				ErrorPart::Scope,
+				s.to_string(),
+			)
+			.into());
+		}
+		if !s
+			.chars()
+			.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+		{
+			return Err(errors::PackageNameErrorKind::InvalidCharacters(
+				ErrorPart::Scope,
+				s.to_string(),
+			)
+			.into());
+		}
+		Ok(Self(s.into()))
+	}
+}
+
+impl Display for Scope {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&self.0)
+	}
+}
+
+impl Scope {
+	/// Returns the scope as a str
+	#[must_use]
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
+}
+
+/// A validated package name part (1–32 chars, a-z/0-9/_, no leading/trailing _, not all digits)
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Name(Arc<str>);
+
+ser_display_deser_fromstr!(Name);
+
+impl FromStr for Name {
+	type Err = errors::PackageNameError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if !(1..=32).contains(&s.len()) {
+			return Err(errors::PackageNameErrorKind::InvalidNameLength(s.to_string()).into());
+		}
+		if s.chars().all(|c| c.is_ascii_digit()) {
+			return Err(
+				errors::PackageNameErrorKind::OnlyDigits(ErrorPart::Name, s.to_string()).into(),
+			);
+		}
+		if s.starts_with('_') || s.ends_with('_') {
+			return Err(errors::PackageNameErrorKind::PrePostfixUnderscore(
+				ErrorPart::Name,
+				s.to_string(),
+			)
+			.into());
+		}
+		if !s
+			.chars()
+			.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+		{
+			return Err(errors::PackageNameErrorKind::InvalidCharacters(
+				ErrorPart::Name,
+				s.to_string(),
+			)
+			.into());
+		}
+		Ok(Self(s.into()))
+	}
+}
+
+impl Display for Name {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&self.0)
+	}
+}
+
+impl Name {
+	/// Returns the name as a str
+	#[must_use]
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
+}
+
+/// Which part of a package name is invalid
 #[derive(Debug)]
-pub enum ErrorReason {
+pub enum ErrorPart {
 	/// The scope of the package name is invalid
 	Scope,
 	/// The name of the package name is invalid
 	Name,
 }
 
-impl Display for ErrorReason {
+impl Display for ErrorPart {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			ErrorReason::Scope => write!(f, "scope"),
-			ErrorReason::Name => write!(f, "name"),
+			ErrorPart::Scope => write!(f, "scope"),
+			ErrorPart::Name => write!(f, "name"),
 		}
 	}
 }
@@ -26,7 +133,7 @@ impl Display for ErrorReason {
 /// A pesde package name
 #[deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct PackageName(Arc<(Box<str>, Box<str>)>);
+pub struct PackageName(Arc<(Scope, Name)>);
 
 ser_display_deser_fromstr!(PackageName);
 
@@ -38,32 +145,55 @@ impl FromStr for PackageName {
 			.split_once('/')
 			.ok_or_else(|| errors::PackageNameErrorKind::InvalidFormat(s.to_string()))?;
 
-		for (reason, part) in [(ErrorReason::Scope, scope), (ErrorReason::Name, name)] {
-			let min_len = match reason {
-				ErrorReason::Scope => 3,
-				ErrorReason::Name => 1,
-			};
+		Ok(Self(Arc::new((
+			Scope::from_str(scope)?,
+			Name::from_str(name)?,
+		))))
+	}
+}
 
-			if !(min_len..=32).contains(&part.len()) {
-				return Err(match reason {
-					ErrorReason::Scope => {
-						errors::PackageNameErrorKind::InvalidScopeLength(part.to_string())
-					}
-					ErrorReason::Name => {
-						errors::PackageNameErrorKind::InvalidNameLength(part.to_string())
-					}
-				}
-				.into());
-			}
+impl Display for PackageName {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}/{}", self.scope(), self.name())
+	}
+}
 
-			if part.chars().all(|c| c.is_ascii_digit()) {
-				return Err(
-					errors::PackageNameErrorKind::OnlyDigits(reason, part.to_string()).into(),
-				);
-			}
+impl PackageName {
+	/// Creates a new `PackageName` from already-validated parts
+	#[must_use]
+	pub fn new(scope: Scope, name: Name) -> Self {
+		Self(Arc::new((scope, name)))
+	}
 
-			if part.starts_with('_') || part.ends_with('_') {
-				return Err(errors::PackageNameErrorKind::PrePostfixUnderscore(
+	/// Returns the scope of the package name
+	#[must_use]
+	pub fn scope(&self) -> &Scope {
+		&self.0.0
+	}
+
+	/// Returns the name part of the package name
+	#[must_use]
+	pub fn name(&self) -> &Name {
+		&self.0.1
+	}
+}
+
+/// A Wally package name
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct WallyPackageName(Arc<(Box<str>, Box<str>)>);
+ser_display_deser_fromstr!(WallyPackageName);
+
+impl FromStr for WallyPackageName {
+	type Err = errors::WallyPackageNameError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let (scope, name) = s
+			.split_once('/')
+			.ok_or_else(|| errors::WallyPackageNameErrorKind::InvalidFormat(s.to_string()))?;
+
+		for (reason, part) in [(ErrorPart::Scope, scope), (ErrorPart::Name, name)] {
+			if part.is_empty() || part.len() > 64 {
+				return Err(errors::WallyPackageNameErrorKind::InvalidLength(
 					reason,
 					part.to_string(),
 				)
@@ -72,9 +202,9 @@ impl FromStr for PackageName {
 
 			if !part
 				.chars()
-				.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+				.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 			{
-				return Err(errors::PackageNameErrorKind::InvalidCharacters(
+				return Err(errors::WallyPackageNameErrorKind::InvalidCharacters(
 					reason,
 					part.to_string(),
 				)
@@ -86,25 +216,13 @@ impl FromStr for PackageName {
 	}
 }
 
-impl Display for PackageName {
+impl Display for WallyPackageName {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}/{}", self.scope(), self.name())
 	}
 }
 
-impl PackageName {
-	/// Returns the parts of the package name
-	#[must_use]
-	pub fn as_str(&self) -> (&str, &str) {
-		(self.scope(), self.name())
-	}
-
-	/// Returns the package name as a string suitable for use in the filesystem
-	#[must_use]
-	pub fn escaped(&self) -> String {
-		format!("{}+{}", self.scope(), self.name())
-	}
-
+impl WallyPackageName {
 	/// Returns the scope of the package name
 	#[must_use]
 	pub fn scope(&self) -> &str {
@@ -118,172 +236,11 @@ impl PackageName {
 	}
 }
 
-/// All possible package names
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PackageNames {
-	/// A pesde package name
-	Pesde(PackageName),
-	/// A Wally package name
-	Wally(wally::WallyPackageName),
-}
-ser_display_deser_fromstr!(PackageNames);
-
-impl PackageNames {
-	/// Returns the parts of the package name
-	#[must_use]
-	pub fn as_str(&self) -> (&str, &str) {
-		match self {
-			PackageNames::Pesde(name) => name.as_str(),
-			PackageNames::Wally(name) => name.as_str(),
-		}
-	}
-
-	/// Returns the package name as a string suitable for use in the filesystem
-	#[must_use]
-	pub fn escaped(&self) -> String {
-		match self {
-			PackageNames::Pesde(name) => name.escaped(),
-			PackageNames::Wally(name) => name.escaped(),
-		}
-	}
-
-	/// Returns the scope of the package name
-	#[must_use]
-	pub fn scope(&self) -> &str {
-		match self {
-			PackageNames::Pesde(name) => name.scope(),
-			PackageNames::Wally(name) => name.scope(),
-		}
-	}
-
-	/// Returns the name of the package name
-	#[must_use]
-	pub fn name(&self) -> &str {
-		match self {
-			PackageNames::Pesde(name) => name.name(),
-			PackageNames::Wally(name) => name.name(),
-		}
-	}
-}
-
-impl Display for PackageNames {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			PackageNames::Pesde(name) => write!(f, "{name}"),
-			PackageNames::Wally(name) => write!(f, "wally#{name}"),
-		}
-	}
-}
-
-impl FromStr for PackageNames {
-	type Err = errors::PackageNamesError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		if let Some(wally_name) = s
-			.strip_prefix("wally#")
-			.or_else(|| s.contains('-').then_some(s))
-			.and_then(|s| wally::WallyPackageName::from_str(s).ok())
-		{
-			return Ok(PackageNames::Wally(wally_name));
-		}
-
-		if let Ok(name) = PackageName::from_str(s) {
-			Ok(PackageNames::Pesde(name))
-		} else {
-			Err(errors::PackageNamesErrorKind::InvalidPackageName(s.to_string()).into())
-		}
-	}
-}
-
-/// Wally package names
-pub mod wally {
-	use std::fmt::Display;
-	use std::str::FromStr;
-	use std::sync::Arc;
-
-	use crate::names::ErrorReason;
-	use crate::names::errors;
-	use crate::ser_display_deser_fromstr;
-
-	/// A Wally package name
-	#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-	pub struct WallyPackageName(Arc<(Box<str>, Box<str>)>);
-	ser_display_deser_fromstr!(WallyPackageName);
-
-	impl FromStr for WallyPackageName {
-		type Err = errors::WallyPackageNameError;
-
-		fn from_str(s: &str) -> Result<Self, Self::Err> {
-			// backwards compatibility
-			let s = s.strip_prefix("wally#").unwrap_or(s);
-
-			let (scope, name) = s
-				.split_once('/')
-				.ok_or_else(|| errors::WallyPackageNameErrorKind::InvalidFormat(s.to_string()))?;
-
-			for (reason, part) in [(ErrorReason::Scope, scope), (ErrorReason::Name, name)] {
-				if part.is_empty() || part.len() > 64 {
-					return Err(errors::WallyPackageNameErrorKind::InvalidLength(
-						reason,
-						part.to_string(),
-					)
-					.into());
-				}
-
-				if !part
-					.chars()
-					.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-				{
-					return Err(errors::WallyPackageNameErrorKind::InvalidCharacters(
-						reason,
-						part.to_string(),
-					)
-					.into());
-				}
-			}
-
-			Ok(Self(Arc::new((scope.into(), name.into()))))
-		}
-	}
-
-	impl Display for WallyPackageName {
-		fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-			write!(f, "{}/{}", self.scope(), self.name())
-		}
-	}
-
-	impl WallyPackageName {
-		/// Returns the parts of the package name
-		#[must_use]
-		pub fn as_str(&self) -> (&str, &str) {
-			(self.scope(), self.name())
-		}
-
-		/// Returns the package name as a string suitable for use in the filesystem
-		#[must_use]
-		pub fn escaped(&self) -> String {
-			format!("{}+{}", self.scope(), self.name())
-		}
-
-		/// Returns the scope of the package name
-		#[must_use]
-		pub fn scope(&self) -> &str {
-			&self.0.0
-		}
-
-		/// Returns the name of the package name
-		#[must_use]
-		pub fn name(&self) -> &str {
-			&self.0.1
-		}
-	}
-}
-
 /// Errors that can occur when working with package names
 pub mod errors {
 	use thiserror::Error;
 
-	use crate::names::ErrorReason;
+	use crate::names::ErrorPart;
 
 	/// Errors that can occur when working with pesde package names
 	#[derive(Debug, Error, thiserror_ext::Box)]
@@ -295,15 +252,15 @@ pub mod errors {
 
 		/// The package name is outside the allowed characters: a-z, 0-9, and _
 		#[error("package {0} `{1}` contains characters outside a-z, 0-9, and _")]
-		InvalidCharacters(ErrorReason, String),
+		InvalidCharacters(ErrorPart, String),
 
 		/// The package name contains only digits
 		#[error("package {0} `{1}` contains only digits")]
-		OnlyDigits(ErrorReason, String),
+		OnlyDigits(ErrorPart, String),
 
 		/// The package name starts or ends with an underscore
 		#[error("package {0} `{1}` starts or ends with an underscore")]
-		PrePostfixUnderscore(ErrorReason, String),
+		PrePostfixUnderscore(ErrorPart, String),
 
 		/// The package name's scope part is not within 3-32 characters long
 		#[error("package scope `{0}` is not within 3-32 characters long")]
@@ -325,11 +282,11 @@ pub mod errors {
 
 		/// The package name is outside the allowed characters: a-z, 0-9, and -
 		#[error("wally package {0} `{1}` contains characters outside a-z, 0-9, and -")]
-		InvalidCharacters(ErrorReason, String),
+		InvalidCharacters(ErrorPart, String),
 
 		/// The package name is not within 1-64 characters long
 		#[error("wally package {0} `{1}` is not within 1-64 characters long")]
-		InvalidLength(ErrorReason, String),
+		InvalidLength(ErrorPart, String),
 	}
 
 	/// Errors that can occur when working with package names

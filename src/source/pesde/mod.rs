@@ -225,7 +225,8 @@ impl PackageSource for PesdePackageSource {
 			.join("index")
 			.join("pesde")
 			.join(self.repo.to_string().escaped())
-			.join(pkg_ref.name.escaped())
+			.join(pkg_ref.name.scope().to_string().escaped())
+			.join(pkg_ref.name.name().to_string().escaped())
 			.join(package.id.version().to_string())
 			.join(pkg_ref.target.to_string());
 
