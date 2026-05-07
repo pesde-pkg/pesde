@@ -54,9 +54,9 @@ impl AddCommand {
 					.context("failed to read manifest")?;
 
 				let indices = if pesde {
-					&manifest.indices.pesde_indices
+					&manifest.urls.pesde_indices
 				} else {
-					&manifest.indices.wally_indices
+					&manifest.urls.wally_indices
 				};
 
 				let name = self.index.as_deref().unwrap_or(DEFAULT_URL_KEY);
@@ -132,6 +132,16 @@ impl AddCommand {
 			.or_insert(toml_edit::Item::Table(toml_edit::Table::new()))[alias.as_str()];
 
 		match specifier {
+			DependencySpecifiers::Pesde(spec) => {
+				field["name"] = toml_edit::value(spec.name.to_string());
+				field["version"] = toml_edit::value(format!("^{version}"));
+
+				if spec.registry != DEFAULT_URL_KEY {
+					field["registry"] = toml_edit::value(spec.registry);
+				}
+
+				println!("added {}@{version} to {dependency_key}", spec.name);
+			}
 			#[expect(deprecated)]
 			DependencySpecifiers::LegacyPesde(spec) => {
 				field["name"] = toml_edit::value(spec.name.to_string());
