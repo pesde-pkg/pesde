@@ -1,5 +1,4 @@
 //! Resolving packages
-use crate::GixUrl;
 use crate::Importer;
 use crate::Project;
 use crate::RefreshedSources;
@@ -50,8 +49,7 @@ fn specifier_to_source(
 				specifier
 					.index
 					.as_str()
-					.try_into()
-					.map(GixUrl::new)
+					.parse()
 					// specifiers in indices store the index url in this field
 					.unwrap()
 			};

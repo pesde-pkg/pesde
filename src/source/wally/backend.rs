@@ -353,11 +353,9 @@ impl From<GitWallyIndexConfig> for WallyIndexConfig {
 				.fallback_registries
 				.into_iter()
 				.filter_map(|url| {
-					url.try_into()
+					url.parse()
 						.map(|url| {
-							WallyPackageBackends::Git(GitWallyPackageSourceBackend::new(
-								GixUrl::new(url),
-							))
+							WallyPackageBackends::Git(GitWallyPackageSourceBackend::new(url))
 						})
 						// ignore instead of erroring so that a misconfigured fallback registry doesn't prevent the index from working entirely
 						.map_err(|e| tracing::warn!("invalid fallback registry URL: {e}"))

@@ -22,7 +22,7 @@ pub struct CliConfig {
 impl Default for CliConfig {
 	fn default() -> Self {
 		Self {
-			default_index: "github.com/pesde-pkg/index".parse().unwrap(),
+			default_index: "https://github.com/pesde-pkg/index".parse().unwrap(),
 
 			tokens: Tokens::default(),
 

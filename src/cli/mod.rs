@@ -240,4 +240,4 @@ pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
 	}
 }
 
-pub static GITHUB_URL: LazyLock<GixUrl> = LazyLock::new(|| "github.com".parse().unwrap());
+pub static GITHUB_URL: LazyLock<GixUrl> = LazyLock::new(|| "https://github.com".parse().unwrap());

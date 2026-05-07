@@ -599,16 +599,16 @@ mod tests {
 	fn serde_package_sources() {
 		let sources = [
 			(
-				PackageSources::Pesde("github.com/pesde-pkg/index".parse().unwrap()),
-				"pesde:github.com/pesde-pkg/index",
+				PackageSources::Pesde("https://github.com/pesde-pkg/index".parse().unwrap()),
+				"pesde:https://github.com/pesde-pkg/index",
 			),
 			(
-				PackageSources::Wally("github.com/pesde-pkg/index".parse().unwrap()),
-				"wally:github.com/pesde-pkg/index",
+				PackageSources::Wally("https://github.com/pesde-pkg/index".parse().unwrap()),
+				"wally:https://github.com/pesde-pkg/index",
 			),
 			(
-				PackageSources::Git("github.com/pesde-pkg/index".parse().unwrap()),
-				"git:github.com/pesde-pkg/index",
+				PackageSources::Git("https://github.com/pesde-pkg/index".parse().unwrap()),
+				"git:https://github.com/pesde-pkg/index",
 			),
 			(PackageSources::Path(PathPackageSource), "path"),
 		];
