@@ -1,7 +1,10 @@
+use actix_web::ResponseError;
 use fs_err::tokio as fs;
+use serde_json::json;
 use std::env::VarError;
 use std::fmt::Display;
 use std::str::FromStr;
+use thiserror::Error;
 
 pub struct Env {
 	name: &'static str,
@@ -64,3 +67,31 @@ impl Env {
 		}
 	}
 }
+
+#[derive(Debug, Error)]
+pub enum AppError {
+	#[error(transparent)]
+	Internal(#[from] anyhow::Error),
+}
+
+impl ResponseError for AppError {
+	fn status_code(&self) -> actix_web::http::StatusCode {
+		match self {
+			AppError::Internal(_) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+		}
+	}
+
+	fn error_response(&self) -> actix_web::HttpResponse<actix_web::body::BoxBody> {
+		let body = match self {
+			AppError::Internal(e) => {
+				tracing::error!("internal server error: {e}");
+				json!({ "error": "internal server error "})
+			}
+		};
+
+		actix_web::HttpResponse::build(self.status_code()).json(body)
+	}
+}
+
+pub type AppResult<T> = Result<T, AppError>;
+pub type ControllerResult = AppResult<actix_web::HttpResponse>;

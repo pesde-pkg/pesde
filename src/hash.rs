@@ -66,11 +66,13 @@ ser_display_deser_fromstr!(Hash);
 impl Hash {
 	/// Creates a new Hash from the given algorithm and hash value
 	#[must_use]
-	pub fn new(algorithm: HashAlgorithm, hash: impl Into<Arc<[u8]>>) -> Self {
-		Self {
-			algorithm,
-			hash: hash.into(),
+	pub fn new(algorithm: HashAlgorithm, hash: impl Into<Arc<[u8]>>) -> Option<Self> {
+		let hash = hash.into();
+		if hash.len() != algorithm.hasher().output_size() {
+			return None;
 		}
+
+		Some(Self { algorithm, hash })
 	}
 
 	/// Creates a new Hash from the given algorithm and bytes
@@ -78,7 +80,7 @@ impl Hash {
 	pub fn from_bytes(algorithm: HashAlgorithm, bytes: impl AsRef<[u8]>) -> Self {
 		let mut hasher = algorithm.hasher();
 		hasher.update(bytes.as_ref());
-		Self::new(algorithm, hasher.finalize())
+		Self::new(algorithm, hasher.finalize()).unwrap()
 	}
 
 	/// Returns the hash algorithm used to create this hash
@@ -108,10 +110,20 @@ impl FromStr for Hash {
 			.split_once(':')
 			.ok_or(errors::HashFromStrErrorKind::InvalidHashFormat)?;
 
-		Ok(Self {
-			algorithm: algorithm.parse()?,
-			hash: hex::decode(hash)?.into(),
-		})
+		// prevent mismatches between serialized and deserialized hashes due to case differences in the hash value
+		if hash
+			.chars()
+			.any(|c| c.is_ascii_alphabetic() && !c.is_ascii_lowercase())
+		{
+			return Err(errors::HashFromStrErrorKind::InvalidHashFormat.into());
+		}
+
+		let algorithm: HashAlgorithm = algorithm.parse()?;
+		let mut data = vec![0; algorithm.hasher().output_size()];
+		hex::decode_to_slice(hash, &mut data)?;
+
+		let hash = Self::new(algorithm, data);
+		Ok(hash.ok_or(errors::HashFromStrErrorKind::InvalidHashFormat)?)
 	}
 }
 

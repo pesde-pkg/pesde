@@ -17,6 +17,16 @@ pub enum KeyKind {
 }
 ser_display_deser_fromstr!(KeyKind);
 
+impl KeyKind {
+	/// Returns the size of the key data in bytes
+	#[must_use]
+	pub fn size(self) -> usize {
+		match self {
+			KeyKind::Ssh(SshKeyKind::Ed25519) => 32,
+		}
+	}
+}
+
 impl Display for KeyKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -95,27 +105,31 @@ impl FromStr for PublicKey {
 	type Err = errors::PublicKeyParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let (kind, data) = s
+		let (kind, key) = s
 			.split_once(' ')
 			.ok_or(errors::PublicKeyParseErrorKind::InvalidFormat)?;
 
-		Ok(Self {
-			kind: kind.parse()?,
-			data: base64::engine::general_purpose::STANDARD_NO_PAD
-				.decode(data)?
-				.into(),
-		})
+		let kind: KeyKind = kind.parse()?;
+		let mut data = vec![0; kind.size()];
+		let len = base64::engine::general_purpose::STANDARD_NO_PAD.decode_slice(key, &mut data)?;
+		if len != data.len() {
+			return Err(errors::PublicKeyParseErrorKind::InvalidFormat.into());
+		}
+
+		Self::new(kind, data).ok_or_else(|| errors::PublicKeyParseErrorKind::InvalidFormat.into())
 	}
 }
 
 impl PublicKey {
 	/// Constructs a new public key
 	#[must_use]
-	pub fn new(kind: KeyKind, data: impl Into<Arc<[u8]>>) -> Self {
-		Self {
-			kind,
-			data: data.into(),
+	pub fn new(kind: KeyKind, data: impl Into<Arc<[u8]>>) -> Option<Self> {
+		let data = data.into();
+		if data.len() != kind.size() {
+			return None;
 		}
+
+		Some(Self { kind, data })
 	}
 
 	/// Returns the kind of key
@@ -139,6 +153,16 @@ pub enum SignatureKind {
 	Ssh(SshSignatureKind),
 }
 ser_display_deser_fromstr!(SignatureKind);
+
+impl SignatureKind {
+	/// Returns the size of the signature data in bytes
+	#[must_use]
+	pub fn size(self) -> usize {
+		match self {
+			SignatureKind::Ssh(SshSignatureKind::Ed25519) => 64,
+		}
+	}
+}
 
 impl Display for SignatureKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -224,16 +248,19 @@ impl FromStr for Signature {
 	type Err = errors::SignatureParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let (kind, data) = s
+		let (kind, signature) = s
 			.split_once(' ')
 			.ok_or(errors::SignatureParseErrorKind::InvalidFormat)?;
 
-		Ok(Self {
-			kind: kind.parse()?,
-			data: base64::engine::general_purpose::STANDARD_NO_PAD
-				.decode(data)?
-				.into(),
-		})
+		let kind: SignatureKind = kind.parse()?;
+		let mut data = vec![0; kind.size()];
+		let len =
+			base64::engine::general_purpose::STANDARD_NO_PAD.decode_slice(signature, &mut data)?;
+		if len != data.len() {
+			return Err(errors::SignatureParseErrorKind::InvalidFormat.into());
+		}
+
+		Self::new(kind, data).ok_or_else(|| errors::SignatureParseErrorKind::InvalidFormat.into())
 	}
 }
 
@@ -242,13 +269,14 @@ impl Signature {
 	pub const SSH_NAMESPACE: &str = "pesde signature";
 
 	/// Constructs a new signature
-	/// Does NOT validate if the data is valid for the given kind. This is left to the caller since validating it would be unnecessarily complex
 	#[must_use]
-	pub fn new(kind: SignatureKind, data: impl Into<Arc<[u8]>>) -> Self {
-		Self {
-			kind,
-			data: data.into(),
+	pub fn new(kind: SignatureKind, data: impl Into<Arc<[u8]>>) -> Option<Self> {
+		let data = data.into();
+		if data.len() != kind.size() {
+			return None;
 		}
+
+		Some(Self { kind, data })
 	}
 
 	/// Returns the kind of signature
@@ -342,7 +370,7 @@ pub mod errors {
 
 		/// The key data is not valid base64
 		#[error("invalid base64 in public key data")]
-		InvalidBase64(#[from] base64::DecodeError),
+		InvalidBase64(#[from] base64::DecodeSliceError),
 	}
 
 	/// Errors which can occur when parsing a signature kind
@@ -389,6 +417,6 @@ pub mod errors {
 
 		/// The signature is not valid base64
 		#[error("invalid base64 in signature data")]
-		InvalidBase64(#[from] base64::DecodeError),
+		InvalidBase64(#[from] base64::DecodeSliceError),
 	}
 }

@@ -71,8 +71,7 @@ async fn main() -> std::io::Result<()> {
 
 	let repos = match database_url
 		.split_once(':')
-		.map(|(protocol, _)| protocol)
-		.unwrap_or("")
+		.map_or("", |(protocol, _)| protocol)
 	{
 		"sqlite" => {
 			let pool = SqlitePool::connect(&database_url)
