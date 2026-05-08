@@ -1,4 +1,5 @@
 //! Wally dependency specifier
+use std::collections::HashSet;
 use std::fmt::Display;
 
 use semver::VersionReq;
@@ -9,8 +10,9 @@ use crate::names::WallyPackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
 
-/// The field that discriminates Wally dependencies from other dependencies
-pub const DISCRIMINATOR_FIELD: &str = "wally";
+pub(crate) fn matches(keys: &HashSet<&str>) -> bool {
+	keys.contains(&"wally")
+}
 
 /// The specifier for a Wally dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]

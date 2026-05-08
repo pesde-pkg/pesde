@@ -4,10 +4,12 @@ use crate::source::Realm;
 use crate::source::path::RelativeOrAbsolutePath;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fmt::Display;
 
-/// The field that discriminates path dependencies from other dependencies
-pub const DISCRIMINATOR_FIELD: &str = "path";
+pub(crate) fn matches(keys: &HashSet<&str>) -> bool {
+	keys.contains(&"path")
+}
 
 /// The specifier for a path dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
