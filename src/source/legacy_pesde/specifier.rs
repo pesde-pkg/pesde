@@ -6,10 +6,12 @@ use crate::source::Realm;
 use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fmt::Display;
 
-/// The field that discriminates legacy pesde dependencies from other dependencies
-pub const DISCRIMINATOR_FIELD: &str = "target";
+pub(crate) fn matches(keys: &HashSet<&str>) -> bool {
+	keys.contains(&"target")
+}
 
 /// The specifier for a legacy pesde dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]

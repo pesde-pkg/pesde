@@ -2,14 +2,16 @@
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fmt::Display;
 
 use crate::GixUrl;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
 
-/// The field that discriminates Git dependencies from other dependencies
-pub const DISCRIMINATOR_FIELD: &str = "repo";
+pub(crate) fn matches(keys: &HashSet<&str>) -> bool {
+	keys.contains(&"repo")
+}
 
 /// The specifier for a Git dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]

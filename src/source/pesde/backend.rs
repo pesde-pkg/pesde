@@ -160,6 +160,13 @@ impl FromStr for IdentityId {
 	type Err = errors::IdentityIdFromStrError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		// prevent mismatches between serialized and deserialized ids due to case differences
+		if s.chars()
+			.any(|c| c.is_ascii_alphabetic() && !c.is_ascii_lowercase())
+		{
+			return Err(errors::IdentityIdFromStrErrorKind::InvalidIdentityIdFormat.into());
+		}
+
 		let bytes = hex::decode(s)?;
 		let hash = str::from_utf8(&bytes)?;
 		// sanity check to ensure garbage input doesn't get accepted as a valid identity ID
@@ -441,6 +448,10 @@ pub mod errors {
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = IdentityIdFromStrError))]
 	pub enum IdentityIdFromStrErrorKind {
+		/// The identity ID is in an invalid format
+		#[error("invalid identity ID format")]
+		InvalidIdentityIdFormat,
+
 		/// Error occurred while parsing the identity ID
 		#[error("error parsing identity ID")]
 		ParseError(#[from] hex::FromHexError),
