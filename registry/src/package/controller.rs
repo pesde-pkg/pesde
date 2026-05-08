@@ -1,5 +1,7 @@
 use actix_web::Scope;
 
+use crate::util::ControllerResult;
+
 pub struct PackageController;
 
 impl PackageController {
@@ -15,15 +17,15 @@ impl PackageController {
 		)
 	}
 
-	async fn versions() -> actix_web::Result<actix_web::HttpResponse> {
+	async fn versions() -> ControllerResult {
 		Ok(actix_web::HttpResponse::Ok().finish())
 	}
 
-	async fn version() -> actix_web::Result<actix_web::HttpResponse> {
+	async fn version() -> ControllerResult {
 		Ok(actix_web::HttpResponse::Ok().finish())
 	}
 
-	async fn archive() -> actix_web::Result<actix_web::HttpResponse> {
+	async fn archive() -> ControllerResult {
 		Ok(actix_web::HttpResponse::Ok().finish())
 	}
 }

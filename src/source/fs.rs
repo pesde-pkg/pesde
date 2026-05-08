@@ -110,7 +110,7 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
 		file_writer.write_all(bytes).await?;
 	}
 
-	let hash = Hash::new(hash_algorithm, hasher.finalize());
+	let hash = Hash::new(hash_algorithm, hasher.finalize()).unwrap();
 
 	let cas_path = cas_path(&hash, cas_dir);
 	fs::create_dir_all(cas_path.parent().unwrap()).await?;

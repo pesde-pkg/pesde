@@ -7,4 +7,4 @@ build_rs_cov.profraw
 registry/data
 data
 manifest.schema.json
-*.sqlite
+*.sqlite*

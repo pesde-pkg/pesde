@@ -7,6 +7,7 @@ use crate::names::Name;
 use crate::names::PackageName;
 use crate::names::Scope;
 use crate::reporters::DownloadProgressReporter;
+use crate::ser_display_deser_fromstr;
 use crate::signature::PublicKey;
 use crate::signature::Signature;
 use futures::Stream;
@@ -14,6 +15,7 @@ use relative_path::RelativePathBuf;
 use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -133,12 +135,38 @@ pub struct EntrySeq(pub u64);
 pub struct ScopeSeq(pub u64);
 
 /// The stable identifier for an identity
-/// It is the hash of the initial public key and never changes, even after key rotation
+/// It is the base16 encoded [Hash] of the initial public key and never changes, even after key rotation
 /// A given public key can only ever be registered once - once rotated away from, it cannot
 /// be re-registered as a new identity
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct IdentityId(pub Hash);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct IdentityId(String);
+ser_display_deser_fromstr!(IdentityId);
+
+impl IdentityId {
+	/// Creates a new IdentityId from the given hash
+	#[must_use]
+	pub fn new(s: &Hash) -> Self {
+		Self(s.to_string())
+	}
+}
+
+impl Display for IdentityId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		f.write_str(&self.0)
+	}
+}
+
+impl FromStr for IdentityId {
+	type Err = errors::IdentityIdFromStrError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let bytes = hex::decode(s)?;
+		let hash = str::from_utf8(&bytes)?;
+		// sanity check to ensure garbage input doesn't get accepted as a valid identity ID
+		let _: Hash = hash.parse()?;
+		Ok(Self(s.to_string()))
+	}
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 /// Permissions for a scope member
@@ -149,11 +177,33 @@ pub enum ScopePermission {
 	Retire,
 }
 
+impl Display for ScopePermission {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Publish => write!(f, "publish"),
+			Self::Retire => write!(f, "retire"),
+		}
+	}
+}
+
+impl FromStr for ScopePermission {
+	type Err = errors::ScopePermissionFromStrError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s {
+			"publish" => Ok(Self::Publish),
+			"retire" => Ok(Self::Retire),
+			_ => Err(
+				errors::ScopePermissionFromStrErrorKind::UnknownScopePermission(s.to_string())
+					.into(),
+			),
+		}
+	}
+}
+
 /// An entry for a member in the scope manifest
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MemberEntry {
-	/// The stable identity ID of the member
-	pub identity_id: IdentityId,
+pub struct ScopeMember {
 	/// The permissions granted to this member
 	pub permissions: BTreeSet<ScopePermission>,
 }
@@ -164,14 +214,12 @@ pub struct ScopeManifest {
 	/// The sole identity permitted to manage this scope's manifest
 	pub owner: IdentityId,
 	/// Members with restricted permissions
-	pub members: Vec<MemberEntry>,
+	pub members: BTreeMap<IdentityId, ScopeMember>,
 }
 
 /// The body of a Publish entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublishBody {
-	/// The scope of the package being published
-	pub scope: Scope,
 	/// The name of the package being published
 	pub name: Name,
 	/// The version of the package being published
@@ -184,8 +232,6 @@ pub struct PublishBody {
 /// The body of a Yank entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct YankBody {
-	/// The scope of the package being yanked
-	pub scope: Scope,
 	/// The name of the package being yanked
 	pub name: Name,
 	/// The version of the package being yanked
@@ -195,8 +241,6 @@ pub struct YankBody {
 /// The body of a Deprecate entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeprecateBody {
-	/// The scope of the package being deprecated
-	pub scope: Scope,
 	/// The name of the package being deprecated
 	pub name: Name,
 	/// The reason for deprecation
@@ -206,15 +250,13 @@ pub struct DeprecateBody {
 /// The body of a ManifestUpdate entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeManifestUpdateBody {
-	/// The scope whose manifest is being updated
-	pub scope: Scope,
 	/// The complete new manifest, replacing the previous one entirely
 	pub manifest: ScopeManifest,
 }
 
 /// The payload of a scope entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ScopePayload {
+pub enum ScopeEntryPayload {
 	/// Publish a new package version
 	Publish(PublishBody),
 	/// Yank an existing package version
@@ -225,25 +267,40 @@ pub enum ScopePayload {
 	ManifestUpdate(ScopeManifestUpdateBody),
 }
 
+/// The kind of a scope entry
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScopeEntryKind {
+	/// Publish a new package version
+	Publish,
+	/// Yank an existing package version
+	Yank,
+	/// Deprecate an existing package
+	Deprecate,
+	/// Replace the scope manifest entirely
+	ManifestUpdate,
+}
+
 /// The body of a scope entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AuthoredScopeEntryBody {
-	/// Hash of the previous [AuthoredScopeEntry] in this scope's sub-chain
+pub struct ScopeEntryBody {
+	/// The scope this entry belongs to
+	pub scope: Scope,
+	/// Hash of the previous [SignedEntry<ScopeEntryBody>] in this scope's sub-chain
 	/// `None` if this is the first entry in the scope, in which case the registry
 	/// implicitly creates the scope with the author as sole owner with full permissions
 	#[serde(skip_serializing_if = "Option::is_none", default)]
-	pub prev_scope: Option<Hash>,
+	pub prev_scope_entry_hash: Option<Hash>,
 	/// The sequence number of this entry within the scope
 	pub scope_seq: ScopeSeq,
-	/// The [EntrySeq] of the most recent [IdentityRotation] for the author, or `None` if the author has never rotated their key
+	/// The [EntrySeq] of the most recent [SignedEntry<IdentityRotationBody>] for the author, or `None` if the author has never rotated their key
 	#[serde(skip_serializing_if = "Option::is_none", default)]
-	pub prev_identity_seq: Option<EntrySeq>,
+	pub prev_author_identity_seq: Option<EntrySeq>,
 	/// The identity of the author
 	pub author_identity: IdentityId,
 	/// The payload of this entry
-	pub payload: ScopePayload,
+	pub payload: ScopeEntryPayload,
 }
-impl Canonical for AuthoredScopeEntryBody {}
+impl Canonical for ScopeEntryBody {}
 
 /// The body of a RegisterIdentity entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -261,11 +318,11 @@ impl Canonical for RegisterIdentityBody {}
 pub struct IdentityRotationBody {
 	/// The identity being rotated
 	pub identity_id: IdentityId,
-	/// The [EntrySeq] of the previous [IdentityRotation] for this identity, or `None` if this is the first rotation after registration
+	/// The [EntrySeq] of the previous [SignedEntry<IdentityRotationBody>] for this identity, or `None` if this is the first rotation after registration
 	#[serde(skip_serializing_if = "Option::is_none", default)]
-	pub prev_identity: Option<EntrySeq>,
+	pub prev_rotation_seq: Option<EntrySeq>,
 	/// The new public key to associate with this identity after rotation
-	pub new_pubkey: PublicKey,
+	pub new_public_key: PublicKey,
 }
 impl Canonical for IdentityRotationBody {}
 
@@ -280,17 +337,39 @@ pub struct AdminScopeTransfer {
 	pub manifest: ScopeManifest,
 }
 
-/// All possible entry kinds in the registry log
+/// A scope-chained entry (publish, yank, or manifest update)
+pub type ScopeEntry = SignedEntry<ScopeEntryBody>;
+/// Registration of a new identity, anchoring its initial public key
+pub type RegisterIdentityEntry = SignedEntry<RegisterIdentityBody>;
+/// Rotation of the public key for an existing identity
+pub type IdentityRotationEntry = SignedEntry<IdentityRotationBody>;
+/// A forced scope ownership transfer initiated by the registry operator
+pub type AdminScopeTransferEntry = AdminScopeTransfer;
+
+/// All possible entry payloads in the registry log
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EntryPayload {
+	/// A scope-chained entry (publish, yank, or manifest update)
+	Scope(ScopeEntry),
+	/// Registration of a new identity, anchoring its initial public key
+	RegisterIdentity(RegisterIdentityEntry),
+	/// Rotation of the public key for an existing identity
+	IdentityRotation(IdentityRotationEntry),
+	/// A forced scope ownership transfer initiated by the registry operator
+	AdminScopeTransfer(AdminScopeTransferEntry),
+}
+
+/// The kind of an entry in the registry log
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryKind {
 	/// A scope-chained entry (publish, yank, or manifest update)
-	Scoped(SignedEntry<AuthoredScopeEntryBody>),
+	Scope,
 	/// Registration of a new identity, anchoring its initial public key
-	RegisterIdentity(SignedEntry<RegisterIdentityBody>),
+	RegisterIdentity,
 	/// Rotation of the public key for an existing identity
-	IdentityRotation(SignedEntry<IdentityRotationBody>),
+	IdentityRotation,
 	/// A forced scope ownership transfer initiated by the registry operator
-	AdminScopeTransfer(AdminScopeTransfer),
+	AdminScopeTransfer,
 }
 
 /// An entry in the registry log
@@ -298,8 +377,8 @@ pub enum EntryKind {
 pub struct Entry {
 	/// The globally unique sequence number of this entry
 	pub seq: EntrySeq,
-	/// The content of this entry
-	pub kind: EntryKind,
+	/// The payload of this entry
+	pub payload: EntryPayload,
 }
 
 /// Errors that can occur when interacting with pesde package source backends
@@ -356,5 +435,31 @@ pub mod errors {
 		// /// An error occurred from the Git backend
 		// #[error("error from git backend")]
 		// Git(#[from] GitDownloadError),
+	}
+
+	/// Errors that can occur when parsing an identity ID from a string
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = IdentityIdFromStrError))]
+	pub enum IdentityIdFromStrErrorKind {
+		/// Error occurred while parsing the identity ID
+		#[error("error parsing identity ID")]
+		ParseError(#[from] hex::FromHexError),
+
+		/// Error parsing the decoded identity ID as UTF-8
+		#[error("error parsing identity ID as UTF-8")]
+		InvalidUtf8(#[from] std::str::Utf8Error),
+
+		/// Error parsing the decoded identity ID as a valid hash
+		#[error("error parsing identity ID as a valid hash")]
+		InvalidHash(#[from] crate::hash::errors::HashFromStrError),
+	}
+
+	/// Errors that can occur when parsing a scope permission from a string
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ScopePermissionFromStrError))]
+	pub enum ScopePermissionFromStrErrorKind {
+		/// Unknown scope permission
+		#[error("unknown scope permission `{0}`")]
+		UnknownScopePermission(String),
 	}
 }

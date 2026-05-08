@@ -204,6 +204,10 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<Hash>> {
 									.context("failed to decode hash from path")?,
 							);
 
+							if hash.is_none() {
+								tracing::warn!("corrupt hash at `{}`", path.display());
+							}
+
 							fs::remove_file(&path)
 								.await
 								.context("failed to remove unused file")?;
@@ -212,7 +216,7 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<Hash>> {
 								remove_empty_dir(parent).await?;
 							}
 
-							Ok(Some(hash))
+							Ok(hash)
 						})
 						.collect::<JoinSet<Result<_, anyhow::Error>>>()
 						.await;
