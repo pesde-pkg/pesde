@@ -296,7 +296,7 @@ macro_rules! impls {
 								entries.iter().map(|(k, _)| k.as_str()).collect();
 
 							$(
-								if keys.contains([< $source:snake >]::specifier::DISCRIMINATOR_FIELD) {
+								if [< $source:snake >]::specifier::matches(&keys) {
 									let map_de = serde_json::Map::from_iter(entries.into_iter());
 									return [< $source:snake >]::specifier::[< $source DependencySpecifier >]::deserialize(map_de)
 										.map(DependencySpecifiers::$source)
