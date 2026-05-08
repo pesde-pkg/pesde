@@ -32,9 +32,13 @@ impl SqlitePackageRepo {
 
 #[async_trait]
 impl PackageRepo for SqlitePackageRepo {
-	async fn versions(&self, name: &PackageName) -> anyhow::Result<()> {}
+	async fn versions(&self, name: &PackageName) -> anyhow::Result<()> {
+		todo!()
+	}
 
-	async fn version(&self, name: &PackageName, version: &Version) -> anyhow::Result<()> {}
+	async fn version(&self, name: &PackageName, version: &Version) -> anyhow::Result<()> {
+		todo!()
+	}
 }
 
 pub struct FsPackageArchiveRepo {
@@ -49,5 +53,7 @@ impl FsPackageArchiveRepo {
 
 #[async_trait]
 impl PackageArchiveRepo for FsPackageArchiveRepo {
-	async fn archive(&self, name: &PackageName, version: &Version) -> anyhow::Result<()> {}
+	async fn archive(&self, name: &PackageName, version: &Version) -> anyhow::Result<()> {
+		todo!()
+	}
 }

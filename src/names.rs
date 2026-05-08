@@ -1,6 +1,5 @@
 //! Package names
 // TODO: remove this module and put the structs in their appropriate source modules
-#![expect(deprecated)]
 use crate::ser_display_deser_fromstr;
 use std::fmt::Display;
 use std::str::FromStr;
