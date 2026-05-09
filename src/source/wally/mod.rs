@@ -167,7 +167,13 @@ impl PackageSource for WallyPackageSource {
 		let versions = entries
 			.into_iter()
 			.filter(|manifest| version_matches(&specifier.version, &manifest.package.version))
-			.map(|manifest| {
+			.map(|mut manifest| {
+				// ensure a consistent registry value to improve deduplication
+				#[expect(irrefutable_let_patterns)]
+				if let WallyPackageBackends::Git(repo) = &repo {
+					manifest.package.registry = repo.repo_url().clone();
+				}
+
 				manifest
 					.into_resolve_entry()
 					.map(|(package, deps)| (package.version, deps))

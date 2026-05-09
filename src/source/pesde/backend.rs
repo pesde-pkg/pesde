@@ -463,6 +463,7 @@ impl PesdePackageSourceBackend for GitPesdePackageSourceBackend {
 
 /// All available pesde package backends
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum PesdePackageBackends {
 	/// A Git-based pesde package source backend
 	Git(GitPesdePackageSourceBackend),

@@ -258,6 +258,7 @@ impl WallyPackageSourceBackend for GitWallyPackageSourceBackend {
 
 /// All available Wally package backends
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum WallyPackageBackends {
 	/// A Git-based Wally package source backend
 	Git(GitWallyPackageSourceBackend),

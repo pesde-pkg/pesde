@@ -272,6 +272,7 @@ impl GitPackageSourceBackend for GixPackageSourceBackend {
 
 /// All available Git package backends
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum GitPackageBackends {
 	/// A Git-based package source backend
 	Git(GixPackageSourceBackend),
