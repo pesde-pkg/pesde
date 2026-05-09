@@ -94,11 +94,11 @@ pub(crate) fn get_file_types(file: &str) -> Vec<String> {
 
 /// Generate a linking module for a library
 #[must_use]
-pub fn generate_lib_linking_module<I: IntoIterator<Item = S>, S: AsRef<str>>(
+pub fn generate_lib_linking_module(
 	path: &str,
-	types: I,
+	types: impl IntoIterator<Item = impl Display>,
 ) -> String {
-	let types = types.into_iter().format_with("\n", |ty, f| f(&ty.as_ref()));
+	let types = types.into_iter().format_with("\n", |ty, f| f(&ty));
 
 	format!("local module = require({path})\n{types}\nreturn module")
 }

@@ -162,6 +162,9 @@ impl FromStr for Alias {
 			// Luau's `@self` alias
 			| "self"
 
+			// Luau's `init.luau` file
+			| "init"
+
 			| "pesde"
 		) {
 			return Err(errors::AliasFromStrKind::Reserved(s.to_string()).into());

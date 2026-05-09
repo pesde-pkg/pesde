@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use serde::Deserialize;
 use serde::Serialize;
+use tracing::instrument;
 
 use crate::Importer;
 use crate::hash::Hash;
@@ -123,6 +124,7 @@ impl DependencyGraph {
 	/// otherwise, it is a server package
 	/// Shared dependencies of server dependencies are considered to be server dependencies
 	#[must_use]
+	#[instrument(level = "debug")]
 	pub fn realm_of(&self, importer: &Importer, package_id: &PackageId) -> Option<Realm> {
 		let graph_importer = self.importers.get(importer)?;
 

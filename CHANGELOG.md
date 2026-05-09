@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 to `absolute_paths` and is now used for building string requires by @daimond113
 - The CAS has been restructured and now has support for versioning by @daimond113
     - Users are advised to manually delete their CASes before updating
+- The `init` alias has been reserved to avoid confusions with Luau's require
+module paths by @daimond113
 
 ### Removed
 - Drop `build_files` ([RFC](https://github.com/pesde-pkg/pesde/issues/57)) by @daimond113
