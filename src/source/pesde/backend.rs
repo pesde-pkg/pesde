@@ -96,9 +96,9 @@ impl PesdePackageSourceBackend for PesdePackageBackends {
 
 /// A trait for types that can be serialised in a canonical form
 pub trait Canonical: Serialize {
-	/// Returns a canonical serialisation of the given body for signing or signature verification
+	/// Returns a canonical serialisation of the given body for cryptographic purposes
 	#[must_use]
-	fn signing_bytes(&self) -> Vec<u8> {
+	fn canonical_bytes(&self) -> Vec<u8> {
 		cbor_core::Value::serialized(self)
 			.expect("failed to serialise body for signing")
 			.encode()
@@ -118,7 +118,7 @@ impl<T: Canonical> SignedEntry<T> {
 	/// Verifies the signature of this entry against the given public key
 	#[must_use]
 	pub fn verify(&self, public_key: &PublicKey) -> bool {
-		self.sig.verify(public_key, &self.body.signing_bytes())
+		self.sig.verify(public_key, &self.body.canonical_bytes())
 	}
 }
 
@@ -146,7 +146,7 @@ impl IdentityId {
 	/// Creates a new IdentityId from the given hash
 	#[must_use]
 	pub fn new(s: &Hash) -> Self {
-		Self(s.to_string())
+		Self(hex::encode(s.to_string()))
 	}
 }
 
@@ -171,6 +171,7 @@ impl FromStr for IdentityId {
 		let hash = str::from_utf8(&bytes)?;
 		// sanity check to ensure garbage input doesn't get accepted as a valid identity ID
 		let _: Hash = hash.parse()?;
+
 		Ok(Self(s.to_string()))
 	}
 }
