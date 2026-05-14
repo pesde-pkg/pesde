@@ -10,7 +10,6 @@ use backend::PesdePackageBackends;
 use backend::PesdePackageSourceBackend as _;
 use futures::StreamExt as _;
 
-use crate::GixUrl;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
@@ -27,6 +26,7 @@ use crate::source::ResolvedPackage;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
+use crate::source::pesde::backend::ApiPesdePackageSourceBackend;
 use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
 use tracing::instrument;
@@ -65,11 +65,10 @@ impl PesdePackageSource {
 
 	/// Creates a pesde package source from a URL
 	#[must_use]
-	pub fn from_url(repo_url: GixUrl) -> Self {
-		// Self::new(PesdePackageBackends::Git(
-		// 	GitPesdePackageSourceBackend::new(repo_url),
-		// ))
-		todo!()
+	pub fn from_url(api_url: impl Into<Arc<url::Url>>) -> Self {
+		Self::new(PesdePackageBackends::Api(
+			ApiPesdePackageSourceBackend::new(api_url),
+		))
 	}
 
 	/// Gets the repository backend
@@ -198,7 +197,6 @@ impl PackageSource for PesdePackageSource {
 pub mod errors {
 	use thiserror::Error;
 
-	use super::backend::errors::ReadIndexFileError;
 	use crate::names::PackageName;
 
 	pub use super::backend::errors::RefreshError;
@@ -211,10 +209,6 @@ pub mod errors {
 		/// Package not found in index
 		#[error("package `{0}` not found")]
 		NotFound(PackageName),
-
-		/// Error reading index file
-		#[error("error reading index file")]
-		ReadIndex(#[from] ReadIndexFileError),
 	}
 
 	/// Errors that can occur when downloading a package from a pesde package source
@@ -248,10 +242,6 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = GetExportsError))]
 	#[non_exhaustive]
 	pub enum GetExportsErrorKind {
-		/// Error reading index file
-		#[error("error reading index file")]
-		ReadIndex(#[from] ReadIndexFileError),
-
 		/// Package not found in index
 		#[error("package `{0}` not found in index")]
 		NotFound(PackageName),

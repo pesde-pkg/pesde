@@ -27,6 +27,7 @@ use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::sync::Arc;
 use tokio::task::JoinSet;
 use tracing::Instrument as _;
 use tracing::instrument;
@@ -52,6 +53,7 @@ fn specifier_to_source(
 					.registry
 					.as_str()
 					.parse()
+					.map(Arc::new)
 					// specifiers in indices store the index url in this field
 					.unwrap()
 			};
