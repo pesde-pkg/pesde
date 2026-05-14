@@ -21,7 +21,7 @@ use tracing::instrument;
 pub struct ManifestUrls {
 	/// The registries to use for the package
 	#[serde(default, rename = "registries")]
-	pub pesde_registries: BTreeMap<String, GixUrl>,
+	pub pesde_registries: BTreeMap<String, Arc<url::Url>>,
 	/// The indices to use for the package
 	#[serde(default, rename = "indices")]
 	pub pesde_indices: BTreeMap<String, GixUrl>,

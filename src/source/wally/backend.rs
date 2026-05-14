@@ -5,13 +5,14 @@ use crate::GixUrl;
 use crate::Project;
 use crate::names::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
+use crate::ser_display_deser_fromstr;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
 use crate::util::ToEscaped as _;
 use async_stream::try_stream;
 use futures::AsyncReadExt as _;
 use futures::Stream;
-use futures::StreamExt as _;
+use futures::TryStreamExt as _;
 use relative_path::RelativePathBuf;
 use reqwest::header::AUTHORIZATION;
 use semver::Version;
@@ -81,6 +82,7 @@ pub trait WallyPackageSourceBackend: Debug + Display + Send + Sync {
 pub struct GitWallyPackageSourceBackend {
 	repo_url: GixUrl,
 }
+ser_display_deser_fromstr!(GitWallyPackageSourceBackend);
 
 impl Display for GitWallyPackageSourceBackend {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -95,8 +97,6 @@ impl FromStr for GitWallyPackageSourceBackend {
 		s.parse().map(Self::new)
 	}
 }
-
-crate::ser_display_deser_fromstr!(GitWallyPackageSourceBackend);
 
 impl GitWallyPackageSourceBackend {
 	/// Creates a new Git Wally package source backend
@@ -257,11 +257,12 @@ pub enum WallyPackageBackends {
 	/// A Git-based Wally package source backend
 	Git(GitWallyPackageSourceBackend),
 }
+ser_display_deser_fromstr!(WallyPackageBackends);
 
 impl Display for WallyPackageBackends {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			WallyPackageBackends::Git(repo) => write!(f, "{repo}"),
+			Self::Git(repo) => write!(f, "{repo}"),
 		}
 	}
 }
@@ -271,15 +272,13 @@ impl FromStr for WallyPackageBackends {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let git_err = match s.parse::<GitWallyPackageSourceBackend>() {
-			Ok(repo) => return Ok(WallyPackageBackends::Git(repo)),
+			Ok(repo) => return Ok(Self::Git(repo)),
 			Err(e) => e,
 		};
 
 		Err(errors::ParseBackendErrorKind::NoMatch(s.to_string(), git_err).into())
 	}
 }
-
-crate::ser_display_deser_fromstr!(WallyPackageBackends);
 
 impl WallyPackageSourceBackend for WallyPackageBackends {
 	type RefreshError = errors::RefreshError;
@@ -289,13 +288,13 @@ impl WallyPackageSourceBackend for WallyPackageBackends {
 
 	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
 		match self {
-			WallyPackageBackends::Git(repo) => repo.refresh(project).await.map_err(Into::into),
+			Self::Git(repo) => repo.refresh(project).await.map_err(Into::into),
 		}
 	}
 
 	async fn config(&self, project: &Project) -> Result<WallyIndexConfig, Self::ConfigError> {
 		match self {
-			WallyPackageBackends::Git(repo) => repo.config(project).await.map_err(Into::into),
+			Self::Git(repo) => repo.config(project).await.map_err(Into::into),
 		}
 	}
 
@@ -305,7 +304,7 @@ impl WallyPackageSourceBackend for WallyPackageBackends {
 		pkg_name: WallyPackageName,
 	) -> Result<Option<String>, Self::ReadIndexFileError> {
 		match self {
-			WallyPackageBackends::Git(repo) => repo
+			Self::Git(repo) => repo
 				.read_index_file(project, pkg_name)
 				.await
 				.map_err(Into::into),
@@ -323,7 +322,7 @@ impl WallyPackageSourceBackend for WallyPackageBackends {
 		match self {
 			WallyPackageBackends::Git(repo) => repo
 				.download_entries(project, pkg_name, version, reporter)
-				.map(|r| r.map_err(|e| errors::DownloadErrorKind::Git(e).into())),
+				.map_err(Into::into),
 		}
 	}
 }
@@ -368,7 +367,7 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = ParseBackendError))]
 	pub enum ParseBackendErrorKind {
 		/// No backend type matched the input
-		#[error("no backend type matched for {0}")]
+		#[error("no backend type matched for `{0}`")]
 		NoMatch(String, #[source] crate::errors::GixUrlError),
 	}
 

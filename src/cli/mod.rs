@@ -8,7 +8,6 @@ use pesde::GixUrl;
 use pesde::Subproject;
 use pesde::errors::ManifestReadErrorKind;
 use pesde::manifest::DependencyType;
-#[expect(deprecated)]
 use pesde::names::PackageName;
 use pesde::names::WallyPackageName;
 use pesde::source::DependencySpecifiers;
@@ -79,7 +78,6 @@ where
 
 #[derive(Debug, Clone)]
 enum AnyPackageIdentifier {
-	#[expect(deprecated)]
 	PesdePackageName(VersionedPackageName<PackageName>),
 	WallyPackageName(VersionedPackageName<WallyPackageName>),
 	Git((GixUrl, String)),
