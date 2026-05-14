@@ -7,6 +7,7 @@ use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::names::PackageName;
 use crate::reporters::DownloadProgressReporter;
+use crate::ser_display_deser_fromstr;
 use crate::source::git::specifier::IndexGitDependencySpecifier;
 use crate::source::git_index::read_file;
 use crate::source::git_index::root_tree;
@@ -18,6 +19,7 @@ use crate::util::ToEscaped as _;
 use async_stream::try_stream;
 use futures::Stream;
 use futures::StreamExt as _;
+use futures::TryStreamExt as _;
 use relative_path::RelativePathBuf;
 use reqwest::header::ACCEPT;
 use reqwest::header::AUTHORIZATION;
@@ -193,6 +195,7 @@ pub struct IndexFile {
 /// A version ID, which is a combination of a version and a target
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VersionId(Version, TargetKind);
+ser_display_deser_fromstr!(VersionId);
 
 impl Display for VersionId {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -214,8 +217,6 @@ impl FromStr for VersionId {
 		Ok(VersionId(version, target))
 	}
 }
-
-crate::ser_display_deser_fromstr!(VersionId);
 
 impl VersionId {
 	/// Creates a new version ID
@@ -302,6 +303,7 @@ pub trait LegacyPesdePackageSourceBackend: Debug + Display + Send + Sync {
 pub struct GitLegacyPesdePackageSourceBackend {
 	repo_url: GixUrl,
 }
+ser_display_deser_fromstr!(GitLegacyPesdePackageSourceBackend);
 
 impl Display for GitLegacyPesdePackageSourceBackend {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -316,8 +318,6 @@ impl FromStr for GitLegacyPesdePackageSourceBackend {
 		s.parse().map(Self::new)
 	}
 }
-
-crate::ser_display_deser_fromstr!(GitLegacyPesdePackageSourceBackend);
 
 impl GitLegacyPesdePackageSourceBackend {
 	/// Creates a new Git legacy pesde package source backend
@@ -468,11 +468,12 @@ pub enum LegacyPesdePackageBackends {
 	/// A Git-based legacy pesde package source backend
 	Git(GitLegacyPesdePackageSourceBackend),
 }
+ser_display_deser_fromstr!(LegacyPesdePackageBackends);
 
 impl Display for LegacyPesdePackageBackends {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			LegacyPesdePackageBackends::Git(repo) => write!(f, "{repo}"),
+			Self::Git(repo) => write!(f, "{repo}"),
 		}
 	}
 }
@@ -482,15 +483,13 @@ impl FromStr for LegacyPesdePackageBackends {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let git_err = match s.parse::<GitLegacyPesdePackageSourceBackend>() {
-			Ok(repo) => return Ok(LegacyPesdePackageBackends::Git(repo)),
+			Ok(repo) => return Ok(Self::Git(repo)),
 			Err(e) => e,
 		};
 
 		Err(errors::ParseBackendErrorKind::NoMatch(s.to_string(), git_err).into())
 	}
 }
-
-crate::ser_display_deser_fromstr!(LegacyPesdePackageBackends);
 
 impl LegacyPesdePackageSourceBackend for LegacyPesdePackageBackends {
 	type RefreshError = errors::RefreshError;
@@ -500,15 +499,13 @@ impl LegacyPesdePackageSourceBackend for LegacyPesdePackageBackends {
 
 	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
 		match self {
-			LegacyPesdePackageBackends::Git(repo) => {
-				repo.refresh(project).await.map_err(Into::into)
-			}
+			Self::Git(repo) => repo.refresh(project).await.map_err(Into::into),
 		}
 	}
 
 	async fn config(&self, project: &Project) -> Result<IndexConfig, Self::ConfigError> {
 		match self {
-			LegacyPesdePackageBackends::Git(repo) => repo.config(project).await.map_err(Into::into),
+			Self::Git(repo) => repo.config(project).await.map_err(Into::into),
 		}
 	}
 
@@ -518,7 +515,7 @@ impl LegacyPesdePackageSourceBackend for LegacyPesdePackageBackends {
 		name: PackageName,
 	) -> Result<Option<IndexFile>, Self::ReadIndexFileError> {
 		match self {
-			LegacyPesdePackageBackends::Git(repo) => repo
+			Self::Git(repo) => repo
 				.read_index_file(project, name)
 				.await
 				.map_err(Into::into),
@@ -535,14 +532,12 @@ impl LegacyPesdePackageSourceBackend for LegacyPesdePackageBackends {
 		impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send,
 		Self::DownloadError,
 	> {
-		match self {
-			LegacyPesdePackageBackends::Git(repo) => {
-				let stream = repo
-					.download_entries(project, package, version_id, reporter)
-					.await?;
-				Ok(stream.map(|r| r.map_err(|e| errors::DownloadErrorKind::Git(e).into())))
-			}
-		}
+		Ok(match self {
+			Self::Git(repo) => repo
+				.download_entries(project, package, version_id, reporter)
+				.await?
+				.map_err(Into::into),
+		})
 	}
 }
 
@@ -559,7 +554,7 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = ParseBackendError))]
 	pub enum ParseBackendErrorKind {
 		/// No backend type matched the input
-		#[error("no backend type matched for {0}")]
+		#[error("no backend type matched for `{0}`")]
 		NoMatch(String, #[source] crate::errors::GixUrlError),
 	}
 

@@ -3,6 +3,7 @@
 
 use crate::GixUrl;
 use crate::Project;
+use crate::ser_display_deser_fromstr;
 use crate::source::git_index::refresh_git_repo;
 use crate::util::ToEscaped as _;
 use relative_path::RelativePathBuf;
@@ -74,6 +75,7 @@ pub trait GitPackageSourceBackend: Debug + Display + Send + Sync {
 pub struct GixPackageSourceBackend {
 	repo_url: GixUrl,
 }
+ser_display_deser_fromstr!(GixPackageSourceBackend);
 
 impl Display for GixPackageSourceBackend {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -88,8 +90,6 @@ impl FromStr for GixPackageSourceBackend {
 		s.parse().map(Self::new)
 	}
 }
-
-crate::ser_display_deser_fromstr!(GixPackageSourceBackend);
 
 impl GixPackageSourceBackend {
 	/// Creates a new Git package source backend
@@ -277,11 +277,12 @@ pub enum GitPackageBackends {
 	/// A Git-based package source backend
 	Git(GixPackageSourceBackend),
 }
+ser_display_deser_fromstr!(GitPackageBackends);
 
 impl Display for GitPackageBackends {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			GitPackageBackends::Git(repo) => write!(f, "{repo}"),
+			Self::Git(repo) => write!(f, "{repo}"),
 		}
 	}
 }
@@ -291,7 +292,7 @@ impl FromStr for GitPackageBackends {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let git_err = match s.parse::<GixPackageSourceBackend>() {
-			Ok(repo) => return Ok(GitPackageBackends::Git(repo)),
+			Ok(repo) => return Ok(Self::Git(repo)),
 			Err(e) => e,
 		};
 
@@ -304,12 +305,10 @@ impl GitPackageBackends {
 	#[must_use]
 	pub fn repo_url(&self) -> &GixUrl {
 		match self {
-			GitPackageBackends::Git(repo) => repo.repo_url(),
+			Self::Git(repo) => repo.repo_url(),
 		}
 	}
 }
-
-crate::ser_display_deser_fromstr!(GitPackageBackends);
 
 impl GitPackageSourceBackend for GitPackageBackends {
 	type RefreshError = crate::source::git_index::errors::RefreshError;
@@ -319,7 +318,7 @@ impl GitPackageSourceBackend for GitPackageBackends {
 
 	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
 		match self {
-			GitPackageBackends::Git(repo) => repo.refresh(project).await,
+			Self::Git(repo) => repo.refresh(project).await,
 		}
 	}
 
@@ -330,7 +329,7 @@ impl GitPackageSourceBackend for GitPackageBackends {
 		path: Option<RelativePathBuf>,
 	) -> Result<TreeId, Self::ResolveRevError> {
 		match self {
-			GitPackageBackends::Git(repo) => repo.resolve_rev(project, rev, path).await,
+			Self::Git(repo) => repo.resolve_rev(project, rev, path).await,
 		}
 	}
 
@@ -341,7 +340,7 @@ impl GitPackageSourceBackend for GitPackageBackends {
 		file_path: RelativePathBuf,
 	) -> Result<Option<Vec<u8>>, Self::ReadFileError> {
 		match self {
-			GitPackageBackends::Git(repo) => repo.read_file(project, tree_id, file_path).await,
+			Self::Git(repo) => repo.read_file(project, tree_id, file_path).await,
 		}
 	}
 
@@ -351,7 +350,7 @@ impl GitPackageSourceBackend for GitPackageBackends {
 		tree_id: TreeId,
 	) -> Result<Vec<GitTreeEntry>, Self::ListTreeError> {
 		match self {
-			GitPackageBackends::Git(repo) => repo.list_tree(project, tree_id).await,
+			Self::Git(repo) => repo.list_tree(project, tree_id).await,
 		}
 	}
 }
@@ -367,7 +366,7 @@ pub mod errors {
 	/// Errors that can occur when parsing a Git package source backend
 	pub enum ParseBackendErrorKind {
 		/// No backend type matched the input
-		#[error("no backend type matched for {0}")]
+		#[error("no backend type matched for `{0}`")]
 		NoMatch(String, #[source] crate::errors::GixUrlError),
 	}
 
