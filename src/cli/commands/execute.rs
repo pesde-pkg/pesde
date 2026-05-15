@@ -20,6 +20,7 @@ use pesde::source::ids::PackageId;
 use std::ffi::OsString;
 use std::io::Stderr;
 use tempfile::TempDir;
+use tokio::task::spawn_blocking;
 
 #[derive(Debug, Args)]
 pub struct ExecuteCommand {
@@ -101,8 +102,16 @@ impl ExecuteCommand {
 				root_progress.set_message("download");
 				root_progress.set_style(reporters::root_progress_style_with_progress());
 
-				let tempdir = TempDir::new_in(subproject.project().cas_dir().join(".tmp"))
-					.context("failed to create temporary directory")?;
+				let tempdir = {
+					let subproject = subproject.clone();
+
+					spawn_blocking(move || {
+						TempDir::new_in(subproject.project().cas_dir().join(".tmp"))
+					})
+					.await
+					.unwrap()
+					.context("failed to create temporary directory")?
+				};
 
 				let fs = package
 					.id

@@ -18,8 +18,8 @@ use std::path::PathBuf;
 use tempfile::Builder;
 use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncWriteExt as _;
-use tokio::pin;
 use tokio::task::JoinSet;
+use tokio::task::spawn_blocking;
 use tracing::instrument;
 
 /// A file system entry
@@ -93,16 +93,14 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
 	let mut hasher = hash_algorithm.hasher();
 	let mut buf = [0; 8 * 1024];
 
-	let temp_path = Builder::new()
-		.make_in(&tmp_dir, |_| Ok(()))?
+	let temp_path = spawn_blocking(move || Builder::new().make_in(&tmp_dir, |_| Ok(())))
+		.await
+		.unwrap()?
 		.into_temp_path();
 	let mut file_writer = fs::File::create(temp_path.to_path_buf()).await?;
 
 	loop {
-		let bytes_future = contents.read(&mut buf);
-		pin!(bytes_future);
-		let bytes_read = bytes_future.await?;
-
+		let bytes_read = contents.read(&mut buf).await?;
 		if bytes_read == 0 {
 			break;
 		}

@@ -15,6 +15,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tempfile::NamedTempFile;
+use tokio::task::spawn_blocking;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::filter::LevelFilter;
@@ -50,12 +51,23 @@ struct Cli {
 #[instrument(level = "trace")]
 async fn get_linkable_dir(path: &Path) -> PathBuf {
 	let mut curr_path = PathBuf::new();
-	let file_to_try = NamedTempFile::new_in(path).expect("failed to create temporary file");
+	let (file_to_try, temp_path) = {
+		let path = path.to_path_buf();
+		spawn_blocking(move || {
+			(
+				NamedTempFile::new_in(path)
+					.expect("failed to create temporary file")
+					.into_temp_path(),
+				tempfile::Builder::new()
+					.make(|_| Ok(()))
+					.expect("failed to create temporary file")
+					.into_temp_path(),
+			)
+		})
+		.await
+		.unwrap()
+	};
 
-	let temp_path = tempfile::Builder::new()
-		.make(|_| Ok(()))
-		.expect("failed to create temporary file")
-		.into_temp_path();
 	let temp_file_name = temp_path.file_name().expect("failed to get file name");
 
 	// C: and \ are different components on Windows
@@ -76,7 +88,7 @@ async fn get_linkable_dir(path: &Path) -> PathBuf {
 
 		let try_path = curr_path.join(temp_file_name);
 
-		if fs::hard_link(file_to_try.path(), &try_path).await.is_ok() {
+		if fs::hard_link(&file_to_try, &try_path).await.is_ok() {
 			if let Err(err) = fs::remove_file(&try_path).await {
 				tracing::warn!(
 					"failed to remove temporary file at {}: {err}",
