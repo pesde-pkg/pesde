@@ -1,9 +1,4 @@
-/*
-SQLite doesn't support UNSIGNED BIGINT
-so seqs can *theoretically* overflow, but a signed 64-bit integer
-is large enough to where it realistically won't be an issue, and by the time
-it is, using SQLite will likely be a bigger problem itself
-*/
+/* SQLite doesn't support UNSIGNED BIGINT so seqs are cast between signed and unsigned in Rust */
 
 CREATE TABLE UsedPublicKey (
     public_key TEXT PRIMARY KEY
