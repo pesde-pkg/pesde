@@ -8,8 +8,22 @@ publish = false
 workspace = true
 
 [dependencies]
+fs-err = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+semver = { workspace = true }
+futures = { workspace = true }
+tokio-util = { workspace = true }
+url = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
 actix-web = "4.13.0"
 actix-cors = "0.7.1"
+tracing-actix-web = "0.7.21"
+
 sqlx = { version = "0.8.6", default-features = false, features = [
     "runtime-tokio",
     "tls-rustls",
@@ -17,22 +31,7 @@ sqlx = { version = "0.8.6", default-features = false, features = [
     "migrate",
     "sqlite",
 ] }
-fs-err = { version = "3.3.0", features = ["tokio"] }
-thiserror = "2.0.18"
 dotenvy = "0.15.7"
-anyhow = "1.0.102"
-async-trait = "0.1.89"
-semver = { version = "1.0.28" }
-futures = "0.3.32"
-tokio-util = { version = "0.7.15", features = ["io"] }
 rusty-s3 = "0.9.1"
-url = "2.5.8"
-
-serde = "1.0.228"
-serde_json = "1.0.149"
-
-tracing = { version = "0.1.44", features = ["attributes"] }
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-tracing-actix-web = "0.7.21"
 
 pesde = { path = "..", default-features = false }
