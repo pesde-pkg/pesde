@@ -1,7 +1,8 @@
 CREATE TABLE UsedPublicKey (
     id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
     algorithm ENUM ('ssh-ed25519') NOT NULL,
-    public_key VARBINARY(1024) NOT NULL UNIQUE
+    public_key VARBINARY(1024) NOT NULL,
+    UNIQUE (algorithm, public_key)
 );
 
 CREATE TABLE LogEntry (
