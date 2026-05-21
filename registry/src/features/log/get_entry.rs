@@ -18,6 +18,7 @@ use pesde::source::pesde::backend::ScopeManifestUpdateBody;
 use pesde::source::pesde::backend::ScopeMember;
 use pesde::source::pesde::backend::ScopeSeq;
 use pesde::source::pesde::backend::YankBody;
+use sqlx::types::Uuid;
 
 use crate::AppState;
 use crate::shared::db::Database;
@@ -34,7 +35,7 @@ pub async fn http(app_state: web::Data<AppState>, seq: web::Path<EntrySeq>) -> C
 
 async fn handler(db: &Database, seq: EntrySeq) -> AppResult<Option<Entry>> {
 	match db {
-		Database::Sqlite(pool) => get_entry(pool, seq).await.map_err(Into::into),
+		Database::MySql(pool) => get_entry(pool, seq).await.map_err(Into::into),
 	}
 }
 
@@ -59,19 +60,17 @@ fn scope_entry_kind_from_id(id: u8) -> ScopeEntryKind {
 }
 
 async fn get_scope_manifest(
-	pool: &sqlx::SqlitePool,
+	pool: &sqlx::MySqlPool,
 	seq: EntrySeq,
 ) -> anyhow::Result<Option<ScopeManifest>> {
-	let sqlite_seq = seq.0.cast_signed();
-
 	let mut stream = sqlx::query!(
         r#"
-        SELECT ScopeManifest.owner, ScopeManifestMember.identity_id, ScopeManifestMember.permissions
+        SELECT ScopeManifest.owner AS `owner: Uuid`, ScopeManifestMember.identity_id AS `identity_id: Uuid`, ScopeManifestMember.permissions
         FROM ScopeManifest
         LEFT JOIN ScopeManifestMember ON ScopeManifestMember.scope=ScopeManifest.scope AND ScopeManifestMember.seq=ScopeManifest.seq
         WHERE ScopeManifest.seq = ?
         "#,
-        sqlite_seq
+        seq.0
     )
     .fetch(pool);
 
@@ -81,14 +80,14 @@ async fn get_scope_manifest(
 		let manifest = match &mut manifest {
 			Some(m) => m,
 			None => manifest.insert(ScopeManifest {
-				owner: row.owner.parse().map(|o| IdentityId::new(&o))?,
+				owner: IdentityId(row.owner),
 				members: Default::default(),
 			}),
 		};
 
 		if let Some(identity_id) = row.identity_id {
 			manifest.members.insert(
-				identity_id.parse()?,
+				IdentityId(identity_id),
 				ScopeMember {
 					permissions: row
 						.permissions
@@ -105,18 +104,16 @@ async fn get_scope_manifest(
 }
 
 async fn get_scope_entry(
-	pool: &sqlx::SqlitePool,
+	pool: &sqlx::MySqlPool,
 	seq: EntrySeq,
 ) -> anyhow::Result<Option<ScopeEntry>> {
-	let sqlite_seq = seq.0.cast_signed();
-
 	let Some(scope_entry) = sqlx::query!(
         r#"
         SELECT sig, scope, prev_scope_entry_hash, scope_seq, prev_author_identity_seq, author_identity, kind as `kind: u8`
         FROM ScopeLogEntry
         WHERE seq = ?
         "#,
-        sqlite_seq
+        seq.0
     )
     .fetch_optional(pool)
     .await? else {
@@ -196,26 +193,22 @@ async fn get_scope_entry(
 				.prev_scope_entry_hash
 				.map(|h| h.parse())
 				.transpose()?,
-			scope_seq: ScopeSeq(scope_entry.scope_seq.cast_unsigned()),
-			prev_author_identity_seq: scope_entry
-				.prev_author_identity_seq
-				.map(|s| EntrySeq(s.cast_unsigned())),
-			author_identity: scope_entry.author_identity.parse()?,
+			scope_seq: ScopeSeq(scope_entry.scope_seq),
+			prev_author_identity_seq: scope_entry.prev_author_identity_seq.map(EntrySeq),
+			author_identity: scope_entry.author_identity.try_into().map(IdentityId)?,
 			payload,
 		},
 	}))
 }
 
-async fn get_entry(pool: &sqlx::SqlitePool, seq: EntrySeq) -> anyhow::Result<Option<Entry>> {
-	let sqlite_seq = seq.0.cast_signed();
-
+async fn get_entry(pool: &sqlx::MySqlPool, seq: EntrySeq) -> anyhow::Result<Option<Entry>> {
 	let Some(entry) = sqlx::query!(
 		r#"
         SELECT kind as `kind: u8`
         FROM LogEntry
         WHERE seq = ?
         "#,
-		sqlite_seq
+		seq.0
 	)
 	.fetch_optional(pool)
 	.await?
