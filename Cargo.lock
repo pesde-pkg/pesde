@@ -3409,6 +3409,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "merkleberg"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e4911b5c4e8088c5edf7fed55ca7bd1c7b502000a304fed07809e0da07f78fe"
+dependencies = [
+ "cfg-if",
+ "futures-util",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3794,6 +3806,7 @@ dependencies = [
  "jiff",
  "junction",
  "keyring",
+ "merkleberg",
  "open",
  "paste",
  "pathdiff",
@@ -3831,6 +3844,7 @@ dependencies = [
  "dotenvy",
  "fs-err",
  "futures",
+ "merkleberg",
  "pesde",
  "rusty-s3",
  "semver",
