@@ -1,27 +1,27 @@
 use sqlx::Database as _;
-use sqlx::Sqlite;
-use sqlx::SqlitePool;
+use sqlx::MySql;
+use sqlx::MySqlPool;
 
 #[derive(Debug, Clone)]
 pub enum Database {
-	Sqlite(SqlitePool),
+	MySql(MySqlPool),
 }
 
 impl Database {
 	pub async fn new(url: &str) -> Database {
 		let protocol = url.split_once(':').map_or("", |(protocol, _)| protocol);
 
-		if Sqlite::URL_SCHEMES.contains(&protocol) {
-			let pool = SqlitePool::connect(url)
+		if MySql::URL_SCHEMES.contains(&protocol) {
+			let pool = MySqlPool::connect(url)
 				.await
-				.expect("failed to connect to sqlite database");
+				.expect("failed to connect to mysql database");
 
-			sqlx::migrate!("migrations/sqlite")
+			sqlx::migrate!()
 				.run(&pool)
 				.await
-				.expect("failed to migrate sqlite database");
+				.expect("failed to migrate mysql database");
 
-			return Database::Sqlite(pool);
+			return Database::MySql(pool);
 		}
 
 		panic!("unsupported database protocol `{protocol}`")

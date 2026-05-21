@@ -1,0 +1,14 @@
+name: pesde tests
+services:
+  db:
+    image: mariadb:11.8
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - db:/var/lib/mysql
+    restart: unless-stopped
+
+volumes:
+  db:
