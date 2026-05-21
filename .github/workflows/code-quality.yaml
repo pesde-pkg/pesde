@@ -60,13 +60,32 @@ jobs:
       #     token: ${{ secrets.CODECOV_TOKEN }}
   sql-consistency:
     runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.8
+        ports:
+          - 3306:3306
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        options: >-
+          --health-cmd="mariadb-admin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:${{ job.services.mariadb.ports['3306'] }}/test
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install SQLx CLI
         run: |
-          cargo install sqlx-cli
+          cargo install sqlx-cli@^0.9
+
+      - name: Setup database
+        working-directory: registry
+        run: cargo sqlx database setup
 
       - name: Check query state
-        run: cargo sqlx prepare --check --workspace -- --workspace
+        working-directory: registry
+        run: cargo sqlx prepare --check
