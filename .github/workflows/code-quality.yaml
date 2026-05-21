@@ -58,3 +58,15 @@ jobs:
       #   uses: codecov/codecov-action@v4.0.1
       #   with:
       #     token: ${{ secrets.CODECOV_TOKEN }}
+  sql-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install SQLx CLI
+        run: |
+          cargo install sqlx-cli
+
+      - name: Check query state
+        run: cd registry && cargo sqlx prepare --check
