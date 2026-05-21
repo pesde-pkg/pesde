@@ -69,4 +69,4 @@ jobs:
           cargo install sqlx-cli
 
       - name: Check query state
-        run: cd registry && cargo sqlx prepare --check
+        run: cargo sqlx prepare --check --workspace -- --workspace
