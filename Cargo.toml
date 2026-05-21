@@ -57,6 +57,7 @@ tokio-util = { workspace = true }
 futures = { workspace = true }
 url = { workspace = true }
 fs-err = { workspace = true }
+merkleberg = { workspace = true }
 toml = "1.0.7"
 gix = { version = "0.80.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
@@ -155,6 +156,10 @@ fs-err = { version = "3.3.0", features = ["tokio"] }
 url = { version = "2.5.8", features = ["serde"] }
 tracing = { version = "0.1.44", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+merkleberg = { version = "0.1.0", default-features = false, features = [
+    "std",
+    "serde",
+] }
 
 [profile.dev.package.full_moon]
 opt-level = 3
