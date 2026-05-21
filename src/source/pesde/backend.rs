@@ -209,47 +209,10 @@ pub struct EntrySeq(pub u64);
 #[serde(transparent)]
 pub struct ScopeSeq(pub u64);
 
-/// The stable identifier for an identity
-/// It is the base16 encoded [Hash] of the initial public key and never changes, even after key rotation
-/// A given public key can only ever be registered once - once rotated away from, it cannot
-/// be re-registered as a new identity
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct IdentityId(String);
-ser_display_deser_fromstr!(IdentityId);
-
-impl IdentityId {
-	/// Creates a new IdentityId from the given hash
-	#[must_use]
-	pub fn new(s: &Hash) -> Self {
-		Self(hex::encode(s.to_string()))
-	}
-}
-
-impl Display for IdentityId {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		f.write_str(&self.0)
-	}
-}
-
-impl FromStr for IdentityId {
-	type Err = errors::IdentityIdFromStrError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		// prevent mismatches between serialized and deserialized ids due to case differences
-		if s.chars()
-			.any(|c| c.is_ascii_alphabetic() && !c.is_ascii_lowercase())
-		{
-			return Err(errors::IdentityIdFromStrErrorKind::InvalidIdentityIdFormat.into());
-		}
-
-		let bytes = hex::decode(s)?;
-		let hash = str::from_utf8(&bytes)?;
-		// sanity check to ensure garbage input doesn't get accepted as a valid identity ID
-		let _: Hash = hash.parse()?;
-
-		Ok(Self(s.to_string()))
-	}
-}
+/// A UUID which acts as a stable identifier for an identity
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct IdentityId(pub uuid::Uuid);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 /// Permissions for a scope member
@@ -518,27 +481,6 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = ApiDownloadError))]
 	#[non_exhaustive]
 	pub enum ApiDownloadErrorKind {}
-
-	/// Errors that can occur when parsing an identity ID from a string
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = IdentityIdFromStrError))]
-	pub enum IdentityIdFromStrErrorKind {
-		/// The identity ID is in an invalid format
-		#[error("invalid identity ID format")]
-		InvalidIdentityIdFormat,
-
-		/// Error occurred while parsing the identity ID
-		#[error("error parsing identity ID")]
-		ParseError(#[from] hex::FromHexError),
-
-		/// Error parsing the decoded identity ID as UTF-8
-		#[error("error parsing identity ID as UTF-8")]
-		InvalidUtf8(#[from] std::str::Utf8Error),
-
-		/// Error parsing the decoded identity ID as a valid hash
-		#[error("error parsing identity ID as a valid hash")]
-		InvalidHash(#[from] crate::hash::errors::HashFromStrError),
-	}
 
 	/// Errors that can occur when parsing a scope permission from a string
 	#[derive(Debug, Error, thiserror_ext::Box)]
