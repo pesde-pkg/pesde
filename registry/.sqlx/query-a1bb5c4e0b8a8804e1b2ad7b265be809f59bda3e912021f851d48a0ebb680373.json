@@ -1,0 +1,133 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        SELECT sig, scope, prev_scope_entry_hash, scope_seq, prev_author_identity_seq, author_identity, kind as `kind: u8`\n        FROM ScopeLogEntry\n        WHERE seq = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sig",
+        "type_info": {
+          "type": "Blob",
+          "flags": "NOT_NULL | BLOB | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 262140
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.ScopeLogEntry",
+            "name": "sig"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "scope",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 128
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.ScopeLogEntry",
+            "name": "scope"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "prev_scope_entry_hash",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB",
+          "collation": 224,
+          "max_size": 262140
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.ScopeLogEntry",
+            "name": "prev_scope_entry_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "scope_seq",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.ScopeLogEntry",
+            "name": "scope_seq"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "prev_author_identity_seq",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "MULTIPLE_KEY | UNSIGNED",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.ScopeLogEntry",
+            "name": "prev_author_identity_seq"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "author_identity",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 16
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.ScopeLogEntry",
+            "name": "author_identity"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "kind: u8",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 60
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.ScopeLogEntry",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "a1bb5c4e0b8a8804e1b2ad7b265be809f59bda3e912021f851d48a0ebb680373"
+}

@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "\n        SELECT kind as `kind: u8`\n        FROM LogEntry\n        WHERE seq = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind: u8",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 80
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.LogEntry",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "684df375efadbdad72830b93838811d6633e405ac7223fd02608a75b754e6007"
+}
