@@ -323,19 +323,6 @@ pub enum ScopeEntryPayload {
 	ManifestUpdate(ScopeManifestUpdateBody),
 }
 
-/// The kind of a scope entry
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScopeEntryKind {
-	/// Publish a new package version
-	Publish,
-	/// Yank an existing package version
-	Yank,
-	/// Deprecate an existing package
-	Deprecate,
-	/// Replace the scope manifest entirely
-	ManifestUpdate,
-}
-
 /// The body of a scope entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeEntryBody {
@@ -413,19 +400,6 @@ pub enum EntryPayload {
 	IdentityRotation(IdentityRotationEntry),
 	/// A forced scope ownership transfer initiated by the registry operator
 	AdminScopeTransfer(AdminScopeTransferEntry),
-}
-
-/// The kind of an entry in the registry log
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EntryKind {
-	/// A scope-chained entry (publish, yank, or manifest update)
-	Scope,
-	/// Registration of a new identity, anchoring its initial public key
-	RegisterIdentity,
-	/// Rotation of the public key for an existing identity
-	IdentityRotation,
-	/// A forced scope ownership transfer initiated by the registry operator
-	AdminScopeTransfer,
 }
 
 /// An entry in the registry log

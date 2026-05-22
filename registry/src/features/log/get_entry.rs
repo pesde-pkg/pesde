@@ -4,14 +4,12 @@ use actix_web::web;
 use futures::StreamExt as _;
 use pesde::source::pesde::backend::DeprecateBody;
 use pesde::source::pesde::backend::Entry;
-use pesde::source::pesde::backend::EntryKind;
 use pesde::source::pesde::backend::EntryPayload;
 use pesde::source::pesde::backend::EntrySeq;
 use pesde::source::pesde::backend::IdentityId;
 use pesde::source::pesde::backend::PublishBody;
 use pesde::source::pesde::backend::ScopeEntry;
 use pesde::source::pesde::backend::ScopeEntryBody;
-use pesde::source::pesde::backend::ScopeEntryKind;
 use pesde::source::pesde::backend::ScopeEntryPayload;
 use pesde::source::pesde::backend::ScopeManifest;
 use pesde::source::pesde::backend::ScopeManifestUpdateBody;
@@ -36,26 +34,6 @@ pub async fn http(app_state: web::Data<AppState>, seq: web::Path<EntrySeq>) -> C
 async fn handler(db: &Database, seq: EntrySeq) -> AppResult<Option<Entry>> {
 	match db {
 		Database::MySql(pool) => get_entry(pool, seq).await.map_err(Into::into),
-	}
-}
-
-fn entry_kind_from_id(id: u8) -> EntryKind {
-	match id {
-		1 => EntryKind::Scope,
-		2 => EntryKind::RegisterIdentity,
-		3 => EntryKind::IdentityRotation,
-		4 => EntryKind::AdminScopeTransfer,
-		_ => panic!("unrecognized id {id} for EntryKind"),
-	}
-}
-
-fn scope_entry_kind_from_id(id: u8) -> ScopeEntryKind {
-	match id {
-		1 => ScopeEntryKind::Publish,
-		2 => ScopeEntryKind::Yank,
-		3 => ScopeEntryKind::Deprecate,
-		4 => ScopeEntryKind::ManifestUpdate,
-		_ => panic!("unrecognized id {id} for ScopeEntryKind"),
 	}
 }
 
@@ -109,7 +87,7 @@ async fn get_scope_entry(
 ) -> anyhow::Result<Option<ScopeEntry>> {
 	let Some(scope_entry) = sqlx::query!(
         r#"
-        SELECT sig, scope, prev_scope_entry_hash, scope_seq, prev_author_identity_seq, author_identity, kind as `kind: u8`
+        SELECT sig, scope, prev_scope_entry_hash, scope_seq, prev_author_identity_seq, author_identity, kind
         FROM ScopeLogEntry
         WHERE seq = ?
         "#,
@@ -120,9 +98,8 @@ async fn get_scope_entry(
 		return Ok(None);
 	};
 
-	let scope_entry_kind = scope_entry_kind_from_id(scope_entry.kind);
-	let payload = match scope_entry_kind {
-		ScopeEntryKind::Publish => {
+	let payload = match &*scope_entry.kind {
+		"publish" => {
 			let publish_entry = sqlx::query!(
 				r#"
                 SELECT name, version, archive_hash
@@ -141,7 +118,7 @@ async fn get_scope_entry(
 				archive_hash: publish_entry.archive_hash.parse()?,
 			})
 		}
-		ScopeEntryKind::Yank => {
+		"yank" => {
 			let yank_entry = sqlx::query!(
 				r#"
                 SELECT name, version
@@ -159,7 +136,7 @@ async fn get_scope_entry(
 				version: yank_entry.version.parse()?,
 			})
 		}
-		ScopeEntryKind::Deprecate => {
+		"deprecate" => {
 			let deprecate_entry = sqlx::query!(
 				r#"
                 SELECT name, reason
@@ -177,12 +154,13 @@ async fn get_scope_entry(
 				reason: deprecate_entry.reason,
 			})
 		}
-		ScopeEntryKind::ManifestUpdate => {
+		"manifest_update" => {
 			let Some(manifest) = get_scope_manifest(pool, seq).await? else {
 				return Ok(None);
 			};
 			ScopeEntryPayload::ManifestUpdate(ScopeManifestUpdateBody { manifest })
 		}
+		kind => panic!("invalid scope entry kind in database: {kind}"),
 	};
 
 	Ok(Some(ScopeEntry {
@@ -204,7 +182,7 @@ async fn get_scope_entry(
 async fn get_entry(pool: &sqlx::MySqlPool, seq: EntrySeq) -> anyhow::Result<Option<Entry>> {
 	let Some(entry) = sqlx::query!(
 		r#"
-        SELECT kind as `kind: u8`
+        SELECT kind
         FROM LogEntry
         WHERE seq = ?
         "#,
@@ -218,16 +196,17 @@ async fn get_entry(pool: &sqlx::MySqlPool, seq: EntrySeq) -> anyhow::Result<Opti
 
 	Ok(Some(Entry {
 		seq,
-		payload: match entry_kind_from_id(entry.kind) {
-			EntryKind::Scope => {
+		payload: match &*entry.kind {
+			"scope" => {
 				let Some(scope_entry) = get_scope_entry(pool, seq).await? else {
 					return Ok(None);
 				};
 				EntryPayload::Scope(scope_entry)
 			}
-			EntryKind::RegisterIdentity => todo!(),
-			EntryKind::IdentityRotation => todo!(),
-			EntryKind::AdminScopeTransfer => todo!(),
+			"register_identity" => todo!(),
+			"identity_rotation" => todo!(),
+			"admin_scope_transfer" => todo!(),
+			kind => panic!("invalid entry kind in database: {kind}"),
 		},
 	}))
 }
