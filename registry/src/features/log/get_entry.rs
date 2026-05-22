@@ -55,13 +55,10 @@ async fn get_scope_manifest(
 	let mut manifest = None;
 
 	while let Some(row) = stream.next().await.transpose()? {
-		let manifest = match &mut manifest {
-			Some(m) => m,
-			None => manifest.insert(ScopeManifest {
-				owner: IdentityId(row.owner),
-				members: Default::default(),
-			}),
-		};
+		let manifest = manifest.get_or_insert_with(|| ScopeManifest {
+			owner: IdentityId(row.owner),
+			members: Default::default(),
+		});
 
 		if let Some(identity_id) = row.identity_id {
 			manifest.members.insert(
