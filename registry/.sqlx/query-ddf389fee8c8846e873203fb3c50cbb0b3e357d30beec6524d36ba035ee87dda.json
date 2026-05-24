@@ -1,11 +1,11 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT kind as `kind: u8`\n        FROM LogEntry\n        WHERE seq = ?\n        ",
+  "query": "\n        SELECT kind\n        FROM LogEntry\n        WHERE seq = ?\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "kind: u8",
+        "name": "kind",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
@@ -27,5 +27,5 @@
       false
     ]
   },
-  "hash": "684df375efadbdad72830b93838811d6633e405ac7223fd02608a75b754e6007"
+  "hash": "ddf389fee8c8846e873203fb3c50cbb0b3e357d30beec6524d36ba035ee87dda"
 }
