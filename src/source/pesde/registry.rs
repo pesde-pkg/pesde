@@ -1,17 +1,20 @@
 //! Data models for the registry
 
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::collections::BTreeMap;
+use std::marker::PhantomData;
 
 use bitflags::bitflags;
 use merkleberg::Merge;
 use semver::Version;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{
-	hash::{Hash, HashAlgorithm},
-	names::{Name, Scope},
-	signature::{PublicKey, Signature},
-};
+use crate::hash::Hash;
+use crate::hash::HashAlgorithm;
+use crate::names::Name;
+use crate::names::Scope;
+use crate::signature::PublicKey;
+use crate::signature::Signature;
 
 /// A trait for types that can be serialised in a canonical form
 pub trait Canonical: Serialize {
