@@ -33,8 +33,8 @@ use tracing::instrument;
 
 pub mod backend;
 pub mod pkg_ref;
-pub mod specifier;
 pub mod registry;
+pub mod specifier;
 
 /// The pesde package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
