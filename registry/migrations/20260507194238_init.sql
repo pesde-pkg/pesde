@@ -58,7 +58,7 @@ CREATE TABLE ScopeManifestMember (
     seq BIGINT UNSIGNED NOT NULL,
 
     identity_id BINARY(16) NOT NULL,
-    permissions SET ('publish', 'retire') NOT NULL,
+    permissions BIGINT UNSIGNED NOT NULL,
 
     PRIMARY KEY (scope, seq, identity_id),
     FOREIGN KEY (scope, seq) REFERENCES ScopeManifest (scope, seq),
@@ -103,7 +103,7 @@ CREATE TABLE PublishScopeLogEntry (
     FOREIGN KEY (scope, scope_seq) REFERENCES ScopeLogEntry (scope, scope_seq)
 );
 
-CREATE INDEX idx_publish_name ON PublishScopeLogEntry (scope, name);
+CREATE INDEX idx_publish_package ON PublishScopeLogEntry (scope, name, version);
 
 CREATE TABLE YankScopeLogEntry (
     scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -113,7 +113,8 @@ CREATE TABLE YankScopeLogEntry (
     version VARCHAR(255) NOT NULL,
 
     PRIMARY KEY (scope, scope_seq),
-    FOREIGN KEY (scope, scope_seq) REFERENCES ScopeLogEntry (scope, scope_seq)
+    FOREIGN KEY (scope, scope_seq) REFERENCES ScopeLogEntry (scope, scope_seq),
+    FOREIGN KEY (scope, name, version) REFERENCES PublishScopeLogEntry (scope, name, version)
 );
 
 CREATE INDEX idx_yank_package ON YankScopeLogEntry (scope, name, version);

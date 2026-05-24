@@ -16,7 +16,7 @@ use crate::shared::db::Database;
 use crate::util::Env;
 
 mod features;
-mod shared;
+pub mod shared;
 mod util;
 
 pub struct AppState {

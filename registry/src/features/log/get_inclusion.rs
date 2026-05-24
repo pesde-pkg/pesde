@@ -5,31 +5,17 @@ use crate::util::ControllerResult;
 use actix_web::HttpResponse;
 use actix_web::get;
 use actix_web::web;
-use pesde::source::pesde::backend::EntrySeq;
+use merkleberg::mmriver::InclusionProof;
+use pesde::source::pesde::registry::*;
 
-#[derive(serde::Deserialize)]
-struct InclusionQuery {
-	seq: EntrySeq,
-}
-
-#[get("/v2/log/inclusion")]
-pub async fn http(
-	app_state: web::Data<AppState>,
-	params: web::Query<InclusionQuery>,
-) -> ControllerResult {
-	let result = handler(&app_state.database, params.seq).await?;
+#[get("/v2/log/inclusion/{seq}")]
+pub async fn http(app_state: web::Data<AppState>, path: web::Path<EntrySeq>) -> ControllerResult {
+	let seq = path.into_inner();
+	let result = handler(&app_state.database, seq).await?;
 	Ok(HttpResponse::Ok().json(result))
 }
 
-async fn handler(db: &Database, seq: EntrySeq) -> AppResult<InclusionResponse> {
-	Ok(query(db, seq).await?)
-}
-
-async fn query(db: &Database, _seq: EntrySeq) -> anyhow::Result<InclusionResponse> {
-	todo!()
-}
-
-#[derive(serde::Serialize)]
-struct InclusionResponse {
-	proof: Vec<String>,
+async fn handler(db: &Database, seq: EntrySeq) -> AppResult<InclusionProof<Sha256Merge>> {
+	let mmr = db.read_mmr().await?;
+	Ok(mmr.gen_inclusion_proof(seq.0).await?)
 }

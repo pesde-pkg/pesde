@@ -94,6 +94,7 @@ croshet = "0.1.0"
 itertools = "0.14.0"
 paste = "1.0.15"
 async-trait = "0.1.89"
+bitflags = { version = "2.11.1", features = ["serde"] }
 
 digest = "0.10.7"
 sha2 = "0.10.9"
