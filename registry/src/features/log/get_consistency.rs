@@ -5,36 +5,17 @@ use crate::util::ControllerResult;
 use actix_web::HttpResponse;
 use actix_web::get;
 use actix_web::web;
-use pesde::source::pesde::backend::EntrySeq;
+use merkleberg::mmriver::ConsistencyProof;
+use pesde::source::pesde::registry::*;
 
-#[derive(serde::Deserialize)]
-struct ConsistencyQuery {
-	from: EntrySeq,
-	to: EntrySeq,
-}
-
-#[get("/v2/log/consistency")]
-pub async fn http(
-	app_state: web::Data<AppState>,
-	params: web::Query<ConsistencyQuery>,
-) -> ControllerResult {
-	let result = handler(&app_state.database, params.from, params.to).await?;
+#[get("/v2/log/consistency/{seq}")]
+pub async fn http(app_state: web::Data<AppState>, path: web::Path<EntrySeq>) -> ControllerResult {
+	let seq = path.into_inner();
+	let result = handler(&app_state.database, seq).await?;
 	Ok(HttpResponse::Ok().json(result))
 }
 
-async fn handler(db: &Database, from: EntrySeq, to: EntrySeq) -> AppResult<ConsistencyResponse> {
-	Ok(query(db, from, to).await?)
-}
-
-async fn query(
-	db: &Database,
-	_from: EntrySeq,
-	_to: EntrySeq,
-) -> anyhow::Result<ConsistencyResponse> {
-	todo!()
-}
-
-#[derive(serde::Serialize)]
-struct ConsistencyResponse {
-	proof: Vec<String>,
+async fn handler(db: &Database, from: EntrySeq) -> AppResult<ConsistencyProof<Sha256Merge>> {
+	let mmr = db.read_mmr().await?;
+	Ok(mmr.gen_consistency_proof(from.0).await?)
 }

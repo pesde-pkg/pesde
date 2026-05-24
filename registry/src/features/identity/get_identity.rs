@@ -5,7 +5,7 @@ use crate::util::ControllerResult;
 use actix_web::HttpResponse;
 use actix_web::get;
 use actix_web::web;
-use pesde::source::pesde::backend::IdentityId;
+use pesde::source::pesde::registry::IdentityId;
 
 #[get("/v2/identity/{identity_id}")]
 pub async fn http(

@@ -1,4 +1,5 @@
 use actix_web::ResponseError;
+use actix_web::http::StatusCode;
 use fs_err::tokio as fs;
 use serde_json::json;
 use std::env::VarError;
@@ -69,27 +70,44 @@ impl Env {
 }
 
 #[derive(Debug, Error)]
+#[error(transparent)]
+pub struct AnyhowError(#[from] anyhow::Error);
+
+#[derive(Debug, Error)]
 pub enum AppError {
 	#[error(transparent)]
 	Internal(#[from] anyhow::Error),
+
+	#[error(transparent)]
+	InternalWrapper(#[from] AnyhowError),
+
+	#[error(transparent)]
+	Merkleberg(#[from] merkleberg::Error),
 }
 
 impl ResponseError for AppError {
-	fn status_code(&self) -> actix_web::http::StatusCode {
-		match self {
-			AppError::Internal(_) => actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-		}
-	}
-
 	fn error_response(&self) -> actix_web::HttpResponse<actix_web::body::BoxBody> {
-		let body = match self {
-			AppError::Internal(e) => {
+		let (status_code, body) = match self {
+			AppError::Internal(e) | AppError::InternalWrapper(AnyhowError(e)) => {
 				tracing::error!("internal server error: {e}");
-				json!({ "error": "internal server error "})
+				(
+					StatusCode::INTERNAL_SERVER_ERROR,
+					json!({ "error": "internal server error" }),
+				)
+			}
+			AppError::Merkleberg(merkleberg::Error::GenProofForInvalidLeaves) => {
+				(StatusCode::NOT_FOUND, json!({ "error": "leaf not known" }))
+			}
+			AppError::Merkleberg(e) => {
+				tracing::error!("internal server error: {e}");
+				(
+					StatusCode::INTERNAL_SERVER_ERROR,
+					json!({ "error": "internal server error" }),
+				)
 			}
 		};
 
-		actix_web::HttpResponse::build(self.status_code()).json(body)
+		actix_web::HttpResponse::build(status_code).json(body)
 	}
 }
 

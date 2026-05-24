@@ -1,6 +1,14 @@
+use merkleberg::MMRIVER;
+use merkleberg::MMRStoreReadOps;
+use pesde::hash::Hash;
+use pesde::source::pesde::registry::Sha256Merge;
 use sqlx::Database as _;
 use sqlx::MySql;
 use sqlx::MySqlPool;
+
+use crate::util::AnyhowError;
+
+pub mod mysql;
 
 #[derive(Debug, Clone)]
 pub enum Database {
@@ -25,5 +33,21 @@ impl Database {
 		}
 
 		panic!("unsupported database protocol `{protocol}`")
+	}
+
+	pub async fn read_mmr(&self) -> anyhow::Result<MMRIVER<Sha256Merge, &Self>> {
+		let mmr_size = match self {
+			Self::MySql(pool) => mysql::mmr_size(pool).await?,
+		};
+
+		Ok(MMRIVER::new(mmr_size, self))
+	}
+}
+
+impl MMRStoreReadOps<Hash> for &Database {
+	type Error = AnyhowError;
+
+	async fn get_elem(&self, pos: u64) -> Result<Option<Hash>, Self::Error> {
+		Ok(None)
 	}
 }
