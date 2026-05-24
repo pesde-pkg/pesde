@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT sig, scope, prev_scope_entry_hash, scope_seq, prev_author_identity_seq, author_identity, kind as `kind: u8`\n        FROM ScopeLogEntry\n        WHERE seq = ?\n        ",
+  "query": "\n        SELECT sig, scope, prev_scope_entry_hash, scope_seq, prev_author_identity_seq, author_identity, kind\n        FROM ScopeLogEntry\n        WHERE seq = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -101,7 +101,7 @@
       },
       {
         "ordinal": 6,
-        "name": "kind: u8",
+        "name": "kind",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
@@ -129,5 +129,5 @@
       false
     ]
   },
-  "hash": "a1bb5c4e0b8a8804e1b2ad7b265be809f59bda3e912021f851d48a0ebb680373"
+  "hash": "9696f5e1f8124c158fb73ef8fe24c0857735b7cb80e17b4eaf9febda0829f3e4"
 }

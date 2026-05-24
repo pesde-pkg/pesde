@@ -1,0 +1,26 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT COUNT(*) as `mmr_size: u64` FROM LogEntry",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "mmr_size: u64",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | BINARY",
+          "collation": 63,
+          "max_size": 21
+        },
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fb6c687388703bc434d593f5e71d8e1955d66b7852b627868112889907562c53"
+}

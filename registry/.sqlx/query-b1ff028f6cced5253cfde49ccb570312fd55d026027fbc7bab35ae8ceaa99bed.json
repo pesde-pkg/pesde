@@ -39,10 +39,10 @@
         "ordinal": 2,
         "name": "permissions",
         "type_info": {
-          "type": "String",
-          "flags": "SET | NO_DEFAULT_VALUE",
-          "collation": 224,
-          "max_size": 56
+          "type": "LongLong",
+          "flags": "UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
         },
         "origin": {
           "Table": {
