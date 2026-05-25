@@ -5,9 +5,16 @@ CREATE TABLE UsedPublicKey (
     UNIQUE (algorithm, public_key)
 );
 
+CREATE TABLE TreeNode (
+    pos BIGINT UNSIGNED PRIMARY KEY,
+    sha256 BINARY(32) NOT NULL    
+);
+
 CREATE TABLE LogEntry (
     seq BIGINT UNSIGNED PRIMARY KEY,
-    kind ENUM ('register_identity', 'identity_rotation', 'scope', 'admin_scope_transfer') NOT NULL
+    pos BIGINT UNSIGNED NOT NULL,
+    kind ENUM ('register_identity', 'identity_rotation', 'scope', 'admin_scope_transfer') NOT NULL,
+    FOREIGN KEY (pos) REFERENCES TreeNode (pos)
 );
 
 CREATE TABLE RegisterIdentityLogEntry (

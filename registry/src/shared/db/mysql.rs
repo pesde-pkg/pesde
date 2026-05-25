@@ -1,13 +1,23 @@
 use futures::StreamExt as _;
+use pesde::hash::Hash;
 use pesde::source::pesde::registry::*;
 use sqlx::types::Uuid;
 
 pub async fn mmr_size(pool: &sqlx::MySqlPool) -> anyhow::Result<u64> {
 	Ok(
-		sqlx::query!("SELECT COUNT(*) as `mmr_size: u64` FROM LogEntry")
+		sqlx::query!("SELECT COUNT(*) as `mmr_size: u64` FROM TreeNode")
 			.fetch_one(pool)
 			.await?
 			.mmr_size,
+	)
+}
+
+pub async fn get_hash(pool: &sqlx::MySqlPool, pos: u64) -> anyhow::Result<Option<Hash>> {
+	Ok(
+		sqlx::query!("SELECT sha256 FROM TreeNode WHERE pos = ?", pos)
+			.fetch_optional(pool)
+			.await?
+			.map(|record| Hash::new(pesde::hash::HashAlgorithm::Sha256, record.sha256).unwrap()),
 	)
 }
 

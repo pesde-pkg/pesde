@@ -48,6 +48,8 @@ impl MMRStoreReadOps<Hash> for &Database {
 	type Error = AnyhowError;
 
 	async fn get_elem(&self, pos: u64) -> Result<Option<Hash>, Self::Error> {
-		Ok(None)
+		Ok(match *self {
+			Database::MySql(pool) => mysql::get_hash(pool, pos).await?,
+		})
 	}
 }

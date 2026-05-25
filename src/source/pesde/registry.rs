@@ -16,31 +16,28 @@ use crate::names::Scope;
 use crate::signature::PublicKey;
 use crate::signature::Signature;
 
-/// A trait for types that can be serialised in a canonical form
-pub trait Canonical: Serialize {
-	/// Returns a canonical serialisation of the given body for cryptographic purposes
-	#[must_use]
-	fn canonical_bytes(&self) -> Vec<u8> {
-		cbor_core::Value::serialized(self)
-			.expect("failed to serialise body for signing")
-			.encode()
-	}
+/// Returns a canonical serialisation of the given struct for cryptographic purposes
+#[must_use]
+pub fn canonical_bytes(data: &impl Serialize) -> Vec<u8> {
+	cbor_core::Value::serialized(data)
+		.expect("failed to serialise body for signing")
+		.encode()
 }
 
 /// An entry with an associated signature
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SignedEntry<T: Canonical> {
+pub struct SignedEntry<T: Serialize> {
 	/// The body being signed
 	pub body: T,
 	/// The signature over the canonical serialisation of body
 	pub sig: Signature,
 }
 
-impl<T: Canonical> SignedEntry<T> {
+impl<T: Serialize> SignedEntry<T> {
 	/// Verifies the signature of this entry against the given public key
 	#[must_use]
 	pub fn verify(&self, public_key: &PublicKey) -> bool {
-		self.sig.verify(public_key, &self.body.canonical_bytes())
+		self.sig.verify(public_key, &canonical_bytes(&self.body))
 	}
 }
 
@@ -172,7 +169,6 @@ pub struct ScopeEntryBody {
 	/// The payload of this entry
 	pub payload: ScopeEntryPayload,
 }
-impl Canonical for ScopeEntryBody {}
 
 /// The body of a RegisterIdentity entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -183,7 +179,6 @@ pub struct RegisterIdentityBody {
 	/// The initial public key for this identity
 	pub public_key: PublicKey,
 }
-impl Canonical for RegisterIdentityBody {}
 
 /// The body of an IdentityRotation entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,7 +191,6 @@ pub struct IdentityRotationBody {
 	/// The new public key to associate with this identity after rotation
 	pub new_public_key: PublicKey,
 }
-impl Canonical for IdentityRotationBody {}
 
 /// A forced scope ownership transfer done by the registry administrator, without the consent of the previous owner
 /// Intended solely for administrative interventions including e.g. squatting or legal disputes
