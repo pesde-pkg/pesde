@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT sha256 FROM TreeNode WHERE pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sha256",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.TreeNode",
+            "name": "sha256"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "df243f2c3ca05ac25b8534fbd6fbf1ec3cb0def999b47a8281e9f13c435154db"
+}
