@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT sig, scope, scope_seq, author_identity, kind\n        FROM ScopeLogEntry\n        WHERE seq = ?\n        ",
+  "query": "\n        SELECT sig, scope, scope_seq, author_identity AS `author_identity: Uuid`, kind\n        FROM ScopeLogEntry\n        WHERE seq = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -53,7 +53,7 @@
       },
       {
         "ordinal": 3,
-        "name": "author_identity",
+        "name": "author_identity: Uuid",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
@@ -95,5 +95,5 @@
       false
     ]
   },
-  "hash": "c9672d981a18c9ee3f55842a0cfc4d3350df074b851256b156ab58634013824d"
+  "hash": "b8a348551cfee8fe114d6259861185e5bc16b26caa911d75f377fcda014130bb"
 }
