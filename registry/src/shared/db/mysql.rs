@@ -99,15 +99,16 @@ pub async fn get_scope_entry(
 	seq: EntrySeq,
 ) -> anyhow::Result<Option<ScopeEntry>> {
 	let Some(scope_entry) = sqlx::query!(
-        r#"
-        SELECT sig, scope, prev_scope_entry_hash, scope_seq, prev_author_identity_seq, author_identity, kind
+		r#"
+        SELECT sig, scope, scope_seq, author_identity, kind
         FROM ScopeLogEntry
         WHERE seq = ?
         "#,
-        seq.0
-    )
-    .fetch_optional(pool)
-    .await? else {
+		seq.0
+	)
+	.fetch_optional(pool)
+	.await?
+	else {
 		return Ok(None);
 	};
 
@@ -180,12 +181,7 @@ pub async fn get_scope_entry(
 		sig: scope_entry.sig.parse()?,
 		body: ScopeEntryBody {
 			scope: scope_entry.scope.parse()?,
-			prev_scope_entry_hash: scope_entry
-				.prev_scope_entry_hash
-				.map(|h| h.parse())
-				.transpose()?,
 			scope_seq: ScopeSeq(scope_entry.scope_seq),
-			prev_author_identity_seq: scope_entry.prev_author_identity_seq.map(EntrySeq),
 			author_identity: scope_entry.author_identity.try_into().map(IdentityId)?,
 			payload,
 		},
