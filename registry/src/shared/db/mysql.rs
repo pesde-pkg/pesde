@@ -21,6 +21,43 @@ pub async fn get_hash(pool: &sqlx::MySqlPool, pos: u64) -> anyhow::Result<Option
 	)
 }
 
+pub async fn write_mmr(
+	pool: &sqlx::MySqlPool,
+) -> anyhow::Result<(sqlx::MySqlTransaction<'_>, u64)> {
+	let mut tx = pool.begin().await?;
+	let mmr_size = sqlx::query!("SELECT COUNT(*) as `mmr_size: u64` FROM TreeNode FOR UPDATE")
+		.fetch_one(&mut *tx)
+		.await?
+		.mmr_size;
+	Ok((tx, mmr_size))
+}
+
+pub async fn append_hashes(
+	tx: &mut sqlx::MySqlTransaction<'_>,
+	pos: u64,
+	elems: Vec<Hash>,
+) -> anyhow::Result<()> {
+	let mut query = sqlx::QueryBuilder::new(r"INSERT INTO TreeNode (pos, sha256) ");
+	query.push_values((pos..).zip(elems), |mut b, (i, elem)| {
+		b.push_bind(i);
+		match elem.algorithm() {
+			pesde::hash::HashAlgorithm::Sha256 => b.push_bind(elem.hash()),
+			algorithm => panic!("unsupported hash algorithm in MMR store: {algorithm}"),
+		};
+	});
+	query.build().execute(&mut **tx).await?;
+	Ok(())
+}
+
+pub async fn get_pos(pool: &sqlx::MySqlPool, seq: EntrySeq) -> anyhow::Result<Option<u64>> {
+	Ok(
+		sqlx::query!("SELECT pos FROM LogEntry WHERE seq = ?", seq.0)
+			.fetch_optional(pool)
+			.await?
+			.map(|record| record.pos),
+	)
+}
+
 pub async fn get_scope_manifest(
 	pool: &sqlx::MySqlPool,
 	seq: EntrySeq,

@@ -17,9 +17,5 @@ pub async fn http(app_state: web::Data<AppState>, seq: web::Path<EntrySeq>) -> C
 }
 
 async fn handler(db: &Database, seq: EntrySeq) -> AppResult<Option<Entry>> {
-	match db {
-		Database::MySql(pool) => crate::shared::db::mysql::get_entry(pool, seq)
-			.await
-			.map_err(Into::into),
-	}
+	Ok(db.get_entry(seq).await?)
 }
