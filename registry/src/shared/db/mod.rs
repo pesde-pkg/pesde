@@ -1,14 +1,17 @@
 use merkleberg::MMRIVER;
 use merkleberg::MMRStoreReadOps;
+use merkleberg::MMRStoreWriteOps;
 use pesde::hash::Hash;
-use pesde::source::pesde::registry::Sha256Merge;
+use pesde::source::pesde::registry::*;
 use sqlx::Database as _;
+use sqlx::Executor as _;
 use sqlx::MySql;
 use sqlx::MySqlPool;
+use sqlx::mysql::MySqlPoolOptions;
 
 use crate::util::AnyhowError;
 
-pub mod mysql;
+mod mysql;
 
 #[derive(Debug, Clone)]
 pub enum Database {
@@ -20,7 +23,16 @@ impl Database {
 		let protocol = url.split_once(':').map_or("", |(protocol, _)| protocol);
 
 		if MySql::URL_SCHEMES.contains(&protocol) {
-			let pool = MySqlPool::connect(url)
+			let pool = MySqlPoolOptions::new()
+				.after_connect(|conn, _meta| {
+					Box::pin(async move {
+						conn.execute("SET autocommit = 0").await?;
+						conn.execute("SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+							.await?;
+						Ok(())
+					})
+				})
+				.connect(url)
 				.await
 				.expect("failed to connect to mysql database");
 
@@ -42,6 +54,41 @@ impl Database {
 
 		Ok(MMRIVER::new(mmr_size, self))
 	}
+
+	pub async fn write_mmr(&self) -> anyhow::Result<MMRIVER<Sha256Merge, DatabaseTransaction<'_>>> {
+		let (transaction, mmr_size) = match self {
+			Self::MySql(pool) => {
+				let (transaction, mmr_size) = mysql::write_mmr(pool).await?;
+				(DatabaseTransaction::MySql(transaction), mmr_size)
+			}
+		};
+
+		Ok(MMRIVER::new(mmr_size, transaction))
+	}
+
+	pub async fn get_pos(&self, seq: EntrySeq) -> anyhow::Result<Option<u64>> {
+		match self {
+			Self::MySql(pool) => mysql::get_pos(pool, seq).await,
+		}
+	}
+
+	pub async fn get_scope_manifest(&self, seq: EntrySeq) -> anyhow::Result<Option<ScopeManifest>> {
+		match self {
+			Self::MySql(pool) => mysql::get_scope_manifest(pool, seq).await,
+		}
+	}
+
+	pub async fn get_scope_entry(&self, seq: EntrySeq) -> anyhow::Result<Option<ScopeEntry>> {
+		match self {
+			Self::MySql(pool) => mysql::get_scope_entry(pool, seq).await,
+		}
+	}
+
+	pub async fn get_entry(&self, seq: EntrySeq) -> anyhow::Result<Option<Entry>> {
+		match self {
+			Self::MySql(pool) => mysql::get_entry(pool, seq).await,
+		}
+	}
 }
 
 impl MMRStoreReadOps<Hash> for &Database {
@@ -51,5 +98,20 @@ impl MMRStoreReadOps<Hash> for &Database {
 		Ok(match *self {
 			Database::MySql(pool) => mysql::get_hash(pool, pos).await?,
 		})
+	}
+}
+
+pub enum DatabaseTransaction<'a> {
+	MySql(sqlx::MySqlTransaction<'a>),
+}
+
+impl MMRStoreWriteOps<Hash> for DatabaseTransaction<'_> {
+	type Error = AnyhowError;
+
+	async fn append(&mut self, pos: u64, elems: Vec<Hash>) -> Result<(), Self::Error> {
+		match self {
+			DatabaseTransaction::MySql(tx) => mysql::append_hashes(tx, pos, elems).await?,
+		}
+		Ok(())
 	}
 }
