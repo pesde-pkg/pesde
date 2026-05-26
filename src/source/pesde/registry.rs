@@ -26,7 +26,7 @@ pub fn canonical_bytes(data: &impl Serialize) -> Vec<u8> {
 
 /// An entry with an associated signature
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SignedEntry<T: Serialize> {
+pub struct SignedEntry<T> {
 	/// The body being signed
 	pub body: T,
 	/// The signature over the canonical serialisation of body
@@ -154,16 +154,8 @@ pub enum ScopeEntryPayload {
 pub struct ScopeEntryBody {
 	/// The scope this entry belongs to
 	pub scope: Scope,
-	/// Hash of the previous [ScopeEntry] in this scope's sub-chain
-	/// `None` if this is the first entry in the scope, in which case the registry
-	/// implicitly creates the scope with the author as sole owner with full permissions
-	#[serde(skip_serializing_if = "Option::is_none", default)]
-	pub prev_scope_entry_hash: Option<Hash>,
 	/// The sequence number of this entry within the scope
 	pub scope_seq: ScopeSeq,
-	/// The [EntrySeq] of the most recent [IdentityRotationEntry] for the author, or `None` if the author has never rotated their key
-	#[serde(skip_serializing_if = "Option::is_none", default)]
-	pub prev_author_identity_seq: Option<EntrySeq>,
 	/// The identity of the author
 	pub author_identity: IdentityId,
 	/// The payload of this entry
@@ -185,9 +177,6 @@ pub struct RegisterIdentityBody {
 pub struct IdentityRotationBody {
 	/// The identity being rotated
 	pub identity_id: IdentityId,
-	/// The [EntrySeq] of the previous [IdentityRotationEntry] for this identity, or `None` if this is the first rotation after registration
-	#[serde(skip_serializing_if = "Option::is_none", default)]
-	pub prev_rotation_seq: Option<EntrySeq>,
 	/// The new public key to associate with this identity after rotation
 	pub new_public_key: PublicKey,
 }

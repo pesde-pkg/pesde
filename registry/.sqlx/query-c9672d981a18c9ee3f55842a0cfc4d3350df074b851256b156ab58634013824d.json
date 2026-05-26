@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT sig, scope, prev_scope_entry_hash, scope_seq, prev_author_identity_seq, author_identity, kind\n        FROM ScopeLogEntry\n        WHERE seq = ?\n        ",
+  "query": "\n        SELECT sig, scope, scope_seq, author_identity, kind\n        FROM ScopeLogEntry\n        WHERE seq = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -37,22 +37,6 @@
       },
       {
         "ordinal": 2,
-        "name": "prev_scope_entry_hash",
-        "type_info": {
-          "type": "Blob",
-          "flags": "BLOB",
-          "collation": 224,
-          "max_size": 262140
-        },
-        "origin": {
-          "Table": {
-            "table": "test-pesde-registry.ScopeLogEntry",
-            "name": "prev_scope_entry_hash"
-          }
-        }
-      },
-      {
-        "ordinal": 3,
         "name": "scope_seq",
         "type_info": {
           "type": "LongLong",
@@ -68,23 +52,7 @@
         }
       },
       {
-        "ordinal": 4,
-        "name": "prev_author_identity_seq",
-        "type_info": {
-          "type": "LongLong",
-          "flags": "MULTIPLE_KEY | UNSIGNED",
-          "collation": 63,
-          "max_size": 20
-        },
-        "origin": {
-          "Table": {
-            "table": "test-pesde-registry.ScopeLogEntry",
-            "name": "prev_author_identity_seq"
-          }
-        }
-      },
-      {
-        "ordinal": 5,
+        "ordinal": 3,
         "name": "author_identity",
         "type_info": {
           "type": "String",
@@ -100,7 +68,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 4,
         "name": "kind",
         "type_info": {
           "type": "String",
@@ -122,12 +90,10 @@
     "nullable": [
       false,
       false,
-      true,
       false,
-      true,
       false,
       false
     ]
   },
-  "hash": "9696f5e1f8124c158fb73ef8fe24c0857735b7cb80e17b4eaf9febda0829f3e4"
+  "hash": "c9672d981a18c9ee3f55842a0cfc4d3350df074b851256b156ab58634013824d"
 }
