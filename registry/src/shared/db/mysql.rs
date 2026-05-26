@@ -100,7 +100,7 @@ pub async fn get_scope_entry(
 ) -> anyhow::Result<Option<ScopeEntry>> {
 	let Some(scope_entry) = sqlx::query!(
 		r#"
-        SELECT sig, scope, scope_seq, author_identity, kind
+        SELECT sig, scope, scope_seq, author_identity AS `author_identity: Uuid`, kind
         FROM ScopeLogEntry
         WHERE seq = ?
         "#,
@@ -182,7 +182,7 @@ pub async fn get_scope_entry(
 		body: ScopeEntryBody {
 			scope: scope_entry.scope.parse()?,
 			scope_seq: ScopeSeq(scope_entry.scope_seq),
-			author_identity: scope_entry.author_identity.try_into().map(IdentityId)?,
+			author_identity: IdentityId(scope_entry.author_identity),
 			payload,
 		},
 	}))
