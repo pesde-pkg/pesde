@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT pos FROM LogEntry WHERE seq = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | MULTIPLE_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.LogEntry",
+            "name": "pos"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "77c87c05ee5ea3b0f303821f070448edf091737c72d9c776a071afe794cf8398"
+}

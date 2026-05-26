@@ -33,19 +33,14 @@ CREATE TABLE IdentityRotationLogEntry (
     sig TEXT NOT NULL,
 
     identity_id BINARY(16) NOT NULL,
-    prev_rotation BIGINT UNSIGNED UNIQUE,
     new_public_key_id BIGINT UNSIGNED NOT NULL,
-
-    root_identity_id BINARY(16) AS (IF(prev_rotation IS NULL, identity_id, NULL)) STORED,
 
     FOREIGN KEY (seq) REFERENCES LogEntry (seq),
     FOREIGN KEY (identity_id) REFERENCES RegisterIdentityLogEntry (identity_id),
-    FOREIGN KEY (prev_rotation) REFERENCES IdentityRotationLogEntry (seq),
     FOREIGN KEY (new_public_key_id) REFERENCES UsedPublicKey (id)
 );
 
 CREATE INDEX idx_rotation_identity ON IdentityRotationLogEntry (identity_id);
-CREATE UNIQUE INDEX idx_one_root_rotation_per_identity ON IdentityRotationLogEntry (root_identity_id);
 
 CREATE TABLE ScopeManifest (
     scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -80,23 +75,17 @@ CREATE TABLE ScopeLogEntry (
 
     scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
-    prev_scope_entry_hash TEXT,
     scope_seq BIGINT UNSIGNED NOT NULL,
-    prev_author_identity_seq BIGINT UNSIGNED,
     author_identity BINARY(16) NOT NULL,
 
     kind ENUM ('publish', 'yank', 'deprecate', 'manifest_update') NOT NULL,
 
-    root_scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin AS (IF(prev_scope_entry_hash IS NULL, scope, NULL)) STORED,
-
     UNIQUE (scope, scope_seq),
     FOREIGN KEY (seq) REFERENCES LogEntry (seq),
-    FOREIGN KEY (prev_author_identity_seq) REFERENCES IdentityRotationLogEntry (seq),
     FOREIGN KEY (author_identity) REFERENCES RegisterIdentityLogEntry (identity_id)
 );
 
 CREATE INDEX idx_scope_entry_author ON ScopeLogEntry (author_identity);
-CREATE UNIQUE INDEX idx_one_root_entry_per_scope ON ScopeLogEntry (root_scope);
 
 CREATE TABLE PublishScopeLogEntry (
     scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
