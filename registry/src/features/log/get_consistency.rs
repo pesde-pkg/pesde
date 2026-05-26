@@ -11,11 +11,19 @@ use pesde::source::pesde::registry::*;
 #[get("/v2/log/consistency/{seq}")]
 pub async fn http(app_state: web::Data<AppState>, path: web::Path<EntrySeq>) -> ControllerResult {
 	let seq = path.into_inner();
-	let result = handler(&app_state.database, seq).await?;
+	let Some(result) = handler(&app_state.database, seq).await? else {
+		return Ok(HttpResponse::NotFound().finish());
+	};
 	Ok(HttpResponse::Ok().json(result))
 }
 
-async fn handler(db: &Database, from: EntrySeq) -> AppResult<ConsistencyProof<Sha256Merge>> {
+async fn handler(
+	db: &Database,
+	from: EntrySeq,
+) -> AppResult<Option<ConsistencyProof<Sha256Merge>>> {
 	let mmr = db.read_mmr().await?;
-	Ok(mmr.gen_consistency_proof(from.0).await?)
+	let Some(pos) = db.get_pos(from).await? else {
+		return Ok(None);
+	};
+	Ok(Some(mmr.gen_consistency_proof(pos).await?))
 }

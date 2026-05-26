@@ -11,11 +11,16 @@ use pesde::source::pesde::registry::*;
 #[get("/v2/log/inclusion/{seq}")]
 pub async fn http(app_state: web::Data<AppState>, path: web::Path<EntrySeq>) -> ControllerResult {
 	let seq = path.into_inner();
-	let result = handler(&app_state.database, seq).await?;
+	let Some(result) = handler(&app_state.database, seq).await? else {
+		return Ok(HttpResponse::NotFound().finish());
+	};
 	Ok(HttpResponse::Ok().json(result))
 }
 
-async fn handler(db: &Database, seq: EntrySeq) -> AppResult<InclusionProof<Sha256Merge>> {
+async fn handler(db: &Database, from: EntrySeq) -> AppResult<Option<InclusionProof<Sha256Merge>>> {
 	let mmr = db.read_mmr().await?;
-	Ok(mmr.gen_inclusion_proof(seq.0).await?)
+	let Some(pos) = db.get_pos(from).await? else {
+		return Ok(None);
+	};
+	Ok(Some(mmr.gen_inclusion_proof(pos).await?))
 }
