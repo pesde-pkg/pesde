@@ -13,37 +13,39 @@ use tracing::instrument;
 pub(crate) async fn refresh_git_repo(
 	path: PathBuf,
 	repo_url: GixUrl,
-) -> Result<(), errors::RefreshError> {
+) -> Result<(), errors::RefreshIndexError> {
 	if fs::metadata(&path).await.is_ok() {
 		spawn_blocking(move || {
 			let repo = match gix::open_opts(&path, gix::open::Options::isolated()) {
 				Ok(repo) => repo,
-				Err(e) => return Err(errors::RefreshErrorKind::Open(path, e).into()),
+				Err(e) => return Err(errors::RefreshIndexErrorKind::Open(path, e).into()),
 			};
 			let remote = match repo.find_default_remote(Direction::Fetch) {
 				Some(Ok(remote)) => remote,
 				Some(Err(e)) => {
-					return Err(errors::RefreshErrorKind::GetDefaultRemote(path, e).into());
+					return Err(errors::RefreshIndexErrorKind::GetDefaultRemote(path, e).into());
 				}
 				None => {
-					return Err(errors::RefreshErrorKind::NoDefaultRemote(path).into());
+					return Err(errors::RefreshIndexErrorKind::NoDefaultRemote(path).into());
 				}
 			};
 
 			let connection = remote
 				.connect(Direction::Fetch)
-				.map_err(|e| errors::RefreshErrorKind::Connect(repo_url.clone(), e))?;
+				.map_err(|e| errors::RefreshIndexErrorKind::Connect(repo_url.clone(), e))?;
 
 			let fetch = match connection.prepare_fetch(gix::progress::Discard, Default::default()) {
 				Ok(fetch) => fetch,
 				Err(e) => {
-					return Err(errors::RefreshErrorKind::PrepareFetch(repo_url.clone(), e).into());
+					return Err(
+						errors::RefreshIndexErrorKind::PrepareFetch(repo_url.clone(), e).into(),
+					);
 				}
 			};
 
 			match fetch.receive(gix::progress::Discard, &false.into()) {
-				Ok(_) => Ok::<_, errors::RefreshError>(()),
-				Err(e) => Err(errors::RefreshErrorKind::Read(repo_url.clone(), e).into()),
+				Ok(_) => Ok::<_, errors::RefreshIndexError>(()),
+				Err(e) => Err(errors::RefreshIndexErrorKind::Read(repo_url.clone(), e).into()),
 			}
 		})
 		.await
@@ -63,11 +65,17 @@ pub(crate) async fn refresh_git_repo(
 			gix::open::Options::isolated(),
 		)
 		.map_err(|e| {
-			errors::RefreshError::from(errors::RefreshErrorKind::Clone(repo_url.clone(), e))
+			errors::RefreshIndexError::from(errors::RefreshIndexErrorKind::Clone(
+				repo_url.clone(),
+				e,
+			))
 		})?
 		.fetch_only(gix::progress::Discard, &false.into())
 		.map_err(|e| {
-			errors::RefreshError::from(errors::RefreshErrorKind::Fetch(repo_url.clone(), e))
+			errors::RefreshIndexError::from(errors::RefreshIndexErrorKind::Fetch(
+				repo_url.clone(),
+				e,
+			))
 		})
 	})
 	.await
@@ -164,11 +172,11 @@ pub mod errors {
 
 	use crate::GixUrl;
 
-	/// Errors that can occur when refreshing a git-based package source
+	/// Errors that can occur when refreshing a git-based package source index
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = RefreshError))]
+	#[thiserror_ext(newtype(name = RefreshIndexError))]
 	#[non_exhaustive]
-	pub enum RefreshErrorKind {
+	pub enum RefreshIndexErrorKind {
 		/// Error interacting with the filesystem
 		#[error("error interacting with the filesystem")]
 		Io(#[from] std::io::Error),

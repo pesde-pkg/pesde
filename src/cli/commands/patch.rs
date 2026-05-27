@@ -1,4 +1,4 @@
-use crate::cli::install::get_graph_locked;
+use crate::cli::install::get_lockfile_locked;
 use crate::cli::style::CLI_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_PREFIX;
@@ -28,9 +28,9 @@ impl PatchCommand {
 		}
 
 		let refreshed_sources = RefreshedSources::new();
-		let graph = get_graph_locked(&project, &refreshed_sources).await?;
+		let lockfile = get_lockfile_locked(&project, &refreshed_sources).await?;
 
-		let Some(package) = graph.resolved_package(&self.package) else {
+		let Some(package) = lockfile.graph.resolved_package(&self.package) else {
 			anyhow::bail!("package not found in project");
 		};
 

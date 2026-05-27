@@ -378,11 +378,11 @@ impl RefreshedSources {
 
 	/// Refreshes the source asynchronously if it has not already been refreshed.
 	/// Will prevent more refreshes of the same source.
-	pub async fn refresh(
+	pub async fn refresh_index(
 		&self,
 		source: &PackageSources,
 		project: &Project,
-	) -> Result<(), source::errors::RefreshError> {
+	) -> Result<(), source::errors::RefreshIndexError> {
 		let mut hasher = std::hash::DefaultHasher::new();
 		source.hash(&mut hasher);
 		let hash = hasher.finish();
@@ -390,7 +390,7 @@ impl RefreshedSources {
 		let mut refreshed_sources = self.0.lock().await;
 
 		if refreshed_sources.insert(hash) {
-			source.refresh(project).await
+			source.refresh_index(project).await
 		} else {
 			Ok(())
 		}

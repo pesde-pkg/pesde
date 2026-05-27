@@ -3,10 +3,10 @@ use crate::Importer;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
-use crate::graph::DependencyGraph;
 use crate::graph::DependencyGraphImporter;
 use crate::graph::DependencyGraphNode;
 use crate::graph::DependencyGraphNodeDependency;
+use crate::lockfile::Lockfile;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::ManifestUrls;
@@ -26,6 +26,7 @@ use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -127,14 +128,14 @@ struct ResolveEntry {
 #[instrument(skip_all, level = "debug")]
 async fn prepare_queue(
 	project: &Project,
-	graph: &mut DependencyGraph,
-	previous_graph: Option<&DependencyGraph>,
+	lockfile: &mut Lockfile,
+	previous_lockfile: Option<&Lockfile>,
 ) -> Result<VecDeque<ResolveEntry>, errors::DependencyGraphError> {
 	let root_subproject = project.clone().subproject(Importer::root());
 	let root_manifest = root_subproject.deser_manifest().await?;
 	let root_dependencies = root_manifest.all_dependencies()?;
 
-	graph.overrides = root_manifest
+	lockfile.graph.overrides = root_manifest
 		.workspace
 		.overrides
 		.iter()
@@ -176,7 +177,9 @@ async fn prepare_queue(
 		.collect::<JoinSet<Result<_, errors::DependencyGraphError>>>();
 
 	// overrides can affect the graph at any level, so it's much easier and safer to ignore the previous graph if there are differences in overrides
-	let previous_graph = previous_graph.filter(|previous| previous.overrides == graph.overrides);
+	let previous_graph = previous_lockfile
+		.filter(|previous| previous.graph.overrides == lockfile.graph.overrides)
+		.map(|lockfile| &lockfile.graph);
 
 	let mut queue = VecDeque::<ResolveEntry>::new();
 
@@ -184,7 +187,8 @@ async fn prepare_queue(
 		let (subproject, manifest) = res.unwrap()?;
 		let all_current_dependencies = manifest.all_dependencies()?;
 
-		let importer_entry = graph
+		let importer_entry = lockfile
+			.graph
 			.importers
 			.entry(subproject.importer().clone())
 			.or_insert_with(|| DependencyGraphImporter {
@@ -228,7 +232,8 @@ async fn prepare_queue(
 					.dependencies
 					.insert(alias, (package_id.clone(), specifier.clone(), *source_ty));
 
-				graph
+				lockfile
+					.graph
 					.nodes
 					.insert(package_id.clone(), previous_graph.nodes[package_id].clone());
 
@@ -238,11 +243,12 @@ async fn prepare_queue(
 					let _inner_guard = inner_span.enter();
 
 					tracing::debug!("resolved sub-dependency {dep_id}");
-					if graph.nodes.contains_key(dep_id) {
-						tracing::debug!("sub-dependency {dep_id} already resolved in new graph",);
+					if lockfile.graph.nodes.contains_key(dep_id) {
+						tracing::debug!("sub-dependency {dep_id} already resolved in new graph");
 						continue;
 					}
-					graph
+					lockfile
+						.graph
 						.nodes
 						.insert(dep_id.clone(), previous_graph.nodes[dep_id].clone());
 
@@ -279,20 +285,21 @@ async fn prepare_queue(
 	Ok(queue)
 }
 
-type ResolveVersionData = (
-	PackageId,
-	StructureKind,
-	BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
-);
-
 #[instrument(skip_all, level = "debug")]
 async fn resolve_version(
 	subproject: Subproject,
-	graph: &DependencyGraph,
+	lockfile: &Lockfile,
 	refreshed_sources: &RefreshedSources,
 	pass_indices: bool,
 	specifier: &DependencySpecifiers,
-) -> Result<ResolveVersionData, errors::DependencyGraphError> {
+) -> Result<
+	(
+		PackageId,
+		StructureKind,
+		BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
+	),
+	errors::DependencyGraphError,
+> {
 	let mut manifest = None;
 
 	let mut inner = async |specifier: &DependencySpecifiers, pass_indices: bool| {
@@ -302,7 +309,7 @@ async fn resolve_version(
 		let source = specifier_to_source(manifest.as_ref().map(|m| &m.urls), specifier)?;
 
 		refreshed_sources
-			.refresh(&source, subproject.project())
+			.refresh_index(&source, subproject.project())
 			.await?;
 
 		let ResolveResult {
@@ -314,7 +321,8 @@ async fn resolve_version(
 			.resolve(&subproject, specifier, refreshed_sources)
 			.await?;
 
-		let Some((package_id, dependencies)) = graph
+		let Some((package_id, dependencies)) = lockfile
+			.graph
 			.nodes
 			.keys()
 			.rfind(|package_id| {
@@ -343,36 +351,39 @@ async fn resolve_version(
 	};
 
 	let (id, structure_kind, deps) = inner(specifier, pass_indices).await?;
-	if let Some(specifier) = graph.overrides.get(&id) {
+	if let Some(specifier) = lockfile.graph.overrides.get(&id) {
 		return inner(specifier, true).await;
 	}
 	Ok((id, structure_kind, deps))
 }
 
 impl Project {
-	/// Create a dependency graph from the project's manifest
+	/// Solves the project's dependency requirements and creates a new [Lockfile]
 	#[instrument(
-		skip(self, previous_graph, refreshed_sources),
+		skip(self, previous_lockfile, refreshed_sources),
 		ret(level = "trace"),
 		level = "debug"
 	)]
-	pub async fn dependency_graph(
+	pub async fn solve(
 		&self,
-		previous_graph: Option<&DependencyGraph>,
+		previous_lockfile: Option<&Lockfile>,
 		refreshed_sources: &RefreshedSources,
 		// used by `x` command - if true, specifier indices are expected to be URLs
 		is_published_package: bool,
-	) -> Result<(DependencyGraph, bool), errors::DependencyGraphError> {
-		let mut graph = DependencyGraph {
-			importers: Default::default(),
-			overrides: Default::default(),
-			nodes: Default::default(),
+	) -> Result<(Lockfile, bool), errors::DependencyGraphError> {
+		let mut lockfile = Lockfile {
+			graph: Default::default(),
+			source_states: previous_lockfile
+				.map(|l| l.source_states.clone())
+				.unwrap_or_default(),
 		};
 
-		let mut queue = prepare_queue(self, &mut graph, previous_graph).await?;
+		let mut sources_seen = HashSet::<PackageSources>::new();
+
+		let mut queue = prepare_queue(self, &mut lockfile, previous_lockfile).await?;
 		if queue.is_empty() {
 			tracing::debug!("dependency graph is up to date");
-			return Ok((graph, false));
+			return Ok((lockfile, false));
 		}
 
 		while let Some(entry) = queue.pop_front() {
@@ -384,15 +395,27 @@ impl Project {
 
 				let (package_id, structure_kind, dependencies) = resolve_version(
 					entry.subproject.clone(),
-					&graph,
+					&lockfile,
 					refreshed_sources,
 					!is_published_package && depth == 0,
 					&entry.specifier,
 				)
 				.await?;
 
+				let source = package_id.source();
+				if sources_seen.insert(source.clone()) {
+					let source_str = source.to_string();
+					let old_state = previous_lockfile
+						.as_ref()
+						.and_then(|l| l.source_states.get(&source_str));
+					if let Some(state) = source.refresh_state(self, old_state).await? {
+						lockfile.source_states.insert(source_str, state);
+					}
+				}
+
 				if depth == 0 {
-					graph
+					lockfile
+						.graph
 						.importers
 						.get_mut(entry.subproject.importer())
 						.unwrap()
@@ -404,7 +427,8 @@ impl Project {
 				}
 
 				if let Some(dependant_id) = entry.dependant {
-					graph
+					lockfile
+						.graph
 						.nodes
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in graph")
@@ -419,13 +443,13 @@ impl Project {
 						);
 				}
 
-				if graph.nodes.contains_key(&package_id) {
+				if lockfile.graph.nodes.contains_key(&package_id) {
 					tracing::debug!("{package_id} already resolved");
 
 					return Ok(());
 				}
 
-				graph.nodes.insert(
+				lockfile.graph.nodes.insert(
 					package_id.clone(),
 					DependencyGraphNode {
 						dependencies: Default::default(),
@@ -466,7 +490,7 @@ impl Project {
 			.await?;
 		}
 
-		Ok((graph, true))
+		Ok((lockfile, true))
 	}
 }
 
@@ -477,7 +501,7 @@ pub mod errors {
 	use crate::source::DependencySpecifiers;
 	use thiserror::Error;
 
-	/// Errors that can occur when creating a dependency graph
+	/// Errors that can occur when solving dependencies
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = DependencyGraphError))]
 	#[non_exhaustive]
@@ -506,13 +530,17 @@ pub mod errors {
 		#[error("wally index named `{0}` not found in manifest")]
 		WallyIndexNotFound(String),
 
-		/// An error occurred while refreshing a package source
-		#[error("error refreshing package source")]
-		Refresh(#[from] crate::source::errors::RefreshError),
+		/// An error occurred while refreshing a package source index
+		#[error("error refreshing package source index")]
+		RefreshIndex(#[from] crate::source::errors::RefreshIndexError),
 
 		/// An error occurred while resolving a package
 		#[error("error resolving package")]
 		Resolve(#[from] crate::source::errors::ResolveError),
+
+		/// An error occurred while refreshing source state
+		#[error("error refreshing source state")]
+		RefreshState(#[from] crate::source::errors::RefreshStateError),
 
 		/// No matching version was found for a specifier
 		#[error("no matching version found for {0}")]

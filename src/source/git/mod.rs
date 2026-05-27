@@ -50,6 +50,9 @@ pub mod backend;
 pub mod pkg_ref;
 pub mod specifier;
 
+/// State for Git package source
+pub type GitSourceState = ();
+
 /// The Git package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct GitPackageSource {
@@ -94,14 +97,15 @@ impl GitPackageSource {
 }
 
 impl PackageSource for GitPackageSource {
-	type RefreshError = errors::RefreshError;
+	type RefreshIndexError = errors::RefreshIndexError;
+	type RefreshStateError = errors::RefreshStateError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-		self.repo.refresh(project).await
+	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
+		self.repo.refresh_index(project).await
 	}
 
 	#[instrument(skip_all, level = "debug")]
@@ -417,7 +421,11 @@ pub mod errors {
 	use relative_path::RelativePathBuf;
 	use thiserror::Error;
 
-	pub use crate::source::git::backend::errors::RefreshError;
+	/// Errors that can occur when refreshing the Git package source index
+	pub type RefreshIndexError = crate::source::git::backend::errors::RefreshIndexError;
+
+	/// Errors that can occur when refreshing the Git package source state
+	pub type RefreshStateError = std::convert::Infallible;
 
 	/// Errors that can occur when downloading a package from a Git package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
