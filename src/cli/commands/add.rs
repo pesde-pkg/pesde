@@ -74,7 +74,7 @@ impl AddCommand {
 		let refreshed_sources = RefreshedSources::new();
 
 		refreshed_sources
-			.refresh(&source, subproject.project())
+			.refresh_index(&source, subproject.project())
 			.await
 			.context("failed to refresh package source")?;
 

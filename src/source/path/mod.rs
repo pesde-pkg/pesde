@@ -36,6 +36,9 @@ use tracing::instrument;
 pub mod pkg_ref;
 pub mod specifier;
 
+/// State for path package source
+pub type PathSourceState = ();
+
 pub(crate) fn local_version() -> Version {
 	Version {
 		major: 0,
@@ -81,7 +84,8 @@ impl FromStr for RelativeOrAbsolutePath {
 pub struct PathPackageSource;
 
 impl PackageSource for PathPackageSource {
-	type RefreshError = errors::RefreshError;
+	type RefreshIndexError = errors::RefreshIndexError;
+	type RefreshStateError = errors::RefreshStateError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetExportsError = errors::GetExportsError;
@@ -226,9 +230,12 @@ pub mod errors {
 
 	/// Errors that can occur when refreshing the path package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = RefreshError))]
+	#[thiserror_ext(newtype(name = RefreshIndexError))]
 	#[non_exhaustive]
-	pub enum RefreshErrorKind {}
+	pub enum RefreshIndexErrorKind {}
+
+	/// Errors that can occur when refreshing the path package source state
+	pub type RefreshStateError = std::convert::Infallible;
 
 	/// Errors that can occur when resolving a path package
 	#[derive(Debug, Error, thiserror_ext::Box)]

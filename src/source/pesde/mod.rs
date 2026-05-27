@@ -13,6 +13,7 @@ use futures::StreamExt as _;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
+use crate::hash::Hash;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
@@ -23,18 +24,30 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
+use crate::source::SourceState;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::pesde::backend::ApiPesdePackageSourceBackend;
 use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
+use serde::Deserialize;
+use serde::Serialize;
 use tracing::instrument;
 
 pub mod backend;
 pub mod pkg_ref;
 pub mod registry;
 pub mod specifier;
+
+/// State for a pesde package source (MMR data)
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct PesdeSourceState {
+	/// The MMR size for this source (number of entries in the log)
+	pub mmr_size: u64,
+	/// The MMR accumulator (peak hashes) for this source
+	pub accumulator: Vec<Hash>,
+}
 
 /// The pesde package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -80,14 +93,24 @@ impl PesdePackageSource {
 }
 
 impl PackageSource for PesdePackageSource {
-	type RefreshError = errors::RefreshError;
+	type RefreshIndexError = errors::RefreshIndexError;
+	type RefreshStateError = errors::RefreshStateError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-		self.repo.refresh(project).await
+	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
+		self.repo.refresh_index(project).await
+	}
+
+	#[instrument(skip_all, level = "debug")]
+	async fn refresh_state(
+		&self,
+		project: &Project,
+		old_state: Option<&SourceState>,
+	) -> Result<Option<SourceState>, Self::RefreshStateError> {
+		self.repo.refresh_state(project, old_state).await
 	}
 
 	#[instrument(skip_all, level = "debug")]
@@ -200,7 +223,10 @@ pub mod errors {
 
 	use crate::names::PackageName;
 
-	pub use super::backend::errors::RefreshError;
+	/// Errors that can occur when refreshing the pesde package source index
+	pub type RefreshIndexError = super::backend::errors::RefreshIndexError;
+	/// Errors that can occur when refreshing the pesde package source state
+	pub type RefreshStateError = super::backend::errors::RefreshStateError;
 
 	/// Errors that can occur when resolving a package from a pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]

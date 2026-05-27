@@ -1,5 +1,8 @@
 //! Lockfile
+use std::collections::BTreeMap;
+
 use crate::graph::DependencyGraph;
+use crate::source::SourceState;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -11,6 +14,9 @@ pub const CURRENT_FORMAT: usize = 3;
 pub struct Lockfile {
 	/// The graph of dependencies
 	pub graph: DependencyGraph,
+	/// State stored by sources
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+	pub source_states: BTreeMap<String, SourceState>,
 }
 
 /// Parses the lockfile, updating it to the [`CURRENT_FORMAT`] from the format it's at
