@@ -35,13 +35,13 @@ pub struct InstallOptions {
 	pub force: bool,
 }
 
-async fn get_graph_internal(
+async fn get_lockfile_internal(
 	project: &Project,
 	refreshed_sources: &RefreshedSources,
 	locked: bool,
 	use_lockfile: bool,
-) -> anyhow::Result<(Option<DependencyGraph>, DependencyGraph)> {
-	let lockfile = if use_lockfile {
+) -> anyhow::Result<(Option<Lockfile>, Lockfile)> {
+	let old_lockfile = if use_lockfile {
 		match project.deser_lockfile().await {
 			Ok(lockfile) => Some(lockfile),
 			Err(e) => {
@@ -58,10 +58,8 @@ async fn get_graph_internal(
 		None
 	};
 
-	let old_graph = lockfile.map(|lockfile| lockfile.graph);
-
-	let (graph, updated) = project
-		.dependency_graph(old_graph.as_ref(), refreshed_sources, false)
+	let (new_lockfile, updated) = project
+		.solve(old_lockfile.as_ref(), refreshed_sources, false)
 		.await
 		.context("failed to build dependency graph")?;
 
@@ -72,25 +70,25 @@ async fn get_graph_internal(
 		);
 	}
 
-	Ok((old_graph, graph))
+	Ok((old_lockfile, new_lockfile))
 }
 
-pub async fn get_graph(
+pub async fn get_lockfile(
 	project: &Project,
 	refreshed_sources: &RefreshedSources,
-) -> anyhow::Result<DependencyGraph> {
-	let (_, graph) = get_graph_internal(project, refreshed_sources, false, true).await?;
+) -> anyhow::Result<Lockfile> {
+	let (_, lockfile) = get_lockfile_internal(project, refreshed_sources, false, true).await?;
 
-	Ok(graph)
+	Ok(lockfile)
 }
 
-pub async fn get_graph_locked(
+pub async fn get_lockfile_locked(
 	project: &Project,
 	refreshed_sources: &RefreshedSources,
-) -> anyhow::Result<DependencyGraph> {
-	let (_, graph) = get_graph_internal(project, refreshed_sources, true, true).await?;
+) -> anyhow::Result<Lockfile> {
+	let (_, lockfile) = get_lockfile_internal(project, refreshed_sources, true, true).await?;
 
-	Ok(graph)
+	Ok(lockfile)
 }
 
 pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Result<()> {
@@ -98,15 +96,16 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 
 	let refreshed_sources = RefreshedSources::new();
 
-	let (new_lockfile, old_graph) =
+	let (new_lockfile, old_lockfile) =
 		reporters::run_with_reporter(|multi, root_progress, reporter| async {
 			let multi = multi;
 			let root_progress = root_progress;
+			let reporter = reporter;
 
 			root_progress.reset();
 			root_progress.set_message("resolve");
 
-			let (old_graph, graph) = get_graph_internal(
+			let (old_lockfile, new_lockfile) = get_lockfile_internal(
 				project,
 				&refreshed_sources,
 				options.locked,
@@ -115,7 +114,8 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 			.await?;
 
 			#[expect(deprecated)]
-			let mut tasks = graph
+			let mut tasks = new_lockfile
+				.graph
 				.nodes
 				.keys()
 				.filter_map(|id| {
@@ -132,7 +132,7 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 
 					Some(async move {
 						refreshed_sources
-							.refresh(&PackageSources::LegacyPesde(source.clone()), &project)
+							.refresh_index(&PackageSources::LegacyPesde(source.clone()), &project)
 							.await
 							.context("failed to refresh source")?;
 
@@ -170,7 +170,7 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 
 				project
 					.download_and_link(
-						&graph,
+						&new_lockfile.graph,
 						DownloadAndLinkOptions::<CliReporter>::new()
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources.clone())
@@ -185,20 +185,18 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 			root_progress.reset();
 			root_progress.set_message("finish");
 
-			let new_lockfile = Lockfile { graph };
-
 			project
 				.write_lockfile(&new_lockfile)
 				.await
 				.context("failed to write lockfile")?;
 
-			anyhow::Ok((new_lockfile, old_graph))
+			anyhow::Ok((new_lockfile, old_lockfile))
 		})
 		.await?;
 
 	let elapsed = start.elapsed();
 
-	print_install_summary(old_graph, new_lockfile.graph);
+	print_install_summary(old_lockfile.map(|l| l.graph), new_lockfile.graph);
 
 	println!("done in {:.2}s", elapsed.as_secs_f64());
 

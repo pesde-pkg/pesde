@@ -64,7 +64,7 @@ impl ExecuteCommand {
 
 				let refreshed_sources = RefreshedSources::new();
 				refreshed_sources
-					.refresh(&source, subproject.project())
+					.refresh_index(&source, subproject.project())
 					.await
 					.context("failed to refresh source")?;
 
@@ -139,15 +139,14 @@ impl ExecuteCommand {
 					subproject.project().reqwest().clone(),
 				);
 
-				let graph = project
-					.dependency_graph(None, &refreshed_sources, true)
+				let (lockfile, _) = project
+					.solve(None, &refreshed_sources, true)
 					.await
-					.context("failed to build dependency graph")?
-					.0;
+					.context("failed to build dependency graph")?;
 
 				project
 					.download_and_link(
-						&graph,
+						&lockfile.graph,
 						DownloadAndLinkOptions::<CliReporter<Stderr>>::new()
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources)

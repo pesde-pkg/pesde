@@ -56,7 +56,7 @@ impl Project {
 					}
 
 					let source = package.id.source();
-					refreshed_sources.refresh(source, &project).await?;
+					refreshed_sources.refresh_index(source, &project).await?;
 
 					tracing::debug!("downloading");
 
@@ -96,9 +96,9 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = DownloadGraphError))]
 	#[non_exhaustive]
 	pub enum DownloadGraphErrorKind {
-		/// An error occurred refreshing a package source
-		#[error("failed to refresh package source")]
-		RefreshFailed(#[from] crate::source::errors::RefreshError),
+		/// An error occurred refreshing a package source index
+		#[error("failed to refresh package source index")]
+		RefreshIndexFailed(#[from] crate::source::errors::RefreshIndexError),
 
 		/// Error interacting with the filesystem
 		#[error("error interacting with the filesystem")]

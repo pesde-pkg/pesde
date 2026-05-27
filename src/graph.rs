@@ -104,7 +104,7 @@ pub struct DependencyGraphNode {
 }
 
 /// A graph of dependencies in a project
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct DependencyGraph {
 	/// The importers in the graph
 	pub importers: BTreeMap<Importer, DependencyGraphImporter>,

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::cli::install::get_graph;
+use crate::cli::install::get_lockfile;
 use crate::cli::style::ADDED_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::REMOVED_STYLE;
@@ -28,19 +28,24 @@ pub struct OutdatedCommand {
 impl OutdatedCommand {
 	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
 		let refreshed_sources = RefreshedSources::new();
-		let mut graph = get_graph(subproject.project(), &refreshed_sources).await?;
+		let mut lockfile = get_lockfile(subproject.project(), &refreshed_sources).await?;
 
 		let refreshed_sources = RefreshedSources::new();
 
 		let mut tasks = if subproject.importer().is_root() {
 			Either::Left(
-				graph.importers.into_iter().map(|(importer, deps)| {
-					(subproject.project().clone().subproject(importer), deps)
-				}),
+				lockfile
+					.graph
+					.importers
+					.into_iter()
+					.map(|(importer, deps)| {
+						(subproject.project().clone().subproject(importer), deps)
+					}),
 			)
 		} else {
 			Either::Right(
-				graph
+				lockfile
+					.graph
 					.importers
 					.remove(subproject.importer())
 					.map(|deps| (subproject, deps))
@@ -75,7 +80,7 @@ impl OutdatedCommand {
 						}
 						async move {
 							refreshed_sources
-								.refresh(id.source(), subproject.project())
+								.refresh_index(id.source(), subproject.project())
 								.await
 								.context("failed to refresh source")?;
 
