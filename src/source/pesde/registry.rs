@@ -226,13 +226,14 @@ pub struct Entry {
 const LEAF_DOMAIN: u8 = 0x00;
 const NODE_DOMAIN: u8 = 0x01;
 
-// TODO: remove this once const adt_const_params is stable
+// TODO: remove this once adt_const_params is stable
 #[doc(hidden)]
 pub trait THashAlgorithm {
 	const ALGORITHM: HashAlgorithm;
 }
 
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct Sha256Hash;
 impl THashAlgorithm for Sha256Hash {
 	const ALGORITHM: HashAlgorithm = HashAlgorithm::Sha256;
@@ -241,6 +242,7 @@ impl THashAlgorithm for Sha256Hash {
 pub type Sha256Merge = HashAlgorithmMerge<Sha256Hash>;
 
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct HashAlgorithmMerge<H: THashAlgorithm>(PhantomData<H>);
 
 impl<H: THashAlgorithm> Merge for HashAlgorithmMerge<H> {
