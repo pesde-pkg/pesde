@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 
 use bitflags::bitflags;
 use merkleberg::Merge;
+use merkleberg::mmriver::ConsistencyProof;
 use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
@@ -221,6 +222,33 @@ pub struct Entry {
 	pub seq: EntrySeq,
 	/// The payload of this entry
 	pub payload: EntryPayload,
+}
+
+/// The MMR state as coming from the log head endpoint
+#[derive(Debug, Serialize, Deserialize)]
+pub enum LogHeadResponseState {
+	/// There is only a TOFU MMR size, and no previous state to compare against
+	OnlyNewState {
+		/// The MMR's size
+		mmr_size_to: u64,
+	},
+	/// There is a previous state, and a consistency proof that can be verified against it
+	WithPreviousState {
+		/// The consistency proof
+		#[serde(flatten)]
+		proof: ConsistencyProof<Sha256Merge>,
+	},
+}
+
+/// The response of the log head endpoint
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogHeadResponse {
+	/// The sequence number of the head entry in the log
+	pub seq: EntrySeq,
+	/// The accumulator of the head entry in the log, as a list of hashes
+	pub accumulator: Vec<Hash>,
+	/// The MMR state
+	pub state: LogHeadResponseState,
 }
 
 const LEAF_DOMAIN: u8 = 0x00;
