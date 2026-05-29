@@ -47,12 +47,17 @@ impl Database {
 		panic!("unsupported database protocol `{protocol}`")
 	}
 
+	#[must_use]
+	pub fn read_mmr_sized(&self, size: u64) -> MMRIVER<Sha256Merge, &Self> {
+		MMRIVER::new(size, self)
+	}
+
 	pub async fn read_mmr(&self) -> anyhow::Result<MMRIVER<Sha256Merge, &Self>> {
 		let mmr_size = match self {
 			Self::MySql(pool) => mysql::mmr_size(pool).await?,
 		};
 
-		Ok(MMRIVER::new(mmr_size, self))
+		Ok(self.read_mmr_sized(mmr_size))
 	}
 
 	pub async fn write_mmr(&self) -> anyhow::Result<MMRIVER<Sha256Merge, DatabaseTransaction<'_>>> {

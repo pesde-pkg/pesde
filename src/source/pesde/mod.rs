@@ -29,6 +29,7 @@ use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::pesde::backend::ApiPesdePackageSourceBackend;
+use crate::source::pesde::registry::LogHeadResponseState;
 use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
 use serde::Deserialize;
@@ -110,7 +111,45 @@ impl PackageSource for PesdePackageSource {
 		project: &Project,
 		old_state: Option<&SourceState>,
 	) -> Result<Option<SourceState>, Self::RefreshStateError> {
-		self.repo.refresh_state(project, old_state).await
+		let old_state = old_state.map(|old_state| {
+			let SourceState::Pesde(old_state) = old_state else {
+				unreachable!("invalid source state type for pesde package source");
+			};
+
+			old_state
+		});
+
+		let new_state = self.repo.fetch_state(project, old_state).await?;
+		let new_state = match (old_state, new_state) {
+			(Some(_), None) => return Err(errors::RefreshStateErrorKind::NoNewState.into()),
+			(None, None) => return Ok(None),
+			(None, Some(new_state)) => {
+				let LogHeadResponseState::OnlyNewState { mmr_size_to } = new_state.state else {
+					return Err(errors::RefreshStateErrorKind::InvalidResponseState.into());
+				};
+
+				PesdeSourceState {
+					mmr_size: mmr_size_to,
+					accumulator: new_state.accumulator,
+				}
+			}
+			(Some(old_state), Some(new_state)) => {
+				let LogHeadResponseState::WithPreviousState { proof } = new_state.state else {
+					return Err(errors::RefreshStateErrorKind::InvalidResponseState.into());
+				};
+
+				if !proof.verify(&old_state.accumulator, &new_state.accumulator)? {
+					return Err(errors::RefreshStateErrorKind::ConsistencyProofFailed.into());
+				}
+
+				PesdeSourceState {
+					mmr_size: proof.mmr_size_to(),
+					accumulator: new_state.accumulator,
+				}
+			}
+		};
+
+		Ok(Some(SourceState::Pesde(new_state)))
 	}
 
 	#[instrument(skip_all, level = "debug")]
@@ -225,8 +264,32 @@ pub mod errors {
 
 	/// Errors that can occur when refreshing the pesde package source index
 	pub type RefreshIndexError = super::backend::errors::RefreshIndexError;
+
 	/// Errors that can occur when refreshing the pesde package source state
-	pub type RefreshStateError = super::backend::errors::RefreshStateError;
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = RefreshStateError))]
+	#[non_exhaustive]
+	pub enum RefreshStateErrorKind {
+		/// Error from backend
+		#[error("error refreshing state")]
+		Backend(#[from] super::backend::errors::RefreshStateError),
+
+		/// The backend has not returned a new state despite there being a previous state
+		#[error("backend did not return a new state despite there being a previous state")]
+		NoNewState,
+
+		/// The consistency proof from the backend did not verify against the previous state
+		#[error("consistency proof did not verify against previous state")]
+		ConsistencyProofFailed,
+
+		/// Error interacting with Merkleberg
+		#[error("error verifying consistency proof")]
+		Merkleberg(#[from] merkleberg::Error),
+
+		/// The response state was invalid as compared to the client's state (e.g. a TOFU client got a response with a consistency proof)
+		#[error("invalid response state from backend")]
+		InvalidResponseState,
+	}
 
 	/// Errors that can occur when resolving a package from a pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]

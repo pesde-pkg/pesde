@@ -96,7 +96,7 @@ impl ResponseError for AppError {
 				)
 			}
 			AppError::Merkleberg(merkleberg::Error::GenProofForInvalidLeaves) => {
-				(StatusCode::NOT_FOUND, json!({ "error": "leaf not known" }))
+				(StatusCode::NOT_FOUND, json!({ "error": "entry not known" }))
 			}
 			AppError::Merkleberg(e) => {
 				tracing::error!("internal server error: {e}");

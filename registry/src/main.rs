@@ -69,7 +69,6 @@ async fn main() -> std::io::Result<()> {
 					.to(async || concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"))),
 			)
 			.service(features::log::get_head::http)
-			.service(features::log::get_consistency::http)
 			.service(features::log::get_inclusion::http)
 			.service(features::log::get_entry::http)
 			.service(features::package::get_versions::http)
