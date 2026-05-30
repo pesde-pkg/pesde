@@ -5,9 +5,9 @@ use crate::PACKAGES_CONTAINER_NAME;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
-use crate::graph::DependencyGraph;
 use crate::graph::DependencyGraphNode;
 use crate::linking::generator::get_file_types;
+use crate::lockfile::Lockfile;
 use crate::manifest::DependencyType;
 
 use crate::reporters::DownloadsReporter;
@@ -151,12 +151,13 @@ impl Project {
 	)]
 	pub async fn download_and_link<Reporter>(
 		&self,
-		graph: &DependencyGraph,
+		lockfile: &Lockfile,
 		options: DownloadAndLinkOptions<Reporter>,
 	) -> Result<HashMap<PackageId, Arc<PackageExports>>, errors::DownloadAndLinkError>
 	where
 		Reporter: DownloadsReporter + PatchesReporter + 'static,
 	{
+		let graph = &lockfile.graph;
 		let DownloadAndLinkOptions {
 			reporter,
 			refreshed_sources,
@@ -276,13 +277,9 @@ impl Project {
 			let span = tracing::debug_span!("download");
 			let _guard = span.enter();
 
-			// mutable references right below, need to collect to satisfy the borrow checker
-			#[allow(clippy::needless_collect)]
 			let downloaded = self.download_graph(
-				graph_to_download
-					.keys()
-					.map(|id| graph.resolved_package(id).unwrap())
-					.collect::<Vec<_>>(),
+				lockfile,
+				graph_to_download.keys(),
 				reporter.as_ref(),
 				&refreshed_sources,
 				network_concurrency,

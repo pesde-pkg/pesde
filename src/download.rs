@@ -1,10 +1,10 @@
 //! Downloading packages
 use crate::Project;
 use crate::RefreshedSources;
+use crate::lockfile::Lockfile;
 use crate::reporters::DownloadProgressReporter as _;
 use crate::reporters::DownloadsReporter;
 use crate::source::PackageSource as _;
-use crate::source::ResolvedPackage;
 use crate::source::fs::PackageFs;
 use crate::source::ids::PackageId;
 use async_stream::try_stream;
@@ -19,14 +19,15 @@ use tracing::instrument;
 impl Project {
 	/// Downloads a graph of dependencies.
 	#[instrument(skip_all, level = "debug")]
-	pub(crate) fn download_graph<Reporter>(
+	pub(crate) fn download_graph<'a, Reporter>(
 		&self,
-		graph: impl IntoIterator<Item = ResolvedPackage>,
+		lockfile: &'a Lockfile,
+		package_ids: impl Iterator<Item = &'a PackageId> + 'a,
 		reporter: Option<&Arc<Reporter>>,
 		refreshed_sources: &RefreshedSources,
 		network_concurrency: NonZeroUsize,
 	) -> Result<
-		impl Stream<Item = Result<(PackageId, PackageFs), errors::DownloadGraphError>>,
+		impl Stream<Item = Result<(PackageId, PackageFs), errors::DownloadGraphError>> + 'a,
 		errors::DownloadGraphError,
 	>
 	where
@@ -34,15 +35,16 @@ impl Project {
 	{
 		let semaphore = Arc::new(Semaphore::new(network_concurrency.get()));
 
-		let mut tasks = graph
-			.into_iter()
-			.map(|package| {
-				let span = tracing::info_span!("download", package_id = package.id.to_string());
+		let mut tasks = package_ids
+			.map(|package_id| {
+				let span = tracing::info_span!("download", package_id = package_id.to_string());
 
 				let project = self.clone();
 				let reporter = reporter.cloned();
 				let refreshed_sources = refreshed_sources.clone();
 				let semaphore = semaphore.clone();
+				let source_state = lockfile.source_states[package_id.source()].clone();
+				let package = lockfile.graph.resolved_package(package_id).unwrap();
 
 				async move {
 					let _permit = semaphore.acquire().await;
@@ -63,10 +65,19 @@ impl Project {
 					let fs = match progress_reporter {
 						Some(progress_reporter) => {
 							source
-								.download(&project, &package, progress_reporter.into())
+								.download(
+									&project,
+									&source_state,
+									&package,
+									progress_reporter.into(),
+								)
 								.await
 						}
-						None => source.download(&project, &package, ().into()).await,
+						None => {
+							source
+								.download(&project, &source_state, &package, ().into())
+								.await
+						}
 					}?;
 
 					tracing::debug!("downloaded");

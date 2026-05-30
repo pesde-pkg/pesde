@@ -21,6 +21,7 @@ use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
+use crate::source::SourceState;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
@@ -38,6 +39,8 @@ use crate::util::simplify_path;
 use fs_err::tokio as fs;
 use semver::BuildMetadata;
 use semver::Version;
+use serde::Deserialize;
+use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::path::Path;
@@ -51,7 +54,9 @@ pub mod pkg_ref;
 pub mod specifier;
 
 /// State for Git package source
-pub type GitSourceState = ();
+/// State for Git package source
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitSourceState(());
 
 /// The Git package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -109,9 +114,19 @@ impl PackageSource for GitPackageSource {
 	}
 
 	#[instrument(skip_all, level = "debug")]
+	async fn refresh_state(
+		&self,
+		_project: &Project,
+		_old_state: Option<&SourceState>,
+	) -> Result<SourceState, Self::RefreshStateError> {
+		Ok(SourceState::Git(GitSourceState(())))
+	}
+
+	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
+		_source_state: &SourceState,
 		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
@@ -202,6 +217,7 @@ impl PackageSource for GitPackageSource {
 	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
+		_source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
