@@ -7,6 +7,7 @@ use crate::lockfile::Lockfile;
 use crate::manifest::Manifest;
 use crate::source::PackageSource as _;
 use crate::source::PackageSources;
+use crate::source::SourceState;
 use fs_err::tokio as fs;
 use relative_path::RelativePath;
 use relative_path::RelativePathBuf;
@@ -19,8 +20,6 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::hash::Hash as _;
-use std::hash::Hasher as _;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -365,9 +364,9 @@ pub async fn matching_globs<'a>(
 	Ok(paths)
 }
 
-/// A struct containing sources already having been refreshed
+/// A struct containing sources already having been refreshed and their states
 #[derive(Debug, Clone, Default)]
-pub struct RefreshedSources(Arc<tokio::sync::Mutex<HashSet<u64>>>);
+pub struct RefreshedSources(Arc<tokio::sync::Mutex<HashMap<PackageSources, SourceState>>>);
 
 impl RefreshedSources {
 	/// Create a new empty `RefreshedSources`
@@ -378,22 +377,21 @@ impl RefreshedSources {
 
 	/// Refreshes the source asynchronously if it has not already been refreshed.
 	/// Will prevent more refreshes of the same source.
-	pub async fn refresh_index(
+	pub async fn refresh(
 		&self,
 		source: &PackageSources,
 		project: &Project,
-	) -> Result<(), source::errors::RefreshIndexError> {
-		let mut hasher = std::hash::DefaultHasher::new();
-		source.hash(&mut hasher);
-		let hash = hasher.finish();
-
+		old_state: Option<&SourceState>,
+	) -> Result<SourceState, source::errors::RefreshError> {
 		let mut refreshed_sources = self.0.lock().await;
 
-		if refreshed_sources.insert(hash) {
-			source.refresh_index(project).await
-		} else {
-			Ok(())
+		if let Some(state) = refreshed_sources.get(source) {
+			return Ok(state.clone());
 		}
+
+		let new_state = source.refresh(project, old_state).await?;
+		refreshed_sources.insert(source.clone(), new_state.clone());
+		Ok(new_state)
 	}
 }
 

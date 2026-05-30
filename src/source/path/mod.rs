@@ -86,18 +86,17 @@ impl FromStr for RelativeOrAbsolutePath {
 pub struct PathPackageSource;
 
 impl PackageSource for PathPackageSource {
-	type RefreshIndexError = errors::RefreshIndexError;
-	type RefreshStateError = errors::RefreshStateError;
+	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh_state(
+	async fn refresh(
 		&self,
 		_project: &Project,
 		_old_state: Option<&SourceState>,
-	) -> Result<SourceState, Self::RefreshStateError> {
+	) -> Result<SourceState, Self::RefreshError> {
 		Ok(SourceState::Path(PathSourceState(())))
 	}
 
@@ -243,12 +242,9 @@ pub mod errors {
 
 	/// Errors that can occur when refreshing the path package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = RefreshIndexError))]
+	#[thiserror_ext(newtype(name = RefreshError))]
 	#[non_exhaustive]
-	pub enum RefreshIndexErrorKind {}
-
-	/// Errors that can occur when refreshing the path package source state
-	pub type RefreshStateError = std::convert::Infallible;
+	pub enum RefreshErrorKind {}
 
 	/// Errors that can occur when resolving a path package
 	#[derive(Debug, Error, thiserror_ext::Box)]

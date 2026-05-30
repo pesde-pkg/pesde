@@ -19,25 +19,17 @@ use std::sync::Arc;
 
 /// A source of pesde packages
 pub trait PesdePackageSourceBackend: Debug + Display + Send + Sync {
-	/// The error type for refreshing this backend's index
-	type RefreshIndexError: std::error::Error + Send + Sync + 'static;
-	/// The error type for fetching state
-	type FetchStateError: std::error::Error + Send + Sync + 'static;
+	/// The error type for refreshing this backend
+	type RefreshError: std::error::Error + Send + Sync + 'static;
 	/// The error type for downloading entries
 	type DownloadError: std::error::Error + Send + Sync + 'static;
 
-	/// Refreshes the backend's index
-	fn refresh_index(
-		&self,
-		project: &Project,
-	) -> impl Future<Output = Result<(), Self::RefreshIndexError>> + Send;
-
-	/// Fetches the source state
-	fn fetch_state(
+	/// Refreshes the backend and fetches state
+	fn refresh(
 		&self,
 		project: &Project,
 		old_state: Option<&PesdeSourceState>,
-	) -> impl Future<Output = Result<Option<LogHeadResponse>, Self::FetchStateError>> + Send;
+	) -> impl Future<Output = Result<Option<LogHeadResponse>, Self::RefreshError>> + Send;
 
 	/// Downloads entries for a package version
 	fn download_entries<R: DownloadProgressReporter + 'static>(
@@ -92,19 +84,14 @@ impl ApiPesdePackageSourceBackend {
 }
 
 impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
-	type RefreshIndexError = errors::ApiRefreshIndexError;
-	type FetchStateError = errors::ApiFetchStateError;
+	type RefreshError = errors::ApiRefreshError;
 	type DownloadError = errors::ApiDownloadError;
 
-	async fn refresh_index(&self, _project: &Project) -> Result<(), Self::RefreshIndexError> {
-		Ok(())
-	}
-
-	async fn fetch_state(
+	async fn refresh(
 		&self,
 		project: &Project,
 		old_state: Option<&PesdeSourceState>,
-	) -> Result<Option<LogHeadResponse>, Self::FetchStateError> {
+	) -> Result<Option<LogHeadResponse>, Self::RefreshError> {
 		let mut url = self.api_url().join("/v2/log/head")?;
 		if let Some(old_state) = old_state {
 			url.query_pairs_mut()
@@ -170,24 +157,17 @@ impl FromStr for PesdePackageBackends {
 }
 
 impl PesdePackageSourceBackend for PesdePackageBackends {
-	type RefreshIndexError = errors::RefreshIndexError;
-	type FetchStateError = errors::RefreshStateError;
+	type RefreshError = errors::RefreshError;
 	type DownloadError = errors::DownloadError;
 
-	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
-		match self {
-			Self::Api(repo) => repo.refresh_index(project).await.map_err(Into::into),
-		}
-	}
-
-	async fn fetch_state(
+	async fn refresh(
 		&self,
 		project: &Project,
 		old_state: Option<&PesdeSourceState>,
-	) -> Result<Option<LogHeadResponse>, Self::FetchStateError> {
+	) -> Result<Option<LogHeadResponse>, Self::RefreshError> {
 		match self {
 			Self::Api(repo) => repo
-				.fetch_state(project, old_state)
+				.refresh(project, old_state)
 				.await
 				.map_err(Into::into),
 		}
@@ -225,14 +205,14 @@ pub mod errors {
 		NoMatch(String, #[source] url::ParseError),
 	}
 
-	/// Errors that can occur when refreshing a pesde package source index
+	/// Errors that can occur when refreshing a pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = RefreshIndexError))]
+	#[thiserror_ext(newtype(name = RefreshError))]
 	#[non_exhaustive]
-	pub enum RefreshIndexErrorKind {
+	pub enum RefreshErrorKind {
 		/// An error occurred from the API backend
 		#[error("error from api backend")]
-		Api(#[from] ApiRefreshIndexError),
+		Api(#[from] ApiRefreshError),
 	}
 
 	/// Errors that can occur when downloading a package from a pesde package source
@@ -245,33 +225,11 @@ pub mod errors {
 		Api(#[from] ApiDownloadError),
 	}
 
-	/// Errors that can occur when refreshing state from a pesde package source
+	/// Errors that can occur when refreshing an API pesde package source backend
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = RefreshStateError))]
+	#[thiserror_ext(newtype(name = ApiRefreshError))]
 	#[non_exhaustive]
-	pub enum RefreshStateErrorKind {
-		/// An error occurred from the API backend
-		#[error("error from api backend")]
-		Api(#[from] ApiFetchStateError),
-	}
-
-	/// Errors that can occur when refreshing an API pesde package source backend's index
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = ApiRefreshIndexError))]
-	#[non_exhaustive]
-	pub enum ApiRefreshIndexErrorKind {}
-
-	/// Errors that can occur when downloading from an API pesde package source backend
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = ApiDownloadError))]
-	#[non_exhaustive]
-	pub enum ApiDownloadErrorKind {}
-
-	/// Errors that can occur when fetching state from an API pesde package source backend
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = ApiFetchStateError))]
-	#[non_exhaustive]
-	pub enum ApiFetchStateErrorKind {
+	pub enum ApiRefreshErrorKind {
 		/// The built API url was invalid
 		#[error("invalid API URL")]
 		InvalidApiUrl(#[from] url::ParseError),
@@ -280,6 +238,12 @@ pub mod errors {
 		#[error("error sending request to API")]
 		RequestError(#[from] reqwest::Error),
 	}
+
+	/// Errors that can occur when downloading from an API pesde package source backend
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ApiDownloadError))]
+	#[non_exhaustive]
+	pub enum ApiDownloadErrorKind {}
 
 	/// Errors that can occur when parsing a scope permission from a string
 	#[derive(Debug, Error, thiserror_ext::Box)]

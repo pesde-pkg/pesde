@@ -16,7 +16,6 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::future;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -70,9 +69,7 @@ pub struct ResolvedPackage {
 /// A source of packages
 pub trait PackageSource: Debug {
 	/// The error type for refreshing this source
-	type RefreshIndexError: std::error::Error + Send + Sync + 'static;
-	/// The error type for fetching this source's state
-	type RefreshStateError: std::error::Error + Send + Sync + 'static;
+	type RefreshError: std::error::Error + Send + Sync + 'static;
 	/// The error type for resolving a package from this source
 	type ResolveError: std::error::Error + Send + Sync + 'static;
 	/// The error type for downloading a package from this source
@@ -80,20 +77,12 @@ pub trait PackageSource: Debug {
 	/// The error type for getting a package's exports from this source
 	type GetExportsError: std::error::Error + Send + Sync + 'static;
 
-	/// Refreshes the source's local index
-	fn refresh_index(
-		&self,
-		_project: &Project,
-	) -> impl Future<Output = Result<(), Self::RefreshIndexError>> + Send {
-		future::ready(Ok(()))
-	}
-
-	/// Refreshes the source's state
-	fn refresh_state(
+	/// Refreshes the source's local index and state
+	fn refresh(
 		&self,
 		project: &Project,
 		old_state: Option<&SourceState>,
-	) -> impl Future<Output = Result<SourceState, Self::RefreshStateError>> + Send;
+	) -> impl Future<Output = Result<SourceState, Self::RefreshError>> + Send;
 
 	/// Resolves a specifier to a reference
 	fn resolve(
@@ -271,6 +260,7 @@ macro_rules! impls {
 			/// All possible source states
 			#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 			#[serde(tag = "source", rename_all = "snake_case")]
+			#[must_use]
 			pub enum SourceState {
 				$(
 					#[doc = concat!("State for ", stringify!([< $source:snake >]), " package source")]
@@ -281,6 +271,7 @@ macro_rules! impls {
 			/// All possible dependency specifiers
 			#[derive(Debug, Serialize, Clone, PartialEq, Eq, Hash)]
 			#[serde(untagged)]
+			#[must_use]
 			pub enum DependencySpecifiers {
 				$(
 					#[doc = concat!(stringify!($source), " dependency specifier")]
@@ -355,6 +346,7 @@ macro_rules! impls {
 
 			/// All possible package refs
 			#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+			#[must_use]
 			pub enum PackageRefs {
 				$(
 					#[doc = concat!(stringify!($source), " package ref")]
@@ -394,6 +386,7 @@ macro_rules! impls {
 
 			/// All possible package sources
 			#[derive(Debug, Eq, PartialEq, Hash, Clone, PartialOrd, Ord)]
+			#[must_use]
 			pub enum PackageSources {
 				$(
 					#[doc = concat!(stringify!($source), " package source")]
@@ -403,38 +396,22 @@ macro_rules! impls {
 			ser_display_deser_fromstr!(PackageSources);
 
 			impl PackageSource for PackageSources {
-				type RefreshIndexError = errors::RefreshIndexError;
-				type RefreshStateError = errors::RefreshStateError;
+				type RefreshError = errors::RefreshError;
 				type ResolveError = errors::ResolveError;
 				type DownloadError = errors::DownloadError;
 				type GetExportsError = errors::GetExportsError;
 
-				async fn refresh_index(
-					&self,
-					project: &Project,
-				) -> Result<(), Self::RefreshIndexError> {
-					match self {
-						$(
-							PackageSources::$source(source) => source
-								.refresh_index(project)
-								.await
-								.map_err(errors::RefreshIndexErrorKind::$source)
-						),+
-					}
-					.map_err(Into::into)
-				}
-
-				async fn refresh_state(
+				async fn refresh(
 					&self,
 					project: &Project,
 					old_state: Option<&SourceState>,
-				) -> Result<SourceState, Self::RefreshStateError> {
+				) -> Result<SourceState, Self::RefreshError> {
 					match self {
 						$(
 							PackageSources::$source(source) => source
-								.refresh_state(project, old_state)
+								.refresh(project, old_state)
 								.await
-								.map_err(errors::RefreshStateErrorKind::$source)
+								.map_err(errors::RefreshErrorKind::$source)
 						),+
 					}
 					.map_err(Into::into)
@@ -569,25 +546,13 @@ macro_rules! impls {
 
 				/// Errors that occur when refreshing a package source
 				#[derive(Debug, Error, thiserror_ext::Box)]
-				#[thiserror_ext(newtype(name = RefreshIndexError))]
+				#[thiserror_ext(newtype(name = RefreshError))]
 				#[non_exhaustive]
-				pub enum RefreshIndexErrorKind {
+				pub enum RefreshErrorKind {
 					$(
 						#[doc = concat!(stringify!($source), " package source failed to refresh")]
-						#[error("error refreshing {} package", stringify!([< $source:snake >]))]
-						$source(#[source] crate::source::[< $source:snake >]::errors::RefreshIndexError)
-					),+
-				}
-
-				/// Errors that can occur when refreshing source state
-				#[derive(Debug, Error, thiserror_ext::Box)]
-				#[thiserror_ext(newtype(name = RefreshStateError))]
-				#[non_exhaustive]
-				pub enum RefreshStateErrorKind {
-					$(
-						#[doc = concat!(stringify!($source), " package source failed to fetch state")]
-						#[error("error fetching {} package source state", stringify!([< $source:snake >]))]
-						$source(#[source] crate::source::[< $source:snake >]::errors::RefreshStateError)
+						#[error("error refreshing {} package source", stringify!([< $source:snake >]))]
+						$source(#[source] crate::source::[< $source:snake >]::errors::RefreshError)
 					),+
 				}
 

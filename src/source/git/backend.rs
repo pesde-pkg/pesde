@@ -31,8 +31,8 @@ pub struct GitTreeEntry {
 
 /// A source of Git packages (low-level backend)
 pub trait GitPackageSourceBackend: Debug + Display + Send + Sync {
-	/// The error type for refreshing this backend's index
-	type RefreshIndexError: std::error::Error + Send + Sync + 'static;
+	/// The error type for refreshing this backend
+	type RefreshError: std::error::Error + Send + Sync + 'static;
 	/// The error type for resolving a revision
 	type ResolveRevError: std::error::Error + Send + Sync + 'static;
 	/// The error type for reading a file
@@ -41,10 +41,10 @@ pub trait GitPackageSourceBackend: Debug + Display + Send + Sync {
 	type ListTreeError: std::error::Error + Send + Sync + 'static;
 
 	/// Refreshes the backend's index
-	fn refresh_index(
+	fn refresh(
 		&self,
 		project: &Project,
-	) -> impl Future<Output = Result<(), Self::RefreshIndexError>> + Send;
+	) -> impl Future<Output = Result<(), Self::RefreshError>> + Send;
 
 	/// Resolves a revision to a tree ID
 	fn resolve_rev(
@@ -114,13 +114,13 @@ impl GixPackageSourceBackend {
 }
 
 impl GitPackageSourceBackend for GixPackageSourceBackend {
-	type RefreshIndexError = crate::source::git_index::errors::RefreshIndexError;
+	type RefreshError = crate::source::git_index::errors::RefreshIndexError;
 	type ResolveRevError = errors::ResolveRevError;
 	type ReadFileError = errors::ReadFileError;
 	type ListTreeError = errors::ListTreeError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
 		refresh_git_repo(self.repo_path(project), self.repo_url.clone()).await
 	}
 
@@ -311,14 +311,14 @@ impl GitPackageBackends {
 }
 
 impl GitPackageSourceBackend for GitPackageBackends {
-	type RefreshIndexError = crate::source::git_index::errors::RefreshIndexError;
+	type RefreshError = crate::source::git_index::errors::RefreshIndexError;
 	type ResolveRevError = errors::ResolveRevError;
 	type ReadFileError = errors::ReadFileError;
 	type ListTreeError = errors::ListTreeError;
 
-	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
 		match self {
-			Self::Git(repo) => repo.refresh_index(project).await,
+			Self::Git(repo) => repo.refresh(project).await,
 		}
 	}
 
@@ -370,8 +370,8 @@ pub mod errors {
 		NoMatch(String, #[source] crate::errors::GixUrlError),
 	}
 
-	/// The error type for refreshing a Git package source backend's index
-	pub type RefreshIndexError = crate::source::git_index::errors::RefreshIndexError;
+	/// The error type for refreshing a Git package source backend
+	pub type RefreshError = crate::source::git_index::errors::RefreshIndexError;
 
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = ResolveRevError))]
