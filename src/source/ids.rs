@@ -24,13 +24,11 @@ impl PackageId {
 	}
 
 	/// Accesses the package source
-	#[must_use]
 	pub fn source(&self) -> &PackageSources {
 		&self.0.0
 	}
 
 	/// Accesses the package ref
-	#[must_use]
 	pub fn pkg_ref(&self) -> &PackageRefs {
 		&self.0.1
 	}

@@ -86,16 +86,14 @@ impl OutdatedCommand {
 					anyhow::bail!("source state not found for {}", id.source());
 				};
 
-				refreshed_sources
-					.refresh_index(id.source(), subproject.project())
+				let source_state = refreshed_sources
+					.refresh(id.source(), subproject.project(), Some(&old_state))
 					.await
 					.context("failed to refresh source")?;
 
-				// TODO: update state
-
 				let new_version = id
 					.source()
-					.resolve(&subproject, &old_state, &spec, &refreshed_sources)
+					.resolve(&subproject, &source_state, &spec, &refreshed_sources)
 					.await
 					.context("failed to resolve package versions")?
 					.versions

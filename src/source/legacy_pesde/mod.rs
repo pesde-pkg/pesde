@@ -107,23 +107,18 @@ impl LegacyPesdePackageSource {
 }
 
 impl PackageSource for LegacyPesdePackageSource {
-	type RefreshIndexError = errors::RefreshIndexError;
-	type RefreshStateError = errors::RefreshStateError;
+	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
-		self.repo.refresh_index(project).await
-	}
-
-	#[instrument(skip_all, level = "debug")]
-	async fn refresh_state(
+	async fn refresh(
 		&self,
-		_project: &Project,
+		project: &Project,
 		_old_state: Option<&SourceState>,
-	) -> Result<SourceState, Self::RefreshStateError> {
+	) -> Result<SourceState, Self::RefreshError> {
+		self.repo.refresh(project).await?;
 		Ok(SourceState::LegacyPesde(LegacyPesdeSourceState(())))
 	}
 
@@ -411,11 +406,8 @@ pub mod errors {
 	use crate::names::PackageName;
 	use crate::source::legacy_pesde::specifier::LegacyPesdeDependencySpecifier;
 
-	/// Errors that can occur when refreshing the legacy pesde package source index
-	pub type RefreshIndexError = super::backend::errors::RefreshIndexError;
-
-	/// Errors that can occur when refreshing the legacy pesde package source state
-	pub type RefreshStateError = std::convert::Infallible;
+	/// Errors that can occur when refreshing the legacy pesde package source
+	pub type RefreshError = super::backend::errors::RefreshError;
 
 	/// Errors that can occur when resolving a package from a legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]

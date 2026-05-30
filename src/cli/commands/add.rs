@@ -76,15 +76,10 @@ impl AddCommand {
 
 		let lockfile = get_lockfile(subproject.project(), &refreshed_sources).await?;
 
-		refreshed_sources
-			.refresh_index(&source, subproject.project())
+		let source_state = refreshed_sources
+			.refresh(&source, subproject.project(), lockfile.source_states.get(&source))
 			.await
 			.context("failed to refresh package source")?;
-
-		let source_state = source
-			.refresh_state(subproject.project(), lockfile.source_states.get(&source))
-			.await
-			.context("failed to refresh source state")?;
 
 		let ResolveResult { mut versions, .. } = source
 			.resolve(&subproject, &source_state, &specifier, &refreshed_sources)

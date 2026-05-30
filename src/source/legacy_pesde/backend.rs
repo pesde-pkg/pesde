@@ -256,10 +256,10 @@ impl VersionId {
 	}
 }
 
-/// A source of  legacy pesde packages
+/// A source of legacy pesde packages
 pub trait LegacyPesdePackageSourceBackend: Debug + Display + Send + Sync {
-	/// The error type for refreshing this backend's index
-	type RefreshIndexError: std::error::Error + Send + Sync + 'static;
+	/// The error type for refreshing this backend
+	type RefreshError: std::error::Error + Send + Sync + 'static;
 	/// The error type for reading config
 	type ConfigError: std::error::Error + Send + Sync + 'static;
 	/// The error type for reading index files
@@ -268,10 +268,10 @@ pub trait LegacyPesdePackageSourceBackend: Debug + Display + Send + Sync {
 	type DownloadError: std::error::Error + Send + Sync + 'static;
 
 	/// Refreshes the backend's index
-	fn refresh_index(
+	fn refresh(
 		&self,
 		project: &Project,
-	) -> impl Future<Output = Result<(), Self::RefreshIndexError>> + Send;
+	) -> impl Future<Output = Result<(), Self::RefreshError>> + Send;
 
 	/// Reads the config for this backend
 	fn config(
@@ -339,13 +339,13 @@ impl GitLegacyPesdePackageSourceBackend {
 }
 
 impl LegacyPesdePackageSourceBackend for GitLegacyPesdePackageSourceBackend {
-	type RefreshIndexError = crate::source::git_index::errors::RefreshIndexError;
+	type RefreshError = crate::source::git_index::errors::RefreshIndexError;
 	type ConfigError = errors::GitConfigError;
 	type ReadIndexFileError = errors::GitReadIndexFileError;
 	type DownloadError = errors::GitDownloadError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
 		crate::source::git_index::refresh_git_repo(self.path(project), self.repo_url.clone()).await
 	}
 
@@ -495,14 +495,14 @@ impl FromStr for LegacyPesdePackageBackends {
 }
 
 impl LegacyPesdePackageSourceBackend for LegacyPesdePackageBackends {
-	type RefreshIndexError = errors::RefreshIndexError;
+	type RefreshError = errors::RefreshError;
 	type ConfigError = errors::ConfigError;
 	type ReadIndexFileError = errors::ReadIndexFileError;
 	type DownloadError = errors::DownloadError;
 
-	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
 		match self {
-			Self::Git(repo) => repo.refresh_index(project).await.map_err(Into::into),
+			Self::Git(repo) => repo.refresh(project).await.map_err(Into::into),
 		}
 	}
 
@@ -561,11 +561,11 @@ pub mod errors {
 		NoMatch(String, #[source] crate::errors::GixUrlError),
 	}
 
-	/// Errors that can occur when refreshing a legacy pesde package source index
+	/// Errors that can occur when refreshing a legacy pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = RefreshIndexError))]
+	#[thiserror_ext(newtype(name = RefreshError))]
 	#[non_exhaustive]
-	pub enum RefreshIndexErrorKind {
+	pub enum RefreshErrorKind {
 		/// An error occurred from the Git backend
 		#[error("error from git backend")]
 		Git(#[from] crate::source::git_index::errors::RefreshIndexError),

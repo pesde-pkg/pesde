@@ -102,23 +102,18 @@ impl GitPackageSource {
 }
 
 impl PackageSource for GitPackageSource {
-	type RefreshIndexError = errors::RefreshIndexError;
-	type RefreshStateError = errors::RefreshStateError;
+	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
-		self.repo.refresh_index(project).await
-	}
-
-	#[instrument(skip_all, level = "debug")]
-	async fn refresh_state(
+	async fn refresh(
 		&self,
-		_project: &Project,
+		project: &Project,
 		_old_state: Option<&SourceState>,
-	) -> Result<SourceState, Self::RefreshStateError> {
+	) -> Result<SourceState, Self::RefreshError> {
+		self.repo.refresh(project).await?;
 		Ok(SourceState::Git(GitSourceState(())))
 	}
 
@@ -437,11 +432,8 @@ pub mod errors {
 	use relative_path::RelativePathBuf;
 	use thiserror::Error;
 
-	/// Errors that can occur when refreshing the Git package source index
-	pub type RefreshIndexError = crate::source::git::backend::errors::RefreshIndexError;
-
-	/// Errors that can occur when refreshing the Git package source state
-	pub type RefreshStateError = std::convert::Infallible;
+	/// Errors that can occur when refreshing the Git package source
+	pub type RefreshError = crate::source::git::backend::errors::RefreshError;
 
 	/// Errors that can occur when downloading a package from a Git package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
