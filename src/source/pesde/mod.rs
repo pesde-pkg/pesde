@@ -110,19 +110,24 @@ impl PackageSource for PesdePackageSource {
 		&self,
 		project: &Project,
 		old_state: Option<&SourceState>,
-	) -> Result<Option<SourceState>, Self::RefreshStateError> {
-		let old_state = old_state.map(|old_state| {
-			let SourceState::Pesde(old_state) = old_state else {
-				unreachable!("invalid source state type for pesde package source");
-			};
+	) -> Result<SourceState, Self::RefreshStateError> {
+		let old_state = old_state
+			.map(|old_state| {
+				let SourceState::Pesde(old_state) = old_state else {
+					unreachable!("invalid source state type for pesde package source");
+				};
 
-			old_state
-		});
+				old_state
+			})
+			.filter(|old_state| old_state.mmr_size > 0);
 
 		let new_state = self.repo.fetch_state(project, old_state).await?;
 		let new_state = match (old_state, new_state) {
 			(Some(_), None) => return Err(errors::RefreshStateErrorKind::NoNewState.into()),
-			(None, None) => return Ok(None),
+			(None, None) => PesdeSourceState {
+				mmr_size: 0,
+				accumulator: Vec::new(),
+			},
 			(None, Some(new_state)) => {
 				let LogHeadResponseState::OnlyNewState { mmr_size_to } = new_state.state else {
 					return Err(errors::RefreshStateErrorKind::InvalidResponseState.into());
@@ -149,13 +154,14 @@ impl PackageSource for PesdePackageSource {
 			}
 		};
 
-		Ok(Some(SourceState::Pesde(new_state)))
+		Ok(SourceState::Pesde(new_state))
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
 		_subproject: &Subproject,
+		_source_state: &SourceState,
 		_specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
@@ -166,6 +172,7 @@ impl PackageSource for PesdePackageSource {
 	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
+		_source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {

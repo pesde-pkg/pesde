@@ -26,7 +26,6 @@ use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -288,7 +287,8 @@ async fn prepare_queue(
 #[instrument(skip_all, level = "debug")]
 async fn resolve_version(
 	subproject: Subproject,
-	lockfile: &Lockfile,
+	lockfile: &mut Lockfile,
+	previous_lockfile: Option<&Lockfile>,
 	refreshed_sources: &RefreshedSources,
 	pass_indices: bool,
 	specifier: &DependencySpecifiers,
@@ -312,13 +312,28 @@ async fn resolve_version(
 			.refresh_index(&source, subproject.project())
 			.await?;
 
+		let current_state = lockfile.source_states.entry(source.clone());
+		let current_state =
+			if let std::collections::btree_map::Entry::Occupied(entry) = &current_state {
+				entry.get()
+			} else {
+				let new_state = source
+					.refresh_state(
+						subproject.project(),
+						previous_lockfile.and_then(|l| l.source_states.get(&source)),
+					)
+					.await?;
+
+				current_state.or_insert(new_state)
+			};
+
 		let ResolveResult {
 			source,
 			pkg_ref,
 			structure_kind,
 			mut versions,
 		} = source
-			.resolve(&subproject, specifier, refreshed_sources)
+			.resolve(&subproject, current_state, specifier, refreshed_sources)
 			.await?;
 
 		let Some((package_id, dependencies)) = lockfile
@@ -378,8 +393,6 @@ impl Project {
 				.unwrap_or_default(),
 		};
 
-		let mut sources_seen = HashSet::<PackageSources>::new();
-
 		let mut queue = prepare_queue(self, &mut lockfile, previous_lockfile).await?;
 		if queue.is_empty() {
 			tracing::debug!("dependency graph is up to date");
@@ -395,23 +408,13 @@ impl Project {
 
 				let (package_id, structure_kind, dependencies) = resolve_version(
 					entry.subproject.clone(),
-					&lockfile,
+					&mut lockfile,
+					previous_lockfile,
 					refreshed_sources,
 					!is_published_package && depth == 0,
 					&entry.specifier,
 				)
 				.await?;
-
-				let source = package_id.source();
-				if sources_seen.insert(source.clone()) {
-					let source_str = source.to_string();
-					let old_state = previous_lockfile
-						.as_ref()
-						.and_then(|l| l.source_states.get(&source_str));
-					if let Some(state) = source.refresh_state(self, old_state).await? {
-						lockfile.source_states.insert(source_str, state);
-					}
-				}
 
 				if depth == 0 {
 					lockfile

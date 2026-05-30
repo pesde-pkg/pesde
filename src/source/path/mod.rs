@@ -15,6 +15,7 @@ use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
+use crate::source::SourceState;
 use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::path::pkg_ref::PathPackageRef;
@@ -37,7 +38,8 @@ pub mod pkg_ref;
 pub mod specifier;
 
 /// State for path package source
-pub type PathSourceState = ();
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PathSourceState(());
 
 pub(crate) fn local_version() -> Version {
 	Version {
@@ -91,9 +93,19 @@ impl PackageSource for PathPackageSource {
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
+	async fn refresh_state(
+		&self,
+		_project: &Project,
+		_old_state: Option<&SourceState>,
+	) -> Result<SourceState, Self::RefreshStateError> {
+		Ok(SourceState::Path(PathSourceState(())))
+	}
+
+	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
+		_source_state: &SourceState,
 		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
@@ -189,6 +201,7 @@ impl PackageSource for PathPackageSource {
 	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
+		_source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
