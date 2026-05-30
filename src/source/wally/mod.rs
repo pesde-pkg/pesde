@@ -92,23 +92,18 @@ impl WallyPackageSource {
 }
 
 impl PackageSource for WallyPackageSource {
-	type RefreshIndexError = errors::RefreshIndexError;
-	type RefreshStateError = errors::RefreshStateError;
+	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
-		self.repo.refresh_index(project).await
-	}
-
-	#[instrument(skip_all, level = "debug")]
-	async fn refresh_state(
+	async fn refresh(
 		&self,
-		_project: &Project,
+		project: &Project,
 		_old_state: Option<&SourceState>,
-	) -> Result<SourceState, Self::RefreshStateError> {
+	) -> Result<SourceState, Self::RefreshError> {
+		self.repo.refresh(project).await?;
 		Ok(SourceState::Wally(WallySourceState(())))
 	}
 
@@ -139,16 +134,17 @@ impl PackageSource for WallyPackageSource {
 
 			for fallback_repo in config.fallback_registries {
 				match refreshed_sources
-					.refresh_index(
+					.refresh(
 						&PackageSources::Wally(WallyPackageSource::new(fallback_repo.clone())),
 						subproject.project(),
+						None,
 					)
 					.await
-					.map_err(super::errors::RefreshIndexError::into_inner)
+					.map_err(super::errors::RefreshError::into_inner)
 				{
-					Ok(()) => {}
-					Err(super::errors::RefreshIndexErrorKind::Wally(e)) => {
-						return Err(errors::ResolveErrorKind::RefreshIndex(e).into());
+					Ok(_) => {}
+					Err(super::errors::RefreshErrorKind::Wally(e)) => {
+						return Err(errors::ResolveErrorKind::Refresh(e).into());
 					}
 					Err(e) => panic!("unexpected error: {e:?}"),
 				}
@@ -313,10 +309,7 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Errors that can occur when refreshing the Wally package source
-	pub type RefreshIndexError = crate::source::wally::backend::errors::RefreshIndexError;
-
-	/// Errors that can occur when refreshing the Wally package source state
-	pub type RefreshStateError = std::convert::Infallible;
+	pub type RefreshError = crate::source::wally::backend::errors::RefreshError;
 
 	/// Errors that can occur when resolving a package from a Wally package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
@@ -346,9 +339,9 @@ pub mod errors {
 		#[error("error reading index file")]
 		ReadIndex(#[from] crate::source::wally::backend::errors::ReadIndexFileError),
 
-		/// Error refreshing index
-		#[error("error refreshing index")]
-		RefreshIndex(#[from] crate::source::wally::backend::errors::RefreshIndexError),
+		/// Error refreshing source
+		#[error("error refreshing source")]
+		Refresh(#[from] crate::source::wally::backend::errors::RefreshError),
 	}
 
 	/// Errors that can occur when downloading a package from a Wally package source

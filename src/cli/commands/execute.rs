@@ -63,17 +63,10 @@ impl ExecuteCommand {
 					.context("failed to parse package identifier")?;
 
 				let refreshed_sources = RefreshedSources::new();
-				refreshed_sources
-					.refresh_index(&source, subproject.project())
+				let source_state = refreshed_sources
+					.refresh(&source, subproject.project(), None)
 					.await
 					.context("failed to refresh source")?;
-
-				// TODO: pass in old source once we start parsing package lockfiles
-
-				let source_state = source
-					.refresh_state(subproject.project(), None)
-					.await
-					.context("failed to refresh source state")?;
 
 				let ResolveResult {
 					source,
@@ -101,12 +94,10 @@ impl ExecuteCommand {
 				let source_state = if source == *package.id.source() {
 					source_state
 				} else {
-					package
-						.id
-						.source()
-						.refresh_state(subproject.project(), None)
+					refreshed_sources
+						.refresh(package.id.source(), subproject.project(), None)
 						.await
-						.context("failed to refresh source state")?
+						.context("failed to refresh source")?
 				};
 
 				multi_progress.suspend(|| {

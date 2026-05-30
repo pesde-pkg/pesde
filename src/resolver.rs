@@ -308,17 +308,14 @@ async fn resolve_version(
 		}
 		let source = specifier_to_source(manifest.as_ref().map(|m| &m.urls), specifier)?;
 
-		refreshed_sources
-			.refresh_index(&source, subproject.project())
-			.await?;
-
 		let current_state = lockfile.source_states.entry(source.clone());
 		let current_state =
 			if let std::collections::btree_map::Entry::Occupied(entry) = &current_state {
 				entry.get()
 			} else {
-				let new_state = source
-					.refresh_state(
+				let new_state = refreshed_sources
+					.refresh(
+						&source,
 						subproject.project(),
 						previous_lockfile.and_then(|l| l.source_states.get(&source)),
 					)
@@ -533,17 +530,13 @@ pub mod errors {
 		#[error("wally index named `{0}` not found in manifest")]
 		WallyIndexNotFound(String),
 
-		/// An error occurred while refreshing a package source index
-		#[error("error refreshing package source index")]
-		RefreshIndex(#[from] crate::source::errors::RefreshIndexError),
+		/// An error occurred while refreshing a package source
+		#[error("error refreshing package source")]
+		Refresh(#[from] crate::source::errors::RefreshError),
 
 		/// An error occurred while resolving a package
 		#[error("error resolving package")]
 		Resolve(#[from] crate::source::errors::ResolveError),
-
-		/// An error occurred while refreshing source state
-		#[error("error refreshing source state")]
-		RefreshState(#[from] crate::source::errors::RefreshStateError),
 
 		/// No matching version was found for a specifier
 		#[error("no matching version found for {0}")]

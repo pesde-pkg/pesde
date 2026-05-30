@@ -43,8 +43,8 @@ impl Project {
 				let reporter = reporter.cloned();
 				let refreshed_sources = refreshed_sources.clone();
 				let semaphore = semaphore.clone();
-				let source_state = lockfile.source_states[package_id.source()].clone();
 				let package = lockfile.graph.resolved_package(package_id).unwrap();
+				let old_state = lockfile.source_states.get(package_id.source()).cloned();
 
 				async move {
 					let _permit = semaphore.acquire().await;
@@ -58,7 +58,9 @@ impl Project {
 					}
 
 					let source = package.id.source();
-					refreshed_sources.refresh_index(source, &project).await?;
+					let source_state = refreshed_sources
+						.refresh(source, &project, old_state.as_ref())
+						.await?;
 
 					tracing::debug!("downloading");
 
@@ -107,9 +109,9 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = DownloadGraphError))]
 	#[non_exhaustive]
 	pub enum DownloadGraphErrorKind {
-		/// An error occurred refreshing a package source index
-		#[error("failed to refresh package source index")]
-		RefreshIndexFailed(#[from] crate::source::errors::RefreshIndexError),
+		/// An error occurred refreshing a package source
+		#[error("failed to refresh package source")]
+		RefreshFailed(#[from] crate::source::errors::RefreshError),
 
 		/// Error interacting with the filesystem
 		#[error("error interacting with the filesystem")]

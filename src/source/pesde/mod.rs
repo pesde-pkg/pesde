@@ -47,7 +47,7 @@ pub struct PesdeSourceState {
 	/// The MMR size for this source (number of entries in the log)
 	pub mmr_size: u64,
 	/// The MMR accumulator (peak hashes) for this source
-	pub accumulator: Vec<Hash>,
+	pub accumulator: Arc<[Hash]>,
 }
 
 /// The pesde package source
@@ -94,23 +94,17 @@ impl PesdePackageSource {
 }
 
 impl PackageSource for PesdePackageSource {
-	type RefreshIndexError = errors::RefreshIndexError;
-	type RefreshStateError = errors::RefreshStateError;
+	type RefreshError = errors::RefreshError;
 	type ResolveError = errors::ResolveError;
 	type DownloadError = errors::DownloadError;
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh_index(&self, project: &Project) -> Result<(), Self::RefreshIndexError> {
-		self.repo.refresh_index(project).await
-	}
-
-	#[instrument(skip_all, level = "debug")]
-	async fn refresh_state(
+	async fn refresh(
 		&self,
 		project: &Project,
 		old_state: Option<&SourceState>,
-	) -> Result<SourceState, Self::RefreshStateError> {
+	) -> Result<SourceState, Self::RefreshError> {
 		let old_state = old_state
 			.map(|old_state| {
 				let SourceState::Pesde(old_state) = old_state else {
@@ -121,35 +115,35 @@ impl PackageSource for PesdePackageSource {
 			})
 			.filter(|old_state| old_state.mmr_size > 0);
 
-		let new_state = self.repo.fetch_state(project, old_state).await?;
+		let new_state = self.repo.refresh(project, old_state).await?;
 		let new_state = match (old_state, new_state) {
-			(Some(_), None) => return Err(errors::RefreshStateErrorKind::NoNewState.into()),
+			(Some(_), None) => return Err(errors::RefreshErrorKind::NoNewState.into()),
 			(None, None) => PesdeSourceState {
 				mmr_size: 0,
-				accumulator: Vec::new(),
+				accumulator: [].into(),
 			},
 			(None, Some(new_state)) => {
 				let LogHeadResponseState::OnlyNewState { mmr_size_to } = new_state.state else {
-					return Err(errors::RefreshStateErrorKind::InvalidResponseState.into());
+					return Err(errors::RefreshErrorKind::InvalidResponseState.into());
 				};
 
 				PesdeSourceState {
 					mmr_size: mmr_size_to,
-					accumulator: new_state.accumulator,
+					accumulator: new_state.accumulator.into(),
 				}
 			}
 			(Some(old_state), Some(new_state)) => {
 				let LogHeadResponseState::WithPreviousState { proof } = new_state.state else {
-					return Err(errors::RefreshStateErrorKind::InvalidResponseState.into());
+					return Err(errors::RefreshErrorKind::InvalidResponseState.into());
 				};
 
 				if !proof.verify(&old_state.accumulator, &new_state.accumulator)? {
-					return Err(errors::RefreshStateErrorKind::ConsistencyProofFailed.into());
+					return Err(errors::RefreshErrorKind::ConsistencyProofFailed.into());
 				}
 
 				PesdeSourceState {
 					mmr_size: proof.mmr_size_to(),
-					accumulator: new_state.accumulator,
+					accumulator: new_state.accumulator.into(),
 				}
 			}
 		};
@@ -269,17 +263,14 @@ pub mod errors {
 
 	use crate::names::PackageName;
 
-	/// Errors that can occur when refreshing the pesde package source index
-	pub type RefreshIndexError = super::backend::errors::RefreshIndexError;
-
-	/// Errors that can occur when refreshing the pesde package source state
+	/// Errors that can occur when refreshing the pesde package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = RefreshStateError))]
+	#[thiserror_ext(newtype(name = RefreshError))]
 	#[non_exhaustive]
-	pub enum RefreshStateErrorKind {
+	pub enum RefreshErrorKind {
 		/// Error from backend
-		#[error("error refreshing state")]
-		Backend(#[from] super::backend::errors::RefreshStateError),
+		#[error("error refreshing")]
+		Backend(#[from] super::backend::errors::RefreshError),
 
 		/// The backend has not returned a new state despite there being a previous state
 		#[error("backend did not return a new state despite there being a previous state")]

@@ -60,10 +60,10 @@ impl LoginCommand {
 		println!("logging in into {index_url}");
 
 		let source = LegacyPesdePackageSource::from_url(index_url);
-		source
-			.refresh_index(subproject.project())
+		let _ = source
+			.refresh(subproject.project(), None)
 			.await
-			.context("failed to refresh index")?;
+			.context("failed to refresh source")?;
 
 		let config = source
 			.repo()
