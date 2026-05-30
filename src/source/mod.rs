@@ -91,16 +91,15 @@ pub trait PackageSource: Debug {
 	/// Refreshes the source's state
 	fn refresh_state(
 		&self,
-		_project: &Project,
-		_old_state: Option<&SourceState>,
-	) -> impl Future<Output = Result<Option<SourceState>, Self::RefreshStateError>> + Send {
-		future::ready(Ok(None))
-	}
+		project: &Project,
+		old_state: Option<&SourceState>,
+	) -> impl Future<Output = Result<SourceState, Self::RefreshStateError>> + Send;
 
 	/// Resolves a specifier to a reference
 	fn resolve(
 		&self,
 		subproject: &Subproject,
+		source_state: &SourceState,
 		specifier: &DependencySpecifiers,
 		refreshed_sources: &RefreshedSources,
 	) -> impl Future<Output = Result<ResolveResult, Self::ResolveError>> + Send;
@@ -109,6 +108,7 @@ pub trait PackageSource: Debug {
 	fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
+		source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> impl Future<Output = Result<PackageFs, Self::DownloadError>> + Send;
@@ -428,7 +428,7 @@ macro_rules! impls {
 					&self,
 					project: &Project,
 					old_state: Option<&SourceState>,
-				) -> Result<Option<SourceState>, Self::RefreshStateError> {
+				) -> Result<SourceState, Self::RefreshStateError> {
 					match self {
 						$(
 							PackageSources::$source(source) => source
@@ -443,13 +443,14 @@ macro_rules! impls {
 				async fn resolve(
 					&self,
 					subproject: &Subproject,
+					source_state: &SourceState,
 					specifier: &DependencySpecifiers,
 					refreshed_sources: &RefreshedSources,
 				) -> Result<ResolveResult, Self::ResolveError> {
 					match self {
 						$(
 							PackageSources::$source(source) => {
-								source.resolve(subproject, specifier, refreshed_sources).await.map_err(errors::ResolveErrorKind::$source)
+								source.resolve(subproject, source_state, specifier, refreshed_sources).await.map_err(errors::ResolveErrorKind::$source)
 							}
 						)+
 					}
@@ -459,13 +460,14 @@ macro_rules! impls {
 				async fn download<R: DownloadProgressReporter + 'static>(
 					&self,
 					project: &Project,
+					source_state: &SourceState,
 					package: &ResolvedPackage,
 					reporter: Arc<R>,
 				) -> Result<PackageFs, Self::DownloadError> {
 					match self {
 						$(
 							PackageSources::$source(source) => {
-								source.download(project, package, reporter).await.map_err(errors::DownloadErrorKind::$source)
+								source.download(project, source_state, package, reporter).await.map_err(errors::DownloadErrorKind::$source)
 							}
 						)+
 					}

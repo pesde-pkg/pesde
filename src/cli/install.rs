@@ -170,7 +170,7 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 
 				project
 					.download_and_link(
-						&new_lockfile.graph,
+						&new_lockfile,
 						DownloadAndLinkOptions::<CliReporter>::new()
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources.clone())

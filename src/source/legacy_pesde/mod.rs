@@ -18,6 +18,7 @@ use backend::VersionId;
 use futures::StreamExt as _;
 use pkg_ref::LegacyPesdePackageRef;
 use serde::Deserialize;
+use serde::Serialize;
 use specifier::LegacyPesdeDependencySpecifier;
 
 use crate::GixUrl;
@@ -37,6 +38,7 @@ use crate::source::PackageSources;
 use crate::source::Realm;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
+use crate::source::SourceState;
 use crate::source::StructureKind;
 use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
@@ -57,7 +59,9 @@ pub mod specifier;
 pub mod target;
 
 /// State for legacy pesde package source
-pub type LegacyPesdeSourceState = ();
+/// State for legacy pesde package source
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LegacyPesdeSourceState(());
 
 /// The legacy pesde package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -115,9 +119,19 @@ impl PackageSource for LegacyPesdePackageSource {
 	}
 
 	#[instrument(skip_all, level = "debug")]
+	async fn refresh_state(
+		&self,
+		_project: &Project,
+		_old_state: Option<&SourceState>,
+	) -> Result<SourceState, Self::RefreshStateError> {
+		Ok(SourceState::LegacyPesde(LegacyPesdeSourceState(())))
+	}
+
+	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
+		_source_state: &SourceState,
 		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
@@ -218,6 +232,7 @@ impl PackageSource for LegacyPesdePackageSource {
 	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
+		_source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {

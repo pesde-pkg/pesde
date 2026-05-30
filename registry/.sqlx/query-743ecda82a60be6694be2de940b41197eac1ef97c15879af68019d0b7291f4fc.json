@@ -1,0 +1,43 @@
+{
+  "db_name": "MySQL",
+  "query": "\n\t\t\t\tSELECT seq, COUNT(TreeNode.pos) AS `mmr_size: u64`\n\t\t\t\tFROM TreeNode\n\t\t\t\tINNER JOIN LogEntry ON LogEntry.pos=TreeNode.pos\n\t\t\t\tORDER BY seq DESC\n\t\t\t\tLIMIT 1\n\t\t\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "seq",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.LogEntry",
+            "name": "seq"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "mmr_size: u64",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | BINARY",
+          "collation": 63,
+          "max_size": 21
+        },
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "743ecda82a60be6694be2de940b41197eac1ef97c15879af68019d0b7291f4fc"
+}

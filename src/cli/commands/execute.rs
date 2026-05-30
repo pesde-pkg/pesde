@@ -68,13 +68,20 @@ impl ExecuteCommand {
 					.await
 					.context("failed to refresh source")?;
 
+				// TODO: pass in old source once we start parsing package lockfiles
+
+				let source_state = source
+					.refresh_state(subproject.project(), None)
+					.await
+					.context("failed to refresh source state")?;
+
 				let ResolveResult {
 					source,
 					pkg_ref,
 					structure_kind,
 					mut versions,
 				} = source
-					.resolve(&subproject, &specifier, &refreshed_sources)
+					.resolve(&subproject, &source_state, &specifier, &refreshed_sources)
 					.await
 					.context("failed to resolve package")?;
 
@@ -87,8 +94,19 @@ impl ExecuteCommand {
 				}
 
 				let package = ResolvedPackage {
-					id: PackageId::new(source, pkg_ref, version),
+					id: PackageId::new(source.clone(), pkg_ref, version),
 					structure_kind,
+				};
+
+				let source_state = if source == *package.id.source() {
+					source_state
+				} else {
+					package
+						.id
+						.source()
+						.refresh_state(subproject.project(), None)
+						.await
+						.context("failed to refresh source state")?
 				};
 
 				multi_progress.suspend(|| {
@@ -116,7 +134,7 @@ impl ExecuteCommand {
 				let fs = package
 					.id
 					.source()
-					.download(subproject.project(), &package, ().into())
+					.download(subproject.project(), &source_state, &package, ().into())
 					.await
 					.context("failed to download package")?;
 
@@ -146,7 +164,7 @@ impl ExecuteCommand {
 
 				project
 					.download_and_link(
-						&lockfile.graph,
+						&lockfile,
 						DownloadAndLinkOptions::<CliReporter<Stderr>>::new()
 							.reporter(reporter)
 							.refreshed_sources(refreshed_sources)
