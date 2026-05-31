@@ -2,6 +2,7 @@
 #![allow(async_fn_in_trait)]
 
 use crate::Project;
+use crate::Url;
 use crate::names::PackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
@@ -49,7 +50,7 @@ pub trait PesdePackageSourceBackend: Debug + Display + Send + Sync {
 /// An API-based pesde package source backend
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ApiPesdePackageSourceBackend {
-	api_url: Arc<url::Url>,
+	api_url: Url,
 }
 ser_display_deser_fromstr!(ApiPesdePackageSourceBackend);
 
@@ -63,22 +64,20 @@ impl FromStr for ApiPesdePackageSourceBackend {
 	type Err = url::ParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		s.parse::<url::Url>().map(Self::new)
+		s.parse().map(Self::new)
 	}
 }
 
 impl ApiPesdePackageSourceBackend {
 	/// Creates a new API pesde package source backend
 	#[must_use]
-	pub fn new(api_url: impl Into<Arc<url::Url>>) -> Self {
-		Self {
-			api_url: api_url.into(),
-		}
+	pub fn new(api_url: Url) -> Self {
+		Self { api_url }
 	}
 
 	/// Gets the API URL
 	#[must_use]
-	pub fn api_url(&self) -> &url::Url {
+	pub fn api_url(&self) -> &Url {
 		&self.api_url
 	}
 }
@@ -92,7 +91,7 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 		project: &Project,
 		old_state: Option<&PesdeSourceState>,
 	) -> Result<Option<LogHeadResponse>, Self::RefreshError> {
-		let mut url = self.api_url().join("/v2/log/head")?;
+		let mut url = self.api_url().as_url().join("/v2/log/head")?;
 		if let Some(old_state) = old_state {
 			url.query_pairs_mut()
 				.append_pair("size_from", &old_state.mmr_size.to_string());
@@ -166,10 +165,7 @@ impl PesdePackageSourceBackend for PesdePackageBackends {
 		old_state: Option<&PesdeSourceState>,
 	) -> Result<Option<LogHeadResponse>, Self::RefreshError> {
 		match self {
-			Self::Api(repo) => repo
-				.refresh(project, old_state)
-				.await
-				.map_err(Into::into),
+			Self::Api(repo) => repo.refresh(project, old_state).await.map_err(Into::into),
 		}
 	}
 

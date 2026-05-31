@@ -1,12 +1,8 @@
-use crate::cli::config::read_config;
 use crate::cli::style::ERROR_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_STYLE;
 use anyhow::Context as _;
-use pesde::DEFAULT_URL_KEY;
 use pesde::GixUrl;
-use pesde::Subproject;
-use pesde::errors::ManifestReadErrorKind;
 use pesde::manifest::DependencyType;
 use pesde::names::PackageName;
 use pesde::names::WallyPackageName;
@@ -197,38 +193,6 @@ pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 			}
 		}
 	}
-}
-
-pub async fn get_index(subproject: &Subproject, index: Option<&str>) -> anyhow::Result<GixUrl> {
-	let manifest = match subproject.deser_manifest().await {
-		Ok(manifest) => Some(manifest),
-		Err(e) => match e.into_inner() {
-			ManifestReadErrorKind::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-			e => return Err(e.into()),
-		},
-	};
-
-	let index_url = match index {
-		Some(index) => index.parse().ok(),
-		None => match manifest {
-			Some(_) => None,
-			None => Some(read_config().await?.default_index),
-		},
-	};
-
-	if let Some(url) = index_url {
-		return Ok(url);
-	}
-
-	let index_name = index.unwrap_or(DEFAULT_URL_KEY);
-
-	manifest
-		.unwrap()
-		.urls
-		.pesde_indices
-		.get(index_name)
-		.with_context(|| format!("index {index_name} not found in manifest"))
-		.cloned()
 }
 
 pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
