@@ -27,7 +27,7 @@ pub struct WallyPackage {
 	pub name: WallyPackageName,
 	pub version: Version,
 	pub registry: Url,
-	#[allow(unused)]
+	#[expect(unused)]
 	pub realm: WallyRealm,
 }
 
