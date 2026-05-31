@@ -1,11 +1,13 @@
 //! Manifest
 use crate::Url;
+use crate::names::PackageName;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::PackageExports;
 use crate::source::Realm;
 use crate::source::ids::PackageId;
 use relative_path::RelativePathBuf;
+use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -15,20 +17,6 @@ use std::hash::Hash;
 use std::str::FromStr;
 use std::sync::Arc;
 use tracing::instrument;
-
-/// URLs specified in a manifest
-#[derive(Deserialize, Debug, Clone)]
-pub struct ManifestUrls {
-	/// The registries to use for the package
-	#[serde(default, rename = "registries")]
-	pub pesde_registries: BTreeMap<String, Url>,
-	/// The indices to use for the package
-	#[serde(default, rename = "indices")]
-	pub pesde_indices: BTreeMap<String, Url>,
-	/// The indices to use for the package's Wally dependencies
-	#[serde(default, rename = "wally_indices")]
-	pub wally_indices: BTreeMap<String, Url>,
-}
 
 /// A specifier for an override
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
@@ -57,21 +45,37 @@ pub struct ManifestWorkspace {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
+	/// The name of the package
+	pub name: PackageName,
+	/// The version of the package
+	pub version: Version,
 	/// The description of the package
 	#[serde(default)]
 	pub description: Option<String>,
+	/// The license of the package
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub license: Option<String>,
 	/// The authors of the package
 	#[serde(default)]
 	pub authors: Vec<String>,
 	/// The repository of the package
 	#[serde(default)]
 	pub repository: Option<Url>,
+	/// Whether the package is private
+	#[serde(default)]
+	pub private: bool,
 	/// The scripts of the package
 	#[serde(default)]
 	pub scripts: BTreeMap<String, String>,
-	/// The URLs this package uses
-	#[serde(flatten)]
-	pub urls: ManifestUrls,
+	/// The registries to use for the package
+	#[serde(default, rename = "registries")]
+	pub pesde_registries: BTreeMap<String, Url>,
+	/// The indices to use for the package
+	#[serde(default, rename = "indices")]
+	pub pesde_indices: BTreeMap<String, Url>,
+	/// The indices to use for the package's Wally dependencies
+	#[serde(default, rename = "wally_indices")]
+	pub wally_indices: BTreeMap<String, Url>,
 	/// The files to include in the package
 	#[serde(default)]
 	pub includes: Vec<String>,

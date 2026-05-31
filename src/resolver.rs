@@ -9,7 +9,7 @@ use crate::graph::DependencyGraphNodeDependency;
 use crate::lockfile::Lockfile;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
-use crate::manifest::ManifestUrls;
+use crate::manifest::Manifest;
 use crate::manifest::OverrideSpecifier;
 use crate::matching_globs;
 use crate::source::DependencySpecifier as _;
@@ -32,13 +32,13 @@ use tracing::Instrument as _;
 use tracing::instrument;
 
 fn specifier_to_source(
-	urls: Option<&ManifestUrls>,
+	manifest: Option<&Manifest>,
 	specifier: &DependencySpecifiers,
 ) -> Result<PackageSources, errors::DependencyGraphError> {
 	let source = match &specifier {
 		DependencySpecifiers::Pesde(specifier) => {
-			let url = if let Some(indices) = urls {
-				indices
+			let url = if let Some(manifest) = manifest {
+				manifest
 					.pesde_registries
 					.get(&specifier.registry)
 					.ok_or_else(|| {
@@ -60,8 +60,8 @@ fn specifier_to_source(
 		}
 		#[expect(deprecated)]
 		DependencySpecifiers::LegacyPesde(specifier) => {
-			let index_url = if let Some(indices) = urls {
-				indices
+			let index_url = if let Some(manifest) = manifest {
+				manifest
 					.pesde_indices
 					.get(&specifier.index)
 					.ok_or_else(|| {
@@ -80,8 +80,8 @@ fn specifier_to_source(
 			PackageSources::LegacyPesde(LegacyPesdePackageSource::from_url(index_url))
 		}
 		DependencySpecifiers::Wally(specifier) => {
-			let index_url = if let Some(indices) = urls {
-				indices
+			let index_url = if let Some(manifest) = manifest {
+				manifest
 					.wally_indices
 					.get(&specifier.index)
 					.ok_or_else(|| {
@@ -304,7 +304,7 @@ async fn resolve_version(
 		if pass_indices && manifest.is_none() {
 			manifest = Some(subproject.deser_manifest().await?);
 		}
-		let source = specifier_to_source(manifest.as_ref().map(|m| &m.urls), specifier)?;
+		let source = specifier_to_source(manifest.as_deref(), specifier)?;
 
 		let current_state = lockfile.source_states.entry(source.clone());
 		let current_state =

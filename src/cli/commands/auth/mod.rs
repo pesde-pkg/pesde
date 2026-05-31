@@ -64,7 +64,6 @@ pub(super) async fn get_index(subproject: &Subproject, index: Option<&str>) -> a
 
 	manifest
 		.unwrap()
-		.urls
 		.pesde_indices
 		.get(index_name)
 		.with_context(|| format!("index {index_name} not found in manifest"))
