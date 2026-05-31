@@ -1,5 +1,6 @@
 use crate::cli::PESDE_DIR;
 use crate::cli::auth::get_tokens;
+use crate::cli::config::read_config;
 use crate::cli::display_err;
 use anyhow::Context as _;
 use clap::Parser;
@@ -210,7 +211,9 @@ async fn run() -> anyhow::Result<()> {
 		project_dir,
 		data_dir()?,
 		cas_dir,
-		AuthConfig::new().with_tokens(get_tokens().await?),
+		AuthConfig::new()
+			.with_tokens(get_tokens().await?)
+			.with_identities(read_config().await?.identities),
 		reqwest,
 	)
 	.subproject(importer);

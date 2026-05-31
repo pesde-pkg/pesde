@@ -1,7 +1,11 @@
+use std::collections::BTreeMap;
+
 use crate::cli::auth::Tokens;
 use anyhow::Context as _;
 use fs_err::tokio as fs;
 use pesde::GixUrl;
+use pesde::Url;
+use pesde::signature::PublicKey;
 use serde::Deserialize;
 use serde::Serialize;
 use tracing::instrument;
@@ -12,21 +16,21 @@ use super::config_path;
 #[serde(default)]
 pub struct CliConfig {
 	pub default_index: GixUrl,
+	pub default_registry: Url,
 
 	pub tokens: Tokens,
-
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub last_checked_updates: Option<(jiff::Timestamp, semver::Version)>,
+	#[serde(skip_serializing_if = "BTreeMap::is_empty")]
+	pub identities: BTreeMap<Url, PublicKey>,
 }
 
 impl Default for CliConfig {
 	fn default() -> Self {
 		Self {
 			default_index: "https://github.com/pesde-pkg/index".parse().unwrap(),
+			default_registry: "https://registry.pesde.dev".parse().unwrap(),
 
 			tokens: Tokens::default(),
-
-			last_checked_updates: None,
+			identities: BTreeMap::new(),
 		}
 	}
 }

@@ -13,6 +13,7 @@ use futures::StreamExt as _;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
+use crate::Url;
 use crate::hash::Hash;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
@@ -80,7 +81,7 @@ impl PesdePackageSource {
 
 	/// Creates a pesde package source from a URL
 	#[must_use]
-	pub fn from_url(api_url: impl Into<Arc<url::Url>>) -> Self {
+	pub fn from_url(api_url: Url) -> Self {
 		Self::new(PesdePackageBackends::Api(
 			ApiPesdePackageSourceBackend::new(api_url),
 		))

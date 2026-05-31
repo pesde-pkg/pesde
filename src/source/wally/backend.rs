@@ -3,6 +3,7 @@
 
 use crate::GixUrl;
 use crate::Project;
+use crate::Url;
 use crate::names::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
@@ -32,7 +33,7 @@ use tracing::instrument;
 #[derive(Debug, Clone)]
 pub struct WallyIndexConfig {
 	/// The API URL for the Wally registry
-	pub api: url::Url,
+	pub api: Url,
 	/// Fallback registries to use if the primary registry is unavailable
 	pub fallback_registries: Vec<WallyPackageBackends>,
 }
@@ -197,7 +198,7 @@ impl WallyPackageSourceBackend for GitWallyPackageSourceBackend {
 			.reqwest()
 			.get(format!(
 				"{}/v1/package-contents/{}/{}/{}",
-				config.api.as_str().trim_end_matches('/'),
+				config.api.as_url().as_str().trim_end_matches('/'),
 				urlencoding::encode(pkg_name.scope()),
 				urlencoding::encode(pkg_name.name()),
 				urlencoding::encode(&version.to_string())
@@ -343,7 +344,7 @@ impl WallyPackageSourceBackend for WallyPackageBackends {
 
 #[derive(Debug, Clone, Deserialize)]
 struct GitWallyIndexConfig {
-	api: url::Url,
+	api: Url,
 	#[serde(default)]
 	fallback_registries: Vec<String>,
 }
