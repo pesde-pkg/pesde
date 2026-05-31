@@ -147,7 +147,7 @@ where
 	}
 
 	spawn_blocking(move || {
-		#[allow(clippy::disallowed_methods)]
+		#[expect(clippy::disallowed_methods)]
 		let repo = if dot_git.exists() {
 			let repo = Repository::open(&container_dir)?;
 			reset_repo(&repo)?;

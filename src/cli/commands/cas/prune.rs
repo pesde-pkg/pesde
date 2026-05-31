@@ -38,13 +38,12 @@ async fn read_dir_stream(
 	})
 }
 
-#[allow(unreachable_code)]
 async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 	#[cfg(unix)]
 	{
 		use std::os::unix::fs::MetadataExt as _;
 		let metadata = fs::metadata(path).await?;
-		return Ok(metadata.nlink());
+		Ok(metadata.nlink())
 	}
 	// life if rust stabilized the nightly feature from 2019
 	#[cfg(windows)]
@@ -60,7 +59,7 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 		use windows::core::PWSTR;
 
 		let path = path.to_path_buf();
-		return tokio::task::spawn_blocking(move || unsafe {
+		tokio::task::spawn_blocking(move || unsafe {
 			let handle = CreateFileW(
 				PWSTR(
 					path.as_os_str()
@@ -86,13 +85,12 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 			Ok(info.nNumberOfLinks as u64)
 		})
 		.await
-		.unwrap();
+		.unwrap()
 	}
 	#[cfg(not(any(unix, windows)))]
 	{
 		compile_error!("unsupported platform");
 	}
-	anyhow::bail!("unsupported platform")
 }
 
 // CAS structure:

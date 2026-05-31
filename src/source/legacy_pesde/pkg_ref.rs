@@ -49,7 +49,7 @@ pub mod errors {
 	use thiserror::Error;
 
 	/// Error that can occur when parsing a legacy pesde package reference from a string
-	#[allow(clippy::enum_variant_names)]
+	#[expect(clippy::enum_variant_names)]
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = LegacyPesdePackageRefParseError))]
 	pub enum LegacyPesdePackageRefParseErrorKind {

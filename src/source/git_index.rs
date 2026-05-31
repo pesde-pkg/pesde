@@ -1,6 +1,4 @@
 //! Git index-based package source utilities
-#![allow(async_fn_in_trait)]
-
 use crate::Url;
 use fs_err::tokio as fs;
 use gix::remote::Direction;
