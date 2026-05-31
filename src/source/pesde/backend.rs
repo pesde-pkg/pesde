@@ -61,7 +61,7 @@ impl Display for ApiPesdePackageSourceBackend {
 }
 
 impl FromStr for ApiPesdePackageSourceBackend {
-	type Err = url::ParseError;
+	type Err = crate::errors::ParseUrlError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		s.parse().map(Self::new)
@@ -198,7 +198,7 @@ pub mod errors {
 	pub enum ParseBackendErrorKind {
 		/// No backend type matched the input
 		#[error("no backend type matched for `{0}`")]
-		NoMatch(String, #[source] url::ParseError),
+		NoMatch(String, #[source] crate::errors::ParseUrlError),
 	}
 
 	/// Errors that can occur when refreshing a pesde package source

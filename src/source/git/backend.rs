@@ -1,8 +1,8 @@
 //! Git package source backend abstraction
 #![allow(async_fn_in_trait)]
 
-use crate::GixUrl;
 use crate::Project;
+use crate::Url;
 use crate::ser_display_deser_fromstr;
 use crate::source::git_index::refresh_git_repo;
 use crate::util::ToEscaped as _;
@@ -73,7 +73,7 @@ pub trait GitPackageSourceBackend: Debug + Display + Send + Sync {
 /// A Git-based package source backend
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GixPackageSourceBackend {
-	repo_url: GixUrl,
+	repo_url: Url,
 }
 ser_display_deser_fromstr!(GixPackageSourceBackend);
 
@@ -84,7 +84,7 @@ impl Display for GixPackageSourceBackend {
 }
 
 impl FromStr for GixPackageSourceBackend {
-	type Err = crate::errors::GixUrlError;
+	type Err = crate::errors::ParseUrlError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		s.parse().map(Self::new)
@@ -94,7 +94,7 @@ impl FromStr for GixPackageSourceBackend {
 impl GixPackageSourceBackend {
 	/// Creates a new Git package source backend
 	#[must_use]
-	pub fn new(repo_url: GixUrl) -> Self {
+	pub fn new(repo_url: Url) -> Self {
 		Self { repo_url }
 	}
 
@@ -108,7 +108,7 @@ impl GixPackageSourceBackend {
 
 	/// Gets the repository URL
 	#[must_use]
-	pub fn repo_url(&self) -> &GixUrl {
+	pub fn repo_url(&self) -> &Url {
 		&self.repo_url
 	}
 }
@@ -303,7 +303,7 @@ impl FromStr for GitPackageBackends {
 impl GitPackageBackends {
 	/// Gets the repository URL for this backend
 	#[must_use]
-	pub fn repo_url(&self) -> &GixUrl {
+	pub fn repo_url(&self) -> &Url {
 		match self {
 			Self::Git(repo) => repo.repo_url(),
 		}
@@ -357,9 +357,10 @@ impl GitPackageSourceBackend for GitPackageBackends {
 
 /// Errors that can occur when interacting with Git package source backends
 pub mod errors {
-	use crate::GixUrl;
 	use relative_path::RelativePathBuf;
 	use thiserror::Error;
+
+	use crate::Url;
 
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = ParseBackendError))]
@@ -367,7 +368,7 @@ pub mod errors {
 	pub enum ParseBackendErrorKind {
 		/// No backend type matched the input
 		#[error("no backend type matched for `{0}`")]
-		NoMatch(String, #[source] crate::errors::GixUrlError),
+		NoMatch(String, #[source] crate::errors::ParseUrlError),
 	}
 
 	/// The error type for refreshing a Git package source backend
@@ -380,39 +381,39 @@ pub mod errors {
 	pub enum ResolveRevErrorKind {
 		/// An error occurred opening the repository
 		#[error("error opening backend {0}")]
-		OpenRepo(GixUrl, #[source] gix::open::Error),
+		OpenRepo(Url, #[source] gix::open::Error),
 
 		/// An error occurred parsing a revision
 		#[error("error parsing rev {0} in backend {1}")]
 		ParseRev(
 			String,
-			GixUrl,
+			Url,
 			#[source] gix::revision::spec::parse::single::Error,
 		),
 
 		/// An error occurred parsing a revision to an object
 		#[error("error parsing rev to object in backend {0}")]
-		ParseRevToObject(GixUrl, #[source] gix::object::find::existing::Error),
+		ParseRevToObject(Url, #[source] gix::object::find::existing::Error),
 
 		/// An error occurred parsing an object to a tree in the backend
 		#[error("error parsing object to tree in backend {0}")]
-		ParseObjectToTree(GixUrl, #[source] gix::object::peel::to_kind::Error),
+		ParseObjectToTree(Url, #[source] gix::object::peel::to_kind::Error),
 
 		/// An error occurred reading a tree entry in the backend
 		#[error("error reading tree entry at path {1} in backend {0}")]
 		ReadTreeEntry(
-			GixUrl,
+			Url,
 			RelativePathBuf,
 			#[source] gix::object::find::existing::Error,
 		),
 
 		/// No entry was found at the specified path in the backend
 		#[error("no entry at path {1} in backend {0}")]
-		NoEntryAtPath(GixUrl, RelativePathBuf),
+		NoEntryAtPath(Url, RelativePathBuf),
 
 		/// An error occurred parsing an entry to an object in the backend
 		#[error("error parsing entry to object in backend {0}")]
-		ParseEntryToObject(GixUrl, #[source] gix::object::find::existing::Error),
+		ParseEntryToObject(Url, #[source] gix::object::find::existing::Error),
 	}
 
 	#[derive(Debug, Error, thiserror_ext::Box)]
@@ -422,24 +423,24 @@ pub mod errors {
 	pub enum ReadFileErrorKind {
 		/// An error occurred opening the repository
 		#[error("error opening backend {0}")]
-		OpenRepo(GixUrl, #[source] gix::open::Error),
+		OpenRepo(Url, #[source] gix::open::Error),
 
 		/// An error occurred parsing a tree ID in the backend
 		#[error("error parsing tree id in backend {0}")]
-		ParseTreeId(GixUrl, #[source] gix::hash::decode::Error),
+		ParseTreeId(Url, #[source] gix::hash::decode::Error),
 
 		/// An error occurred finding an object in the backend
 		#[error("error finding object in backend {0}")]
-		FindObject(GixUrl, #[source] gix::object::find::existing::Error),
+		FindObject(Url, #[source] gix::object::find::existing::Error),
 
 		/// An error occurred peeling an object to a tree in the backend
 		#[error("error peeling to tree in backend {0}")]
-		PeelToTree(GixUrl, #[source] gix::object::peel::to_kind::Error),
+		PeelToTree(Url, #[source] gix::object::peel::to_kind::Error),
 
 		/// An error occurred looking up an entry in the backend
 		#[error("error looking up entry at path {1} in backend {0}")]
 		LookupEntry(
-			GixUrl,
+			Url,
 			RelativePathBuf,
 			#[source] gix::object::find::existing::Error,
 		),
@@ -447,7 +448,7 @@ pub mod errors {
 		/// An error occurred reading an object in the backend
 		#[error("error reading object at path {1} in backend {0}")]
 		ReadObject(
-			GixUrl,
+			Url,
 			RelativePathBuf,
 			#[source] gix::object::find::existing::Error,
 		),
@@ -460,22 +461,22 @@ pub mod errors {
 	pub enum ListTreeErrorKind {
 		/// An error occurred opening the backend
 		#[error("error opening backend {0}")]
-		OpenRepo(GixUrl, #[source] gix::open::Error),
+		OpenRepo(Url, #[source] gix::open::Error),
 
 		/// An error occurred parsing a tree ID in the backend
 		#[error("error parsing tree id in backend {0}")]
-		ParseTreeId(GixUrl, #[source] gix::hash::decode::Error),
+		ParseTreeId(Url, #[source] gix::hash::decode::Error),
 
 		/// An error occurred finding an object in the backend
 		#[error("error finding object in backend {0}")]
-		FindObject(GixUrl, #[source] gix::object::find::existing::Error),
+		FindObject(Url, #[source] gix::object::find::existing::Error),
 
 		/// An error occurred peeling an object to a tree in the backend
 		#[error("error peeling to tree in backend {0}")]
-		PeelToTree(GixUrl, #[source] gix::object::peel::to_kind::Error),
+		PeelToTree(Url, #[source] gix::object::peel::to_kind::Error),
 
 		/// An error occurred traversing a tree in the backend
 		#[error("error traversing tree in backend {0}")]
-		Traverse(GixUrl, #[source] gix::traverse::tree::breadthfirst::Error),
+		Traverse(Url, #[source] gix::traverse::tree::breadthfirst::Error),
 	}
 }

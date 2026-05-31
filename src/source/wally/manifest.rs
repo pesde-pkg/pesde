@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::GixUrl;
+use crate::Url;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::manifest::errors;
@@ -26,7 +26,7 @@ pub enum WallyRealm {
 pub struct WallyPackage {
 	pub name: WallyPackageName,
 	pub version: Version,
-	pub registry: GixUrl,
+	pub registry: Url,
 	#[allow(unused)]
 	pub realm: WallyRealm,
 }

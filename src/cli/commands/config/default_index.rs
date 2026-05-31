@@ -2,13 +2,13 @@ use crate::cli::config::CliConfig;
 use crate::cli::config::read_config;
 use crate::cli::config::write_config;
 use clap::Args;
-use pesde::GixUrl;
+use pesde::Url;
 
 #[derive(Debug, Args)]
 pub struct DefaultIndexCommand {
 	/// The new index URL to set as default, don't pass any value to check the current default index
 	#[arg(index = 1)]
-	index: Option<GixUrl>,
+	index: Option<Url>,
 
 	/// Resets the default index to the default value
 	#[arg(short, long, conflicts_with = "index")]

@@ -1,5 +1,4 @@
 //! Manifest
-use crate::GixUrl;
 use crate::Url;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
@@ -25,10 +24,10 @@ pub struct ManifestUrls {
 	pub pesde_registries: BTreeMap<String, Url>,
 	/// The indices to use for the package
 	#[serde(default, rename = "indices")]
-	pub pesde_indices: BTreeMap<String, GixUrl>,
+	pub pesde_indices: BTreeMap<String, Url>,
 	/// The indices to use for the package's Wally dependencies
 	#[serde(default, rename = "wally_indices")]
-	pub wally_indices: BTreeMap<String, GixUrl>,
+	pub wally_indices: BTreeMap<String, Url>,
 }
 
 /// A specifier for an override
