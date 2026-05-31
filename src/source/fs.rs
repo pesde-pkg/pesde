@@ -48,7 +48,7 @@ async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
 		permissions.set_readonly(true);
 	} else {
 		#[cfg(windows)]
-		#[allow(clippy::permissions_set_readonly_false)]
+		#[expect(clippy::permissions_set_readonly_false)]
 		{
 			permissions.set_readonly(false);
 		}

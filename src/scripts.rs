@@ -9,7 +9,6 @@ use tracing::instrument;
 use crate::Subproject;
 
 /// Hooks for [execute_script]
-#[allow(unused_variables)]
 pub trait ExecuteScriptHooks {
 	/// The error the methods return
 	type Error: Error;

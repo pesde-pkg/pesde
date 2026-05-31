@@ -1,6 +1,4 @@
 //! Git package source backend abstraction
-#![allow(async_fn_in_trait)]
-
 use crate::Project;
 use crate::Url;
 use crate::ser_display_deser_fromstr;

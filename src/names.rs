@@ -270,7 +270,7 @@ pub mod errors {
 	}
 
 	/// Errors that can occur when working with Wally package names
-	#[allow(clippy::enum_variant_names)]
+	#[expect(clippy::enum_variant_names)]
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = WallyPackageNameError))]
 	pub enum WallyPackageNameErrorKind {
