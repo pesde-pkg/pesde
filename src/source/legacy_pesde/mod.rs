@@ -206,7 +206,6 @@ impl PackageSource for LegacyPesdePackageSource {
 		if versions.is_empty() {
 			return Err(errors::ResolveErrorKind::NoMatchingVersion(
 				specifier.clone(),
-				specifier.target,
 				suggestions,
 			)
 			.into());
@@ -420,12 +419,8 @@ pub mod errors {
 
 		// custom error to provide the user with target suggestions
 		/// No matching version was found for a specifier
-		#[error("no matching version found for {0} {1}. available targets: {suggestions}", suggestions = .2.iter().format(", "))]
-		NoMatchingVersion(
-			LegacyPesdeDependencySpecifier,
-			TargetKind,
-			BTreeSet<TargetKind>,
-		),
+		#[error("no matching version found for {0}. available targets: {suggestions}", suggestions = .1.iter().format(", "))]
+		NoMatchingVersion(LegacyPesdeDependencySpecifier, BTreeSet<TargetKind>),
 
 		/// Error reading index file
 		#[error("error reading index file")]

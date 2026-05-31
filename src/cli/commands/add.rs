@@ -55,9 +55,9 @@ impl AddCommand {
 					.context("failed to read manifest")?;
 
 				let indices = if pesde {
-					&manifest.urls.pesde_indices
+					&manifest.pesde_indices
 				} else {
-					&manifest.urls.wally_indices
+					&manifest.wally_indices
 				};
 
 				let name = self.index.as_deref().unwrap_or(DEFAULT_URL_KEY);

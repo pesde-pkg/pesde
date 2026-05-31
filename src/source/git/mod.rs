@@ -366,7 +366,6 @@ fn transform_pesde_dependencies(
 			match &mut spec {
 				DependencySpecifiers::Pesde(specifier) => {
 					specifier.registry = manifest
-						.urls
 						.pesde_registries
 						.get(&specifier.registry)
 						.ok_or_else(|| {
@@ -379,7 +378,6 @@ fn transform_pesde_dependencies(
 				}
 				DependencySpecifiers::LegacyPesde(specifier) => {
 					specifier.index = manifest
-						.urls
 						.pesde_indices
 						.get(&specifier.index)
 						.ok_or_else(|| {
@@ -392,7 +390,6 @@ fn transform_pesde_dependencies(
 				}
 				DependencySpecifiers::Wally(specifier) => {
 					specifier.index = manifest
-						.urls
 						.wally_indices
 						.get(&specifier.index)
 						.ok_or_else(|| {
