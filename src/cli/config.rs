@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use crate::cli::auth::Tokens;
 use anyhow::Context as _;
 use fs_err::tokio as fs;
-use pesde::GixUrl;
 use pesde::Url;
 use pesde::signature::PublicKey;
 use serde::Deserialize;
@@ -15,7 +14,7 @@ use super::config_path;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CliConfig {
-	pub default_index: GixUrl,
+	pub default_index: Url,
 	pub default_registry: Url,
 
 	pub tokens: Tokens,

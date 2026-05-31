@@ -2,8 +2,8 @@ use crate::cli::config::read_config;
 use anyhow::Context as _;
 use clap::Subcommand;
 use pesde::DEFAULT_URL_KEY;
-use pesde::GixUrl;
 use pesde::Subproject;
+use pesde::Url;
 use pesde::errors::ManifestReadErrorKind;
 
 mod identity;
@@ -39,10 +39,7 @@ impl AuthCommands {
 	}
 }
 
-pub(super) async fn get_index(
-	subproject: &Subproject,
-	index: Option<&str>,
-) -> anyhow::Result<GixUrl> {
+pub(super) async fn get_index(subproject: &Subproject, index: Option<&str>) -> anyhow::Result<Url> {
 	let manifest = match subproject.deser_manifest().await {
 		Ok(manifest) => Some(manifest),
 		Err(e) => match e.into_inner() {

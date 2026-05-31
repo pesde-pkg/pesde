@@ -6,7 +6,7 @@ use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::GixUrl;
+use crate::Url;
 use crate::names::WallyPackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
@@ -62,7 +62,7 @@ pub struct RegistryWallyDependencySpecifier {
 	/// The version requirement for the package
 	pub version: VersionReq,
 	/// The index to use for the package
-	pub index: GixUrl,
+	pub index: Url,
 	/// The realm to use for the package
 	pub realm: Realm,
 }

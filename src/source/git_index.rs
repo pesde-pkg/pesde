@@ -1,7 +1,7 @@
 //! Git index-based package source utilities
 #![allow(async_fn_in_trait)]
 
-use crate::GixUrl;
+use crate::Url;
 use fs_err::tokio as fs;
 use gix::remote::Direction;
 use std::fmt::Debug;
@@ -12,7 +12,7 @@ use tracing::instrument;
 #[instrument(skip_all, level = "debug")]
 pub(crate) async fn refresh_git_repo(
 	path: PathBuf,
-	repo_url: GixUrl,
+	repo_url: Url,
 ) -> Result<(), errors::RefreshIndexError> {
 	if fs::metadata(&path).await.is_ok() {
 		spawn_blocking(move || {
@@ -58,7 +58,7 @@ pub(crate) async fn refresh_git_repo(
 
 	spawn_blocking(move || {
 		gix::clone::PrepareFetch::new(
-			repo_url.as_url().clone(),
+			repo_url.as_gix_url(),
 			path,
 			gix::create::Kind::Bare,
 			gix::create::Options::default(),
@@ -170,7 +170,7 @@ pub mod errors {
 
 	use thiserror::Error;
 
-	use crate::GixUrl;
+	use crate::Url;
 
 	/// Errors that can occur when refreshing a git-based package source index
 	#[derive(Debug, Error, thiserror_ext::Box)]
@@ -195,23 +195,23 @@ pub mod errors {
 
 		/// Error connecting to remote repository
 		#[error("error connecting to remote repository at {0}")]
-		Connect(GixUrl, #[source] gix::remote::connect::Error),
+		Connect(Url, #[source] gix::remote::connect::Error),
 
 		/// Error preparing fetch from remote repository
 		#[error("error preparing fetch from remote repository at {0}")]
-		PrepareFetch(GixUrl, #[source] gix::remote::fetch::prepare::Error),
+		PrepareFetch(Url, #[source] gix::remote::fetch::prepare::Error),
 
 		/// Error reading from remote repository
 		#[error("error reading from remote repository at {0}")]
-		Read(GixUrl, #[source] gix::remote::fetch::Error),
+		Read(Url, #[source] gix::remote::fetch::Error),
 
 		/// Error cloning repository
 		#[error("error cloning repository from {0}")]
-		Clone(GixUrl, #[source] gix::clone::Error),
+		Clone(Url, #[source] gix::clone::Error),
 
 		/// Error fetching repository
 		#[error("error fetching repository from {0}")]
-		Fetch(GixUrl, #[source] gix::clone::fetch::Error),
+		Fetch(Url, #[source] gix::clone::fetch::Error),
 	}
 
 	/// Errors that can occur when reading a git-based package source's tree

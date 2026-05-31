@@ -1,7 +1,6 @@
 //! Legacy pesde package source backend abstraction
 #![allow(async_fn_in_trait)]
 
-use crate::GixUrl;
 use crate::Project;
 use crate::Url;
 use crate::manifest::Alias;
@@ -305,7 +304,7 @@ pub trait LegacyPesdePackageSourceBackend: Debug + Display + Send + Sync {
 /// A Git-based legacy pesde package source backend
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GitLegacyPesdePackageSourceBackend {
-	repo_url: GixUrl,
+	repo_url: Url,
 }
 ser_display_deser_fromstr!(GitLegacyPesdePackageSourceBackend);
 
@@ -316,7 +315,7 @@ impl Display for GitLegacyPesdePackageSourceBackend {
 }
 
 impl FromStr for GitLegacyPesdePackageSourceBackend {
-	type Err = crate::errors::GixUrlError;
+	type Err = crate::errors::ParseUrlError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		s.parse().map(Self::new)
@@ -326,7 +325,7 @@ impl FromStr for GitLegacyPesdePackageSourceBackend {
 impl GitLegacyPesdePackageSourceBackend {
 	/// Creates a new Git legacy pesde package source backend
 	#[must_use]
-	pub fn new(repo_url: GixUrl) -> Self {
+	pub fn new(repo_url: Url) -> Self {
 		Self { repo_url }
 	}
 
@@ -547,7 +546,7 @@ impl LegacyPesdePackageSourceBackend for LegacyPesdePackageBackends {
 
 /// Errors that can occur when interacting with legacy pesde package source backends
 pub mod errors {
-	use crate::GixUrl;
+	use crate::Url;
 	use crate::source::git_index::errors::ReadFile;
 	use crate::source::git_index::errors::TreeError;
 	use crate::source::legacy_pesde::target::errors::TargetKindFromStr;
@@ -559,7 +558,7 @@ pub mod errors {
 	pub enum ParseBackendErrorKind {
 		/// No backend type matched the input
 		#[error("no backend type matched for `{0}`")]
-		NoMatch(String, #[source] crate::errors::GixUrlError),
+		NoMatch(String, #[source] crate::errors::ParseUrlError),
 	}
 
 	/// Errors that can occur when refreshing a legacy pesde package source
@@ -651,7 +650,7 @@ pub mod errors {
 
 		/// The config file was missing for the index
 		#[error("missing config file for index at {0}")]
-		Missing(GixUrl),
+		Missing(Url),
 	}
 
 	/// Errors that can occur when reading an index file from a Git-based legacy pesde package source

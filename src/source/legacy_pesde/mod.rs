@@ -21,10 +21,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use specifier::LegacyPesdeDependencySpecifier;
 
-use crate::GixUrl;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
+use crate::Url;
 use crate::manifest::Manifest;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
@@ -93,7 +93,7 @@ impl LegacyPesdePackageSource {
 
 	/// Creates a legacy pesde package source from a URL
 	#[must_use]
-	pub fn from_url(repo_url: GixUrl) -> Self {
+	pub fn from_url(repo_url: Url) -> Self {
 		Self::new(LegacyPesdePackageBackends::Git(
 			GitLegacyPesdePackageSourceBackend::new(repo_url),
 		))

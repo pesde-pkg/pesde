@@ -1,8 +1,8 @@
 //! Wally package source
-use crate::GixUrl;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
+use crate::Url;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
@@ -78,7 +78,7 @@ impl WallyPackageSource {
 
 	/// Creates a Wally package source from a URL
 	#[must_use]
-	pub fn from_url(repo_url: GixUrl) -> Self {
+	pub fn from_url(repo_url: Url) -> Self {
 		Self::new(WallyPackageBackends::Git(
 			GitWallyPackageSourceBackend::new(repo_url),
 		))

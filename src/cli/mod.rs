@@ -2,7 +2,7 @@ use crate::cli::style::ERROR_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_STYLE;
 use anyhow::Context as _;
-use pesde::GixUrl;
+use pesde::Url;
 use pesde::manifest::DependencyType;
 use pesde::names::PackageName;
 use pesde::names::WallyPackageName;
@@ -76,7 +76,7 @@ where
 enum AnyPackageIdentifier {
 	PesdePackageName(VersionedPackageName<PackageName>),
 	WallyPackageName(VersionedPackageName<WallyPackageName>),
-	Git((GixUrl, String)),
+	Git((Url, String)),
 	Path(RelativeOrAbsolutePath),
 }
 
@@ -84,7 +84,7 @@ impl AnyPackageIdentifier {
 	async fn source_and_specifier(
 		&self,
 		realm: Option<Realm>,
-		get_index: impl AsyncFnOnce(bool) -> anyhow::Result<(String, GixUrl)>,
+		get_index: impl AsyncFnOnce(bool) -> anyhow::Result<(String, Url)>,
 	) -> anyhow::Result<(PackageSources, DependencySpecifiers)> {
 		Ok(match self {
 			#[expect(deprecated)]
@@ -203,4 +203,4 @@ pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
 	}
 }
 
-pub static GITHUB_URL: LazyLock<GixUrl> = LazyLock::new(|| "https://github.com".parse().unwrap());
+pub static GITHUB_URL: LazyLock<Url> = LazyLock::new(|| "https://github.com".parse().unwrap());
