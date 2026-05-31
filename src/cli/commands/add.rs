@@ -77,7 +77,11 @@ impl AddCommand {
 		let lockfile = get_lockfile(subproject.project(), &refreshed_sources).await?;
 
 		let source_state = refreshed_sources
-			.refresh(&source, subproject.project(), lockfile.source_states.get(&source))
+			.refresh(
+				&source,
+				subproject.project(),
+				lockfile.source_states.get(&source),
+			)
 			.await
 			.context("failed to refresh package source")?;
 

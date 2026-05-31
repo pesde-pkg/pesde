@@ -3,6 +3,7 @@
 
 use crate::GixUrl;
 use crate::Project;
+use crate::Url;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::names::PackageName;
@@ -47,7 +48,7 @@ fn default_archive_size() -> usize {
 #[derive(Deserialize, Debug, Clone)]
 pub struct IndexConfig {
 	/// The URL of the API
-	pub api: url::Url,
+	pub api: Url,
 	/// The URL to download packages from
 	pub download: Option<String>,
 	/// The OAuth client ID for GitHub
@@ -65,7 +66,7 @@ impl IndexConfig {
 	/// The URL of the API
 	#[must_use]
 	pub fn api(&self) -> &str {
-		self.api.as_str().trim_end_matches('/')
+		self.api.as_url().as_str().trim_end_matches('/')
 	}
 
 	/// The URL to download packages from
@@ -149,7 +150,7 @@ pub struct IndexFileEntry {
 	pub authors: Vec<String>,
 	/// The repository of this package
 	#[serde(default)]
-	pub repository: Option<url::Url>,
+	pub repository: Option<Url>,
 	/// The documentation for this package
 	#[serde(default)]
 	pub docs: BTreeSet<DocEntry>,

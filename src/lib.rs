@@ -5,6 +5,7 @@
 
 use crate::lockfile::Lockfile;
 use crate::manifest::Manifest;
+use crate::signature::PublicKey;
 use crate::source::PackageSource as _;
 use crate::source::PackageSources;
 use crate::source::SourceState;
@@ -65,6 +66,7 @@ pub(crate) fn default_url_key() -> String {
 #[derive(Debug, Default)]
 struct AuthConfigShared {
 	tokens: HashMap<GixUrl, String>,
+	identities: HashMap<Url, PublicKey>,
 }
 
 /// Struct containing the authentication configuration
@@ -89,6 +91,17 @@ impl AuthConfig {
 	) -> Self {
 		Arc::get_mut(&mut self.shared).unwrap().tokens =
 			tokens.into_iter().map(|(url, s)| (url, s.into())).collect();
+		self
+	}
+
+	/// Set the identities
+	/// Panics if the `AuthConfig` is shared
+	#[must_use]
+	pub fn with_identities<I: IntoIterator<Item = (Url, PublicKey)>>(
+		mut self,
+		identities: I,
+	) -> Self {
+		Arc::get_mut(&mut self.shared).unwrap().identities = identities.into_iter().collect();
 		self
 	}
 
@@ -524,6 +537,39 @@ impl FromStr for GixUrl {
 impl Display for GixUrl {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{}", self.as_url().to_bstring())
+	}
+}
+
+/// A thin wrapper around `url::Url` to provide cheap cloning and normalisation
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Url(Arc<url::Url>);
+ser_display_deser_fromstr!(Url);
+
+impl Url {
+	/// Creates a new [Url] from a [url::Url]
+	#[must_use]
+	pub fn new(url: impl Into<Arc<url::Url>>) -> Self {
+		Self(url.into())
+	}
+
+	/// Returns the underlying [url::Url]
+	#[must_use]
+	pub fn as_url(&self) -> &url::Url {
+		&self.0
+	}
+}
+
+impl FromStr for Url {
+	type Err = url::ParseError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		s.parse::<url::Url>().map(Url::new)
+	}
+}
+
+impl Display for Url {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.as_url())
 	}
 }
 

@@ -1,5 +1,6 @@
 //! Manifest
 use crate::GixUrl;
+use crate::Url;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::PackageExports;
@@ -21,7 +22,7 @@ use tracing::instrument;
 pub struct ManifestUrls {
 	/// The registries to use for the package
 	#[serde(default, rename = "registries")]
-	pub pesde_registries: BTreeMap<String, Arc<url::Url>>,
+	pub pesde_registries: BTreeMap<String, Url>,
 	/// The indices to use for the package
 	#[serde(default, rename = "indices")]
 	pub pesde_indices: BTreeMap<String, GixUrl>,
@@ -65,7 +66,7 @@ pub struct Manifest {
 	pub authors: Vec<String>,
 	/// The repository of the package
 	#[serde(default)]
-	pub repository: Option<url::Url>,
+	pub repository: Option<Url>,
 	/// The scripts of the package
 	#[serde(default)]
 	pub scripts: BTreeMap<String, String>,

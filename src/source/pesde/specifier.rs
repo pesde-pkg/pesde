@@ -1,4 +1,5 @@
 //! pesde dependency specifier
+use crate::Url;
 use crate::names::PackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
@@ -45,7 +46,7 @@ pub struct RegistryPesdeDependencySpecifier {
 	/// The version requirement for the package
 	pub version: VersionReq,
 	/// The registry to use for the package. None if this package comes from the same registry
-	pub registry: Option<url::Url>,
+	pub registry: Option<Url>,
 	/// The realm to use for the package
 	pub realm: Option<Realm>,
 }
