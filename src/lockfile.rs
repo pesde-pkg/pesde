@@ -13,15 +13,21 @@ pub const CURRENT_FORMAT: usize = 3;
 /// A lockfile
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Lockfile {
-	/// The graph of dependencies
-	pub graph: DependencyGraph,
 	/// State stored by sources
 	#[serde(
 		default,
-		skip_serializing_if = "BTreeMap::is_empty",
+		skip_serializing_if = "should_skip_source_states",
 		serialize_with = "serialize_source_states"
 	)]
 	pub source_states: BTreeMap<PackageSources, SourceState>,
+	/// The graph of dependencies
+	pub graph: DependencyGraph,
+}
+
+fn should_skip_source_states(source_states: &BTreeMap<PackageSources, SourceState>) -> bool {
+	source_states
+		.values()
+		.all(|state| !matches!(state, SourceState::Pesde(_)))
 }
 
 fn serialize_source_states<S>(
