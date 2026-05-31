@@ -1,9 +1,9 @@
 //! Git package source
-use crate::GixUrl;
 use crate::MANIFEST_FILE_NAME;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
+use crate::Url;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
 use crate::manifest::Alias;
@@ -88,7 +88,7 @@ impl GitPackageSource {
 
 	/// Creates a Git package source from a URL
 	#[must_use]
-	pub fn from_url(repo_url: GixUrl) -> Self {
+	pub fn from_url(repo_url: Url) -> Self {
 		Self::new(GitPackageBackends::Git(GixPackageSourceBackend::new(
 			repo_url,
 		)))
@@ -354,7 +354,7 @@ impl PackageSource for GitPackageSource {
 fn transform_pesde_dependencies(
 	subproject: &Subproject,
 	manifest: &Manifest,
-	repo_url: &GixUrl,
+	repo_url: &Url,
 ) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
 	let dependencies = manifest
 		.all_dependencies()
@@ -427,7 +427,7 @@ fn transform_pesde_dependencies(
 
 /// Errors that can occur when interacting with the Git package source
 pub mod errors {
-	use crate::GixUrl;
+	use crate::Url;
 	use crate::manifest::errors::AllDependenciesError;
 	use relative_path::RelativePathBuf;
 	use thiserror::Error;
@@ -496,23 +496,23 @@ pub mod errors {
 
 		/// No manifest was found in the backend
 		#[error("no manifest found in backend {0}")]
-		NoManifest(GixUrl),
+		NoManifest(Url),
 
 		/// A pesde registry specified in the manifest was not found
 		#[error("pesde registry {0} not found in {1}")]
-		PesdeRegistryNotFound(String, GixUrl),
+		PesdeRegistryNotFound(String, Url),
 
 		/// A pesde index specified in the manifest was not found
 		#[error("pesde index {0} not found in {1}")]
-		PesdeIndexNotFound(String, GixUrl),
+		PesdeIndexNotFound(String, Url),
 
 		/// A Wally index specified in the manifest was not found
 		#[error("wally index {0} not found in {1}")]
-		WallyIndexNotFound(String, GixUrl),
+		WallyIndexNotFound(String, Url),
 
 		/// The package depends on a path package that escapes the subproject
 		#[error("path dependency in {0} is not allowed")]
-		Path(GixUrl),
+		Path(Url),
 	}
 
 	/// Errors that can occur when getting exports from a Git package source

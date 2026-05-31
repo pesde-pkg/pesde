@@ -112,21 +112,15 @@ impl AddCommand {
 		let alias = match self.alias {
 			Some(alias) => alias,
 			None => match &self.package {
-				AnyPackageIdentifier::PesdePackageName(versioned) => versioned.0.name().to_string(),
-				AnyPackageIdentifier::WallyPackageName(versioned) => versioned.0.name().to_string(),
-				AnyPackageIdentifier::Git((url, _)) => url
-					.as_url()
-					.path
-					.to_string()
-					.split('/')
-					.next_back()
-					.map_or_else(|| url.as_url().path.to_string(), ToString::to_string),
+				AnyPackageIdentifier::PesdePackageName(versioned) => versioned.0.name().as_str(),
+				AnyPackageIdentifier::WallyPackageName(versioned) => versioned.0.name(),
+				AnyPackageIdentifier::Git((url, _)) => {
+					url.path().split('/').next_back().unwrap_or(url.path())
+				}
 				AnyPackageIdentifier::Path(path) => match path {
-					RelativeOrAbsolutePath::Relative(path) => {
-						path.file_name().map(ToString::to_string)
-					}
+					RelativeOrAbsolutePath::Relative(path) => path.file_name(),
 					RelativeOrAbsolutePath::Absolute(path) => {
-						path.file_name().map(|s| s.to_string_lossy().to_string())
+						path.file_name().and_then(|s| s.to_str())
 					}
 				}
 				.expect("path has no file name"),

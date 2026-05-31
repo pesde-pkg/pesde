@@ -65,7 +65,7 @@ pub(crate) fn default_url_key() -> String {
 
 #[derive(Debug, Default)]
 struct AuthConfigShared {
-	tokens: HashMap<GixUrl, String>,
+	tokens: HashMap<Url, String>,
 	identities: HashMap<Url, PublicKey>,
 }
 
@@ -85,7 +85,7 @@ impl AuthConfig {
 	/// Set the tokens
 	/// Panics if the `AuthConfig` is shared
 	#[must_use]
-	pub fn with_tokens<I: IntoIterator<Item = (GixUrl, impl Into<String>)>>(
+	pub fn with_tokens<I: IntoIterator<Item = (Url, impl Into<String>)>>(
 		mut self,
 		tokens: I,
 	) -> Self {
@@ -107,7 +107,7 @@ impl AuthConfig {
 
 	/// Get the tokens
 	#[must_use]
-	pub fn tokens(&self) -> &HashMap<GixUrl, String> {
+	pub fn tokens(&self) -> &HashMap<Url, String> {
 		&self.shared.tokens
 	}
 }
@@ -507,63 +507,61 @@ pub fn version_matches(req: &VersionReq, version: &Version) -> bool {
 	*req == VersionReq::STAR || req.matches(version)
 }
 
-/// A thin wrapper around `gix::Url` to serde in a human-readable way as well as providing cheap cloning
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GixUrl(Arc<gix::Url>);
-ser_display_deser_fromstr!(GixUrl);
-
-impl GixUrl {
-	/// Creates a new [GixUrl] from a [gix::Url]
-	#[must_use]
-	pub fn new(url: impl Into<Arc<gix::Url>>) -> Self {
-		Self(url.into())
-	}
-
-	/// Returns the underlying [gix::Url]
-	#[must_use]
-	pub fn as_url(&self) -> &gix::Url {
-		&self.0
-	}
-}
-
-impl FromStr for GixUrl {
-	type Err = errors::GixUrlError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		s.try_into().map(|url| GixUrl::new(Arc::new(url)))
-	}
-}
-
-impl Display for GixUrl {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.as_url().to_bstring())
-	}
-}
-
 /// A thin wrapper around `url::Url` to provide cheap cloning and normalisation
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Url(Arc<url::Url>);
+pub struct Url(Arc<(url::Url, String)>);
 ser_display_deser_fromstr!(Url);
 
 impl Url {
-	/// Creates a new [Url] from a [url::Url]
-	#[must_use]
-	pub fn new(url: impl Into<Arc<url::Url>>) -> Self {
-		Self(url.into())
-	}
-
 	/// Returns the underlying [url::Url]
 	#[must_use]
 	pub fn as_url(&self) -> &url::Url {
-		&self.0
+		&self.0.0
+	}
+
+	/// Returns the decoded path of the URL
+	#[must_use]
+	pub fn path(&self) -> &str {
+		&self.0.1
+	}
+
+	/// Returns the URL as a [`gix::Url`]
+	pub fn as_gix_url(&self) -> gix::Url {
+		let url = self.as_url();
+		let scheme = url.scheme().into();
+
+		gix::Url {
+			host: url.host().map(|host| {
+				let url::Host::Ipv6(ipv6) = host else {
+					return host.to_string();
+				};
+
+				if scheme == gix::url::Scheme::Ssh {
+					ipv6.to_string()
+				} else {
+					format!("[{ipv6}]")
+				}
+			}),
+			scheme,
+			user: Some(url.username())
+				.filter(|s| !s.is_empty())
+				.map(Into::into),
+			password: url.password().map(Into::into),
+			serialize_alternative_form: false,
+			port: url.port(),
+			path: self.path().into(),
+		}
 	}
 }
 
 impl FromStr for Url {
-	type Err = url::ParseError;
+	type Err = errors::ParseUrlError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		s.parse::<url::Url>().map(Url::new)
+		let url = s.parse::<url::Url>()?;
+		let path = urlencoding::decode(url.path())?.into_owned();
+
+		Ok(Url((url, path).into()))
 	}
 }
 
@@ -648,6 +646,17 @@ pub mod errors {
 		Globbing(#[from] MatchingGlobsError),
 	}
 
-	/// Errors that can occur when parsing a `gix::Url`
-	pub type GixUrlError = gix::url::parse::Error;
+	/// Errors that can occur when parsing a [`super::Url`]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ParseUrlError))]
+	#[non_exhaustive]
+	pub enum ParseUrlErrorKind {
+		/// An error occurred while parsing the URL
+		#[error("error parsing URL")]
+		Parse(#[from] url::ParseError),
+
+		/// The path was ill-formed
+		#[error("ill-formed URL path")]
+		IllFormedPath(#[from] std::string::FromUtf8Error),
+	}
 }

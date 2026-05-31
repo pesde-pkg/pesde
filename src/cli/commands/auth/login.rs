@@ -8,8 +8,8 @@ use crate::cli::style::URL_STYLE;
 use anyhow::Context as _;
 use clap::Args;
 use console::style;
-use pesde::GixUrl;
 use pesde::Subproject;
+use pesde::Url;
 use pesde::source::PackageSource as _;
 use pesde::source::legacy_pesde::LegacyPesdePackageSource;
 use pesde::source::legacy_pesde::backend::LegacyPesdePackageSourceBackend as _;
@@ -58,7 +58,7 @@ enum AccessTokenResponse {
 impl LoginCommand {
 	pub async fn authenticate_device_flow(
 		&self,
-		index_url: GixUrl,
+		index_url: Url,
 		subproject: &Subproject,
 	) -> anyhow::Result<String> {
 		println!("logging in into {index_url}");
