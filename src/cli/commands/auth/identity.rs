@@ -68,7 +68,6 @@ async fn get_registry(subproject: &Subproject, registry: Option<&str>) -> anyhow
 
 	manifest
 		.unwrap()
-		.urls
 		.pesde_registries
 		.get(registry_name)
 		.with_context(|| format!("registry {registry_name} not found in manifest"))
