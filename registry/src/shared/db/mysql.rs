@@ -66,7 +66,7 @@ pub async fn get_scope_manifest(
         r#"
         SELECT ScopeManifest.owner AS `owner: Uuid`, ScopeManifestMember.identity_id AS `identity_id: Uuid`, ScopeManifestMember.permissions
         FROM ScopeManifest
-        LEFT JOIN ScopeManifestMember ON ScopeManifestMember.scope=ScopeManifest.scope AND ScopeManifestMember.seq=ScopeManifest.seq
+        LEFT JOIN ScopeManifestMember ON ScopeManifestMember.seq=ScopeManifest.seq
         WHERE ScopeManifest.seq = ?
         "#,
         seq.0
@@ -118,10 +118,9 @@ pub async fn get_scope_entry(
 				r#"
                 SELECT name, version, archive_hash
                 FROM PublishScopeLogEntry
-                WHERE scope = ? AND scope_seq = ?
+                WHERE seq = ?
                 "#,
-				scope_entry.scope,
-				scope_entry.scope_seq
+				seq.0
 			)
 			.fetch_one(pool)
 			.await?;
@@ -137,10 +136,9 @@ pub async fn get_scope_entry(
 				r#"
                 SELECT name, version
                 FROM YankScopeLogEntry
-                WHERE scope = ? AND scope_seq = ?
+                WHERE seq = ?
                 "#,
-				scope_entry.scope,
-				scope_entry.scope_seq
+				seq.0
 			)
 			.fetch_one(pool)
 			.await?;
@@ -155,10 +153,9 @@ pub async fn get_scope_entry(
 				r#"
                 SELECT name, reason
                 FROM DeprecateScopeLogEntry
-                WHERE scope = ? AND scope_seq = ?
+                WHERE seq = ?
                 "#,
-				scope_entry.scope,
-				scope_entry.scope_seq
+				seq.0
 			)
 			.fetch_one(pool)
 			.await?;
