@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT sig, scope, scope_seq, author_identity AS `author_identity: Uuid`, kind\n        FROM ScopeLogEntry\n        WHERE seq = ?\n        ",
+  "query": "\n        SELECT sig, scope, author_identity AS `author_identity: Uuid`, kind\n        FROM ScopeLogEntry\n        WHERE pos = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -37,22 +37,6 @@
       },
       {
         "ordinal": 2,
-        "name": "scope_seq",
-        "type_info": {
-          "type": "LongLong",
-          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
-          "collation": 63,
-          "max_size": 20
-        },
-        "origin": {
-          "Table": {
-            "table": "test-pesde-registry.ScopeLogEntry",
-            "name": "scope_seq"
-          }
-        }
-      },
-      {
-        "ordinal": 3,
         "name": "author_identity: Uuid",
         "type_info": {
           "type": "String",
@@ -68,7 +52,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 3,
         "name": "kind",
         "type_info": {
           "type": "String",
@@ -91,9 +75,8 @@
       false,
       false,
       false,
-      false,
       false
     ]
   },
-  "hash": "b8a348551cfee8fe114d6259861185e5bc16b26caa911d75f377fcda014130bb"
+  "hash": "348e3fff5ae8353536de70eba4ac1e68cec5909aff61ffa4be959f8a4760fe81"
 }

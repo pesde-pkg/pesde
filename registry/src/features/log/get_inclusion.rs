@@ -8,19 +8,14 @@ use actix_web::web;
 use merkleberg::mmriver::InclusionProof;
 use pesde::source::pesde::registry::*;
 
-#[get("/v2/log/inclusion/{seq}")]
-pub async fn http(app_state: web::Data<AppState>, path: web::Path<EntrySeq>) -> ControllerResult {
-	let seq = path.into_inner();
-	let Some(result) = handler(&app_state.database, seq).await? else {
-		return Ok(HttpResponse::NotFound().finish());
-	};
+#[get("/v2/log/inclusion/{pos}")]
+pub async fn http(app_state: web::Data<AppState>, path: web::Path<u64>) -> ControllerResult {
+	let pos = path.into_inner();
+	let result = handler(&app_state.database, pos).await?;
 	Ok(HttpResponse::Ok().json(result))
 }
 
-async fn handler(db: &Database, from: EntrySeq) -> AppResult<Option<InclusionProof<Sha256Merge>>> {
+async fn handler(db: &Database, from: u64) -> AppResult<InclusionProof<Sha256Merge>> {
 	let mmr = db.read_mmr().await?;
-	let Some(pos) = db.get_pos(from).await? else {
-		return Ok(None);
-	};
-	Ok(Some(mmr.gen_inclusion_proof(pos).await?))
+	Ok(mmr.gen_inclusion_proof(from).await?)
 }
