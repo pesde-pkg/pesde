@@ -137,7 +137,6 @@ impl PackageSource for PathPackageSource {
 				match &mut spec {
 					DependencySpecifiers::Pesde(spec) => {
 						spec.registry = manifest
-							.urls
 							.pesde_registries
 							.get(&spec.registry)
 							.ok_or_else(|| {
@@ -150,7 +149,6 @@ impl PackageSource for PathPackageSource {
 					}
 					DependencySpecifiers::LegacyPesde(spec) => {
 						spec.index = manifest
-							.urls
 							.pesde_indices
 							.get(&spec.index)
 							.ok_or_else(|| {
@@ -163,7 +161,6 @@ impl PackageSource for PathPackageSource {
 					}
 					DependencySpecifiers::Wally(spec) => {
 						spec.index = manifest
-							.urls
 							.wally_indices
 							.get(&spec.index)
 							.ok_or_else(|| {
