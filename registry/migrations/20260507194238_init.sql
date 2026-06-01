@@ -43,8 +43,8 @@ CREATE TABLE IdentityRotationLogEntry (
 CREATE INDEX idx_rotation_identity ON IdentityRotationLogEntry (identity_id);
 
 CREATE TABLE ScopeManifest (
-    scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     seq BIGINT UNSIGNED PRIMARY KEY,
+    scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
     owner BINARY(16) NOT NULL,
 
@@ -52,18 +52,14 @@ CREATE TABLE ScopeManifest (
     FOREIGN KEY (owner) REFERENCES RegisterIdentityLogEntry (identity_id)
 );
 
-CREATE INDEX idx_scope_manifest_scope_seq ON ScopeManifest (scope, seq DESC);
-CREATE INDEX idx_scope_manifest_owner ON ScopeManifest (owner);
-
 CREATE TABLE ScopeManifestMember (
-    scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     seq BIGINT UNSIGNED NOT NULL,
 
     identity_id BINARY(16) NOT NULL,
     permissions BIGINT UNSIGNED NOT NULL,
 
-    PRIMARY KEY (scope, seq, identity_id),
-    FOREIGN KEY (scope, seq) REFERENCES ScopeManifest (scope, seq),
+    PRIMARY KEY (seq, identity_id),
+    FOREIGN KEY (seq) REFERENCES ScopeManifest (seq),
     FOREIGN KEY (identity_id) REFERENCES RegisterIdentityLogEntry (identity_id)
 );
 
@@ -85,45 +81,39 @@ CREATE TABLE ScopeLogEntry (
     FOREIGN KEY (author_identity) REFERENCES RegisterIdentityLogEntry (identity_id)
 );
 
-CREATE INDEX idx_scope_entry_author ON ScopeLogEntry (author_identity);
+CREATE INDEX idx_scope ON ScopeLogEntry (scope);
 
 CREATE TABLE PublishScopeLogEntry (
-    scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    scope_seq BIGINT UNSIGNED NOT NULL,
+    seq BIGINT UNSIGNED PRIMARY KEY,
 
     name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     version VARCHAR(255) NOT NULL,
     archive_hash TEXT NOT NULL,
 
-    PRIMARY KEY (scope, scope_seq),
-    FOREIGN KEY (scope, scope_seq) REFERENCES ScopeLogEntry (scope, scope_seq)
+    FOREIGN KEY (seq) REFERENCES ScopeLogEntry (seq)
 );
 
-CREATE INDEX idx_publish_package ON PublishScopeLogEntry (scope, name, version);
+CREATE INDEX idx_publish_package ON PublishScopeLogEntry (name, version);
 
 CREATE TABLE YankScopeLogEntry (
-    scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    scope_seq BIGINT UNSIGNED NOT NULL,
+    seq BIGINT UNSIGNED PRIMARY KEY,
 
     name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     version VARCHAR(255) NOT NULL,
 
-    PRIMARY KEY (scope, scope_seq),
-    FOREIGN KEY (scope, scope_seq) REFERENCES ScopeLogEntry (scope, scope_seq),
-    FOREIGN KEY (scope, name, version) REFERENCES PublishScopeLogEntry (scope, name, version)
+    FOREIGN KEY (seq) REFERENCES ScopeLogEntry (seq),
+    FOREIGN KEY (name, version) REFERENCES PublishScopeLogEntry (name, version)
 );
 
-CREATE INDEX idx_yank_package ON YankScopeLogEntry (scope, name, version);
+CREATE INDEX idx_yank_package ON YankScopeLogEntry (name, version);
 
 CREATE TABLE DeprecateScopeLogEntry (
-    scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    scope_seq BIGINT UNSIGNED NOT NULL,
+    seq BIGINT UNSIGNED PRIMARY KEY,
 
     name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
     reason VARCHAR(255) NOT NULL,
 
-    PRIMARY KEY (scope, scope_seq),
-    FOREIGN KEY (scope, scope_seq) REFERENCES ScopeLogEntry (scope, scope_seq)
+    FOREIGN KEY (seq) REFERENCES ScopeLogEntry (seq)
 );
 
-CREATE INDEX idx_deprecate_package ON DeprecateScopeLogEntry (scope, name);
+CREATE INDEX idx_deprecate_package ON DeprecateScopeLogEntry (name);
