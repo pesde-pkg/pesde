@@ -71,27 +71,21 @@ impl Database {
 		Ok(MMRIVER::new(mmr_size, transaction))
 	}
 
-	pub async fn get_pos(&self, seq: EntrySeq) -> anyhow::Result<Option<u64>> {
+	pub async fn get_scope_manifest(&self, pos: u64) -> anyhow::Result<Option<ScopeManifest>> {
 		match self {
-			Self::MySql(pool) => mysql::get_pos(pool, seq).await,
+			Self::MySql(pool) => mysql::get_scope_manifest(pool, pos).await,
 		}
 	}
 
-	pub async fn get_scope_manifest(&self, seq: EntrySeq) -> anyhow::Result<Option<ScopeManifest>> {
+	pub async fn get_scope_entry(&self, pos: u64) -> anyhow::Result<Option<ScopeEntry>> {
 		match self {
-			Self::MySql(pool) => mysql::get_scope_manifest(pool, seq).await,
+			Self::MySql(pool) => mysql::get_scope_entry(pool, pos).await,
 		}
 	}
 
-	pub async fn get_scope_entry(&self, seq: EntrySeq) -> anyhow::Result<Option<ScopeEntry>> {
+	pub async fn get_entry(&self, pos: u64) -> anyhow::Result<Option<Entry>> {
 		match self {
-			Self::MySql(pool) => mysql::get_scope_entry(pool, seq).await,
-		}
-	}
-
-	pub async fn get_entry(&self, seq: EntrySeq) -> anyhow::Result<Option<Entry>> {
-		match self {
-			Self::MySql(pool) => mysql::get_entry(pool, seq).await,
+			Self::MySql(pool) => mysql::get_entry(pool, pos).await,
 		}
 	}
 }

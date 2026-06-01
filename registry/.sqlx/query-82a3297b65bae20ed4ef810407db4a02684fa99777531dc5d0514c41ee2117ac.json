@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n                SELECT name, version\n                FROM YankScopeLogEntry\n                WHERE scope = ? AND scope_seq = ?\n                ",
+  "query": "\n                SELECT name, reason\n                FROM DeprecateScopeLogEntry\n                WHERE pos = ?\n                ",
   "describe": {
     "columns": [
       {
@@ -8,20 +8,20 @@
         "name": "name",
         "type_info": {
           "type": "VarString",
-          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
           "collation": 224,
           "max_size": 128
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.YankScopeLogEntry",
+            "table": "test-pesde-registry.DeprecateScopeLogEntry",
             "name": "name"
           }
         }
       },
       {
         "ordinal": 1,
-        "name": "version",
+        "name": "reason",
         "type_info": {
           "type": "VarString",
           "flags": "NOT_NULL | NO_DEFAULT_VALUE",
@@ -30,19 +30,19 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.YankScopeLogEntry",
-            "name": "version"
+            "table": "test-pesde-registry.DeprecateScopeLogEntry",
+            "name": "reason"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false,
       false
     ]
   },
-  "hash": "47d0977ae66a2d297aa2ca90e00083eabee3c6dd5107849d534aa840ce438d0c"
+  "hash": "82a3297b65bae20ed4ef810407db4a02684fa99777531dc5d0514c41ee2117ac"
 }

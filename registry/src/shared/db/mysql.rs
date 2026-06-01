@@ -49,27 +49,18 @@ pub async fn append_hashes(
 	Ok(())
 }
 
-pub async fn get_pos(pool: &sqlx::MySqlPool, seq: EntrySeq) -> anyhow::Result<Option<u64>> {
-	Ok(
-		sqlx::query!("SELECT pos FROM LogEntry WHERE seq = ?", seq.0)
-			.fetch_optional(pool)
-			.await?
-			.map(|record| record.pos),
-	)
-}
-
 pub async fn get_scope_manifest(
 	pool: &sqlx::MySqlPool,
-	seq: EntrySeq,
+	pos: u64,
 ) -> anyhow::Result<Option<ScopeManifest>> {
 	let mut stream = sqlx::query!(
         r#"
         SELECT ScopeManifest.owner AS `owner: Uuid`, ScopeManifestMember.identity_id AS `identity_id: Uuid`, ScopeManifestMember.permissions
         FROM ScopeManifest
-        LEFT JOIN ScopeManifestMember ON ScopeManifestMember.seq=ScopeManifest.seq
-        WHERE ScopeManifest.seq = ?
+        LEFT JOIN ScopeManifestMember ON ScopeManifestMember.pos=ScopeManifest.pos
+        WHERE ScopeManifest.pos = ?
         "#,
-        seq.0
+        pos
     )
     .fetch(pool);
 
@@ -96,15 +87,15 @@ pub async fn get_scope_manifest(
 
 pub async fn get_scope_entry(
 	pool: &sqlx::MySqlPool,
-	seq: EntrySeq,
+	pos: u64,
 ) -> anyhow::Result<Option<ScopeEntry>> {
 	let Some(scope_entry) = sqlx::query!(
 		r#"
-        SELECT sig, scope, scope_seq, author_identity AS `author_identity: Uuid`, kind
+        SELECT sig, scope, author_identity AS `author_identity: Uuid`, kind
         FROM ScopeLogEntry
-        WHERE seq = ?
+        WHERE pos = ?
         "#,
-		seq.0
+		pos
 	)
 	.fetch_optional(pool)
 	.await?
@@ -118,9 +109,9 @@ pub async fn get_scope_entry(
 				r#"
                 SELECT name, version, archive_hash
                 FROM PublishScopeLogEntry
-                WHERE seq = ?
+                WHERE pos = ?
                 "#,
-				seq.0
+				pos
 			)
 			.fetch_one(pool)
 			.await?;
@@ -136,9 +127,9 @@ pub async fn get_scope_entry(
 				r#"
                 SELECT name, version
                 FROM YankScopeLogEntry
-                WHERE seq = ?
+                WHERE pos = ?
                 "#,
-				seq.0
+				pos
 			)
 			.fetch_one(pool)
 			.await?;
@@ -153,9 +144,9 @@ pub async fn get_scope_entry(
 				r#"
                 SELECT name, reason
                 FROM DeprecateScopeLogEntry
-                WHERE seq = ?
+                WHERE pos = ?
                 "#,
-				seq.0
+				pos
 			)
 			.fetch_one(pool)
 			.await?;
@@ -166,7 +157,7 @@ pub async fn get_scope_entry(
 			})
 		}
 		"manifest_update" => {
-			let Some(manifest) = get_scope_manifest(pool, seq).await? else {
+			let Some(manifest) = get_scope_manifest(pool, pos).await? else {
 				return Ok(None);
 			};
 			ScopeEntryPayload::ManifestUpdate(ScopeManifestUpdateBody { manifest })
@@ -178,21 +169,20 @@ pub async fn get_scope_entry(
 		sig: scope_entry.sig.parse()?,
 		body: ScopeEntryBody {
 			scope: scope_entry.scope.parse()?,
-			scope_seq: ScopeSeq(scope_entry.scope_seq),
 			author_identity: IdentityId(scope_entry.author_identity),
 			payload,
 		},
 	}))
 }
 
-pub async fn get_entry(pool: &sqlx::MySqlPool, seq: EntrySeq) -> anyhow::Result<Option<Entry>> {
+pub async fn get_entry(pool: &sqlx::MySqlPool, pos: u64) -> anyhow::Result<Option<Entry>> {
 	let Some(entry) = sqlx::query!(
 		r#"
         SELECT kind
         FROM LogEntry
-        WHERE seq = ?
+        WHERE pos = ?
         "#,
-		seq.0
+		pos
 	)
 	.fetch_optional(pool)
 	.await?
@@ -201,10 +191,10 @@ pub async fn get_entry(pool: &sqlx::MySqlPool, seq: EntrySeq) -> anyhow::Result<
 	};
 
 	Ok(Some(Entry {
-		seq,
+		pos,
 		payload: match &*entry.kind {
 			"scope" => {
-				let Some(scope_entry) = get_scope_entry(pool, seq).await? else {
+				let Some(scope_entry) = get_scope_entry(pool, pos).await? else {
 					return Ok(None);
 				};
 				EntryPayload::Scope(scope_entry)

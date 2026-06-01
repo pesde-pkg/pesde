@@ -42,18 +42,6 @@ impl<T: Serialize> SignedEntry<T> {
 	}
 }
 
-/// The sequence number of a registry entry
-/// This number is a globally increasing number in the log
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct EntrySeq(pub u64);
-
-/// The sequence number of a scope entry
-/// This number is a per-scope increasing number, unlike [EntrySeq] which is globally increasing
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ScopeSeq(pub u64);
-
 /// A UUID which acts as a stable identifier for an identity
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -155,8 +143,6 @@ pub enum ScopeEntryPayload {
 pub struct ScopeEntryBody {
 	/// The scope this entry belongs to
 	pub scope: Scope,
-	/// The sequence number of this entry within the scope
-	pub scope_seq: ScopeSeq,
 	/// The identity of the author
 	pub author_identity: IdentityId,
 	/// The payload of this entry
@@ -166,8 +152,7 @@ pub struct ScopeEntryBody {
 /// The body of a RegisterIdentity entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RegisterIdentityBody {
-	/// The identity ID, which must equal Hash(public_key)
-	/// Stored separately to ensure new hash algorithms can be adopted in the future without creating conflicts
+	/// The client-generated ID of this identity
 	pub identity_id: IdentityId,
 	/// The initial public key for this identity
 	pub public_key: PublicKey,
@@ -218,8 +203,8 @@ pub enum EntryPayload {
 /// An entry in the registry log
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
-	/// The globally unique sequence number of this entry
-	pub seq: EntrySeq,
+	/// The leaf position of this entry
+	pub pos: u64,
 	/// The payload of this entry
 	pub payload: EntryPayload,
 }
@@ -243,8 +228,6 @@ pub enum LogHeadResponseState {
 /// The response of the log head endpoint
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogHeadResponse {
-	/// The sequence number of the head entry in the log
-	pub seq: EntrySeq,
 	/// The accumulator of the head entry in the log, as a list of hashes
 	pub accumulator: Vec<Hash>,
 	/// The MMR state

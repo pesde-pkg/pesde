@@ -40,10 +40,10 @@ async fn query(
 		Database::MySql(pool) => {
 			let Some(row) = sqlx::query!(
 				r#"
-				SELECT LogEntry.seq, ScopeLogEntry.sig, ScopeLogEntry.scope_seq, ScopeLogEntry.author_identity AS `author_identity: Uuid`, PublishScopeLogEntry.archive_hash
+				SELECT LogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: Uuid`, PublishScopeLogEntry.archive_hash
 				FROM LogEntry
-				INNER JOIN ScopeLogEntry ON ScopeLogEntry.seq=LogEntry.seq
-				INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.seq=ScopeLogEntry.seq
+				INNER JOIN ScopeLogEntry ON ScopeLogEntry.pos=LogEntry.pos
+				INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=ScopeLogEntry.pos
 				WHERE ScopeLogEntry.scope = ? AND PublishScopeLogEntry.name = ? AND PublishScopeLogEntry.version = ?
 				"#,
 				name.scope().as_str(),
@@ -55,12 +55,11 @@ async fn query(
 			};
 
 			Ok(Some(Entry {
-				seq: EntrySeq(row.seq),
+				pos: row.pos,
 				payload: EntryPayload::Scope(SignedEntry {
 					sig: row.sig.parse()?,
 					body: ScopeEntryBody {
 						scope: name.scope().clone(),
-						scope_seq: ScopeSeq(row.scope_seq),
 						author_identity: IdentityId(row.author_identity),
 						payload: ScopeEntryPayload::Publish(PublishBody {
 							name: name.name().clone(),

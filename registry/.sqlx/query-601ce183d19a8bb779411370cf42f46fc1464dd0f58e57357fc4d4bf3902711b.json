@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT ScopeManifest.owner AS `owner: Uuid`, ScopeManifestMember.identity_id AS `identity_id: Uuid`, ScopeManifestMember.permissions\n        FROM ScopeManifest\n        LEFT JOIN ScopeManifestMember ON ScopeManifestMember.scope=ScopeManifest.scope AND ScopeManifestMember.seq=ScopeManifest.seq\n        WHERE ScopeManifest.seq = ?\n        ",
+  "query": "\n        SELECT ScopeManifest.owner AS `owner: Uuid`, ScopeManifestMember.identity_id AS `identity_id: Uuid`, ScopeManifestMember.permissions\n        FROM ScopeManifest\n        LEFT JOIN ScopeManifestMember ON ScopeManifestMember.pos=ScopeManifest.pos\n        WHERE ScopeManifest.pos = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -61,5 +61,5 @@
       true
     ]
   },
-  "hash": "b1ff028f6cced5253cfde49ccb570312fd55d026027fbc7bab35ae8ceaa99bed"
+  "hash": "601ce183d19a8bb779411370cf42f46fc1464dd0f58e57357fc4d4bf3902711b"
 }
