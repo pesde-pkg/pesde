@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n                SELECT name, version, archive_hash\n                FROM PublishScopeLogEntry\n                WHERE scope = ? AND scope_seq = ?\n                ",
+  "query": "\n                SELECT name, version, archive_hash\n                FROM PublishScopeLogEntry\n                WHERE pos = ?\n                ",
   "describe": {
     "columns": [
       {
@@ -8,7 +8,7 @@
         "name": "name",
         "type_info": {
           "type": "VarString",
-          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
           "collation": 224,
           "max_size": 128
         },
@@ -53,7 +53,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false,
@@ -61,5 +61,5 @@
       false
     ]
   },
-  "hash": "e870d9b1aa9a06f19732c1333e470f731b7cc8e728a81170c1fd1dcf1751b48d"
+  "hash": "163d8625deac5491870e7d5a5582a249bc7374b1706b5c5ba5a3b1e807a62aad"
 }

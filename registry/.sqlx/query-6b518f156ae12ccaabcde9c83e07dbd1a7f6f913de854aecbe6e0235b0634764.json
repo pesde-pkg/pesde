@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT kind\n        FROM LogEntry\n        WHERE seq = ?\n        ",
+  "query": "\n        SELECT kind\n        FROM LogEntry\n        WHERE pos = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -27,5 +27,5 @@
       false
     ]
   },
-  "hash": "ddf389fee8c8846e873203fb3c50cbb0b3e357d30beec6524d36ba035ee87dda"
+  "hash": "6b518f156ae12ccaabcde9c83e07dbd1a7f6f913de854aecbe6e0235b0634764"
 }
