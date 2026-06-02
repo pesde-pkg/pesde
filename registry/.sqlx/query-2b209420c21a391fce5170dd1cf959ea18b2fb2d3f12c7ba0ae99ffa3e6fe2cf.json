@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n                SELECT name, version\n                FROM YankScopeLogEntry\n                WHERE pos = ?\n                ",
+  "query": "\n                SELECT PublishScopeLogEntry.name, PublishScopeLogEntry.version\n                FROM YankScopeLogEntry\n\t\t\t\tINNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=YankScopeLogEntry.publish_pos\n                WHERE YankScopeLogEntry.pos = ?\n                ",
   "describe": {
     "columns": [
       {
@@ -14,7 +14,7 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.YankScopeLogEntry",
+            "table": "test-pesde-registry.PublishScopeLogEntry",
             "name": "name"
           }
         }
@@ -30,7 +30,7 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.YankScopeLogEntry",
+            "table": "test-pesde-registry.PublishScopeLogEntry",
             "name": "version"
           }
         }
@@ -44,5 +44,5 @@
       false
     ]
   },
-  "hash": "b5d6dd40eb3304ce2de5cabae9411fc7258d32e23f26dc8ca3fc3a582aa287e2"
+  "hash": "2b209420c21a391fce5170dd1cf959ea18b2fb2d3f12c7ba0ae99ffa3e6fe2cf"
 }

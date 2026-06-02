@@ -5,13 +5,15 @@ use crate::util::ControllerResult;
 use actix_web::HttpResponse;
 use actix_web::post;
 use actix_web::web;
+use pesde::names::Name;
 use pesde::names::PackageName;
+use pesde::names::Scope;
 use semver::Version;
 
 #[post("/v2/package/{scope}/{name}/{version}/yank")]
 pub async fn http(
 	app_state: web::Data<AppState>,
-	path: web::Path<(pesde::names::Scope, pesde::names::Name, semver::Version)>,
+	path: web::Path<(Scope, Name, semver::Version)>,
 ) -> ControllerResult {
 	let (scope, name, version) = path.into_inner();
 	let package_name = PackageName::new(scope, name);

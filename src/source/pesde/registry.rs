@@ -1,7 +1,9 @@
 //! Data models for the registry
 
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use bitflags::bitflags;
 use merkleberg::Merge;
@@ -221,17 +223,47 @@ pub enum LogHeadResponseState {
 	WithPreviousState {
 		/// The consistency proof
 		#[serde(flatten)]
-		proof: ConsistencyProof<Sha256Merge>,
+		proof: ConsistencyProof<CurrentMmrMerge>,
 	},
 }
 
 /// The response of the log head endpoint
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogHeadResponse {
-	/// The accumulator of the head entry in the log, as a list of hashes
-	pub accumulator: Vec<Hash>,
+	/// The accumulator of the head entry in the log
+	pub accumulator: MmrAccumulator,
 	/// The MMR state
 	pub state: LogHeadResponseState,
+}
+
+/// MMR accumulator
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MmrAccumulator {
+	/// The hash algorithm used for all peaks
+	pub algorithm: HashAlgorithm,
+	/// The peak hashes
+	#[serde(
+		serialize_with = "serialize_peaks",
+		deserialize_with = "deserialize_peaks"
+	)]
+	pub peaks: Arc<[Arc<[u8]>]>,
+}
+
+fn serialize_peaks<S: serde::Serializer>(peaks: &[Arc<[u8]>], s: S) -> Result<S::Ok, S::Error> {
+	peaks
+		.iter()
+		.map(hex::encode)
+		.collect::<Vec<_>>()
+		.serialize(s)
+}
+
+fn deserialize_peaks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Arc<[Arc<[u8]>]>, D::Error> {
+	Vec::<String>::deserialize(d)?
+		.into_iter()
+		.map(|s| hex::decode(&s).map(Into::into))
+		.collect::<Result<Vec<_>, _>>()
+		.map(Into::into)
+		.map_err(serde::de::Error::custom)
 }
 
 const LEAF_DOMAIN: u8 = 0x00;
@@ -249,22 +281,26 @@ pub struct Sha256Hash;
 impl THashAlgorithm for Sha256Hash {
 	const ALGORITHM: HashAlgorithm = HashAlgorithm::Sha256;
 }
-/// A [HashAlgorithm::Sha256] Merge implementation
-pub type Sha256Merge = HashAlgorithmMerge<Sha256Hash>;
+
+/// The current hash algorithm used by the registry
+pub const CURRENT_HASH_ALGORITHM: HashAlgorithm = HashAlgorithm::Sha256;
+
+/// The [Merge] implementation using the [CURRENT_HASH_ALGORITHM]
+pub type CurrentMmrMerge = MmrMerge<Sha256Hash>;
 
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct HashAlgorithmMerge<H: THashAlgorithm>(PhantomData<H>);
+pub struct MmrMerge<A: THashAlgorithm>(PhantomData<A>);
 
-impl<H: THashAlgorithm> Merge for HashAlgorithmMerge<H> {
-	type Item = Hash;
-	type Error = errors::HashAlgorithmMergeError;
+impl<A: THashAlgorithm> Merge for MmrMerge<A> {
+	type Item = Arc<[u8]>;
+	type Error = Infallible;
 
 	fn leaf_hash(data: &[u8]) -> Result<Self::Item, Self::Error> {
-		let mut hasher = H::ALGORITHM.hasher();
+		let mut hasher = A::ALGORITHM.hasher();
 		hasher.update(&[LEAF_DOMAIN]);
 		hasher.update(data);
-		Ok(Hash::new(H::ALGORITHM, hasher.finalize()).unwrap())
+		Ok(hasher.finalize().into())
 	}
 
 	fn merge_pos(
@@ -272,47 +308,11 @@ impl<H: THashAlgorithm> Merge for HashAlgorithmMerge<H> {
 		left: &Self::Item,
 		right: &Self::Item,
 	) -> Result<Self::Item, Self::Error> {
-		match (left.algorithm(), right.algorithm()) {
-			(v, _) if v != H::ALGORITHM => Err(errors::HashAlgorithmMergeErrorKind::Invalid {
-				expected: H::ALGORITHM,
-				actual: v,
-			}
-			.into()),
-			(l, r) if l != r => Err(errors::HashAlgorithmMergeErrorKind::Mismatch(l, r).into()),
-
-			_ => {
-				let mut hasher = H::ALGORITHM.hasher();
-				hasher.update(&[NODE_DOMAIN]);
-				hasher.update(&pos.to_be_bytes());
-				hasher.update(left.hash());
-				hasher.update(right.hash());
-				Ok(Hash::new(H::ALGORITHM, hasher.finalize()).unwrap())
-			}
-		}
-	}
-}
-
-/// Errors that can occur when interacting with registry structures
-pub mod errors {
-	use thiserror::Error;
-
-	use crate::hash::HashAlgorithm;
-
-	/// Errors that can occur when working with HashAlgorithm based Merge
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = HashAlgorithmMergeError))]
-	pub enum HashAlgorithmMergeErrorKind {
-		/// The hash algorithms are mismatched
-		#[error("got algorithm `{}` as well as `{}`", .0, .1)]
-		Mismatch(HashAlgorithm, HashAlgorithm),
-
-		/// The hash algorithm is invalid
-		#[error("algorithm `{actual}` isn't the expected `{expected}`")]
-		Invalid {
-			/// The algorithm that was expected
-			expected: HashAlgorithm,
-			/// The algorithm that was given
-			actual: HashAlgorithm,
-		},
+		let mut hasher = A::ALGORITHM.hasher();
+		hasher.update(&[NODE_DOMAIN]);
+		hasher.update(&pos.to_be_bytes());
+		hasher.update(left);
+		hasher.update(right);
+		Ok(hasher.finalize().into())
 	}
 }

@@ -34,7 +34,10 @@ async fn handler(
 	let mmr = db.read_mmr().await?;
 
 	Ok(Some(LogHeadResponse {
-		accumulator: mmr.get_accumulator().await?,
+		accumulator: MmrAccumulator {
+			algorithm: CURRENT_HASH_ALGORITHM,
+			peaks: mmr.get_accumulator().await?.into(),
+		},
 		state: match size_from {
 			Some(size_from) => LogHeadResponseState::WithPreviousState {
 				proof: mmr.gen_consistency_proof(size_from.get()).await?,

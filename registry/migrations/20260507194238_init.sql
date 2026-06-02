@@ -95,14 +95,11 @@ CREATE INDEX idx_publish_package ON PublishScopeLogEntry (name, version);
 CREATE TABLE YankScopeLogEntry (
     pos BIGINT UNSIGNED PRIMARY KEY,
 
-    name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    version VARCHAR(255) NOT NULL,
+    publish_pos BIGINT UNSIGNED NOT NULL UNIQUE,
 
     FOREIGN KEY (pos) REFERENCES ScopeLogEntry (pos),
-    FOREIGN KEY (name, version) REFERENCES PublishScopeLogEntry (name, version)
+    FOREIGN KEY (publish_pos) REFERENCES PublishScopeLogEntry (pos)
 );
-
-CREATE INDEX idx_yank_package ON YankScopeLogEntry (name, version);
 
 CREATE TABLE DeprecateScopeLogEntry (
     pos BIGINT UNSIGNED PRIMARY KEY,
