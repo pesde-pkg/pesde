@@ -15,7 +15,7 @@ pub async fn http(app_state: web::Data<AppState>, path: web::Path<u64>) -> Contr
 	Ok(HttpResponse::Ok().json(result))
 }
 
-async fn handler(db: &Database, from: u64) -> AppResult<InclusionProof<Sha256Merge>> {
+async fn handler(db: &Database, from: u64) -> AppResult<InclusionProof<CurrentMmrMerge>> {
 	let mmr = db.read_mmr().await?;
 	Ok(mmr.gen_inclusion_proof(from).await?)
 }

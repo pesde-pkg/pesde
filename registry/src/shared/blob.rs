@@ -5,6 +5,7 @@ use tokio_util::io::ReaderStream;
 use actix_web::HttpResponse;
 use actix_web::body::BodyStream;
 use actix_web::http::header;
+use fs_err::tokio as fs;
 use pesde::names::PackageName;
 use rusty_s3::Bucket;
 use rusty_s3::Credentials;
@@ -23,7 +24,7 @@ pub enum BlobStorage {
 }
 
 pub enum BlobResponse {
-	File(fs_err::tokio::File),
+	File(fs::File),
 	Url(String),
 }
 
@@ -57,7 +58,7 @@ impl BlobStorage {
 					.join(name.name().as_str())
 					.join(version.to_string());
 
-				match fs_err::tokio::File::open(path).await {
+				match fs::File::open(path).await {
 					Ok(file) => Ok(Some(BlobResponse::File(file))),
 					Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
 					Err(e) => Err(e.into()),
@@ -67,7 +68,7 @@ impl BlobStorage {
 				bucket,
 				credentials,
 			} => {
-				let key = format!("packages/{}/{}/{}", name.scope(), name.name(), version);
+				let key = format!("packages/{}/{}/{version}", name.scope(), name.name());
 				let object_url =
 					GetObject::new(bucket, Some(credentials), &key).sign(S3_SIGN_DURATION);
 				Ok(Some(BlobResponse::Url(object_url.to_string())))

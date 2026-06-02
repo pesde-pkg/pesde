@@ -1,11 +1,11 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT sha256 FROM TreeNode WHERE pos = ?",
+  "query": "SELECT sha256 AS `sha256: Arc<[u8]>` FROM TreeNode WHERE pos = ?",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "sha256",
+        "name": "sha256: Arc<[u8]>",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
@@ -27,5 +27,5 @@
       false
     ]
   },
-  "hash": "df243f2c3ca05ac25b8534fbd6fbf1ec3cb0def999b47a8281e9f13c435154db"
+  "hash": "4734ff80a8812b8dca4c1f6b58164ce77faa7507766b39048d115f8e1f2a090d"
 }

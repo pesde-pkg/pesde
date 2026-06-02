@@ -1,5 +1,6 @@
+use std::sync::Arc;
+
 use futures::StreamExt as _;
-use pesde::hash::Hash;
 use pesde::source::pesde::registry::*;
 use sqlx::types::Uuid;
 
@@ -12,13 +13,14 @@ pub async fn mmr_size(pool: &sqlx::MySqlPool) -> anyhow::Result<u64> {
 	)
 }
 
-pub async fn get_hash(pool: &sqlx::MySqlPool, pos: u64) -> anyhow::Result<Option<Hash>> {
-	Ok(
-		sqlx::query!("SELECT sha256 FROM TreeNode WHERE pos = ?", pos)
-			.fetch_optional(pool)
-			.await?
-			.map(|record| Hash::new(pesde::hash::HashAlgorithm::Sha256, record.sha256).unwrap()),
+pub async fn get_hash(pool: &sqlx::MySqlPool, pos: u64) -> anyhow::Result<Option<Arc<[u8]>>> {
+	Ok(sqlx::query!(
+		"SELECT sha256 AS `sha256: Arc<[u8]>` FROM TreeNode WHERE pos = ?",
+		pos
 	)
+	.fetch_optional(pool)
+	.await?
+	.map(|record| record.sha256))
 }
 
 pub async fn write_mmr(
@@ -35,15 +37,12 @@ pub async fn write_mmr(
 pub async fn append_hashes(
 	tx: &mut sqlx::MySqlTransaction<'_>,
 	pos: u64,
-	elems: Vec<Hash>,
+	elems: Vec<Arc<[u8]>>,
 ) -> anyhow::Result<()> {
 	let mut query = sqlx::QueryBuilder::new(r"INSERT INTO TreeNode (pos, sha256) ");
 	query.push_values((pos..).zip(elems), |mut b, (i, elem)| {
 		b.push_bind(i);
-		match elem.algorithm() {
-			pesde::hash::HashAlgorithm::Sha256 => b.push_bind(elem.hash()),
-			algorithm => panic!("unsupported hash algorithm in MMR store: {algorithm}"),
-		};
+		b.push_bind(elem);
 	});
 	query.build().execute(&mut **tx).await?;
 	Ok(())
@@ -125,9 +124,10 @@ pub async fn get_scope_entry(
 		"yank" => {
 			let yank_entry = sqlx::query!(
 				r#"
-                SELECT name, version
+                SELECT PublishScopeLogEntry.name, PublishScopeLogEntry.version
                 FROM YankScopeLogEntry
-                WHERE pos = ?
+				INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=YankScopeLogEntry.publish_pos
+                WHERE YankScopeLogEntry.pos = ?
                 "#,
 				pos
 			)

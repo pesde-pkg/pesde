@@ -1,7 +1,8 @@
+use std::sync::Arc;
+
 use merkleberg::MMRIVER;
 use merkleberg::MMRStoreReadOps;
 use merkleberg::MMRStoreWriteOps;
-use pesde::hash::Hash;
 use pesde::source::pesde::registry::*;
 use sqlx::Database as _;
 use sqlx::Executor as _;
@@ -48,11 +49,11 @@ impl Database {
 	}
 
 	#[must_use]
-	pub fn read_mmr_sized(&self, size: u64) -> MMRIVER<Sha256Merge, &Self> {
+	pub fn read_mmr_sized(&self, size: u64) -> MMRIVER<CurrentMmrMerge, &Self> {
 		MMRIVER::new(size, self)
 	}
 
-	pub async fn read_mmr(&self) -> anyhow::Result<MMRIVER<Sha256Merge, &Self>> {
+	pub async fn read_mmr(&self) -> anyhow::Result<MMRIVER<CurrentMmrMerge, &Self>> {
 		let mmr_size = match self {
 			Self::MySql(pool) => mysql::mmr_size(pool).await?,
 		};
@@ -60,7 +61,9 @@ impl Database {
 		Ok(self.read_mmr_sized(mmr_size))
 	}
 
-	pub async fn write_mmr(&self) -> anyhow::Result<MMRIVER<Sha256Merge, DatabaseTransaction<'_>>> {
+	pub async fn write_mmr(
+		&self,
+	) -> anyhow::Result<MMRIVER<CurrentMmrMerge, DatabaseTransaction<'_>>> {
 		let (transaction, mmr_size) = match self {
 			Self::MySql(pool) => {
 				let (transaction, mmr_size) = mysql::write_mmr(pool).await?;
@@ -90,10 +93,10 @@ impl Database {
 	}
 }
 
-impl MMRStoreReadOps<Hash> for &Database {
+impl MMRStoreReadOps<Arc<[u8]>> for &Database {
 	type Error = AnyhowError;
 
-	async fn get_elem(&self, pos: u64) -> Result<Option<Hash>, Self::Error> {
+	async fn get_elem(&self, pos: u64) -> Result<Option<Arc<[u8]>>, Self::Error> {
 		Ok(match *self {
 			Database::MySql(pool) => mysql::get_hash(pool, pos).await?,
 		})
@@ -104,10 +107,10 @@ pub enum DatabaseTransaction<'a> {
 	MySql(sqlx::MySqlTransaction<'a>),
 }
 
-impl MMRStoreWriteOps<Hash> for DatabaseTransaction<'_> {
+impl MMRStoreWriteOps<Arc<[u8]>> for DatabaseTransaction<'_> {
 	type Error = AnyhowError;
 
-	async fn append(&mut self, pos: u64, elems: Vec<Hash>) -> Result<(), Self::Error> {
+	async fn append(&mut self, pos: u64, elems: Vec<Arc<[u8]>>) -> Result<(), Self::Error> {
 		match self {
 			DatabaseTransaction::MySql(tx) => mysql::append_hashes(tx, pos, elems).await?,
 		}

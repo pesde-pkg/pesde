@@ -14,7 +14,6 @@ use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
 use crate::Url;
-use crate::hash::Hash;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
@@ -30,7 +29,9 @@ use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::pesde::backend::ApiPesdePackageSourceBackend;
+use crate::source::pesde::registry::CURRENT_HASH_ALGORITHM;
 use crate::source::pesde::registry::LogHeadResponseState;
+use crate::source::pesde::registry::MmrAccumulator;
 use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
 use serde::Deserialize;
@@ -47,8 +48,8 @@ pub mod specifier;
 pub struct PesdeSourceState {
 	/// The MMR size for this source (number of entries in the log)
 	pub mmr_size: u64,
-	/// The MMR accumulator (peak hashes) for this source
-	pub accumulator: Arc<[Hash]>,
+	/// The MMR accumulator for this source
+	pub accumulator: MmrAccumulator,
 }
 
 /// The pesde package source
@@ -121,7 +122,10 @@ impl PackageSource for PesdePackageSource {
 			(Some(_), None) => return Err(errors::RefreshErrorKind::NoNewState.into()),
 			(None, None) => PesdeSourceState {
 				mmr_size: 0,
-				accumulator: [].into(),
+				accumulator: MmrAccumulator {
+					algorithm: CURRENT_HASH_ALGORITHM,
+					peaks: Arc::from([]),
+				},
 			},
 			(None, Some(new_state)) => {
 				let LogHeadResponseState::OnlyNewState { mmr_size_to } = new_state.state else {
@@ -130,7 +134,7 @@ impl PackageSource for PesdePackageSource {
 
 				PesdeSourceState {
 					mmr_size: mmr_size_to,
-					accumulator: new_state.accumulator.into(),
+					accumulator: new_state.accumulator,
 				}
 			}
 			(Some(old_state), Some(new_state)) => {
@@ -138,13 +142,15 @@ impl PackageSource for PesdePackageSource {
 					return Err(errors::RefreshErrorKind::InvalidResponseState.into());
 				};
 
-				if !proof.verify(&old_state.accumulator, &new_state.accumulator)? {
+				// TODO: handle algorithm change
+
+				if !proof.verify(&old_state.accumulator.peaks, &new_state.accumulator.peaks)? {
 					return Err(errors::RefreshErrorKind::ConsistencyProofFailed.into());
 				}
 
 				PesdeSourceState {
 					mmr_size: proof.mmr_size_to(),
-					accumulator: new_state.accumulator.into(),
+					accumulator: new_state.accumulator,
 				}
 			}
 		};
