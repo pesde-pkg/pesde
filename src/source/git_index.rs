@@ -75,10 +75,10 @@ pub(crate) async fn refresh_git_repo(
 				e,
 			))
 		})
+		.map(|_| ())
 	})
 	.await
 	.unwrap()
-	.map(|_| ())
 }
 
 /// Reads a file from a tree
