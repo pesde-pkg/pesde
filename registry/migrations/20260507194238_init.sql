@@ -5,6 +5,13 @@ CREATE TABLE UsedPublicKey (
     UNIQUE (algorithm, public_key)
 );
 
+CREATE TABLE Tree (
+    _id BIT(1) PRIMARY KEY DEFAULT 0 CHECK (_id = 0),
+    size BIGINT UNSIGNED NOT NULL
+);
+
+INSERT INTO Tree (size) VALUES (0);
+
 CREATE TABLE TreeNode (
     pos BIGINT UNSIGNED PRIMARY KEY,
     sha256 BINARY(32) NOT NULL    

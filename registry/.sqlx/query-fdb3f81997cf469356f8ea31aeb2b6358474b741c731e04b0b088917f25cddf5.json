@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT size FROM Tree",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "size",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.Tree",
+            "name": "size"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "fdb3f81997cf469356f8ea31aeb2b6358474b741c731e04b0b088917f25cddf5"
+}

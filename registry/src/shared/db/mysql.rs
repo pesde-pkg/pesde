@@ -5,12 +5,10 @@ use pesde::source::pesde::registry::*;
 use sqlx::types::Uuid;
 
 pub async fn mmr_size(pool: &sqlx::MySqlPool) -> anyhow::Result<u64> {
-	Ok(
-		sqlx::query!("SELECT COUNT(*) as `mmr_size: u64` FROM TreeNode")
-			.fetch_one(pool)
-			.await?
-			.mmr_size,
-	)
+	Ok(sqlx::query!("SELECT size FROM Tree")
+		.fetch_one(pool)
+		.await?
+		.size)
 }
 
 pub async fn get_hash(pool: &sqlx::MySqlPool, pos: u64) -> anyhow::Result<Option<Arc<[u8]>>> {
@@ -27,10 +25,10 @@ pub async fn write_mmr(
 	pool: &sqlx::MySqlPool,
 ) -> anyhow::Result<(sqlx::MySqlTransaction<'_>, u64)> {
 	let mut tx = pool.begin().await?;
-	let mmr_size = sqlx::query!("SELECT COUNT(*) as `mmr_size: u64` FROM TreeNode FOR UPDATE")
+	let mmr_size = sqlx::query!("SELECT size FROM Tree FOR UPDATE")
 		.fetch_one(&mut *tx)
 		.await?
-		.mmr_size;
+		.size;
 	Ok((tx, mmr_size))
 }
 
