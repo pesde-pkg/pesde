@@ -1,2 +1,10 @@
-pub mod get_identity;
-pub mod rotate_key;
+mod get_identity;
+mod register_identity;
+mod rotate_key;
+
+pub fn http_v2() -> actix_web::Scope {
+	actix_web::web::scope("/v2")
+		.service(get_identity::http_v2)
+		.service(register_identity::http_v2)
+		.service(rotate_key::http_v2)
+}

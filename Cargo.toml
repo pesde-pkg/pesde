@@ -158,7 +158,7 @@ fs-err = { version = "3.3.0", features = ["tokio"] }
 url = { version = "2.5.8", features = ["serde"] }
 tracing = { version = "0.1.44", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-merkleberg = { version = "0.2.0", default-features = false, features = [
+merkleberg = { version = "0.2.1", default-features = false, features = [
     "std",
     "serde",
 ] }

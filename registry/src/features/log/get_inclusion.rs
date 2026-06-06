@@ -1,15 +1,15 @@
 use crate::AppState;
 use crate::shared::db::Database;
 use crate::util::AppResult;
-use crate::util::ControllerResult;
+use crate::util::HttpResult;
 use actix_web::HttpResponse;
 use actix_web::get;
 use actix_web::web;
 use merkleberg::mmriver::InclusionProof;
 use pesde::source::pesde::registry::*;
 
-#[get("/v2/log/inclusion/{pos}")]
-pub async fn http(app_state: web::Data<AppState>, path: web::Path<u64>) -> ControllerResult {
+#[get("/log/inclusion/{pos}")]
+pub(super) async fn http_v2(app_state: web::Data<AppState>, path: web::Path<u64>) -> HttpResult {
 	let pos = path.into_inner();
 	let result = handler(&app_state.database, pos).await?;
 	Ok(HttpResponse::Ok().json(result))

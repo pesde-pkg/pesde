@@ -30,17 +30,35 @@ pub fn canonical_bytes(data: &impl Serialize) -> Vec<u8> {
 /// An entry with an associated signature
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignedEntry<T> {
-	/// The body being signed
-	pub body: T,
 	/// The signature over the canonical serialisation of body
 	pub sig: Signature,
+	/// The body being signed
+	body: T,
 }
 
 impl<T: Serialize> SignedEntry<T> {
-	/// Verifies the signature of this entry against the given public key
+	/// Constructs a new signed entry from the signature and body
+	pub fn new(sig: Signature, body: T) -> Self {
+		Self { sig, body }
+	}
+
+	/// Verifies the signature of this entry against the returned public key and returns the body if it matches
 	#[must_use]
-	pub fn verify(&self, public_key: &PublicKey) -> bool {
-		self.sig.verify(public_key, &canonical_bytes(&self.body))
+	pub fn verify(&self, public_key: impl FnOnce(&T) -> &PublicKey) -> Option<&T> {
+		self.sig
+			.verify(public_key(&self.body), &canonical_bytes(&self.body))
+			.then_some(&self.body)
+	}
+
+	/// Verifies the signature of this entry against the returned public key and returns the body and signature if it matches
+	#[must_use]
+	pub fn into_verified(
+		self,
+		public_key: impl FnOnce(&T) -> &PublicKey,
+	) -> Option<(Signature, T)> {
+		self.sig
+			.verify(public_key(&self.body), &canonical_bytes(&self.body))
+			.then_some((self.sig, self.body))
 	}
 }
 

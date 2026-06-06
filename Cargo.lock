@@ -3407,9 +3407,9 @@ dependencies = [
 
 [[package]]
 name = "merkleberg"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0695309b4d55278c6e4f4bbe8bd22faea066da2255515b77b651e639979a91d3"
+checksum = "5bd97b2aa16093dc4d62f4388f0f3f8f9a4a32849936c77cb1ec8a69c709778b"
 dependencies = [
  "cfg-if",
  "futures-util",

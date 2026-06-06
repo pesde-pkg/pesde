@@ -1,7 +1,7 @@
 use crate::AppState;
 use crate::shared::db::Database;
 use crate::util::AppResult;
-use crate::util::ControllerResult;
+use crate::util::HttpResult;
 use actix_web::HttpResponse;
 use actix_web::get;
 use actix_web::web;
@@ -12,11 +12,11 @@ use pesde::source::pesde::registry::*;
 use semver::Version;
 use sqlx::types::Uuid;
 
-#[get("/v2/package/{scope}/{name}/{version}")]
-pub async fn http(
+#[get("/package/{scope}/{name}/{version}")]
+pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
 	path: web::Path<(Scope, Name, Version)>,
-) -> ControllerResult {
+) -> HttpResult {
 	let (scope, name, version) = path.into_inner();
 	let package_name = PackageName::new(scope, name);
 
@@ -56,9 +56,9 @@ async fn query(
 
 			Ok(Some(Entry {
 				pos: row.pos,
-				payload: EntryPayload::Scope(SignedEntry {
-					sig: row.sig.parse()?,
-					body: ScopeEntryBody {
+				payload: EntryPayload::Scope(SignedEntry::new(
+					row.sig.parse()?,
+					ScopeEntryBody {
 						scope: name.scope().clone(),
 						author_identity: IdentityId(row.author_identity),
 						payload: ScopeEntryPayload::Publish(PublishBody {
@@ -67,7 +67,7 @@ async fn query(
 							archive_hash: row.archive_hash.parse()?,
 						}),
 					},
-				}),
+				)),
 			}))
 		}
 	}
