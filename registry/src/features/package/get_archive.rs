@@ -2,7 +2,7 @@ use crate::AppState;
 use crate::shared::blob::BlobResponse;
 use crate::shared::blob::BlobStorage;
 use crate::util::AppResult;
-use crate::util::ControllerResult;
+use crate::util::HttpResult;
 use actix_web::HttpResponse;
 use actix_web::get;
 use actix_web::web;
@@ -11,11 +11,11 @@ use pesde::names::PackageName;
 use pesde::names::Scope;
 use semver::Version;
 
-#[get("/v2/package/{scope}/{name}/{version}/archive")]
-pub async fn http(
+#[get("/package/{scope}/{name}/{version}/archive")]
+pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
 	path: web::Path<(Scope, Name, Version)>,
-) -> ControllerResult {
+) -> HttpResult {
 	let (scope, name, version) = path.into_inner();
 	let package_name = PackageName::new(scope, name);
 

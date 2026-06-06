@@ -1,7 +1,7 @@
 use crate::AppState;
 use crate::shared::db::Database;
 use crate::util::AppResult;
-use crate::util::ControllerResult;
+use crate::util::HttpResult;
 use actix_web::HttpResponse;
 use actix_web::post;
 use actix_web::web;
@@ -10,11 +10,11 @@ use pesde::names::PackageName;
 use pesde::names::Scope;
 use semver::Version;
 
-#[post("/v2/package/{scope}/{name}/{version}/yank")]
-pub async fn http(
+#[post("/package/{scope}/{name}/{version}/yank")]
+pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
 	path: web::Path<(Scope, Name, semver::Version)>,
-) -> ControllerResult {
+) -> HttpResult {
 	let (scope, name, version) = path.into_inner();
 	let package_name = PackageName::new(scope, name);
 	handler(&app_state.database, &package_name, &version).await?;

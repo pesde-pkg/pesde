@@ -1,16 +1,16 @@
 use crate::AppState;
 use crate::shared::db::Database;
 use crate::util::AppResult;
-use crate::util::ControllerResult;
+use crate::util::HttpResult;
 use actix_web::HttpResponse;
 use actix_web::post;
 use actix_web::web;
 
-#[post("/v2/scope/{scope}/manifest")]
-pub async fn http(
+#[post("/scope/{scope}/manifest")]
+pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
 	scope: web::Path<pesde::names::Scope>,
-) -> ControllerResult {
+) -> HttpResult {
 	handler(&app_state.database, &scope).await?;
 	Ok(HttpResponse::Ok().finish())
 }

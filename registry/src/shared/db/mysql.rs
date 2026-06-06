@@ -2,28 +2,43 @@ use std::sync::Arc;
 
 use futures::StreamExt as _;
 use pesde::source::pesde::registry::*;
+use sqlx::MySqlExecutor;
+use sqlx::MySqlPool;
+use sqlx::MySqlTransaction;
+use sqlx::QueryBuilder;
 use sqlx::types::Uuid;
 
-pub async fn mmr_size(pool: &sqlx::MySqlPool) -> anyhow::Result<u64> {
+use crate::shared::db::EntryKind;
+
+pub async fn mmr_size(pool: &MySqlPool) -> anyhow::Result<u64> {
 	Ok(sqlx::query!("SELECT size FROM Tree")
 		.fetch_one(pool)
 		.await?
 		.size)
 }
 
-pub async fn get_hash(pool: &sqlx::MySqlPool, pos: u64) -> anyhow::Result<Option<Arc<[u8]>>> {
+pub async fn update_mmr_size(tx: &mut MySqlTransaction<'_>, size: u64) -> anyhow::Result<()> {
+	sqlx::query!("UPDATE Tree SET size = ?", size)
+		.execute(&mut **tx)
+		.await?;
+
+	Ok(())
+}
+
+pub async fn get_hash(
+	executor: impl MySqlExecutor<'_>,
+	pos: u64,
+) -> anyhow::Result<Option<Arc<[u8]>>> {
 	Ok(sqlx::query!(
 		"SELECT sha256 AS `sha256: Arc<[u8]>` FROM TreeNode WHERE pos = ?",
 		pos
 	)
-	.fetch_optional(pool)
+	.fetch_optional(executor)
 	.await?
 	.map(|record| record.sha256))
 }
 
-pub async fn write_mmr(
-	pool: &sqlx::MySqlPool,
-) -> anyhow::Result<(sqlx::MySqlTransaction<'_>, u64)> {
+pub async fn write_mmr(pool: &MySqlPool) -> anyhow::Result<(MySqlTransaction<'_>, u64)> {
 	let mut tx = pool.begin().await?;
 	let mmr_size = sqlx::query!("SELECT size FROM Tree FOR UPDATE")
 		.fetch_one(&mut *tx)
@@ -33,11 +48,11 @@ pub async fn write_mmr(
 }
 
 pub async fn append_hashes(
-	tx: &mut sqlx::MySqlTransaction<'_>,
+	tx: &mut MySqlTransaction<'_>,
 	pos: u64,
 	elems: Vec<Arc<[u8]>>,
 ) -> anyhow::Result<()> {
-	let mut query = sqlx::QueryBuilder::new(r"INSERT INTO TreeNode (pos, sha256) ");
+	let mut query = QueryBuilder::new(r"INSERT INTO TreeNode (pos, sha256) ");
 	query.push_values((pos..).zip(elems), |mut b, (i, elem)| {
 		b.push_bind(i);
 		b.push_bind(elem);
@@ -47,7 +62,7 @@ pub async fn append_hashes(
 }
 
 pub async fn get_scope_manifest(
-	pool: &sqlx::MySqlPool,
+	pool: &MySqlPool,
 	pos: u64,
 ) -> anyhow::Result<Option<ScopeManifest>> {
 	let mut stream = sqlx::query!(
@@ -82,10 +97,7 @@ pub async fn get_scope_manifest(
 	Ok(manifest)
 }
 
-pub async fn get_scope_entry(
-	pool: &sqlx::MySqlPool,
-	pos: u64,
-) -> anyhow::Result<Option<ScopeEntry>> {
+pub async fn get_scope_entry(pool: &MySqlPool, pos: u64) -> anyhow::Result<Option<ScopeEntry>> {
 	let Some(scope_entry) = sqlx::query!(
 		r#"
         SELECT sig, scope, author_identity AS `author_identity: Uuid`, kind
@@ -163,20 +175,20 @@ pub async fn get_scope_entry(
 		kind => panic!("invalid scope entry kind in database: {kind}"),
 	};
 
-	Ok(Some(ScopeEntry {
-		sig: scope_entry.sig.parse()?,
-		body: ScopeEntryBody {
+	Ok(Some(ScopeEntry::new(
+		scope_entry.sig.parse()?,
+		ScopeEntryBody {
 			scope: scope_entry.scope.parse()?,
 			author_identity: IdentityId(scope_entry.author_identity),
 			payload,
 		},
-	}))
+	)))
 }
 
-pub async fn get_entry(pool: &sqlx::MySqlPool, pos: u64) -> anyhow::Result<Option<Entry>> {
+pub async fn get_entry(pool: &MySqlPool, pos: u64) -> anyhow::Result<Option<Entry>> {
 	let Some(entry) = sqlx::query!(
 		r#"
-        SELECT kind
+        SELECT kind AS `kind: EntryKind`
         FROM LogEntry
         WHERE pos = ?
         "#,
@@ -190,17 +202,16 @@ pub async fn get_entry(pool: &sqlx::MySqlPool, pos: u64) -> anyhow::Result<Optio
 
 	Ok(Some(Entry {
 		pos,
-		payload: match &*entry.kind {
-			"scope" => {
+		payload: match entry.kind {
+			EntryKind::Scope => {
 				let Some(scope_entry) = get_scope_entry(pool, pos).await? else {
 					return Ok(None);
 				};
 				EntryPayload::Scope(scope_entry)
 			}
-			"register_identity" => todo!(),
-			"identity_rotation" => todo!(),
-			"admin_scope_transfer" => todo!(),
-			kind => panic!("invalid entry kind in database: {kind}"),
+			EntryKind::RegisterIdentity => todo!(),
+			EntryKind::IdentityRotation => todo!(),
+			EntryKind::AdminScopeTransfer => todo!(),
 		},
 	}))
 }

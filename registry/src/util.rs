@@ -83,6 +83,15 @@ pub enum AppError {
 
 	#[error(transparent)]
 	Merkleberg(#[from] merkleberg::Error),
+
+	#[error("signature verification failed")]
+	InvalidSignature,
+
+	#[error("the public key has already been registered")]
+	NonUniquePublicKey,
+
+	#[error("the identity id has already been registered")]
+	NonUniqueIdentityId,
 }
 
 impl ResponseError for AppError {
@@ -105,6 +114,12 @@ impl ResponseError for AppError {
 					json!({ "error": "internal server error" }),
 				)
 			}
+			AppError::InvalidSignature
+			| AppError::NonUniquePublicKey
+			| AppError::NonUniqueIdentityId => (
+				StatusCode::BAD_REQUEST,
+				json!({ "error": self.to_string() }),
+			),
 		};
 
 		actix_web::HttpResponse::build(status_code).json(body)
@@ -112,4 +127,19 @@ impl ResponseError for AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
-pub type ControllerResult = AppResult<actix_web::HttpResponse>;
+pub type HttpResult = AppResult<actix_web::HttpResponse>;
+
+#[derive(Debug)]
+pub enum NonUnique {
+	PublicKey,
+	IdentityId,
+}
+
+impl From<NonUnique> for AppError {
+	fn from(value: NonUnique) -> Self {
+		match value {
+			NonUnique::PublicKey => AppError::NonUniquePublicKey,
+			NonUnique::IdentityId => AppError::NonUniqueIdentityId,
+		}
+	}
+}

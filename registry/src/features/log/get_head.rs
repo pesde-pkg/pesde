@@ -3,7 +3,7 @@ use std::num::NonZeroU64;
 use crate::AppState;
 use crate::shared::db::Database;
 use crate::util::AppResult;
-use crate::util::ControllerResult;
+use crate::util::HttpResult;
 use actix_web::HttpResponse;
 use actix_web::get;
 use actix_web::web;
@@ -15,11 +15,11 @@ struct ConsistencyQuery {
 	size_from: Option<NonZeroU64>,
 }
 
-#[get("/v2/log/head")]
-pub async fn http(
+#[get("/log/head")]
+pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
 	query: web::Query<ConsistencyQuery>,
-) -> ControllerResult {
+) -> HttpResult {
 	let Some(head) = handler(&app_state.database, query.size_from).await? else {
 		return Ok(HttpResponse::NotFound().finish());
 	};

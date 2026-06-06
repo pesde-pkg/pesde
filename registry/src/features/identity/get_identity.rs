@@ -1,17 +1,17 @@
 use crate::AppState;
 use crate::shared::db::Database;
 use crate::util::AppResult;
-use crate::util::ControllerResult;
+use crate::util::HttpResult;
 use actix_web::HttpResponse;
 use actix_web::get;
 use actix_web::web;
 use pesde::source::pesde::registry::IdentityId;
 
-#[get("/v2/identity/{identity_id}")]
-pub async fn http(
+#[get("/identity/{identity_id}")]
+pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
 	identity_id: web::Path<IdentityId>,
-) -> ControllerResult {
+) -> HttpResult {
 	handler(&app_state.database, &identity_id).await?;
 	Ok(HttpResponse::Ok().finish())
 }
