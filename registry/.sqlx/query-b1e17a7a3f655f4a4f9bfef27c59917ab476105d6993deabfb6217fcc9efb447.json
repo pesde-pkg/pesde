@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\n                INSERT INTO LogEntry (pos, kind) VALUES (?, ?)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "b1e17a7a3f655f4a4f9bfef27c59917ab476105d6993deabfb6217fcc9efb447"
+}

@@ -1,11 +1,11 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT kind\n        FROM LogEntry\n        WHERE pos = ?\n        ",
+  "query": "\n        SELECT kind AS `kind: EntryKind`\n        FROM LogEntry\n        WHERE pos = ?\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "kind",
+        "name": "kind: EntryKind",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
@@ -27,5 +27,5 @@
       false
     ]
   },
-  "hash": "6b518f156ae12ccaabcde9c83e07dbd1a7f6f913de854aecbe6e0235b0634764"
+  "hash": "6562a994184609d7482ea32bae70eb67ac6669e177db96abe01246e2e42cd671"
 }

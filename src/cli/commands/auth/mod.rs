@@ -62,8 +62,13 @@ pub(super) async fn get_index(subproject: &Subproject, index: Option<&str>) -> a
 
 	let index_name = index.unwrap_or(DEFAULT_URL_KEY);
 
+	let Some(manifest) = manifest else {
+		anyhow::bail!(
+			"`{index_name}` is not a valid URL and no manifest was found to resolve it as an index name"
+		);
+	};
+
 	manifest
-		.unwrap()
 		.pesde_indices
 		.get(index_name)
 		.with_context(|| format!("index {index_name} not found in manifest"))

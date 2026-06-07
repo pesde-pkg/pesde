@@ -43,7 +43,7 @@ async fn main() -> std::io::Result<()> {
 		.with(fmt_layer)
 		.init();
 
-	dotenvy::dotenv().unwrap();
+	let _ = dotenvy::dotenv();
 
 	let address = Env::new("ADDRESS")
 		.try_get()
@@ -68,10 +68,13 @@ async fn main() -> std::io::Result<()> {
 				web::get()
 					.to(async || concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"))),
 			)
-			.service(features::log::http_v2())
-			.service(features::package::http_v2())
-			.service(features::scope::http_v2())
-			.service(features::identity::http_v2())
+			.service(
+				web::scope("/v2")
+					.configure(features::log::http_v2)
+					.configure(features::package::http_v2)
+					.configure(features::scope::http_v2)
+					.configure(features::identity::http_v2),
+			)
 	})
 	.bind((address, port))?
 	.run()

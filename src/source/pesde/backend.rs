@@ -89,7 +89,11 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 		project: &Project,
 		old_state: Option<&PesdeSourceState>,
 	) -> Result<Option<LogHeadResponse>, Self::RefreshError> {
-		let mut url = self.api_url().as_url().join("/v2/log/head")?;
+		let mut url = format!(
+			"{}/v2/log/head",
+			self.api_url().as_url().as_str().trim_end_matches('/')
+		)
+		.parse::<url::Url>()?;
 		if let Some(old_state) = old_state {
 			url.query_pairs_mut()
 				.append_pair("size_from", &old_state.mmr_size.to_string());

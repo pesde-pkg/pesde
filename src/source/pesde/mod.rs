@@ -144,6 +144,12 @@ impl PackageSource for PesdePackageSource {
 
 				// TODO: handle algorithm change
 
+				if proof.mmr_size_from() != old_state.mmr_size
+					|| proof.mmr_size_to() < old_state.mmr_size
+				{
+					return Err(errors::RefreshErrorKind::ConsistencyProofFailed.into());
+				}
+
 				if !proof.verify(&old_state.accumulator.peaks, &new_state.accumulator.peaks)? {
 					return Err(errors::RefreshErrorKind::ConsistencyProofFailed.into());
 				}
