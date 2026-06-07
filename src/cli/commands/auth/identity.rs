@@ -66,8 +66,13 @@ async fn get_registry(subproject: &Subproject, registry: Option<&str>) -> anyhow
 
 	let registry_name = registry.unwrap_or(DEFAULT_URL_KEY);
 
+	let Some(manifest) = manifest else {
+		anyhow::bail!(
+			"`{registry_name}` is not a valid URL and no manifest was found to resolve it as a registry name"
+		);
+	};
+
 	manifest
-		.unwrap()
 		.pesde_registries
 		.get(registry_name)
 		.with_context(|| format!("registry {registry_name} not found in manifest"))

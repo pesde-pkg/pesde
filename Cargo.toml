@@ -101,7 +101,7 @@ sha2 = "0.10.9"
 hex = "0.4.3"
 
 base64 = "0.22.1"
-ssh-encoding = "0.2.0"
+signature = "2.2.0"
 ssh-key = { version = "0.6.7", default-features = false, features = [
     "std",
     "ed25519",
