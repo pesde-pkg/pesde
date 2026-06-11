@@ -1,0 +1,48 @@
+{
+  "db_name": "MySQL",
+  "query": "\n\t\t\tSELECT algorithm AS `algorithm: KeyKind`, public_key\n\t\t\tFROM IdentityKeyEntry\n\t\t\tWHERE identity_id = ?\n\t\t\tORDER BY pos DESC\n\t\t\tLIMIT 1\n\t\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "algorithm: KeyKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "public_key",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 1024
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "public_key"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "763da6690f135d3eac3eab17e60a0f059fca5298a0d990f639c21d4f8195090b"
+}

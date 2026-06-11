@@ -1,11 +1,7 @@
-use actix_web::ResponseError;
-use actix_web::http::StatusCode;
 use fs_err::tokio as fs;
-use serde_json::json;
 use std::env::VarError;
 use std::fmt::Display;
 use std::str::FromStr;
-use thiserror::Error;
 
 pub struct Env {
 	name: &'static str,
@@ -65,81 +61,6 @@ impl Env {
 		match self.get().await.parse() {
 			Ok(result) => result,
 			Err(e) => panic!("error parsing `{}`: {e}", self.name),
-		}
-	}
-}
-
-#[derive(Debug, Error)]
-#[error(transparent)]
-pub struct AnyhowError(#[from] anyhow::Error);
-
-#[derive(Debug, Error)]
-pub enum AppError {
-	#[error(transparent)]
-	Internal(#[from] anyhow::Error),
-
-	#[error(transparent)]
-	InternalWrapper(#[from] AnyhowError),
-
-	#[error(transparent)]
-	Merkleberg(#[from] merkleberg::Error),
-
-	#[error("signature verification failed")]
-	InvalidSignature,
-
-	#[error("the public key has already been registered")]
-	NonUniquePublicKey,
-
-	#[error("the identity id has already been registered")]
-	NonUniqueIdentityId,
-}
-
-impl ResponseError for AppError {
-	fn error_response(&self) -> actix_web::HttpResponse<actix_web::body::BoxBody> {
-		let (status_code, body) = match self {
-			AppError::Internal(e) | AppError::InternalWrapper(AnyhowError(e)) => {
-				tracing::error!("internal server error: {e}");
-				(
-					StatusCode::INTERNAL_SERVER_ERROR,
-					json!({ "error": "internal server error" }),
-				)
-			}
-			AppError::Merkleberg(merkleberg::Error::GenProofForInvalidLeaves) => {
-				(StatusCode::NOT_FOUND, json!({ "error": "entry not known" }))
-			}
-			AppError::Merkleberg(e) => {
-				tracing::error!("internal server error: {e}");
-				(
-					StatusCode::INTERNAL_SERVER_ERROR,
-					json!({ "error": "internal server error" }),
-				)
-			}
-			AppError::InvalidSignature
-			| AppError::NonUniquePublicKey
-			| AppError::NonUniqueIdentityId => (
-				StatusCode::BAD_REQUEST,
-				json!({ "error": self.to_string() }),
-			),
-		};
-
-		actix_web::HttpResponse::build(status_code).json(body)
-	}
-}
-
-pub type AppResult<T> = Result<T, AppError>;
-pub type HttpResult = AppResult<actix_web::HttpResponse>;
-
-#[derive(Debug)]
-pub enum NonUnique {
-	PublicKey,
-	IdentityId,
-}
-
-impl From<NonUnique> for AppError {
-	fn from(value: NonUnique) -> Self {
-		match value {
-			NonUnique::PublicKey => AppError::NonUniquePublicKey,
-			NonUnique::IdentityId => AppError::NonUniqueIdentityId,
 		}
 	}
 }

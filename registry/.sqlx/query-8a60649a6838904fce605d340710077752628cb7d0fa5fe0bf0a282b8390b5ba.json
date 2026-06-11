@@ -1,0 +1,116 @@
+{
+  "db_name": "MySQL",
+  "query": "\n            SELECT IdentityKeyEntry.pos, IdentityKeyEntry.sig, IdentityKeyEntry.authorising_sig, IdentityKeyEntry.algorithm AS `algorithm: KeyKind`, IdentityKeyEntry.public_key, LogEntry.kind AS `kind: EntryKind`\n            FROM IdentityKeyEntry\n            INNER JOIN LogEntry ON LogEntry.pos=IdentityKeyEntry.pos\n            WHERE IdentityKeyEntry.identity_id = ?\n            ORDER BY IdentityKeyEntry.pos DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "pos"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "sig",
+        "type_info": {
+          "type": "Blob",
+          "flags": "NOT_NULL | BLOB | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 262140
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "sig"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "authorising_sig",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB",
+          "collation": 224,
+          "max_size": 262140
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "authorising_sig"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "algorithm: KeyKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "public_key",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 1024
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "public_key"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "kind: EntryKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 80
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.LogEntry",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8a60649a6838904fce605d340710077752628cb7d0fa5fe0bf0a282b8390b5ba"
+}

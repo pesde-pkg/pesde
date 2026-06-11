@@ -47,6 +47,7 @@ fn specifier_to_source(
 						)
 					})?
 					.clone()
+					.into_inner()
 			} else {
 				specifier
 					.registry
@@ -68,6 +69,7 @@ fn specifier_to_source(
 						errors::DependencyGraphErrorKind::IndexNotFound(specifier.index.clone())
 					})?
 					.clone()
+					.into_inner()
 			} else {
 				specifier
 					.index
@@ -90,6 +92,7 @@ fn specifier_to_source(
 						)
 					})?
 					.clone()
+					.into_inner()
 			} else {
 				specifier
 					.index

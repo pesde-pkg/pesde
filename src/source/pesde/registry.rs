@@ -1,19 +1,32 @@
 //! Data models for the registry
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::convert::Infallible;
+use std::fmt::Display;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use bitflags::bitflags;
 use merkleberg::Merge;
-use merkleberg::mmriver::ConsistencyProof;
 use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::Url;
+use crate::bounded::Bounded;
+use crate::bounded::BoundedBTreeMap;
+use crate::bounded::BoundedString;
+use crate::bounded::BoundedVec;
 use crate::hash::Hash;
 use crate::hash::HashAlgorithm;
+use crate::hash::RawHash;
+use crate::manifest::Alias;
+use crate::manifest::DependencyType;
+use crate::manifest::MAX_AUTHOR_LEN;
+use crate::manifest::MAX_AUTHORS;
+use crate::manifest::MAX_DESCRIPTION_LEN;
+use crate::manifest::MAX_URL_LEN;
+use crate::manifest::MAX_VERSION_LEN;
 use crate::names::Name;
 use crate::names::Scope;
 use crate::signature::PublicKey;
@@ -34,6 +47,14 @@ pub struct SignedEntry<T> {
 	pub sig: Signature,
 	/// The body being signed
 	body: T,
+}
+
+impl<T> SignedEntry<T> {
+	/// Returns the body, unvalidated against the signature
+	#[must_use]
+	pub fn unsafe_body(&self) -> &T {
+		&self.body
+	}
 }
 
 impl<T: Serialize> SignedEntry<T> {
@@ -60,42 +81,69 @@ impl<T: Serialize> SignedEntry<T> {
 			.verify(public_key(&self.body), &canonical_bytes(&self.body))
 			.then_some((self.sig, self.body))
 	}
-}
 
-/// A UUID which acts as a stable identifier for an identity
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct IdentityId(pub uuid::Uuid);
-
-bitflags! {
-	/// Permissions for a scope member
-	#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-	#[serde(rename_all = "snake_case")]
-	pub struct ScopePermission: u64 {
-		/// Permission to publish new packages and versions
-		const Publish = 1 << 0;
-		/// Permission to manage the retirement status of packages (deprecations) and versions (yanks)
-		const Retire = 1 << 1;
-
-		/// Unknown permission, added for backwards compatibility
-		const _ = !0;
+	/// Verifies the signature of this entry against the given public key and returns the body and signature if it matches
+	#[must_use]
+	pub fn into_verified_external(self, public_key: &PublicKey) -> Option<(Signature, T)> {
+		self.sig
+			.verify(public_key, &canonical_bytes(&self.body))
+			.then_some((self.sig, self.body))
 	}
 }
 
-/// An entry for a member in the scope manifest
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScopeMember {
-	/// The permissions granted to this member
-	pub permissions: ScopePermission,
+/// A UUID which acts as a stable identifier for an identity
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(transparent))]
+#[serde(transparent)]
+pub struct IdentityId(pub uuid::Uuid);
+
+impl Display for IdentityId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.0.fmt(f)
+	}
 }
 
-/// The manifest for a scope, describing its owner, members, and their permissions
+/// A member of a scope
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeMember {
+	/// Write access to every package in the scope
+	AllPackages,
+	/// Write access to the listed packages
+	Packages(BTreeSet<Name>),
+}
+
+impl ScopeMember {
+	/// Whether this member may write to `package`
+	#[must_use]
+	pub fn can_write(&self, package: &Name) -> bool {
+		match self {
+			ScopeMember::AllPackages => true,
+			ScopeMember::Packages(packages) => packages.contains(package),
+		}
+	}
+}
+
+/// The manifest for a scope, describing its owner and members
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeManifest {
 	/// The sole identity permitted to manage this scope's manifest
 	pub owner: IdentityId,
-	/// Members with restricted permissions
+	/// Members with write access to some or all of the scope's packages
 	pub members: BTreeMap<IdentityId, ScopeMember>,
+}
+
+impl ScopeManifest {
+	/// Whether `of` may write to `package`
+	#[must_use]
+	pub fn can_write(&self, of: &IdentityId, package: &Name) -> bool {
+		self.owner == *of
+			|| self
+				.members
+				.get(of)
+				.is_some_and(|member| member.can_write(package))
+	}
 }
 
 /// Dependency specifiers stored by a pesde registry
@@ -108,16 +156,35 @@ pub enum RegistryDependencySpecifier {
 	Wally(crate::source::wally::specifier::RegistryWallyDependencySpecifier),
 }
 
+/// Maximum number of dependencies a published package may declare
+pub const MAX_DEPENDENCIES: usize = u8::MAX as usize;
+
+/// Maximum length, in characters, of a deprecation reason
+pub const MAX_REASON_LEN: usize = 255;
+
 /// The body of a Publish entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublishBody {
 	/// The name of the package being published
 	pub name: Name,
 	/// The version of the package being published
-	pub version: Version,
+	pub version: Bounded<Version, MAX_VERSION_LEN>,
 	/// The hash of the archive containing the package contents
 	pub archive_hash: Hash,
-	/* TODO: other fields, e.g. dependencies */
+	/// The description of the package
+	#[serde(default, skip_serializing_if = "str::is_empty")]
+	pub description: BoundedString<MAX_DESCRIPTION_LEN>,
+	/// The license of the package
+	#[serde(default, skip_serializing_if = "str::is_empty")]
+	pub license: BoundedString<MAX_DESCRIPTION_LEN>,
+	/// The authors of the package
+	#[serde(default, skip_serializing_if = "<[_]>::is_empty")]
+	pub authors: BoundedVec<BoundedString<MAX_AUTHOR_LEN>, MAX_AUTHORS>,
+	/// The repository of the package
+	pub repository: Option<Bounded<Url, MAX_URL_LEN>>,
+	/// The dependencies of the package
+	pub dependencies:
+		BoundedBTreeMap<Alias, (RegistryDependencySpecifier, DependencyType), MAX_DEPENDENCIES>,
 }
 
 /// The body of a Yank entry
@@ -126,7 +193,7 @@ pub struct YankBody {
 	/// The name of the package being yanked
 	pub name: Name,
 	/// The version of the package being yanked
-	pub version: Version,
+	pub version: Bounded<Version, MAX_VERSION_LEN>,
 }
 
 /// The body of a Deprecate entry
@@ -135,7 +202,7 @@ pub struct DeprecateBody {
 	/// The name of the package being deprecated
 	pub name: Name,
 	/// The reason for deprecation
-	pub reason: String,
+	pub reason: BoundedString<MAX_REASON_LEN>,
 }
 
 /// The body of a ManifestUpdate entry
@@ -147,26 +214,13 @@ pub struct ScopeManifestUpdateBody {
 
 /// The payload of a scope entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ScopeEntryPayload {
-	/// Publish a new package version
-	Publish(PublishBody),
-	/// Yank an existing package version
-	Yank(YankBody),
-	/// Deprecate an existing package
-	Deprecate(DeprecateBody),
-	/// Replace the scope manifest entirely
-	ManifestUpdate(ScopeManifestUpdateBody),
-}
-
-/// The body of a scope entry
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScopeEntryBody {
+pub struct ScopeEntryBody<P> {
 	/// The scope this entry belongs to
 	pub scope: Scope,
 	/// The identity of the author
 	pub author_identity: IdentityId,
 	/// The payload of this entry
-	pub payload: ScopeEntryPayload,
+	pub payload: P,
 }
 
 /// The body of a RegisterIdentity entry
@@ -187,6 +241,47 @@ pub struct IdentityRotationBody {
 	pub new_public_key: PublicKey,
 }
 
+/// Rotation of the public key for an existing identity
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdentityRotationEntry {
+	/// Signature by the old key, authorising the rotation
+	pub old_sig: Signature,
+	/// Signature by the new key, proving possession
+	pub new_sig: Signature,
+	/// The body being signed by both keys
+	body: IdentityRotationBody,
+}
+
+impl IdentityRotationEntry {
+	/// Constructs a new rotation entry from both signatures and the body
+	#[must_use]
+	pub fn new(old_sig: Signature, new_sig: Signature, body: IdentityRotationBody) -> Self {
+		Self {
+			old_sig,
+			new_sig,
+			body,
+		}
+	}
+
+	/// Returns the body, unvalidated against the signatures
+	#[must_use]
+	pub fn unsafe_body(&self) -> &IdentityRotationBody {
+		&self.body
+	}
+
+	/// Verifies both signatures and returns them with the body if they match
+	#[must_use]
+	pub fn into_verified(
+		self,
+		old_key: &PublicKey,
+	) -> Option<(Signature, Signature, IdentityRotationBody)> {
+		let bytes = canonical_bytes(&self.body);
+		(self.old_sig.verify(old_key, &bytes)
+			&& self.new_sig.verify(&self.body.new_public_key, &bytes))
+		.then_some((self.old_sig, self.new_sig, self.body))
+	}
+}
+
 /// A forced scope ownership transfer done by the registry administrator, without the consent of the previous owner
 /// Intended solely for administrative interventions including e.g. squatting or legal disputes
 /// This entry should be brought up to the user interactively if encountered during installation
@@ -198,51 +293,60 @@ pub struct AdminScopeTransfer {
 	pub manifest: ScopeManifest,
 }
 
-/// A scope-chained entry (publish, yank, or manifest update)
-pub type ScopeEntry = SignedEntry<ScopeEntryBody>;
+/// A publish scope entry
+pub type PublishScopeEntry = SignedEntry<ScopeEntryBody<PublishBody>>;
+/// A yank scope entry
+pub type YankScopeEntry = SignedEntry<ScopeEntryBody<YankBody>>;
+/// A deprecate scope entry
+pub type DeprecateScopeEntry = SignedEntry<ScopeEntryBody<DeprecateBody>>;
+/// A manifest-update scope entry
+pub type ManifestUpdateScopeEntry = SignedEntry<ScopeEntryBody<ScopeManifestUpdateBody>>;
+
+/// A scope-chained entry of any kind, as it appears in the log
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ScopeEntry {
+	/// Publishing a new package version
+	Publish(PublishScopeEntry),
+	/// Yanking of an existing package version
+	Yank(YankScopeEntry),
+	/// Deprecation of an existing package
+	Deprecate(DeprecateScopeEntry),
+	/// Complete replacement of the scope manifest
+	ManifestUpdate(ManifestUpdateScopeEntry),
+}
+
 /// Registration of a new identity, anchoring its initial public key
 pub type RegisterIdentityEntry = SignedEntry<RegisterIdentityBody>;
-/// Rotation of the public key for an existing identity
-pub type IdentityRotationEntry = SignedEntry<IdentityRotationBody>;
 /// A forced scope ownership transfer initiated by the registry operator
 pub type AdminScopeTransferEntry = AdminScopeTransfer;
+
+/// An identity-chained entry of any kind, as it appears in the log
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IdentityEntry {
+	/// Registration of a new identity, anchoring its initial public key
+	Register(RegisterIdentityEntry),
+	/// Rotation of the public key for an existing identity
+	Rotation(IdentityRotationEntry),
+}
 
 /// All possible entry payloads in the registry log
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EntryPayload {
-	/// A scope-chained entry (publish, yank, or manifest update)
+	/// A scope-related entry
 	Scope(ScopeEntry),
-	/// Registration of a new identity, anchoring its initial public key
-	RegisterIdentity(RegisterIdentityEntry),
-	/// Rotation of the public key for an existing identity
-	IdentityRotation(IdentityRotationEntry),
+	/// An identity-related entry
+	Identity(IdentityEntry),
 	/// A forced scope ownership transfer initiated by the registry operator
 	AdminScopeTransfer(AdminScopeTransferEntry),
 }
 
-/// An entry in the registry log
+/// An entry in the registry log, at a known leaf position
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Entry {
+pub struct Entry<T> {
 	/// The leaf position of this entry
 	pub pos: u64,
 	/// The payload of this entry
-	pub payload: EntryPayload,
-}
-
-/// The MMR state as coming from the log head endpoint
-#[derive(Debug, Serialize, Deserialize)]
-pub enum LogHeadResponseState {
-	/// There is only a TOFU MMR size, and no previous state to compare against
-	OnlyNewState {
-		/// The MMR's size
-		mmr_size_to: u64,
-	},
-	/// There is a previous state, and a consistency proof that can be verified against it
-	WithPreviousState {
-		/// The consistency proof
-		#[serde(flatten)]
-		proof: ConsistencyProof<CurrentMmrMerge>,
-	},
+	pub payload: T,
 }
 
 /// The response of the log head endpoint
@@ -250,8 +354,19 @@ pub enum LogHeadResponseState {
 pub struct LogHeadResponse {
 	/// The accumulator of the head entry in the log
 	pub accumulator: MmrAccumulator,
-	/// The MMR state
-	pub state: LogHeadResponseState,
+	/// The MMR's current size
+	pub mmr_size: u64,
+	/// The consistency proof paths
+	pub proof_paths: Vec<Vec<<CurrentMmrMerge as Merge>::Item>>,
+}
+
+/// The response of the log inclusion endpoint
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InclusionProofResponse {
+	/// The index of the entry the proof is for
+	pub index: u64,
+	/// The proof path from the entry to the peaks
+	pub proof: Vec<<CurrentMmrMerge as Merge>::Item>,
 }
 
 /// MMR accumulator
@@ -260,28 +375,7 @@ pub struct MmrAccumulator {
 	/// The hash algorithm used for all peaks
 	pub algorithm: HashAlgorithm,
 	/// The peak hashes
-	#[serde(
-		serialize_with = "serialize_peaks",
-		deserialize_with = "deserialize_peaks"
-	)]
-	pub peaks: Arc<[Arc<[u8]>]>,
-}
-
-fn serialize_peaks<S: serde::Serializer>(peaks: &[Arc<[u8]>], s: S) -> Result<S::Ok, S::Error> {
-	peaks
-		.iter()
-		.map(hex::encode)
-		.collect::<Vec<_>>()
-		.serialize(s)
-}
-
-fn deserialize_peaks<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Arc<[Arc<[u8]>]>, D::Error> {
-	Vec::<String>::deserialize(d)?
-		.into_iter()
-		.map(|s| hex::decode(&s).map(Into::into))
-		.collect::<Result<Vec<_>, _>>()
-		.map(Into::into)
-		.map_err(serde::de::Error::custom)
+	pub peaks: Arc<[RawHash]>,
 }
 
 const LEAF_DOMAIN: u8 = 0x00;
@@ -311,7 +405,7 @@ pub type CurrentMmrMerge = MmrMerge<Sha256Hash>;
 pub struct MmrMerge<A: THashAlgorithm>(PhantomData<A>);
 
 impl<A: THashAlgorithm> Merge for MmrMerge<A> {
-	type Item = Arc<[u8]>;
+	type Item = RawHash;
 	type Error = Infallible;
 
 	fn leaf_hash(data: &[u8]) -> Result<Self::Item, Self::Error> {
@@ -329,8 +423,8 @@ impl<A: THashAlgorithm> Merge for MmrMerge<A> {
 		let mut hasher = A::ALGORITHM.hasher();
 		hasher.update(&[NODE_DOMAIN]);
 		hasher.update(&pos.to_be_bytes());
-		hasher.update(left);
-		hasher.update(right);
+		hasher.update(left.as_bytes());
+		hasher.update(right.as_bytes());
 		Ok(hasher.finalize().into())
 	}
 }

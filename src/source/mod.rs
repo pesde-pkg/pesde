@@ -172,6 +172,8 @@ impl FromStr for StructureKind {
 
 /// Realms for separating packages
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
 pub enum Realm {
 	/// The shared realm, which is shared between the client and server
 	Shared,

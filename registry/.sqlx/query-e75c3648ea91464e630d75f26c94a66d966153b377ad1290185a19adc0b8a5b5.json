@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n                SELECT PublishScopeLogEntry.name, PublishScopeLogEntry.version\n                FROM YankScopeLogEntry\n\t\t\t\tINNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=YankScopeLogEntry.publish_pos\n                WHERE YankScopeLogEntry.pos = ?\n                ",
+  "query": "\n                            SELECT Package.name, DeprecateScopeLogEntry.reason\n                            FROM DeprecateScopeLogEntry\n                            INNER JOIN Package ON Package.genesis_pos=DeprecateScopeLogEntry.package_pos\n                            WHERE DeprecateScopeLogEntry.pos = ?\n                            ",
   "describe": {
     "columns": [
       {
@@ -8,20 +8,20 @@
         "name": "name",
         "type_info": {
           "type": "VarString",
-          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
           "collation": 224,
           "max_size": 128
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.PublishScopeLogEntry",
+            "table": "test-pesde-registry.Package",
             "name": "name"
           }
         }
       },
       {
         "ordinal": 1,
-        "name": "version",
+        "name": "reason",
         "type_info": {
           "type": "VarString",
           "flags": "NOT_NULL | NO_DEFAULT_VALUE",
@@ -30,8 +30,8 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.PublishScopeLogEntry",
-            "name": "version"
+            "table": "test-pesde-registry.DeprecateScopeLogEntry",
+            "name": "reason"
           }
         }
       }
@@ -44,5 +44,5 @@
       false
     ]
   },
-  "hash": "2b209420c21a391fce5170dd1cf959ea18b2fb2d3f12c7ba0ae99ffa3e6fe2cf"
+  "hash": "e75c3648ea91464e630d75f26c94a66d966153b377ad1290185a19adc0b8a5b5"
 }

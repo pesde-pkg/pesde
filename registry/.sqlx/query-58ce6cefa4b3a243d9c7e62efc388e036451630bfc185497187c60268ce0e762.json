@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n        SELECT kind AS `kind: EntryKind`\n        FROM LogEntry\n        WHERE pos = ?\n        ",
+  "query": "\n\t\t\tSELECT kind AS `kind: EntryKind`\n\t\t\tFROM LogEntry\n\t\t\tWHERE pos = ?\n\t\t\t",
   "describe": {
     "columns": [
       {
@@ -27,5 +27,5 @@
       false
     ]
   },
-  "hash": "6562a994184609d7482ea32bae70eb67ac6669e177db96abe01246e2e42cd671"
+  "hash": "58ce6cefa4b3a243d9c7e62efc388e036451630bfc185497187c60268ce0e762"
 }

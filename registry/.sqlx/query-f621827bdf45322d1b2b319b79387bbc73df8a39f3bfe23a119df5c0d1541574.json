@@ -1,0 +1,133 @@
+{
+  "db_name": "MySQL",
+  "query": "\n\t\tSELECT alias, dependency_type AS `dependency_type: DependencyType`, kind AS `kind: DependencyKind`, name, version_req, registry, realm AS `realm: Realm`\n\t\tFROM PublishDependency\n\t\tWHERE pos = ?\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "alias",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | PRIMARY_KEY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishDependency",
+            "name": "alias"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "dependency_type: DependencyType",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishDependency",
+            "name": "dependency_type"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "kind: DependencyKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishDependency",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishDependency",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "version_req",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishDependency",
+            "name": "version_req"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "registry",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB",
+          "collation": 224,
+          "max_size": 262140
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishDependency",
+            "name": "registry"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "realm: Realm",
+        "type_info": {
+          "type": "String",
+          "flags": "ENUM",
+          "collation": 224,
+          "max_size": 24
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishDependency",
+            "name": "realm"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "f621827bdf45322d1b2b319b79387bbc73df8a39f3bfe23a119df5c0d1541574"
+}

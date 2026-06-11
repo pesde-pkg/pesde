@@ -9,6 +9,8 @@ use std::sync::Arc;
 use backend::PesdePackageBackends;
 use backend::PesdePackageSourceBackend as _;
 use futures::StreamExt as _;
+use merkleberg::PeaksMMRIVERIter;
+use merkleberg::mmriver::ConsistencyProof;
 
 use crate::Project;
 use crate::RefreshedSources;
@@ -30,7 +32,7 @@ use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::pesde::backend::ApiPesdePackageSourceBackend;
 use crate::source::pesde::registry::CURRENT_HASH_ALGORITHM;
-use crate::source::pesde::registry::LogHeadResponseState;
+use crate::source::pesde::registry::CurrentMmrMerge;
 use crate::source::pesde::registry::MmrAccumulator;
 use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
@@ -127,36 +129,40 @@ impl PackageSource for PesdePackageSource {
 					peaks: Arc::from([]),
 				},
 			},
-			(None, Some(new_state)) => {
-				let LogHeadResponseState::OnlyNewState { mmr_size_to } = new_state.state else {
-					return Err(errors::RefreshErrorKind::InvalidResponseState.into());
-				};
+			(None, Some(remote_state)) => {
+				// TOFU
 
 				PesdeSourceState {
-					mmr_size: mmr_size_to,
-					accumulator: new_state.accumulator,
+					mmr_size: remote_state.mmr_size,
+					accumulator: remote_state.accumulator,
 				}
 			}
-			(Some(old_state), Some(new_state)) => {
-				let LogHeadResponseState::WithPreviousState { proof } = new_state.state else {
-					return Err(errors::RefreshErrorKind::InvalidResponseState.into());
-				};
-
+			(Some(old_state), Some(remote_state)) => {
 				// TODO: handle algorithm change
 
-				if proof.mmr_size_from() != old_state.mmr_size
-					|| proof.mmr_size_to() < old_state.mmr_size
+				if remote_state.mmr_size < old_state.mmr_size
+					|| PeaksMMRIVERIter::new(remote_state.mmr_size - 1).count()
+						!= remote_state.accumulator.peaks.len()
 				{
 					return Err(errors::RefreshErrorKind::ConsistencyProofFailed.into());
 				}
 
-				if !proof.verify(&old_state.accumulator.peaks, &new_state.accumulator.peaks)? {
+				let proof = ConsistencyProof::<CurrentMmrMerge>::new(
+					old_state.mmr_size,
+					remote_state.mmr_size,
+					remote_state.proof_paths,
+				);
+
+				if !proof.verify(
+					&old_state.accumulator.peaks,
+					&remote_state.accumulator.peaks,
+				)? {
 					return Err(errors::RefreshErrorKind::ConsistencyProofFailed.into());
 				}
 
 				PesdeSourceState {
 					mmr_size: proof.mmr_size_to(),
-					accumulator: new_state.accumulator,
+					accumulator: remote_state.accumulator,
 				}
 			}
 		};
@@ -296,10 +302,6 @@ pub mod errors {
 		/// Error interacting with Merkleberg
 		#[error("error verifying consistency proof")]
 		Merkleberg(#[from] merkleberg::Error),
-
-		/// The response state was invalid as compared to the client's state (e.g. a TOFU client got a response with a consistency proof)
-		#[error("invalid response state from backend")]
-		InvalidResponseState,
 	}
 
 	/// Errors that can occur when resolving a package from a pesde package source

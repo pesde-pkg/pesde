@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO PublishScopeLogEntry (pos, package_pos, version, archive_hash, description, license, repository) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "ed708aa215f6f20651efb5ec492a09e0b3eec4a89f9c774cb2ae64f8c14ced0f"
+}

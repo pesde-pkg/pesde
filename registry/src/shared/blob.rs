@@ -1,5 +1,10 @@
+use reqwest::Body;
+use reqwest::header::CONTENT_ENCODING;
+use reqwest::header::CONTENT_TYPE;
+use rusty_s3::actions::PutObject;
 use semver::Version;
 use std::path::PathBuf;
+use tokio::io::AsyncBufRead;
 use tokio_util::io::ReaderStream;
 
 use actix_web::HttpResponse;
@@ -20,6 +25,7 @@ pub enum BlobStorage {
 	S3 {
 		bucket: Bucket,
 		credentials: Credentials,
+		reqwest: reqwest::Client,
 	},
 }
 
@@ -67,11 +73,58 @@ impl BlobStorage {
 			BlobStorage::S3 {
 				bucket,
 				credentials,
+				..
 			} => {
 				let key = format!("packages/{}/{}/{version}", name.scope(), name.name());
 				let object_url =
 					GetObject::new(bucket, Some(credentials), &key).sign(S3_SIGN_DURATION);
 				Ok(Some(BlobResponse::Url(object_url.to_string())))
+			}
+		}
+	}
+
+	pub async fn put_package_archive<R: AsyncBufRead + Unpin + Send + 'static>(
+		&self,
+		name: &PackageName,
+		version: &Version,
+		mut data: R,
+	) -> anyhow::Result<()> {
+		match self {
+			BlobStorage::FS(root) => {
+				let path = root
+					.join("packages")
+					.join(name.scope().as_str())
+					.join(name.name().as_str())
+					.join(version.to_string());
+
+				if let Some(parent) = path.parent() {
+					fs::create_dir_all(parent).await?;
+				}
+
+				let mut file = fs::File::create(path).await?;
+				tokio::io::copy_buf(&mut data, &mut file).await?;
+
+				Ok(())
+			}
+			BlobStorage::S3 {
+				bucket,
+				credentials,
+				reqwest,
+			} => {
+				let key = format!("packages/{}/{}/{version}", name.scope(), name.name());
+				let object_url =
+					PutObject::new(bucket, Some(credentials), &key).sign(S3_SIGN_DURATION);
+
+				reqwest
+					.put(object_url)
+					.header(CONTENT_TYPE, "application/gzip")
+					.header(CONTENT_ENCODING, "gzip")
+					.body(Body::wrap_stream(ReaderStream::new(data)))
+					.send()
+					.await?
+					.error_for_status()?;
+
+				Ok(())
 			}
 		}
 	}

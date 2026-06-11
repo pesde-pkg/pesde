@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO Package (genesis_pos, scope_id, name) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "befaf19ea910063ec198ed92430f97dd0697833d353d8f24b73c0795581dc661"
+}

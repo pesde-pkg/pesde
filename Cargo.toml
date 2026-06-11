@@ -35,9 +35,9 @@ bin = [
     "fs-err/expose_original_error",
     "tokio/rt",
     "tokio/rt-multi-thread",
-    "tokio/macros",
 ]
 patches = ["dep:git2"]
+sqlx = ["dep:sqlx"]
 
 [[bin]]
 name = "pesde"
@@ -53,35 +53,36 @@ serde_json = { workspace = true }
 semver = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
 tokio-util = { workspace = true }
 futures = { workspace = true }
 url = { workspace = true }
 fs-err = { workspace = true }
 merkleberg = { workspace = true }
-toml = "1.0.7"
+reqwest = { workspace = true, features = ["json"] }
+toml = { workspace = true }
+async-tar = { workspace = true, features = ["xattr"] }
+async-compression = { workspace = true }
+async-stream = { workspace = true }
+tempfile = { workspace = true }
+async-trait = { workspace = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true, optional = true }
+itertools = { workspace = true }
 gix = { version = "0.80.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
     "revparse-regex",
     "credentials",
     "parallel",
 ] }
-reqwest = { version = "0.13.2", features = ["stream", "json"] }
-async-tar = { version = "0.6.0", default-features = false, features = [
-    "runtime-tokio",
-    "xattr",
-] }
-async-compression = { version = "0.4.41", features = ["tokio", "gzip"] }
 pathdiff = "0.2.3"
 relative-path = { version = "2.0.1", features = ["serde"] }
 thiserror-ext = "0.3.0"
-tokio = { version = "1.50.0", features = ["process", "macros"] }
-async-stream = "0.3.6"
 full_moon = { version = "2.1.1", features = ["luau"] }
 jiff = { version = "0.2.23", default-features = false, features = [
     "serde",
     "std",
 ] }
-tempfile = "3.27.0"
 wax = { version = "0.7.0", default-features = false }
 urlencoding = "2.1.3"
 async_zip = { version = "0.0.18", features = [
@@ -91,13 +92,9 @@ async_zip = { version = "0.0.18", features = [
     "tokio-fs",
 ] }
 croshet = "0.1.0"
-itertools = "0.14.0"
 paste = "1.0.15"
-async-trait = "0.1.89"
-bitflags = { version = "2.11.1", features = ["serde"] }
 
 digest = "0.10.7"
-sha2 = "0.10.9"
 hex = "0.4.3"
 
 base64 = "0.22.1"
@@ -153,15 +150,31 @@ semver = { version = "1.0.28", features = ["serde"] }
 thiserror = "2.0.18"
 anyhow = "1.0.102"
 futures = "0.3.32"
+tokio = { version = "1.50.0", features = ["macros"] }
 tokio-util = { version = "0.7.18", features = ["io"] }
 fs-err = { version = "3.3.0", features = ["tokio"] }
 url = { version = "2.5.8", features = ["serde"] }
 tracing = { version = "0.1.44", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
-merkleberg = { version = "0.2.1", default-features = false, features = [
-    "std",
-    "serde",
+merkleberg = { version = "0.2.1", default-features = false, features = ["std"] }
+reqwest = { version = "0.13.2", features = ["stream"] }
+toml = "1.0.7"
+async-tar = { version = "0.6.0", default-features = false, features = [
+    "runtime-tokio",
 ] }
+async-compression = { version = "0.4.41", features = ["tokio", "gzip"] }
+async-stream = "0.3.6"
+async-trait = "0.1.89"
+tempfile = "3.27.0"
+sha2 = "0.10.9"
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "macros",
+    "migrate",
+    "uuid",
+] }
+itertools = "0.14.0"
 
 [profile.dev.package.full_moon]
 opt-level = 3

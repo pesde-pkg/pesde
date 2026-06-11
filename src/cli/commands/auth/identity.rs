@@ -5,6 +5,7 @@ use clap::Args;
 use pesde::DEFAULT_URL_KEY;
 use pesde::Subproject;
 use pesde::Url;
+use pesde::bounded::Bounded;
 use pesde::errors::ManifestReadErrorKind;
 use pesde::signature::PublicKey;
 
@@ -77,4 +78,5 @@ async fn get_registry(subproject: &Subproject, registry: Option<&str>) -> anyhow
 		.get(registry_name)
 		.with_context(|| format!("registry {registry_name} not found in manifest"))
 		.cloned()
+		.map(Bounded::into_inner)
 }
