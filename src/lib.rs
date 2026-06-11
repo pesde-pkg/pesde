@@ -32,6 +32,7 @@ use tokio::sync::RwLock;
 use tracing::instrument;
 use wax::Program as _;
 
+pub mod bounded;
 pub mod download;
 pub mod download_and_link;
 pub mod graph;

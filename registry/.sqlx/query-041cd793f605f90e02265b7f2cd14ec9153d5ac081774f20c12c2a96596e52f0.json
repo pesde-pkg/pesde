@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "\n\t\tSELECT author\n\t\tFROM PublishAuthor\n\t\tWHERE pos = ?\n\t\tORDER BY seq\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "author",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishAuthor",
+            "name": "author"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "041cd793f605f90e02265b7f2cd14ec9153d5ac081774f20c12c2a96596e52f0"
+}

@@ -1,92 +1,69 @@
-use futures::lock::Mutex;
-use sqlx::prelude::Type;
-use std::sync::Arc;
+use std::any::Any;
 
+use async_trait::async_trait;
 use merkleberg::MMRIVER;
 use merkleberg::MMRStoreReadOps;
 use merkleberg::MMRStoreWriteOps;
+use pesde::hash::RawHash;
+use pesde::names::Name;
+use pesde::names::Scope;
+use pesde::signature::PublicKey;
 use pesde::source::pesde::registry::*;
+use serde::Serialize;
 use sqlx::Database as _;
 use sqlx::MySql;
-use sqlx::MySqlPool;
-use sqlx::mysql::MySqlPoolOptions;
+use sqlx::prelude::Type;
 
-use crate::util::AppError;
+pub mod mysql;
 
-mod mysql;
+pub async fn connect(url: &str) -> Box<dyn Backend> {
+	let protocol = url.split_once(':').map_or("", |(protocol, _)| protocol);
 
-#[derive(Debug, Clone)]
-pub enum Database {
-	MySql(MySqlPool),
+	if MySql::URL_SCHEMES.contains(&protocol) {
+		return Box::new(mysql::MySqlBackend::connect(url).await);
+	}
+
+	panic!("unsupported database protocol `{protocol}`")
 }
 
-impl Database {
-	pub async fn new(url: &str) -> Database {
-		let protocol = url.split_once(':').map_or("", |(protocol, _)| protocol);
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+pub struct StoreError(#[source] pub anyhow::Error);
 
-		if MySql::URL_SCHEMES.contains(&protocol) {
-			let pool = MySqlPoolOptions::new()
-				.connect(url)
-				.await
-				.expect("failed to connect to mysql database");
+#[derive(Debug, thiserror::Error)]
+pub enum PackageWriteError {
+	#[error("the package version has already been published")]
+	VersionAlreadyExists,
 
-			sqlx::migrate!()
-				.run(&pool)
-				.await
-				.expect("failed to migrate mysql database");
+	#[error("the package version does not exist")]
+	UnknownPackageVersion,
 
-			return Database::MySql(pool);
-		}
+	#[error("the package version has already been yanked")]
+	AlreadyYanked,
 
-		panic!("unsupported database protocol `{protocol}`")
-	}
+	#[error(transparent)]
+	Internal(#[from] anyhow::Error),
+}
 
-	#[must_use]
-	pub fn read_mmr_sized(&self, size: u64) -> MMRIVER<CurrentMmrMerge, &Self> {
-		MMRIVER::new(size, self)
-	}
+#[derive(Debug, thiserror::Error)]
+pub enum IdentityWriteError {
+	#[error("the identity id has already been registered")]
+	NonUniqueIdentityId,
 
-	pub async fn read_mmr(&self) -> anyhow::Result<MMRIVER<CurrentMmrMerge, &Self>> {
-		let mmr_size = match self {
-			Self::MySql(pool) => mysql::mmr_size(pool).await?,
-		};
+	#[error("the public key has already been registered")]
+	NonUniquePublicKey,
 
-		Ok(self.read_mmr_sized(mmr_size))
-	}
+	#[error(transparent)]
+	Internal(#[from] anyhow::Error),
+}
 
-	pub async fn write_mmr<'t>(
-		&self,
-	) -> anyhow::Result<MMRIVER<CurrentMmrMerge, DatabaseTransaction<'_>>> {
-		let (transaction, mmr_size) = match self {
-			Self::MySql(pool) => {
-				let (transaction, mmr_size) = mysql::write_mmr(pool).await?;
-				(
-					DatabaseTransaction::MySql(Mutex::new(transaction)),
-					mmr_size,
-				)
-			}
-		};
+#[derive(Debug, thiserror::Error)]
+pub enum ManifestError {
+	#[error("identity `{0}` is mentioned but not registered")]
+	UnregisteredIdentity(IdentityId),
 
-		Ok(MMRIVER::new(mmr_size, transaction))
-	}
-
-	pub async fn get_scope_manifest(&self, pos: u64) -> anyhow::Result<Option<ScopeManifest>> {
-		match self {
-			Self::MySql(pool) => mysql::get_scope_manifest(pool, pos).await,
-		}
-	}
-
-	pub async fn get_scope_entry(&self, pos: u64) -> anyhow::Result<Option<ScopeEntry>> {
-		match self {
-			Self::MySql(pool) => mysql::get_scope_entry(pool, pos).await,
-		}
-	}
-
-	pub async fn get_entry(&self, pos: u64) -> anyhow::Result<Option<Entry>> {
-		match self {
-			Self::MySql(pool) => mysql::get_entry(pool, pos).await,
-		}
-	}
+	#[error(transparent)]
+	Internal(#[from] anyhow::Error),
 }
 
 #[derive(Debug, Type)]
@@ -98,59 +75,184 @@ pub enum EntryKind {
 	AdminScopeTransfer,
 }
 
-impl MMRStoreReadOps<Arc<[u8]>> for &Database {
-	type Error = AppError;
+#[async_trait]
+pub trait ReadStore: Send + Sync {
+	async fn get_node(&self, pos: u64) -> Result<Option<RawHash>, StoreError>;
 
-	async fn get_elem(&self, pos: u64) -> Result<Option<Arc<[u8]>>, Self::Error> {
-		Ok(match *self {
-			Database::MySql(pool) => mysql::get_hash(pool, pos).await?,
-		})
-	}
-}
-
-pub trait Mmr<'a> {
-	fn commit_and_update(self) -> impl Future<Output = anyhow::Result<DatabaseTransaction<'a>>>;
-}
-
-pub enum DatabaseTransaction<'a> {
-	MySql(Mutex<sqlx::MySqlTransaction<'a>>),
-}
-
-impl<'a> Mmr<'a> for MMRIVER<CurrentMmrMerge, DatabaseTransaction<'a>> {
-	async fn commit_and_update(mut self) -> anyhow::Result<DatabaseTransaction<'a>> {
-		self.commit().await?;
-
-		let mmr_size = self.mmr_size();
-		let mut tx = self.into_store();
-		match &mut tx {
-			DatabaseTransaction::MySql(tx) => {
-				mysql::update_mmr_size(tx.get_mut(), mmr_size).await?;
-			}
+	async fn get_nodes(&self, positions: Vec<u64>) -> Result<Vec<Option<RawHash>>, StoreError> {
+		let mut nodes = Vec::with_capacity(positions.len());
+		for pos in positions {
+			nodes.push(self.get_node(pos).await?);
 		}
-
-		Ok(tx)
+		Ok(nodes)
 	}
 }
 
-impl MMRStoreReadOps<Arc<[u8]>> for DatabaseTransaction<'_> {
-	type Error = AppError;
+impl MMRStoreReadOps<RawHash> for Box<dyn ReadStore> {
+	type Error = StoreError;
 
-	async fn get_elem(&self, pos: u64) -> Result<Option<Arc<[u8]>>, Self::Error> {
-		Ok(match self {
-			DatabaseTransaction::MySql(tx) => mysql::get_hash(&mut **tx.lock().await, pos).await?,
-		})
+	async fn get_elem(&self, pos: u64) -> Result<Option<RawHash>, StoreError> {
+		self.get_node(pos).await
+	}
+
+	async fn get_elems(
+		&self,
+		positions: impl Iterator<Item = u64> + Send,
+	) -> Result<Vec<Option<RawHash>>, StoreError> {
+		self.get_nodes(positions.collect()).await
 	}
 }
 
-impl MMRStoreWriteOps<Arc<[u8]>> for DatabaseTransaction<'_> {
-	type Error = AppError;
+#[async_trait]
+pub trait WriteStore: Send + Sync + Any {
+	async fn get_node(&self, pos: u64) -> Result<Option<RawHash>, StoreError>;
 
-	async fn append(&mut self, pos: u64, elems: Vec<Arc<[u8]>>) -> Result<(), Self::Error> {
-		match self {
-			DatabaseTransaction::MySql(tx) => {
-				mysql::append_hashes(&mut *tx.lock().await, pos, elems).await?;
-			}
+	async fn get_nodes(&self, positions: Vec<u64>) -> Result<Vec<Option<RawHash>>, StoreError> {
+		let mut nodes = Vec::with_capacity(positions.len());
+		for pos in positions {
+			nodes.push(self.get_node(pos).await?);
 		}
-		Ok(())
+		Ok(nodes)
+	}
+
+	async fn append_nodes(&mut self, pos: u64, elems: Vec<RawHash>) -> Result<(), StoreError>;
+	async fn set_size(&mut self, size: u64) -> anyhow::Result<()>;
+	async fn commit(self: Box<Self>) -> anyhow::Result<()>;
+}
+
+impl MMRStoreReadOps<RawHash> for Box<dyn WriteStore> {
+	type Error = StoreError;
+
+	async fn get_elem(&self, pos: u64) -> Result<Option<RawHash>, StoreError> {
+		self.get_node(pos).await
+	}
+
+	async fn get_elems(
+		&self,
+		positions: impl Iterator<Item = u64> + Send,
+	) -> Result<Vec<Option<RawHash>>, StoreError> {
+		self.get_nodes(positions.collect()).await
+	}
+}
+
+impl MMRStoreWriteOps<RawHash> for Box<dyn WriteStore> {
+	type Error = StoreError;
+
+	async fn append(&mut self, pos: u64, elems: Vec<RawHash>) -> Result<(), StoreError> {
+		self.append_nodes(pos, elems).await
+	}
+}
+
+pub enum ScopeControl<'a> {
+	Write(&'a Name),
+	PublishOrCreate(&'a Name),
+	Owner,
+}
+
+pub struct ScopeAccess {
+	pub pos: u64,
+	pub scope_exists: bool,
+}
+
+pub struct AuthorKey {
+	pub identity: IdentityId,
+	pub key: PublicKey,
+}
+
+pub async fn append_leaf(
+	store: Box<dyn WriteStore>,
+	pos: u64,
+	body: &impl Serialize,
+) -> anyhow::Result<(Box<dyn WriteStore>, u64)> {
+	let mut mmr: MMRIVER<CurrentMmrMerge, Box<dyn WriteStore>> = MMRIVER::new(pos, store);
+	mmr.push(&canonical_bytes(body)).await?;
+	mmr.commit().await?;
+
+	let next_pos = mmr.mmr_size();
+	let mut store = mmr.into_store();
+	store.set_size(next_pos).await?;
+	Ok((store, next_pos))
+}
+
+#[async_trait]
+pub trait Backend:
+	Send
+	+ Sync
+	+ crate::features::package::Repository
+	+ crate::features::identity::Repository
+	+ crate::features::scope::Repository
+	+ crate::features::log::Repository
+{
+	async fn current_size(&self) -> anyhow::Result<u64>;
+
+	async fn read_mmr_at(
+		&self,
+		size: u64,
+	) -> anyhow::Result<MMRIVER<CurrentMmrMerge, Box<dyn ReadStore>>>;
+
+	async fn read_mmr(&self) -> anyhow::Result<MMRIVER<CurrentMmrMerge, Box<dyn ReadStore>>> {
+		self.read_mmr_at(self.current_size().await?).await
+	}
+
+	async fn begin_write(&self) -> anyhow::Result<Box<dyn WriteStore>>;
+
+	async fn current_identity_key(
+		&self,
+		store: &mut Box<dyn WriteStore>,
+		id: &IdentityId,
+	) -> anyhow::Result<Option<PublicKey>>;
+
+	async fn lock_tree(&self, store: &mut Box<dyn WriteStore>) -> anyhow::Result<u64>;
+
+	async fn scope_write_access(
+		&self,
+		store: &mut Box<dyn WriteStore>,
+		scope: &Scope,
+		identity: &IdentityId,
+		control: ScopeControl<'_>,
+	) -> anyhow::Result<Option<ScopeAccess>>;
+
+	async fn author_key(
+		&self,
+		store: &mut Box<dyn WriteStore>,
+		id: &IdentityId,
+	) -> anyhow::Result<Option<AuthorKey>> {
+		Ok(self
+			.current_identity_key(store, id)
+			.await?
+			.map(|key| AuthorKey { identity: *id, key }))
+	}
+
+	async fn lock_tree_as(
+		&self,
+		store: &mut Box<dyn WriteStore>,
+		author: &AuthorKey,
+	) -> anyhow::Result<Option<u64>> {
+		let pos = self.lock_tree(store).await?;
+		Ok(self
+			.author_key(store, &author.identity)
+			.await?
+			.is_some_and(|new| author.key == new.key)
+			.then_some(pos))
+	}
+
+	async fn authorize_scope_write(
+		&self,
+		store: &mut Box<dyn WriteStore>,
+		scope: &Scope,
+		author: &AuthorKey,
+		control: ScopeControl<'_>,
+	) -> anyhow::Result<Option<ScopeAccess>> {
+		let Some(access) = self
+			.scope_write_access(store, scope, &author.identity, control)
+			.await?
+		else {
+			return Ok(None);
+		};
+		Ok(self
+			.author_key(store, &author.identity)
+			.await?
+			.is_some_and(|new| author.key == new.key)
+			.then_some(access))
 	}
 }

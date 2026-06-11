@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO IdentityKeyEntry (pos, sig, authorising_sig, identity_id, algorithm, public_key) VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "5fa87f05de9d51d268ebfe27e2395bd99fac8d518c9c293319ab404f0c698da9"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n                SELECT name, version, archive_hash\n                FROM PublishScopeLogEntry\n                WHERE pos = ?\n                ",
+  "query": "\n                            SELECT Package.name, PublishScopeLogEntry.version\n                            FROM YankScopeLogEntry\n                            INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=YankScopeLogEntry.publish_pos\n                            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n                            WHERE YankScopeLogEntry.pos = ?\n                            ",
   "describe": {
     "columns": [
       {
@@ -8,13 +8,13 @@
         "name": "name",
         "type_info": {
           "type": "VarString",
-          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
           "collation": 224,
           "max_size": 128
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.PublishScopeLogEntry",
+            "table": "test-pesde-registry.Package",
             "name": "name"
           }
         }
@@ -34,22 +34,6 @@
             "name": "version"
           }
         }
-      },
-      {
-        "ordinal": 2,
-        "name": "archive_hash",
-        "type_info": {
-          "type": "Blob",
-          "flags": "NOT_NULL | BLOB | NO_DEFAULT_VALUE",
-          "collation": 224,
-          "max_size": 262140
-        },
-        "origin": {
-          "Table": {
-            "table": "test-pesde-registry.PublishScopeLogEntry",
-            "name": "archive_hash"
-          }
-        }
       }
     ],
     "parameters": {
@@ -57,9 +41,8 @@
     },
     "nullable": [
       false,
-      false,
       false
     ]
   },
-  "hash": "163d8625deac5491870e7d5a5582a249bc7374b1706b5c5ba5a3b1e807a62aad"
+  "hash": "5b3c744d0fea3950120d46739b19db29dd7e83007fd6629bb68f623db7ba2ccc"
 }

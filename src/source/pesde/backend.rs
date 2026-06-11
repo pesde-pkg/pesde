@@ -242,13 +242,4 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = ApiDownloadError))]
 	#[non_exhaustive]
 	pub enum ApiDownloadErrorKind {}
-
-	/// Errors that can occur when parsing a scope permission from a string
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = ScopePermissionFromStrError))]
-	pub enum ScopePermissionFromStrErrorKind {
-		/// Unknown scope permission
-		#[error("unknown scope permission `{0}`")]
-		UnknownScopePermission(String),
-	}
 }

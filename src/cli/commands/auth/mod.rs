@@ -4,6 +4,7 @@ use clap::Subcommand;
 use pesde::DEFAULT_URL_KEY;
 use pesde::Subproject;
 use pesde::Url;
+use pesde::bounded::Bounded;
 use pesde::errors::ManifestReadErrorKind;
 
 mod identity;
@@ -73,4 +74,5 @@ pub(super) async fn get_index(subproject: &Subproject, index: Option<&str>) -> a
 		.get(index_name)
 		.with_context(|| format!("index {index_name} not found in manifest"))
 		.cloned()
+		.map(Bounded::into_inner)
 }

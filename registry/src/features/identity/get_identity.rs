@@ -1,26 +1,32 @@
-use crate::AppState;
-use crate::shared::db::Database;
-use crate::util::AppResult;
-use crate::util::HttpResult;
 use actix_web::HttpResponse;
+use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
+use pesde::source::pesde::registry::Entry;
+use pesde::source::pesde::registry::IdentityEntry;
 use pesde::source::pesde::registry::IdentityId;
+
+use crate::AppState;
+use crate::features::identity::Error;
+use crate::shared::auth::ReadGuard;
+use crate::shared::db::Backend;
 
 #[get("/identity/{identity_id}")]
 pub(super) async fn http_v2(
+	_access_guard: ReadGuard,
 	app_state: web::Data<AppState>,
 	identity_id: web::Path<IdentityId>,
-) -> HttpResult {
-	handler(&app_state.database, &identity_id).await?;
-	Ok(HttpResponse::Ok().finish())
+) -> Result<impl Responder, Error> {
+	let Some(entry) = handler(app_state.db.as_ref(), &identity_id).await? else {
+		return Ok(HttpResponse::NotFound().finish());
+	};
+
+	Ok(HttpResponse::Ok().json(entry))
 }
 
-async fn handler(db: &Database, identity_id: &IdentityId) -> AppResult<()> {
-	query(db, identity_id).await?;
-	Ok(())
-}
-
-async fn query(db: &Database, _identity_id: &IdentityId) -> anyhow::Result<()> {
-	todo!()
+async fn handler(
+	db: &dyn Backend,
+	id: &IdentityId,
+) -> anyhow::Result<Option<Entry<IdentityEntry>>> {
+	db.identity_entry(id).await
 }

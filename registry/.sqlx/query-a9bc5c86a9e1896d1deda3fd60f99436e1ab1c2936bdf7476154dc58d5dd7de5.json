@@ -1,0 +1,99 @@
+{
+  "db_name": "MySQL",
+  "query": "\n\t\tSELECT sig, authorising_sig, identity_id AS `identity_id: IdentityId`, algorithm AS `algorithm: KeyKind`, public_key\n\t\tFROM IdentityKeyEntry\n\t\tWHERE pos = ?\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sig",
+        "type_info": {
+          "type": "Blob",
+          "flags": "NOT_NULL | BLOB | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 262140
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "sig"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "authorising_sig",
+        "type_info": {
+          "type": "Blob",
+          "flags": "BLOB",
+          "collation": 224,
+          "max_size": 262140
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "authorising_sig"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "identity_id: IdentityId",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 16
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "identity_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "algorithm: KeyKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "public_key",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 1024
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.IdentityKeyEntry",
+            "name": "public_key"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a9bc5c86a9e1896d1deda3fd60f99436e1ab1c2936bdf7476154dc58d5dd7de5"
+}

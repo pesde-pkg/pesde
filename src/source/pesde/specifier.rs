@@ -1,5 +1,8 @@
 //! pesde dependency specifier
 use crate::Url;
+use crate::bounded::Bounded;
+use crate::manifest::MAX_URL_LEN;
+use crate::manifest::MAX_VERSION_REQ_LEN;
 use crate::names::PackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
@@ -44,9 +47,9 @@ pub struct RegistryPesdeDependencySpecifier {
 	/// The name of the package
 	pub name: PackageName,
 	/// The version requirement for the package
-	pub version: VersionReq,
+	pub version: Bounded<VersionReq, MAX_VERSION_REQ_LEN>,
 	/// The registry to use for the package. None if this package comes from the same registry
-	pub registry: Option<Url>,
+	pub registry: Option<Bounded<Url, MAX_URL_LEN>>,
 	/// The realm to use for the package
 	pub realm: Option<Realm>,
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO DeprecateScopeLogEntry (pos, package_pos, reason) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "4cf2aa69a7c9c6eadc439db1fea20b0d635225ef391d14c4ce9783bd998d098d"
+}

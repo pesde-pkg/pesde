@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "\n            SELECT Package.genesis_pos\n\t\t\tFROM Package\n            INNER JOIN Scope ON Scope.id=Package.scope_id\n            WHERE Scope.scope = ? AND Package.name = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "genesis_pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.Package",
+            "name": "genesis_pos"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "11f3d5fc13bf324738783115ab63a2b1d1f9ea2a5940a23b10d15a47ff0eaa11"
+}

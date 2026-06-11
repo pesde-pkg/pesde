@@ -1,5 +1,8 @@
 //! Manifest
 use crate::Url;
+use crate::bounded::Bounded;
+use crate::bounded::BoundedString;
+use crate::bounded::BoundedVec;
 use crate::names::PackageName;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
@@ -17,6 +20,19 @@ use std::hash::Hash;
 use std::str::FromStr;
 use std::sync::Arc;
 use tracing::instrument;
+
+/// Maximum length, in characters, of a package's description (and license)
+pub const MAX_DESCRIPTION_LEN: usize = 255;
+/// Maximum number of authors a package may declare
+pub const MAX_AUTHORS: usize = 255;
+/// Maximum length, in characters, of a single author entry
+pub const MAX_AUTHOR_LEN: usize = 255;
+/// Maximum length, in characters, of a serialised version
+pub const MAX_VERSION_LEN: usize = 255;
+/// Maximum length, in characters, of a serialised version requirement
+pub const MAX_VERSION_REQ_LEN: usize = 255;
+/// Maximum length, in characters, of a serialised URL
+pub const MAX_URL_LEN: usize = 2048;
 
 /// A specifier for an override
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
@@ -48,19 +64,19 @@ pub struct Manifest {
 	/// The name of the package
 	pub name: PackageName,
 	/// The version of the package
-	pub version: Version,
+	pub version: Bounded<Version, MAX_VERSION_LEN>,
 	/// The description of the package
 	#[serde(default)]
-	pub description: Option<String>,
+	pub description: BoundedString<MAX_DESCRIPTION_LEN>,
 	/// The license of the package
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub license: Option<String>,
+	pub license: BoundedString<MAX_DESCRIPTION_LEN>,
 	/// The authors of the package
 	#[serde(default)]
-	pub authors: Vec<String>,
+	pub authors: BoundedVec<BoundedString<MAX_AUTHOR_LEN>, MAX_AUTHORS>,
 	/// The repository of the package
 	#[serde(default)]
-	pub repository: Option<Url>,
+	pub repository: Option<Bounded<Url, MAX_URL_LEN>>,
 	/// Whether the package is private
 	#[serde(default)]
 	pub private: bool,
@@ -69,13 +85,13 @@ pub struct Manifest {
 	pub scripts: BTreeMap<String, String>,
 	/// The registries to use for the package
 	#[serde(default, rename = "registries")]
-	pub pesde_registries: BTreeMap<String, Url>,
+	pub pesde_registries: BTreeMap<String, Bounded<Url, MAX_URL_LEN>>,
 	/// The indices to use for the package
 	#[serde(default, rename = "indices")]
-	pub pesde_indices: BTreeMap<String, Url>,
+	pub pesde_indices: BTreeMap<String, Bounded<Url, MAX_URL_LEN>>,
 	/// The indices to use for the package's Wally dependencies
 	#[serde(default, rename = "wally_indices")]
-	pub wally_indices: BTreeMap<String, Url>,
+	pub wally_indices: BTreeMap<String, Bounded<Url, MAX_URL_LEN>>,
 	/// The files to include in the package
 	#[serde(default)]
 	pub includes: Vec<String>,
@@ -196,6 +212,8 @@ impl Alias {
 
 /// A dependency type
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
 #[serde(rename_all = "snake_case")]
 pub enum DependencyType {
 	/// A standard dependency

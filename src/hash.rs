@@ -4,9 +4,58 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use digest::DynDigest;
+use serde::Deserialize;
+use serde::Serialize;
 use sha2::Sha256;
 
 use crate::ser_display_deser_fromstr;
+
+/// A raw hash digest
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(transparent))]
+pub struct RawHash(Arc<[u8]>);
+
+impl RawHash {
+	/// Returns the raw bytes of this digest
+	#[must_use]
+	pub fn as_bytes(&self) -> &[u8] {
+		&self.0
+	}
+}
+
+impl<T: Into<Arc<[u8]>>> From<T> for RawHash {
+	fn from(value: T) -> Self {
+		Self(value.into())
+	}
+}
+
+impl AsRef<[u8]> for RawHash {
+	fn as_ref(&self) -> &[u8] {
+		&self.0
+	}
+}
+
+impl Display for RawHash {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", hex::encode(&self.0))
+	}
+}
+
+impl Serialize for RawHash {
+	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		serializer.collect_str(self)
+	}
+}
+
+impl<'de> Deserialize<'de> for RawHash {
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		let hex = String::deserialize(deserializer)?;
+		hex::decode(&hex)
+			.map(|bytes| Self(bytes.into()))
+			.map_err(serde::de::Error::custom)
+	}
+}
 
 /// Hash algorithms that are supported for verifying the integrity of data
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -59,7 +108,7 @@ impl FromStr for HashAlgorithm {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Hash {
 	algorithm: HashAlgorithm,
-	hash: Arc<[u8]>,
+	hash: RawHash,
 }
 ser_display_deser_fromstr!(Hash);
 
@@ -72,7 +121,10 @@ impl Hash {
 			return None;
 		}
 
-		Some(Self { algorithm, hash })
+		Some(Self {
+			algorithm,
+			hash: hash.into(),
+		})
 	}
 
 	/// Creates a new Hash from the given algorithm and bytes
@@ -92,13 +144,13 @@ impl Hash {
 	/// Returns the hash value
 	#[must_use]
 	pub fn hash(&self) -> &[u8] {
-		&self.hash
+		self.hash.as_bytes()
 	}
 }
 
 impl Display for Hash {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}:{}", self.algorithm, hex::encode(&self.hash))
+		write!(f, "{}:{}", self.algorithm, self.hash)
 	}
 }
 

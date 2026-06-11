@@ -7,6 +7,9 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::Url;
+use crate::bounded::Bounded;
+use crate::manifest::MAX_URL_LEN;
+use crate::manifest::MAX_VERSION_REQ_LEN;
 use crate::names::WallyPackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
@@ -60,9 +63,9 @@ pub struct RegistryWallyDependencySpecifier {
 	/// The name of the package
 	pub name: WallyPackageName,
 	/// The version requirement for the package
-	pub version: VersionReq,
+	pub version: Bounded<VersionReq, MAX_VERSION_REQ_LEN>,
 	/// The index to use for the package
-	pub index: Url,
+	pub index: Bounded<Url, MAX_URL_LEN>,
 	/// The realm to use for the package
 	pub realm: Realm,
 }

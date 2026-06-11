@@ -66,7 +66,8 @@ impl AddCommand {
 					indices
 						.get(name)
 						.with_context(|| format!("index `{name}` not found"))?
-						.clone(),
+						.clone()
+						.into_inner(),
 				))
 			})
 			.await
