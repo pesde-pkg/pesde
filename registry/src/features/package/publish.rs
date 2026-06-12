@@ -10,6 +10,7 @@ use actix_web::web;
 use actix_web::web::Bytes;
 use anyhow::Context as _;
 use fs_err::tokio as fs;
+use futures::TryFutureExt as _;
 use futures::TryStreamExt as _;
 use pesde::MANIFEST_FILE_NAME;
 use pesde::bounded::Bounded;
@@ -21,7 +22,7 @@ use pesde::source::pesde::registry::*;
 use pesde::source::pesde::specifier::RegistryPesdeDependencySpecifier;
 use pesde::source::wally::specifier::RegistryWallyDependencySpecifier;
 use serde::de::DeserializeOwned;
-use tokio::io::BufReader;
+use tokio::io::AsyncReadExt as _;
 
 use crate::AppState;
 use crate::features::package::Error;
@@ -30,8 +31,11 @@ use crate::shared::blob::BlobStorage;
 use crate::shared::db::Backend;
 use crate::shared::db::ScopeControl;
 use crate::shared::db::append_leaf;
+use crate::shared::search::Search;
 
 const MAX_ENTRY_SIZE: usize = 64 * 1024;
+const README_FILE_NAME: &str = "README.md";
+const MAX_README_SIZE: u64 = 256 * 1024;
 
 #[post("/package/publish")]
 pub(super) async fn http_v2(
@@ -70,6 +74,7 @@ pub(super) async fn http_v2(
 	handler(
 		app_state.db.as_ref(),
 		&app_state.blob_storage,
+		&app_state.search,
 		entry,
 		scope_entry,
 		archive,
@@ -107,6 +112,7 @@ fn bad_multipart(e: &actix_multipart::MultipartError) -> Error {
 async fn handler(
 	db: &dyn Backend,
 	blob: &BlobStorage,
+	search: &Search,
 	entry: PublishScopeEntry,
 	scope_entry: Option<ManifestUpdateScopeEntry>,
 	archive: Bytes,
@@ -133,7 +139,7 @@ async fn handler(
 		.context("failed to create tempdir")?;
 
 	async_tar::Archive::new(async_compression::tokio::bufread::GzipDecoder::new(
-		BufReader::new(Cursor::new(archive.clone())),
+		&*archive.clone(),
 	))
 	.unpack(tempdir.path())
 	.await
@@ -144,6 +150,24 @@ async fn handler(
 		.map_err(|e| Error::BadRequest(format!("could not read {MANIFEST_FILE_NAME}: {e}")))?;
 	let manifest: Manifest = toml::from_str(&manifest)
 		.map_err(|e| Error::BadRequest(format!("invalid {MANIFEST_FILE_NAME}: {e}")))?;
+
+	let readme = match fs::File::open(tempdir.path().join(README_FILE_NAME)).await {
+		Ok(file) => {
+			let mut buffer = Vec::new();
+			file.take(MAX_README_SIZE + 1)
+				.read_to_end(&mut buffer)
+				.await
+				.map_err(|e| Error::Internal(e.into()))?;
+			if buffer.len() as u64 > MAX_README_SIZE {
+				return Err(Error::BadRequest(format!(
+					"{README_FILE_NAME} exceeds the maximum size of {MAX_README_SIZE} bytes"
+				)));
+			}
+			Some(buffer)
+		}
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+		Err(e) => return Err(Error::Internal(e.into())),
+	};
 
 	tokio::task::spawn_blocking(move || tempdir.close())
 		.await
@@ -291,14 +315,27 @@ async fn handler(
 		.await?;
 
 	let package_name = PackageName::new(body.scope.clone(), body.payload.name.clone());
-	blob.put_package_archive(
-		&package_name,
-		&body.payload.version,
-		BufReader::new(Cursor::new(archive)),
-	)
-	.await
-	.map_err(Error::Internal)?;
+	tokio::try_join!(
+		blob.put_package_archive(&package_name, &body.payload.version, Cursor::new(archive))
+			.map_err(Error::Internal),
+		async {
+			if let Some(readme) = readme {
+				blob.put_package_readme(&package_name, &body.payload.version, Cursor::new(readme))
+					.await
+					.map_err(Error::Internal)?;
+			}
+
+			Ok(())
+		},
+	)?;
 	store.commit().await?;
+
+	if let Err(e) = search.upsert(
+		&PackageName::new(body.scope.clone(), body.payload.name.clone()),
+		&body.payload.description,
+	) {
+		tracing::error!("failed to index published package for search: {e:#?}");
+	}
 
 	Ok(())
 }

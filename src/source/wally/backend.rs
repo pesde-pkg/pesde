@@ -18,11 +18,11 @@ use serde::Deserialize;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt as _;
-use tokio::io::BufReader;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 
@@ -225,10 +225,9 @@ impl WallyPackageSourceBackend for GitWallyPackageSourceBackend {
 			.map_err(errors::GitDownloadErrorKind::ReadEntryContents)?;
 
 		let stream = try_stream!({
-			let zip_file = BufReader::new(std::io::Cursor::new(archive_bytes));
-
 			let mut archive =
-				async_zip::tokio::read::seek::ZipFileReader::with_tokio(zip_file).await?;
+				async_zip::tokio::read::seek::ZipFileReader::with_tokio(Cursor::new(archive_bytes))
+					.await?;
 
 			for index in 0..archive.file().entries().len() {
 				let entry = archive.file().entries().get(index).unwrap();

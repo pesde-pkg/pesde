@@ -80,7 +80,7 @@ impl Repository for MySqlBackend {
 									&publish.archive_hash,
 									publish.description,
 									publish.license,
-									publish.repository.as_deref(),
+									&publish.repository,
 								)
 								.await?,
 							},
@@ -89,7 +89,7 @@ impl Repository for MySqlBackend {
 					ScopeEntryKind::Yank => {
 						let row = sqlx::query!(
 							r#"
-                            SELECT Package.name, PublishScopeLogEntry.version
+                            SELECT Package.name, PublishScopeLogEntry.version, YankScopeLogEntry.action AS `action: YankRetraction`
                             FROM YankScopeLogEntry
                             INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=YankScopeLogEntry.publish_pos
                             INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
@@ -108,6 +108,7 @@ impl Repository for MySqlBackend {
 								payload: YankBody {
 									name: row.name.parse()?,
 									version: row.version.parse()?,
+									action: row.action,
 								},
 							},
 						))

@@ -185,12 +185,15 @@ impl PackageSource for PesdePackageSource {
 	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
-		_source_state: &SourceState,
+		source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let PackageRefs::Pesde(pkg_ref) = package.id.pkg_ref() else {
 			unreachable!("invalid package ref type for pesde package source");
+		};
+		let SourceState::Pesde(source_state) = source_state else {
+			unreachable!("invalid source state type for pesde package source");
 		};
 
 		let index_file = project
@@ -220,7 +223,13 @@ impl PackageSource for PesdePackageSource {
 
 		let entries_stream = self
 			.repo
-			.download_entries(project, &pkg_ref.name, package.id.version(), reporter)
+			.download_entries(
+				project,
+				source_state,
+				&pkg_ref.name,
+				package.id.version(),
+				reporter,
+			)
 			.await?;
 		tokio::pin!(entries_stream);
 

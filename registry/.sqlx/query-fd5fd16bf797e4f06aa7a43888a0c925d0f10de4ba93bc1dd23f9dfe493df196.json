@@ -56,7 +56,7 @@
         "name": "description",
         "type_info": {
           "type": "VarString",
-          "flags": "",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
           "collation": 224,
           "max_size": 1020
         },
@@ -72,7 +72,7 @@
         "name": "license",
         "type_info": {
           "type": "VarString",
-          "flags": "",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
           "collation": 224,
           "max_size": 1020
         },
@@ -88,7 +88,7 @@
         "name": "repository",
         "type_info": {
           "type": "Blob",
-          "flags": "BLOB",
+          "flags": "NOT_NULL | BLOB | NO_DEFAULT_VALUE",
           "collation": 224,
           "max_size": 262140
         },
@@ -107,9 +107,9 @@
       false,
       false,
       false,
-      true,
-      true,
-      true
+      false,
+      false,
+      false
     ]
   },
   "hash": "fd5fd16bf797e4f06aa7a43888a0c925d0f10de4ba93bc1dd23f9dfe493df196"

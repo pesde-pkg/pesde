@@ -423,9 +423,7 @@ impl LegacyPesdePackageSourceBackend for GitLegacyPesdePackageSourceBackend {
 			let bytes = crate::reporters::response_to_async_buf_read(response, reporter.clone());
 			tokio::pin!(bytes);
 
-			let decoder = async_compression::tokio::bufread::GzipDecoder::new(
-				tokio::io::BufReader::new(bytes),
-			);
+			let decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes);
 			let archive = async_tar::Archive::new(decoder);
 			let mut entries_stream = archive
 				.entries()

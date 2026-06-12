@@ -1,0 +1,82 @@
+{
+  "db_name": "MySQL",
+  "query": "\n\t\tSELECT YankScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, YankScopeLogEntry.action AS `action: YankRetraction`\n\t\tFROM YankScopeLogEntry\n\t\tINNER JOIN ScopeLogEntry ON ScopeLogEntry.pos=YankScopeLogEntry.pos\n\t\tWHERE YankScopeLogEntry.publish_pos = ?\n\t\tORDER BY YankScopeLogEntry.pos DESC\n\t\tLIMIT 1\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.YankScopeLogEntry",
+            "name": "pos"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "sig",
+        "type_info": {
+          "type": "Blob",
+          "flags": "NOT_NULL | BLOB | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 262140
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.ScopeLogEntry",
+            "name": "sig"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "author_identity: IdentityId",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 16
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.ScopeLogEntry",
+            "name": "author_identity"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "action: YankRetraction",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 24
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.YankScopeLogEntry",
+            "name": "action"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "35b030d7693db2e909345480fd61ab22e155cc021bfea444df8c3ba64d7ad5df"
+}

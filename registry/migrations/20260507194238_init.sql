@@ -95,16 +95,19 @@ CREATE TABLE PublishScopeLogEntry (
 
     package_pos BIGINT UNSIGNED NOT NULL,
     version VARCHAR(255) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+    version_ord VARBINARY(512) NOT NULL,
     archive_hash TEXT NOT NULL,
 
-    description VARCHAR(255),
-    license VARCHAR(255),
-    repository TEXT,
+    description VARCHAR(255) NOT NULL,
+    license VARCHAR(255) NOT NULL,
+    repository TEXT NOT NULL,
 
     UNIQUE (package_pos, version),
     FOREIGN KEY (pos) REFERENCES ScopeLogEntry (pos),
     FOREIGN KEY (package_pos) REFERENCES Package (genesis_pos)
 );
+
+CREATE INDEX idx_publish_version_seq ON PublishScopeLogEntry (version_ord);
 
 CREATE TABLE PublishAuthor (
     pos BIGINT UNSIGNED NOT NULL,
@@ -133,7 +136,8 @@ CREATE TABLE PublishDependency (
 CREATE TABLE YankScopeLogEntry (
     pos BIGINT UNSIGNED PRIMARY KEY,
 
-    publish_pos BIGINT UNSIGNED NOT NULL UNIQUE,
+    publish_pos BIGINT UNSIGNED NOT NULL,
+    action ENUM ('add', 'revoke') NOT NULL,
 
     FOREIGN KEY (pos) REFERENCES ScopeLogEntry (pos),
     FOREIGN KEY (publish_pos) REFERENCES PublishScopeLogEntry (pos)
