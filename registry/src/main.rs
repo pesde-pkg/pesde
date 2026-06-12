@@ -18,6 +18,7 @@ use crate::shared::auth::TokenHash;
 use crate::shared::auth::hash_token;
 use crate::shared::blob::BlobStorage;
 use crate::shared::db::Backend;
+use crate::shared::search::Search;
 use crate::util::Env;
 
 mod features;
@@ -27,6 +28,7 @@ mod util;
 pub struct AppState {
 	db: Box<dyn Backend>,
 	blob_storage: BlobStorage,
+	search: Search,
 	access_token_hash: Option<TokenHash>,
 	read_requires_auth: bool,
 	max_archive_size: usize,
@@ -64,8 +66,14 @@ async fn main() -> std::io::Result<()> {
 		.await
 		.unwrap_or(4 * 1024 * 1024);
 
+	let db = shared::db::connect(&Env::new("DATABASE_URL").get().await).await;
+	let search = Search::new(db.all_packages_for_index().await)
+		.await
+		.expect("failed to build the search index");
+
 	let app_state = web::Data::new(AppState {
-		db: shared::db::connect(&Env::new("DATABASE_URL").get().await).await,
+		db,
+		search,
 		blob_storage: match Env::new("PACKAGE_ARCHIVES_ROOT").try_parse().await {
 			Some(root) => BlobStorage::FS(root),
 			None => BlobStorage::S3 {
@@ -119,7 +127,8 @@ async fn main() -> std::io::Result<()> {
 					.configure(features::log::http_v2)
 					.configure(features::package::http_v2)
 					.configure(features::scope::http_v2)
-					.configure(features::identity::http_v2),
+					.configure(features::identity::http_v2)
+					.configure(features::search::http_v2),
 			)
 	})
 	.bind((address, port))?

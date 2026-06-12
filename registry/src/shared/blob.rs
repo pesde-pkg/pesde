@@ -20,6 +20,9 @@ use std::time::Duration;
 
 const S3_SIGN_DURATION: Duration = Duration::from_secs(60 * 15);
 
+const ARCHIVE_CONTENT_TYPE: &str = "application/gzip";
+const README_CONTENT_TYPE: &str = "text/markdown; charset=utf-8";
+
 pub enum BlobStorage {
 	FS(PathBuf),
 	S3 {
@@ -30,24 +33,28 @@ pub enum BlobStorage {
 }
 
 pub enum BlobResponse {
-	File(fs::File),
+	File {
+		file: fs::File,
+		content_type: &'static str,
+	},
 	Url(String),
 }
 
 impl From<BlobResponse> for HttpResponse {
 	fn from(response: BlobResponse) -> HttpResponse {
 		match response {
-			BlobResponse::File(file) => {
-				let stream = ReaderStream::new(file);
-				HttpResponse::Ok()
-					.content_type("application/octet-stream")
-					.body(BodyStream::new(stream))
-			}
+			BlobResponse::File { file, content_type } => HttpResponse::Ok()
+				.content_type(content_type)
+				.body(BodyStream::new(ReaderStream::new(file))),
 			BlobResponse::Url(url) => HttpResponse::TemporaryRedirect()
 				.insert_header((header::LOCATION, url))
 				.finish(),
 		}
 	}
+}
+
+fn object_key(prefix: &str, name: &PackageName, version: &Version) -> String {
+	format!("{prefix}/{}/{}/{version}", name.scope(), name.name())
 }
 
 impl BlobStorage {
@@ -56,16 +63,57 @@ impl BlobStorage {
 		name: &PackageName,
 		version: &Version,
 	) -> anyhow::Result<Option<BlobResponse>> {
+		self.get_object("packages", name, version, "application/octet-stream")
+			.await
+	}
+
+	pub async fn put_package_archive<R: AsyncBufRead + Unpin + Send + 'static>(
+		&self,
+		name: &PackageName,
+		version: &Version,
+		data: R,
+	) -> anyhow::Result<()> {
+		self.put_object(
+			"packages",
+			name,
+			version,
+			data,
+			ARCHIVE_CONTENT_TYPE,
+			Some("gzip"),
+		)
+		.await
+	}
+
+	pub async fn get_package_readme(
+		&self,
+		name: &PackageName,
+		version: &Version,
+	) -> anyhow::Result<Option<BlobResponse>> {
+		self.get_object("readmes", name, version, README_CONTENT_TYPE)
+			.await
+	}
+
+	pub async fn put_package_readme<R: AsyncBufRead + Unpin + Send + 'static>(
+		&self,
+		name: &PackageName,
+		version: &Version,
+		data: R,
+	) -> anyhow::Result<()> {
+		self.put_object("readmes", name, version, data, README_CONTENT_TYPE, None)
+			.await
+	}
+
+	async fn get_object(
+		&self,
+		prefix: &str,
+		name: &PackageName,
+		version: &Version,
+		content_type: &'static str,
+	) -> anyhow::Result<Option<BlobResponse>> {
 		match self {
 			BlobStorage::FS(root) => {
-				let path = root
-					.join("packages")
-					.join(name.scope().as_str())
-					.join(name.name().as_str())
-					.join(version.to_string());
-
-				match fs::File::open(path).await {
-					Ok(file) => Ok(Some(BlobResponse::File(file))),
+				match fs::File::open(root.join(object_key(prefix, name, version))).await {
+					Ok(file) => Ok(Some(BlobResponse::File { file, content_type })),
 					Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
 					Err(e) => Err(e.into()),
 				}
@@ -75,7 +123,7 @@ impl BlobStorage {
 				credentials,
 				..
 			} => {
-				let key = format!("packages/{}/{}/{version}", name.scope(), name.name());
+				let key = object_key(prefix, name, version);
 				let object_url =
 					GetObject::new(bucket, Some(credentials), &key).sign(S3_SIGN_DURATION);
 				Ok(Some(BlobResponse::Url(object_url.to_string())))
@@ -83,20 +131,18 @@ impl BlobStorage {
 		}
 	}
 
-	pub async fn put_package_archive<R: AsyncBufRead + Unpin + Send + 'static>(
+	async fn put_object<R: AsyncBufRead + Unpin + Send + 'static>(
 		&self,
+		prefix: &str,
 		name: &PackageName,
 		version: &Version,
 		mut data: R,
+		content_type: &str,
+		content_encoding: Option<&str>,
 	) -> anyhow::Result<()> {
 		match self {
 			BlobStorage::FS(root) => {
-				let path = root
-					.join("packages")
-					.join(name.scope().as_str())
-					.join(name.name().as_str())
-					.join(version.to_string());
-
+				let path = root.join(object_key(prefix, name, version));
 				if let Some(parent) = path.parent() {
 					fs::create_dir_all(parent).await?;
 				}
@@ -111,18 +157,19 @@ impl BlobStorage {
 				credentials,
 				reqwest,
 			} => {
-				let key = format!("packages/{}/{}/{version}", name.scope(), name.name());
+				let key = object_key(prefix, name, version);
 				let object_url =
 					PutObject::new(bucket, Some(credentials), &key).sign(S3_SIGN_DURATION);
 
-				reqwest
+				let mut request = reqwest
 					.put(object_url)
-					.header(CONTENT_TYPE, "application/gzip")
-					.header(CONTENT_ENCODING, "gzip")
-					.body(Body::wrap_stream(ReaderStream::new(data)))
-					.send()
-					.await?
-					.error_for_status()?;
+					.header(CONTENT_TYPE, content_type)
+					.body(Body::wrap_stream(ReaderStream::new(data)));
+				if let Some(encoding) = content_encoding {
+					request = request.header(CONTENT_ENCODING, encoding);
+				}
+
+				request.send().await?.error_for_status()?;
 
 				Ok(())
 			}

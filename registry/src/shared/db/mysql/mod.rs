@@ -3,8 +3,10 @@ use std::collections::BTreeMap;
 
 use anyhow::Context as _;
 use async_trait::async_trait;
+use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use futures::lock::Mutex;
+use futures::stream::BoxStream;
 use iter_chunks::IterChunks as _;
 use merkleberg::MMRIVER;
 use pesde::bounded::BoundedBTreeMap;
@@ -12,6 +14,7 @@ use pesde::bounded::BoundedString;
 use pesde::bounded::BoundedVec;
 use pesde::hash::RawHash;
 use pesde::manifest::DependencyType;
+use pesde::names::PackageName;
 use pesde::names::Scope;
 use pesde::signature::KeyKind;
 use pesde::signature::PublicKey;
@@ -113,6 +116,28 @@ impl Backend for MySqlBackend {
 			.fetch_one(&self.pool)
 			.await?
 			.size)
+	}
+
+	async fn all_packages_for_index(&self) -> BoxStream<'_, anyhow::Result<(PackageName, String)>> {
+		sqlx::query!(
+			r#"
+			SELECT Scope.scope, Package.name, latest.description
+			FROM Package
+			INNER JOIN Scope ON Scope.id=Package.scope_id
+			INNER JOIN PublishScopeLogEntry latest ON latest.pos = (
+				SELECT pos FROM PublishScopeLogEntry WHERE package_pos = Package.genesis_pos ORDER BY pos DESC LIMIT 1
+			)
+			"#,
+		)
+		.fetch(&self.pool)
+		.map(|row| {
+			let row = row?;
+			Ok((
+				PackageName::new(row.scope.parse()?, row.name.parse()?),
+				row.description
+			))
+		})
+		.boxed()
 	}
 
 	async fn read_mmr_at(
@@ -330,9 +355,9 @@ async fn build_publish_body(
 	name: &str,
 	version: &str,
 	archive_hash: &str,
-	description: Option<String>,
-	license: Option<String>,
-	repository: Option<&str>,
+	description: String,
+	license: String,
+	repository: &str,
 ) -> anyhow::Result<PublishBody> {
 	let mut authors_stream = sqlx::query!(
 		r#"
@@ -390,16 +415,13 @@ async fn build_publish_body(
 		name: name.parse()?,
 		version: version.parse()?,
 		archive_hash: archive_hash.parse()?,
-		description: description
-			.map(BoundedString::new)
-			.transpose()?
-			.unwrap_or_default(),
-		license: license
-			.map(BoundedString::new)
-			.transpose()?
-			.unwrap_or_default(),
+		description: BoundedString::new(description)?,
+		license: BoundedString::new(license)?,
 		authors: BoundedVec::new(authors)?,
-		repository: repository.map(str::parse).transpose()?,
+		repository: Some(repository)
+			.filter(|r| !r.is_empty())
+			.map(str::parse)
+			.transpose()?,
 		dependencies: BoundedBTreeMap::new(dependencies)?,
 	})
 }

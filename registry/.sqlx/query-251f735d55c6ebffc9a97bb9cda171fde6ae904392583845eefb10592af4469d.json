@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO YankScopeLogEntry (pos, publish_pos, action) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "251f735d55c6ebffc9a97bb9cda171fde6ae904392583845eefb10592af4469d"
+}

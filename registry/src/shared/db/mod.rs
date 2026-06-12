@@ -1,11 +1,13 @@
 use std::any::Any;
 
 use async_trait::async_trait;
+use futures::stream::BoxStream;
 use merkleberg::MMRIVER;
 use merkleberg::MMRStoreReadOps;
 use merkleberg::MMRStoreWriteOps;
 use pesde::hash::RawHash;
 use pesde::names::Name;
+use pesde::names::PackageName;
 use pesde::names::Scope;
 use pesde::signature::PublicKey;
 use pesde::source::pesde::registry::*;
@@ -38,8 +40,17 @@ pub enum PackageWriteError {
 	#[error("the package version does not exist")]
 	UnknownPackageVersion,
 
-	#[error("the package version has already been yanked")]
+	#[error("the package version is already yanked")]
 	AlreadyYanked,
+
+	#[error("the package version is not yanked")]
+	NotYanked,
+
+	#[error("the package is already deprecated")]
+	AlreadyDeprecated,
+
+	#[error("the package is not deprecated")]
+	NotDeprecated,
 
 	#[error(transparent)]
 	Internal(#[from] anyhow::Error),
@@ -184,6 +195,8 @@ pub trait Backend:
 	+ crate::features::log::Repository
 {
 	async fn current_size(&self) -> anyhow::Result<u64>;
+
+	async fn all_packages_for_index(&self) -> BoxStream<'_, anyhow::Result<(PackageName, String)>>;
 
 	async fn read_mmr_at(
 		&self,

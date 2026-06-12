@@ -1,0 +1,48 @@
+{
+  "db_name": "MySQL",
+  "query": "\n            SELECT PublishScopeLogEntry.pos, YankScopeLogEntry.action AS `action: YankRetraction`\n\t\t\tFROM PublishScopeLogEntry\n\t\t\tLEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n            INNER JOIN Scope ON Scope.id=Package.scope_id\n            WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.version = ?\n\t\t\tORDER BY YankScopeLogEntry.pos DESC\n\t\t\tLIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishScopeLogEntry",
+            "name": "pos"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "action: YankRetraction",
+        "type_info": {
+          "type": "String",
+          "flags": "ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 24
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.YankScopeLogEntry",
+            "name": "action"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "f13cf461656b6f2f0ab7b41a844092c476bccbe2ded3f51623e2c451a6bc150f"
+}

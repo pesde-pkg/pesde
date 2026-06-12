@@ -5,45 +5,32 @@ use actix_web::web;
 use pesde::names::Name;
 use pesde::names::PackageName;
 use pesde::names::Scope;
-use pesde::source::pesde::registry::PackageVersionsResponse;
-use serde::Deserialize;
+use pesde::source::pesde::registry::PackageInfoResponse;
 
 use crate::AppState;
 use crate::features::package::Error;
 use crate::shared::auth::ReadGuard;
 use crate::shared::db::Backend;
 
-#[derive(Debug, Deserialize)]
-struct VersionsQuery {
-	after: Option<u64>,
-	limit: Option<u8>,
-}
-
-#[get("/package/{scope}/{name}/versions")]
+#[get("/package/{scope}/{name}")]
 pub(super) async fn http_v2(
 	_access_guard: ReadGuard,
 	app_state: web::Data<AppState>,
 	path: web::Path<(Scope, Name)>,
-	query: web::Query<VersionsQuery>,
 ) -> Result<impl Responder, Error> {
 	let (scope, name) = path.into_inner();
 	let package_name = PackageName::new(scope, name);
-	let after = query.after.unwrap_or(0);
-	let limit = query.limit.unwrap_or(50).clamp(1, 200);
 
-	let response = handler(app_state.db.as_ref(), &package_name, after, limit).await?;
-	if response.total == 0 {
+	let Some(info) = handler(app_state.db.as_ref(), &package_name).await? else {
 		return Ok(HttpResponse::NotFound().finish());
-	}
+	};
 
-	Ok(HttpResponse::Ok().json(response))
+	Ok(HttpResponse::Ok().json(info))
 }
 
 async fn handler(
 	db: &dyn Backend,
 	name: &PackageName,
-	after: u64,
-	limit: u8,
-) -> anyhow::Result<PackageVersionsResponse> {
-	db.package_versions(name, after, limit).await
+) -> anyhow::Result<Option<PackageInfoResponse>> {
+	db.package_info(name).await
 }

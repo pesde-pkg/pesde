@@ -26,8 +26,17 @@ pub enum Error {
 	#[error("the package version has already been published")]
 	VersionAlreadyExists,
 
-	#[error("the package version has already been yanked")]
+	#[error("the package version is already yanked")]
 	AlreadyYanked,
+
+	#[error("the package version is not yanked")]
+	NotYanked,
+
+	#[error("the package is already deprecated")]
+	AlreadyDeprecated,
+
+	#[error("the package is not deprecated")]
+	NotDeprecated,
 
 	#[error("the archive hash does not match the uploaded data")]
 	ArchiveHashMismatch,
@@ -42,6 +51,9 @@ impl From<PackageWriteError> for Error {
 			PackageWriteError::VersionAlreadyExists => Error::VersionAlreadyExists,
 			PackageWriteError::UnknownPackageVersion => Error::UnknownPackageVersion,
 			PackageWriteError::AlreadyYanked => Error::AlreadyYanked,
+			PackageWriteError::NotYanked => Error::NotYanked,
+			PackageWriteError::AlreadyDeprecated => Error::AlreadyDeprecated,
+			PackageWriteError::NotDeprecated => Error::NotDeprecated,
 			PackageWriteError::Internal(e) => Error::Internal(e),
 		}
 	}
@@ -66,7 +78,11 @@ impl ResponseError for Error {
 			| Error::BadRequest(_) => Category::BadRequest,
 			Error::Unauthorized => Category::Unauthorized,
 			Error::UnknownPackageVersion => Category::NotFound,
-			Error::VersionAlreadyExists | Error::AlreadyYanked => Category::Conflict,
+			Error::VersionAlreadyExists
+			| Error::AlreadyYanked
+			| Error::NotYanked
+			| Error::AlreadyDeprecated
+			| Error::NotDeprecated => Category::Conflict,
 		};
 		http_response(category, self)
 	}

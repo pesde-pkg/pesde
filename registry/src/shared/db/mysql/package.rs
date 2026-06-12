@@ -1,11 +1,11 @@
 use async_trait::async_trait;
-use futures::StreamExt as _;
 use futures::TryStreamExt as _;
-use futures::stream::BoxStream;
+use pesde::bounded::Bounded;
 use pesde::names::PackageName;
 use pesde::signature::Signature;
 use pesde::source::pesde::registry::*;
 use semver::Version;
+use sqlx::MySqlPool;
 use sqlx::error::DatabaseError;
 
 use crate::features::package::Repository;
@@ -18,6 +18,7 @@ use crate::shared::db::mysql::as_tx;
 use crate::shared::db::mysql::build_publish_body;
 use crate::shared::db::mysql::insert_chunked;
 use crate::shared::db::mysql::insert_scope_envelope;
+use crate::util::semver_ord;
 
 #[async_trait]
 impl Repository for MySqlBackend {
@@ -25,11 +26,11 @@ impl Repository for MySqlBackend {
 		&self,
 		name: &PackageName,
 		version: &Version,
-	) -> anyhow::Result<Option<Entry<PublishScopeEntry>>> {
+	) -> anyhow::Result<Option<PackageVersionResponse>> {
 		let Some(row) = sqlx::query!(
 			r#"
             SELECT ScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`,
-                   Package.name,
+                   Package.name, Package.genesis_pos,
 				   PublishScopeLogEntry.version, PublishScopeLogEntry.archive_hash, PublishScopeLogEntry.description, PublishScopeLogEntry.license, PublishScopeLogEntry.repository
             FROM ScopeLogEntry
             INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=ScopeLogEntry.pos
@@ -55,76 +56,98 @@ impl Repository for MySqlBackend {
 			&row.archive_hash,
 			row.description,
 			row.license,
-			row.repository.as_deref(),
+			&row.repository,
 		)
 		.await?;
 
-		Ok(Some(Entry {
-			pos: row.pos,
-			payload: SignedEntry::new(
-				row.sig.parse()?,
-				ScopeEntryBody {
-					scope: name.scope().clone(),
-					author_identity: row.author_identity,
-					payload: publish,
-				},
-			),
+		Ok(Some(PackageVersionResponse {
+			publish: Entry {
+				pos: row.pos,
+				payload: SignedEntry::new(
+					row.sig.parse()?,
+					ScopeEntryBody {
+						scope: name.scope().clone(),
+						author_identity: row.author_identity,
+						payload: publish,
+					},
+				),
+			},
+			yank: current_yank(&self.pool, row.pos, name, version).await?,
+		}))
+	}
+
+	async fn package_info(
+		&self,
+		name: &PackageName,
+	) -> anyhow::Result<Option<PackageInfoResponse>> {
+		let Some(package) = sqlx::query!(
+			r#"
+			SELECT Package.genesis_pos, PublishScopeLogEntry.version
+			FROM Package
+			INNER JOIN Scope ON Scope.id=Package.scope_id
+			INNER JOIN PublishScopeLogEntry	ON PublishScopeLogEntry.package_pos=Package.genesis_pos
+			LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)
+			WHERE Scope.scope = ? AND Package.name = ?
+			ORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC
+			LIMIT 1
+			"#,
+			name.scope().as_str(),
+			name.name().as_str(),
+		)
+		.fetch_optional(&self.pool)
+		.await?
+		else {
+			return Ok(None);
+		};
+
+		Ok(Some(PackageInfoResponse {
+			deprecation: current_deprecation(&self.pool, package.genesis_pos, name).await?,
+			latest_version: package.version.parse()?,
 		}))
 	}
 
 	async fn package_versions(
 		&self,
 		name: &PackageName,
-	) -> BoxStream<'static, anyhow::Result<Entry<PublishScopeEntry>>> {
-		let pool = self.pool.clone();
-		let scope = name.scope().clone();
-		let name = name.name().clone();
+		after: u64,
+		limit: u8,
+	) -> anyhow::Result<PackageVersionsResponse> {
+		let mut rows = sqlx::query!(
+			r#"
+			SELECT COUNT(PublishScopeLogEntry.pos) AS `total: u64`, PublishScopeLogEntry.version
+			FROM Package
+			INNER JOIN Scope ON Scope.id=Package.scope_id
+			INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.package_pos=Package.genesis_pos
+			WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.pos > ?
+			ORDER BY PublishScopeLogEntry.pos DESC
+			LIMIT ?
+			"#,
+			name.scope().as_str(),
+			name.name().as_str(),
+			after,
+			limit,
+		)
+		.fetch(&self.pool);
 
-		async_stream::try_stream! {
-			let mut rows = sqlx::query!(
-				r#"
-				SELECT ScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`,
-					Package.name,
-					PublishScopeLogEntry.version, PublishScopeLogEntry.archive_hash, PublishScopeLogEntry.description, PublishScopeLogEntry.license, PublishScopeLogEntry.repository
-				FROM ScopeLogEntry
-				INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=ScopeLogEntry.pos
-				INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
-				INNER JOIN Scope ON Scope.id=Package.scope_id
-				WHERE Scope.scope = ? AND Package.name = ?
-				ORDER BY ScopeLogEntry.pos
-                "#,
-				scope.as_str(),
-				name.as_str(),
-			)
-			.fetch(&pool);
+		let mut response = PackageVersionsResponse {
+			versions: vec![],
+			total: 0,
+		};
 
-			while let Some(row) = rows.try_next().await? {
-				let publish = build_publish_body(
-					&pool,
-					row.pos,
-					&row.name,
-					&row.version,
-					&row.archive_hash,
-					row.description,
-					row.license,
-					row.repository.as_deref(),
-				)
-				.await?;
-
-				yield Entry {
-					pos: row.pos,
-					payload: SignedEntry::new(
-						row.sig.parse()?,
-						ScopeEntryBody {
-							scope: scope.clone(),
-							author_identity: row.author_identity,
-							payload: publish,
-						},
-					),
-				};
-			}
+		while let Some(row) = rows.try_next().await? {
+			response.total = row.total;
+			let Some(version) = row.version else {
+				continue;
+			};
+			// TODO: look at inlining this into 1 query
+			response.versions.push(
+				self.package_version(name, &version.parse()?)
+					.await?
+					.unwrap(),
+			);
 		}
-		.boxed()
+
+		Ok(response)
 	}
 
 	async fn insert_publish(
@@ -163,10 +186,11 @@ impl Repository for MySqlBackend {
 		};
 
 		match sqlx::query!(
-			"INSERT INTO PublishScopeLogEntry (pos, package_pos, version, archive_hash, description, license, repository) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			"INSERT INTO PublishScopeLogEntry (pos, package_pos, version, version_ord, archive_hash, description, license, repository) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 			pos,
 			package_pos,
 			publish.version.to_string(),
+			semver_ord(&publish.version),
 			publish.archive_hash.to_string(),
 			publish.description.as_str(),
 			publish.license.as_str(),
@@ -252,47 +276,52 @@ impl Repository for MySqlBackend {
 		sig: &Signature,
 		body: &ScopeEntryBody<YankBody>,
 	) -> Result<(), PackageWriteError> {
-		let yank = &body.payload;
 		let conn = as_tx(tx);
 
-		let Some(publish_pos) = sqlx::query!(
+		let Some(current_state) = sqlx::query!(
 			r#"
-            SELECT PublishScopeLogEntry.pos
+            SELECT PublishScopeLogEntry.pos, YankScopeLogEntry.action AS `action: YankRetraction`
 			FROM PublishScopeLogEntry
+			LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos
             INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
             INNER JOIN Scope ON Scope.id=Package.scope_id
             WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.version = ?
+			ORDER BY YankScopeLogEntry.pos DESC
+			LIMIT 1
             "#,
 			body.scope.as_str(),
-			yank.name.as_str(),
-			yank.version.to_string(),
+			body.payload.name.as_str(),
+			body.payload.version.to_string(),
 		)
 		.fetch_optional(&mut **conn)
 		.await
 		.map_err(anyhow::Error::from)?
-		.map(|row| row.pos) else {
+		else {
 			return Err(PackageWriteError::UnknownPackageVersion);
 		};
 
+		match (current_state.action, body.payload.action) {
+			(None | Some(YankRetraction::Revoke), YankRetraction::Add)
+			| (Some(YankRetraction::Add), YankRetraction::Revoke) => {}
+			(Some(YankRetraction::Add), YankRetraction::Add) => {
+				return Err(PackageWriteError::AlreadyYanked);
+			}
+			(None | Some(YankRetraction::Revoke), YankRetraction::Revoke) => {
+				return Err(PackageWriteError::NotYanked);
+			}
+		}
+
 		insert_scope_envelope(conn, pos, sig, body, ScopeEntryKind::Yank).await?;
 
-		match sqlx::query!(
-			"INSERT INTO YankScopeLogEntry (pos, publish_pos) VALUES (?, ?)",
+		sqlx::query!(
+			"INSERT INTO YankScopeLogEntry (pos, publish_pos, action) VALUES (?, ?, ?)",
 			pos,
-			publish_pos,
+			current_state.pos,
+			body.payload.action,
 		)
 		.execute(&mut **conn)
 		.await
-		{
-			Ok(_) => {}
-			Err(e)
-				if e.as_database_error()
-					.is_some_and(DatabaseError::is_unique_violation) =>
-			{
-				return Err(PackageWriteError::AlreadyYanked);
-			}
-			Err(e) => return Err(anyhow::Error::from(e).into()),
-		}
+		.map_err(anyhow::Error::from)?;
 
 		Ok(())
 	}
@@ -304,33 +333,44 @@ impl Repository for MySqlBackend {
 		sig: &Signature,
 		body: &ScopeEntryBody<DeprecateBody>,
 	) -> Result<(), PackageWriteError> {
-		let deprecate = &body.payload;
 		let conn = as_tx(tx);
 
-		let Some(package_pos) = sqlx::query!(
+		let Some(current_state) = sqlx::query!(
 			r#"
-            SELECT Package.genesis_pos
+            SELECT Package.genesis_pos, DeprecateScopeLogEntry.reason
 			FROM Package
             INNER JOIN Scope ON Scope.id=Package.scope_id
+			LEFT JOIN DeprecateScopeLogEntry ON DeprecateScopeLogEntry.package_pos=Package.genesis_pos
             WHERE Scope.scope = ? AND Package.name = ?
+			ORDER BY DeprecateScopeLogEntry.pos DESC
+			LIMIT 1
             "#,
 			body.scope.as_str(),
-			deprecate.name.as_str(),
+			body.payload.name.as_str(),
 		)
 		.fetch_optional(&mut **conn)
 		.await
 		.map_err(anyhow::Error::from)?
-		.map(|row| row.genesis_pos) else {
+		else {
 			return Err(PackageWriteError::UnknownPackageVersion);
 		};
+
+		match (
+			current_state.reason.as_deref().map(str::is_empty),
+			body.payload.reason.is_empty(),
+		) {
+			(None | Some(true), false) | (Some(false), true) => {}
+			(None | Some(true), true) => return Err(PackageWriteError::NotDeprecated),
+			(Some(false), false) => return Err(PackageWriteError::AlreadyDeprecated),
+		}
 
 		insert_scope_envelope(conn, pos, sig, body, ScopeEntryKind::Deprecate).await?;
 
 		sqlx::query!(
 			"INSERT INTO DeprecateScopeLogEntry (pos, package_pos, reason) VALUES (?, ?, ?)",
 			pos,
-			package_pos,
-			deprecate.reason.as_str(),
+			current_state.genesis_pos,
+			body.payload.reason.as_str(),
 		)
 		.execute(&mut **conn)
 		.await
@@ -338,4 +378,88 @@ impl Repository for MySqlBackend {
 
 		Ok(())
 	}
+}
+
+// TODO: inline these into 1 query
+
+async fn current_yank(
+	pool: &MySqlPool,
+	publish_pos: u64,
+	name: &PackageName,
+	version: &Version,
+) -> anyhow::Result<Option<Entry<YankScopeEntry>>> {
+	let Some(row) = sqlx::query!(
+		r#"
+		SELECT YankScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, YankScopeLogEntry.action AS `action: YankRetraction`
+		FROM YankScopeLogEntry
+		INNER JOIN ScopeLogEntry ON ScopeLogEntry.pos=YankScopeLogEntry.pos
+		WHERE YankScopeLogEntry.publish_pos = ?
+		ORDER BY YankScopeLogEntry.pos DESC
+		LIMIT 1
+		"#,
+		publish_pos,
+	)
+	.fetch_optional(pool)
+	.await?
+	else {
+		return Ok(None);
+	};
+
+	if row.action != YankRetraction::Add {
+		return Ok(None);
+	}
+
+	Ok(Some(Entry {
+		pos: row.pos,
+		payload: SignedEntry::new(
+			row.sig.parse()?,
+			ScopeEntryBody {
+				scope: name.scope().clone(),
+				author_identity: row.author_identity,
+				payload: YankBody {
+					name: name.name().clone(),
+					version: Bounded::new(version.clone())?,
+					action: row.action,
+				},
+			},
+		),
+	}))
+}
+
+async fn current_deprecation(
+	pool: &MySqlPool,
+	package_pos: u64,
+	name: &PackageName,
+) -> anyhow::Result<Option<Entry<DeprecateScopeEntry>>> {
+	let Some(row) = sqlx::query!(
+		r#"
+		SELECT DeprecateScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, DeprecateScopeLogEntry.reason
+		FROM DeprecateScopeLogEntry
+		INNER JOIN ScopeLogEntry ON ScopeLogEntry.pos=DeprecateScopeLogEntry.pos
+		WHERE DeprecateScopeLogEntry.package_pos = ?
+		ORDER BY DeprecateScopeLogEntry.pos DESC
+		LIMIT 1
+		"#,
+		package_pos,
+	)
+	.fetch_optional(pool)
+	.await?
+	else {
+		return Ok(None);
+	};
+
+	Ok(Some(Entry {
+		pos: row.pos,
+		payload: SignedEntry::new(
+			row.sig.parse()?,
+			ScopeEntryBody {
+				scope: name.scope().clone(),
+				author_identity: row.author_identity,
+				payload: DeprecateBody {
+					name: name.name().clone(),
+					reason: row.reason.parse()?,
+				},
+			},
+		),
+	}))
 }

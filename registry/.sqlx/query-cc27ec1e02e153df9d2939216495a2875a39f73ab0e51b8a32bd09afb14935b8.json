@@ -1,0 +1,43 @@
+{
+  "db_name": "MySQL",
+  "query": "\n\t\t\tSELECT COUNT(PublishScopeLogEntry.pos) AS `total: u64`, PublishScopeLogEntry.version\n\t\t\tFROM Package\n\t\t\tINNER JOIN Scope ON Scope.id=Package.scope_id\n\t\t\tINNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.package_pos=Package.genesis_pos\n\t\t\tWHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.pos > ?\n\t\t\tORDER BY PublishScopeLogEntry.pos DESC\n\t\t\tLIMIT ?\n\t\t\t",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total: u64",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | BINARY",
+          "collation": 63,
+          "max_size": 21
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishScopeLogEntry",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "cc27ec1e02e153df9d2939216495a2875a39f73ab0e51b8a32bd09afb14935b8"
+}

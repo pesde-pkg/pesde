@@ -28,6 +28,7 @@ use crate::manifest::MAX_DESCRIPTION_LEN;
 use crate::manifest::MAX_URL_LEN;
 use crate::manifest::MAX_VERSION_LEN;
 use crate::names::Name;
+use crate::names::PackageName;
 use crate::names::Scope;
 use crate::signature::PublicKey;
 use crate::signature::Signature;
@@ -54,6 +55,12 @@ impl<T> SignedEntry<T> {
 	#[must_use]
 	pub fn unsafe_body(&self) -> &T {
 		&self.body
+	}
+
+	/// Returns the body, unvalidated against the signature
+	#[must_use]
+	pub fn into_unsafe_body(self) -> T {
+		self.body
 	}
 }
 
@@ -187,6 +194,18 @@ pub struct PublishBody {
 		BoundedBTreeMap<Alias, (RegistryDependencySpecifier, DependencyType), MAX_DEPENDENCIES>,
 }
 
+/// Whether a yank is being applied or retracted
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
+#[serde(rename_all = "snake_case")]
+pub enum YankRetraction {
+	/// Apply the yank
+	Add,
+	/// Revoke the yank
+	Revoke,
+}
+
 /// The body of a Yank entry
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct YankBody {
@@ -194,6 +213,8 @@ pub struct YankBody {
 	pub name: Name,
 	/// The version of the package being yanked
 	pub version: Bounded<Version, MAX_VERSION_LEN>,
+	/// Whether the version is being yanked or unyanked
+	pub action: YankRetraction,
 }
 
 /// The body of a Deprecate entry
@@ -201,7 +222,8 @@ pub struct YankBody {
 pub struct DeprecateBody {
 	/// The name of the package being deprecated
 	pub name: Name,
-	/// The reason for deprecation
+	/// The reason for deprecation, or empty if retracting
+	#[serde(default, skip_serializing_if = "str::is_empty")]
 	pub reason: BoundedString<MAX_REASON_LEN>,
 }
 
@@ -347,6 +369,47 @@ pub struct Entry<T> {
 	pub pos: u64,
 	/// The payload of this entry
 	pub payload: T,
+}
+
+/// The response of the package version endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageVersionResponse {
+	/// The publish entry for this version
+	pub publish: Entry<PublishScopeEntry>,
+	/// The yank entry, present only while the version is currently yanked
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub yank: Option<Entry<YankScopeEntry>>,
+}
+
+/// The response of the package versions endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageVersionsResponse {
+	/// The versions
+	pub versions: Vec<PackageVersionResponse>,
+	/// The total amount of versions
+	pub total: u64,
+}
+
+/// The response of the package info endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageInfoResponse {
+	/// The package-level deprecation entry, present only while currently deprecated
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub deprecation: Option<Entry<DeprecateScopeEntry>>,
+	/// The latest version of this package: the largest non-prereleased, non-yanked version
+	/// In case nothing matches, the conditions are ignored as ordered in the text
+	pub latest_version: Version,
+}
+
+/// A single hit from the package search endpoint
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchResultItem {
+	/// The name of the package
+	pub package: PackageName,
+	/// The version of the package
+	pub version: Version,
+	/// The description of the package
+	pub description: String,
 }
 
 /// The response of the log head endpoint
