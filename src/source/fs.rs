@@ -64,8 +64,8 @@ async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
 }
 
 fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
-	let hex = hex::encode(hash.hash());
-	let (prefix, rest) = hex.split_at(hash.algorithm().optimal_prefix_length());
+	let encoded = hash.hash().to_string();
+	let (prefix, rest) = encoded.split_at(hash.algorithm().optimal_prefix_length());
 	cas_dir
 		.join(hash.algorithm().to_string())
 		.join(prefix)

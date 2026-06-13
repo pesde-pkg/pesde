@@ -4,9 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use digest::DynDigest;
-use serde::Deserialize;
-use serde::Serialize;
-use sha2::Sha256;
+use sha2::Sha512;
 
 use crate::ser_display_deser_fromstr;
 
@@ -15,6 +13,7 @@ use crate::ser_display_deser_fromstr;
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(transparent))]
 pub struct RawHash(Arc<[u8]>);
+ser_display_deser_fromstr!(RawHash);
 
 impl RawHash {
 	/// Returns the raw bytes of this digest
@@ -42,18 +41,11 @@ impl Display for RawHash {
 	}
 }
 
-impl Serialize for RawHash {
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		serializer.collect_str(self)
-	}
-}
+impl FromStr for RawHash {
+	type Err = hex::FromHexError;
 
-impl<'de> Deserialize<'de> for RawHash {
-	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-		let hex = String::deserialize(deserializer)?;
-		hex::decode(&hex)
-			.map(|bytes| Self(bytes.into()))
-			.map_err(serde::de::Error::custom)
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		hex::decode(s).map(Into::into)
 	}
 }
 
@@ -63,7 +55,7 @@ impl<'de> Deserialize<'de> for RawHash {
 pub enum HashAlgorithm {
 	/// The SHA-256 hash algorithm
 	#[default]
-	Sha256,
+	Sha512,
 }
 ser_display_deser_fromstr!(HashAlgorithm);
 
@@ -72,7 +64,7 @@ impl HashAlgorithm {
 	#[must_use]
 	pub fn hasher(self) -> Box<dyn DynDigest + Send> {
 		match self {
-			HashAlgorithm::Sha256 => Box::new(Sha256::default()),
+			HashAlgorithm::Sha512 => Box::new(Sha512::default()),
 		}
 	}
 
@@ -86,7 +78,7 @@ impl HashAlgorithm {
 impl Display for HashAlgorithm {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			HashAlgorithm::Sha256 => write!(f, "sha256"),
+			HashAlgorithm::Sha512 => write!(f, "sha512"),
 		}
 	}
 }
@@ -96,7 +88,7 @@ impl FromStr for HashAlgorithm {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
-			"sha256" => Ok(HashAlgorithm::Sha256),
+			"sha512" => Ok(HashAlgorithm::Sha512),
 			_ => Err(
 				errors::HashAlgorithmFromStrErrorKind::UnknownHashAlgorithm(s.to_string()).into(),
 			),
@@ -143,8 +135,8 @@ impl Hash {
 
 	/// Returns the hash value
 	#[must_use]
-	pub fn hash(&self) -> &[u8] {
-		self.hash.as_bytes()
+	pub fn hash(&self) -> &RawHash {
+		&self.hash
 	}
 }
 

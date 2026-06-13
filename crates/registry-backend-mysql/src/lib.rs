@@ -266,7 +266,7 @@ impl WriteStore for MySqlWriteStore {
 		insert_chunked!(
 			self.tx.get_mut(),
 			"TreeNode",
-			["pos", "sha256"],
+			["pos", "sha512"],
 			(pos..).zip(elems),
 			|mut b, (i, elem)| {
 				b.push_bind(i).push_bind(elem);
@@ -299,12 +299,12 @@ fn as_tx(store: &mut Box<dyn WriteStore>) -> &mut MySqlTransaction<'static> {
 
 async fn get_hash(executor: impl MySqlExecutor<'_>, pos: u64) -> sqlx::Result<Option<RawHash>> {
 	Ok(sqlx::query!(
-		"SELECT sha256 AS `sha256: RawHash` FROM TreeNode WHERE pos = ?",
+		"SELECT sha512 AS `sha512: RawHash` FROM TreeNode WHERE pos = ?",
 		pos
 	)
 	.fetch_optional(executor)
 	.await?
-	.map(|record| record.sha256))
+	.map(|record| record.sha512))
 }
 
 #[derive(Debug, Type)]

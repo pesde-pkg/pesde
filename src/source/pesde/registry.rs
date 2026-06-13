@@ -457,16 +457,16 @@ pub trait THashAlgorithm {
 
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct Sha256Hash;
-impl THashAlgorithm for Sha256Hash {
-	const ALGORITHM: HashAlgorithm = HashAlgorithm::Sha256;
+pub struct Sha512Hash;
+impl THashAlgorithm for Sha512Hash {
+	const ALGORITHM: HashAlgorithm = HashAlgorithm::Sha512;
 }
 
 /// The current hash algorithm used by the registry
-pub const CURRENT_HASH_ALGORITHM: HashAlgorithm = HashAlgorithm::Sha256;
+pub const CURRENT_HASH_ALGORITHM: HashAlgorithm = HashAlgorithm::Sha512;
 
 /// The [Merge] implementation using the [CURRENT_HASH_ALGORITHM]
-pub type CurrentMmrMerge = MmrMerge<Sha256Hash>;
+pub type CurrentMmrMerge = MmrMerge<Sha512Hash>;
 
 #[doc(hidden)]
 #[derive(Debug)]
