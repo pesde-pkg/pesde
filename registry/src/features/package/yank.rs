@@ -2,6 +2,7 @@ use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::post;
 use actix_web::web;
+use pesde::names::PackageName;
 use pesde::source::pesde::registry::*;
 
 use crate::AppState;
@@ -17,7 +18,23 @@ pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
 	body: web::Json<YankScopeEntry>,
 ) -> Result<impl Responder, Error> {
-	handler(app_state.db.as_ref(), body.into_inner()).await?;
+	let entry = body.into_inner();
+
+	let package = {
+		let body = entry.unsafe_body();
+		PackageName::new(body.scope.clone(), body.payload.name.clone())
+	};
+
+	handler(app_state.db.as_ref(), entry).await?;
+
+	if let Err(e) = app_state
+		.search
+		.update(app_state.db.as_ref(), package)
+		.await
+	{
+		tracing::error!("failed to index published package for search: {e:#?}");
+	}
+
 	Ok(HttpResponse::Ok().finish())
 }
 

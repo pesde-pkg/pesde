@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n\t\t\tSELECT kind AS `kind: EntryKind`\n\t\t\tFROM LogEntry\n\t\t\tWHERE pos = ?\n\t\t\t",
+  "query": "\n\t\t\tSELECT kind AS `kind: EntryKind`, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`\n\t\t\tFROM LogEntry\n\t\t\tWHERE pos = ?\n\t\t\t",
   "describe": {
     "columns": [
       {
@@ -18,14 +18,26 @@
             "name": "kind"
           }
         }
+      },
+      {
+        "ordinal": 1,
+        "name": "published_at!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "BINARY",
+          "collation": 63,
+          "max_size": 17
+        },
+        "origin": "Expression"
       }
     ],
     "parameters": {
       "Right": 1
     },
     "nullable": [
-      false
+      false,
+      true
     ]
   },
-  "hash": "58ce6cefa4b3a243d9c7e62efc388e036451630bfc185497187c60268ce0e762"
+  "hash": "ae1662cb4c50a49c44dd7e05c3fab2dfddf08a0a89d32b5575e52830155692d6"
 }

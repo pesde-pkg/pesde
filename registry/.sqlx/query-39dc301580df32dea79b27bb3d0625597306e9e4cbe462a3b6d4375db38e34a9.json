@@ -1,0 +1,94 @@
+{
+  "db_name": "MySQL",
+  "query": "\n            SELECT Package.genesis_pos, PublishScopeLogEntry.pos, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`\n            FROM PublishScopeLogEntry\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n\t\t\tINNER JOIN Scope ON Scope.id=Package.scope_id\n            INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos\n            LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)\n            WHERE Scope.scope = ? AND Package.name = ?\n            ORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "genesis_pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.Package",
+            "name": "genesis_pos"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishScopeLogEntry",
+            "name": "pos"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "version",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishScopeLogEntry",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "description",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.PublishScopeLogEntry",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "published_at!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "BINARY",
+          "collation": 63,
+          "max_size": 17
+        },
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "39dc301580df32dea79b27bb3d0625597306e9e4cbe462a3b6d4375db38e34a9"
+}

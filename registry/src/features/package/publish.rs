@@ -31,7 +31,6 @@ use crate::shared::blob::BlobStorage;
 use crate::shared::db::Backend;
 use crate::shared::db::ScopeControl;
 use crate::shared::db::append_leaf;
-use crate::shared::search::Search;
 
 const MAX_ENTRY_SIZE: usize = 64 * 1024;
 const README_FILE_NAME: &str = "README.md";
@@ -71,15 +70,27 @@ pub(super) async fn http_v2(
 	let archive =
 		archive.ok_or_else(|| Error::BadRequest("missing `archive` field".to_string()))?;
 
+	let package = {
+		let body = entry.unsafe_body();
+		PackageName::new(body.scope.clone(), body.payload.name.clone())
+	};
+
 	handler(
 		app_state.db.as_ref(),
 		&app_state.blob_storage,
-		&app_state.search,
 		entry,
 		scope_entry,
 		archive,
 	)
 	.await?;
+
+	if let Err(e) = app_state
+		.search
+		.update(app_state.db.as_ref(), package)
+		.await
+	{
+		tracing::error!("failed to index published package for search: {e:#?}");
+	}
 
 	Ok(HttpResponse::Ok().finish())
 }
@@ -112,7 +123,6 @@ fn bad_multipart(e: &actix_multipart::MultipartError) -> Error {
 async fn handler(
 	db: &dyn Backend,
 	blob: &BlobStorage,
-	search: &Search,
 	entry: PublishScopeEntry,
 	scope_entry: Option<ManifestUpdateScopeEntry>,
 	archive: Bytes,
@@ -329,13 +339,6 @@ async fn handler(
 		},
 	)?;
 	store.commit().await?;
-
-	if let Err(e) = search.upsert(
-		&PackageName::new(body.scope.clone(), body.payload.name.clone()),
-		&body.payload.description,
-	) {
-		tracing::error!("failed to index published package for search: {e:#?}");
-	}
 
 	Ok(())
 }
