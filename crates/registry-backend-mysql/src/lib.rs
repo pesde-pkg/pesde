@@ -450,8 +450,9 @@ async fn insert_scope_envelope<P>(
 			scope
 		)
 		.execute(&mut **tx)
-		.await?
-		.last_insert_id()
+		.await?;
+
+		pos
 	};
 
 	sqlx::query!(

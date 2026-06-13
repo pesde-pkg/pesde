@@ -201,7 +201,7 @@ impl Repository for MySqlBackend {
 			publish.archive_hash.to_string(),
 			publish.description.as_str(),
 			publish.license.as_str(),
-			publish.repository.as_ref().map(ToString::to_string),
+			publish.repository.as_ref().map(ToString::to_string).unwrap_or_default(),
 		)
 		.execute(&mut **tx)
 		.await
