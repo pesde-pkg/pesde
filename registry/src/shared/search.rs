@@ -97,10 +97,10 @@ impl Search {
 			writer.add_document(doc!(
 				fields.id => pkg.id,
 				fields.pos => pkg.pos,
-				fields.scope => pkg.data.name.scope().as_str(),
-				fields.name => pkg.data.name.name().as_str(),
-				fields.description => pkg.data.description,
-				fields.published_at => DateTime::from_timestamp_secs(pkg.data.published_at.as_second()),
+				fields.scope => pkg.item.name.scope().as_str(),
+				fields.name => pkg.item.name.name().as_str(),
+				fields.description => pkg.item.description,
+				fields.published_at => DateTime::from_timestamp_secs(pkg.item.published_at.as_second()),
 			))?;
 		}
 		writer.commit()?;
@@ -131,8 +131,8 @@ impl Search {
 				fields.pos => package.pos,
 				fields.scope => name.scope().as_str(),
 				fields.name => name.name().as_str(),
-				fields.description => package.data.description,
-				fields.published_at => DateTime::from_timestamp_secs(package.data.published_at.as_second()),
+				fields.description => package.item.description,
+				fields.published_at => DateTime::from_timestamp_secs(package.item.published_at.as_second()),
 			))?;
 			writer.commit()?;
 			drop(writer);
@@ -227,15 +227,7 @@ impl Search {
 		.await??;
 
 		let results = stream::iter(top_docs)
-			.then(async |pos| {
-				let data = backend.search_data_by_pos(pos).await?;
-
-				Ok::<_, anyhow::Error>(SearchResultItem {
-					package: data.name,
-					version: data.version,
-					description: data.description,
-				})
-			})
+			.then(async |pos| backend.search_result_by_pos(pos).await)
 			.try_collect::<Vec<_>>()
 			.await?;
 

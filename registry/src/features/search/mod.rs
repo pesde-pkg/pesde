@@ -4,9 +4,8 @@ use actix_web::HttpResponse;
 use actix_web::ResponseError;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
-use jiff::Timestamp;
 use pesde::names::PackageName;
-use semver::Version;
+use pesde::source::pesde::registry::SearchResultItem;
 
 use crate::shared::error::Category;
 use crate::shared::error::http_response;
@@ -29,15 +28,7 @@ impl ResponseError for Error {
 pub struct SearchPackage {
 	pub id: u64,
 	pub pos: u64,
-	pub data: PackageSearchData,
-}
-
-#[derive(Debug)]
-pub struct PackageSearchData {
-	pub name: PackageName,
-	pub version: Version,
-	pub published_at: Timestamp,
-	pub description: String,
+	pub item: SearchResultItem,
 }
 
 #[async_trait]
@@ -46,5 +37,5 @@ pub trait Repository {
 
 	async fn searchable_version(&self, name: &PackageName) -> anyhow::Result<SearchPackage>;
 
-	async fn search_data_by_pos(&self, pos: u64) -> anyhow::Result<PackageSearchData>;
+	async fn search_result_by_pos(&self, pos: u64) -> anyhow::Result<SearchResultItem>;
 }

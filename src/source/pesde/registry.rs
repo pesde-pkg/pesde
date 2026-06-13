@@ -408,11 +408,13 @@ pub struct PackageInfoResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchResultItem {
 	/// The name of the package
-	pub package: PackageName,
+	pub name: PackageName,
 	/// The version of the package
 	pub version: Version,
 	/// The description of the package
 	pub description: String,
+	/// The time of publishing of this package
+	pub published_at: Timestamp,
 }
 
 /// The response of the log head endpoint
