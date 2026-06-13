@@ -197,7 +197,7 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<Hash>> {
 
 							let hash = Hash::new(
 								algorithm,
-								hex::decode(format!("{prefix}{rest}"))
+								RawHash::from_str(&format!("{prefix}{rest}"))
 									.context("failed to decode hash from path")?,
 							);
 

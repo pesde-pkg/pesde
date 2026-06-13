@@ -109,16 +109,13 @@ ser_display_deser_fromstr!(Hash);
 impl Hash {
 	/// Creates a new Hash from the given algorithm and hash value
 	#[must_use]
-	pub fn new(algorithm: HashAlgorithm, hash: impl Into<Arc<[u8]>>) -> Option<Self> {
+	pub fn new(algorithm: HashAlgorithm, hash: impl Into<RawHash>) -> Option<Self> {
 		let hash = hash.into();
-		if hash.len() != algorithm.hasher().output_size() {
+		if hash.as_bytes().len() != algorithm.hasher().output_size() {
 			return None;
 		}
 
-		Some(Self {
-			algorithm,
-			hash: hash.into(),
-		})
+		Some(Self { algorithm, hash })
 	}
 
 	/// Creates a new Hash from the given algorithm and bytes
