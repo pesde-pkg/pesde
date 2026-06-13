@@ -139,7 +139,7 @@ junction = { version = "1.4.2" }
 
 [workspace]
 resolver = "2"
-members = ["registry"]
+members = ["crates/*"]
 
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive", "rc"] }

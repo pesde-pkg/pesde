@@ -59,10 +59,16 @@ jobs:
       #   with:
       #     token: ${{ secrets.CODECOV_TOKEN }}
   sql-consistency:
+    name: Check SQL (${{ matrix.db }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - db: mysql
+            database_url: mysql://root:root@127.0.0.1:3306/test-pesde-registry
     services:
       mariadb:
-        image: mariadb:11.8
+        image: ${{ matrix.db == 'mysql' && 'mariadb:11.8' || '' }}
         ports:
           - 3306:3306
         env:
@@ -73,7 +79,7 @@ jobs:
           --health-timeout=5s
           --health-retries=5
     env:
-      DATABASE_URL: mysql://root:root@127.0.0.1:3306/test-pesde-registry
+      DATABASE_URL: ${{ matrix.database_url }}
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -83,9 +89,9 @@ jobs:
           cargo install sqlx-cli@^0.9
 
       - name: Setup database
-        working-directory: registry
+        working-directory: crates/registry-backend-${{ matrix.db }}
         run: cargo sqlx database setup
 
       - name: Check query state
-        working-directory: registry
+        working-directory: crates/registry-backend-${{ matrix.db }}
         run: cargo sqlx prepare --check
