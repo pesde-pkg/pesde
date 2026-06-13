@@ -8,6 +8,8 @@ mod get_versions;
 mod publish;
 mod yank;
 
+use std::num::NonZero;
+
 use async_trait::async_trait;
 use pesde::names::PackageName;
 use pesde::signature::Signature;
@@ -45,7 +47,7 @@ pub trait Repository {
 		&self,
 		name: &PackageName,
 		after: u64,
-		limit: u8,
+		limit: NonZero<u8>,
 	) -> anyhow::Result<PackageVersionsResponse>;
 
 	async fn insert_publish(

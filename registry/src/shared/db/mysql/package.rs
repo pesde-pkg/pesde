@@ -1,3 +1,5 @@
+use std::num::NonZero;
+
 use async_trait::async_trait;
 use futures::TryStreamExt as _;
 use jiff::Timestamp;
@@ -115,7 +117,7 @@ impl Repository for MySqlBackend {
 		&self,
 		name: &PackageName,
 		after: u64,
-		limit: u8,
+		limit: NonZero<u8>,
 	) -> anyhow::Result<PackageVersionsResponse> {
 		let mut rows = sqlx::query!(
 			r#"
