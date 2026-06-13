@@ -62,7 +62,7 @@ merkleberg = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 toml = { workspace = true }
 async-tar = { workspace = true, features = ["xattr"] }
-async-compression = { workspace = true }
+async-compression = { workspace = true, features = ["gzip"] }
 async-stream = { workspace = true }
 tempfile = { workspace = true }
 async-trait = { workspace = true }
@@ -160,7 +160,7 @@ toml = "1.0.7"
 async-tar = { version = "0.6.0", default-features = false, features = [
     "runtime-tokio",
 ] }
-async-compression = { version = "0.4.41", features = ["tokio", "gzip"] }
+async-compression = { version = "0.4.41", features = ["tokio", "zstd"] }
 async-stream = "0.3.6"
 async-trait = "0.1.89"
 tempfile = "3.27.0"
