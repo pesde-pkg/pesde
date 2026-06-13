@@ -3,8 +3,8 @@ use futures::StreamExt as _;
 use futures::stream::BoxStream;
 use jiff::Timestamp;
 use pesde::names::PackageName;
+use pesde::source::pesde::registry::SearchResultItem;
 
-use crate::features::search::PackageSearchData;
 use crate::features::search::Repository;
 use crate::features::search::SearchPackage;
 use crate::shared::db::mysql::MySqlBackend;
@@ -35,11 +35,11 @@ impl Repository for MySqlBackend {
 			Ok(SearchPackage {
                 id: row.genesis_pos,
                 pos: row.pos,
-                data: PackageSearchData {
-				name: PackageName::new(row.scope.parse()?, row.name.parse()?),
-                version: row.version.parse()?,
-                published_at: Timestamp::from_second(row.published_at)?,
-				description: row.description
+                item: SearchResultItem {
+                    name: PackageName::new(row.scope.parse()?, row.name.parse()?),
+                    version: row.version.parse()?,
+                    published_at: Timestamp::from_second(row.published_at)?,
+                    description: row.description
                 },
             })
 		})
@@ -68,7 +68,7 @@ impl Repository for MySqlBackend {
 		Ok(SearchPackage {
 			id: row.genesis_pos,
 			pos: row.pos,
-			data: PackageSearchData {
+			item: SearchResultItem {
 				name: name.clone(),
 				version: row.version.parse()?,
 				published_at: Timestamp::from_second(row.published_at)?,
@@ -77,7 +77,7 @@ impl Repository for MySqlBackend {
 		})
 	}
 
-	async fn search_data_by_pos(&self, pos: u64) -> anyhow::Result<PackageSearchData> {
+	async fn search_result_by_pos(&self, pos: u64) -> anyhow::Result<SearchResultItem> {
 		let row = sqlx::query!(
 			r#"
             SELECT Scope.scope, Package.name, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`
@@ -95,7 +95,7 @@ impl Repository for MySqlBackend {
         .fetch_one(&self.pool)
         .await?;
 
-		Ok(PackageSearchData {
+		Ok(SearchResultItem {
 			name: PackageName::new(row.scope.parse()?, row.name.parse()?),
 			version: row.version.parse()?,
 			published_at: Timestamp::from_second(row.published_at)?,
