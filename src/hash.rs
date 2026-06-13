@@ -37,15 +37,17 @@ impl AsRef<[u8]> for RawHash {
 
 impl Display for RawHash {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", hex::encode(&self.0))
+		write!(f, "{}", fast32::base32::CROCKFORD_LOWER.encode(&self.0))
 	}
 }
 
 impl FromStr for RawHash {
-	type Err = hex::FromHexError;
+	type Err = fast32::DecodeError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		hex::decode(s).map(Into::into)
+		fast32::base32::CROCKFORD_LOWER
+			.decode(s.as_bytes())
+			.map(Into::into)
 	}
 }
 
@@ -142,7 +144,7 @@ impl Hash {
 
 impl Display for Hash {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}:{}", self.algorithm, self.hash)
+		write!(f, "{}-{}", self.algorithm, self.hash)
 	}
 }
 
@@ -151,7 +153,7 @@ impl FromStr for Hash {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (algorithm, hash) = s
-			.split_once(':')
+			.split_once('-')
 			.ok_or(errors::HashFromStrErrorKind::InvalidHashFormat)?;
 
 		// prevent mismatches between serialized and deserialized hashes due to case differences in the hash value
@@ -163,8 +165,8 @@ impl FromStr for Hash {
 		}
 
 		let algorithm: HashAlgorithm = algorithm.parse()?;
-		let mut data = vec![0; algorithm.hasher().output_size()];
-		hex::decode_to_slice(hash, &mut data)?;
+		let mut data = Vec::with_capacity(algorithm.hasher().output_size());
+		fast32::base32::CROCKFORD_LOWER.decode_into(hash.as_bytes(), &mut data)?;
 
 		let hash = Self::new(algorithm, data);
 		Ok(hash.ok_or(errors::HashFromStrErrorKind::InvalidHashFormat)?)
@@ -200,6 +202,6 @@ pub mod errors {
 
 		/// Error parsing the hash value
 		#[error("error parsing hash value")]
-		InvalidHashValue(#[from] hex::FromHexError),
+		InvalidHashValue(#[from] fast32::DecodeError),
 	}
 }

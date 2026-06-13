@@ -1644,6 +1644,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast32"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a35a73237400bde66c82e38387343f90d7182a2f2f22729e096a2abd57d75db9"
+
+[[package]]
 name = "fastdivide"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4095,12 +4101,12 @@ dependencies = [
  "croshet",
  "digest 0.10.7",
  "dirs",
+ "fast32",
  "fs-err",
  "full_moon",
  "futures",
  "git2",
  "gix",
- "hex",
  "indicatif",
  "inquire",
  "itertools",
