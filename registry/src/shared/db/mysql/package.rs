@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use futures::TryStreamExt as _;
+use jiff::Timestamp;
 use pesde::bounded::Bounded;
 use pesde::names::PackageName;
 use pesde::signature::Signature;
@@ -29,10 +30,13 @@ impl Repository for MySqlBackend {
 	) -> anyhow::Result<Option<PackageVersionResponse>> {
 		let Some(row) = sqlx::query!(
 			r#"
-            SELECT ScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`,
-                   Package.name, Package.genesis_pos,
-				   PublishScopeLogEntry.version, PublishScopeLogEntry.archive_hash, PublishScopeLogEntry.description, PublishScopeLogEntry.license, PublishScopeLogEntry.repository
+            SELECT
+					UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`,
+					ScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`,
+                	Package.name, Package.genesis_pos,
+					PublishScopeLogEntry.version, PublishScopeLogEntry.archive_hash, PublishScopeLogEntry.description, PublishScopeLogEntry.license, PublishScopeLogEntry.repository
             FROM ScopeLogEntry
+			INNER JOIN LogEntry ON LogEntry.pos=ScopeLogEntry.pos
             INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=ScopeLogEntry.pos
             INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
             INNER JOIN Scope ON Scope.id=Package.scope_id
@@ -63,6 +67,7 @@ impl Repository for MySqlBackend {
 		Ok(Some(PackageVersionResponse {
 			publish: Entry {
 				pos: row.pos,
+				published_at: Timestamp::from_second(row.published_at)?,
 				payload: SignedEntry::new(
 					row.sig.parse()?,
 					ScopeEntryBody {
@@ -390,9 +395,10 @@ async fn current_yank(
 ) -> anyhow::Result<Option<Entry<YankScopeEntry>>> {
 	let Some(row) = sqlx::query!(
 		r#"
-		SELECT YankScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, YankScopeLogEntry.action AS `action: YankRetraction`
+		SELECT UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`, YankScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, YankScopeLogEntry.action AS `action: YankRetraction`
 		FROM YankScopeLogEntry
 		INNER JOIN ScopeLogEntry ON ScopeLogEntry.pos=YankScopeLogEntry.pos
+		INNER JOIN LogEntry ON LogEntry.pos=ScopeLogEntry.pos
 		WHERE YankScopeLogEntry.publish_pos = ?
 		ORDER BY YankScopeLogEntry.pos DESC
 		LIMIT 1
@@ -411,6 +417,7 @@ async fn current_yank(
 
 	Ok(Some(Entry {
 		pos: row.pos,
+		published_at: Timestamp::from_second(row.published_at)?,
 		payload: SignedEntry::new(
 			row.sig.parse()?,
 			ScopeEntryBody {
@@ -433,9 +440,10 @@ async fn current_deprecation(
 ) -> anyhow::Result<Option<Entry<DeprecateScopeEntry>>> {
 	let Some(row) = sqlx::query!(
 		r#"
-		SELECT DeprecateScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, DeprecateScopeLogEntry.reason
+		SELECT UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`, DeprecateScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, DeprecateScopeLogEntry.reason
 		FROM DeprecateScopeLogEntry
 		INNER JOIN ScopeLogEntry ON ScopeLogEntry.pos=DeprecateScopeLogEntry.pos
+		INNER JOIN LogEntry ON LogEntry.pos=ScopeLogEntry.pos
 		WHERE DeprecateScopeLogEntry.package_pos = ?
 		ORDER BY DeprecateScopeLogEntry.pos DESC
 		LIMIT 1
@@ -450,6 +458,7 @@ async fn current_deprecation(
 
 	Ok(Some(Entry {
 		pos: row.pos,
+		published_at: Timestamp::from_second(row.published_at)?,
 		payload: SignedEntry::new(
 			row.sig.parse()?,
 			ScopeEntryBody {

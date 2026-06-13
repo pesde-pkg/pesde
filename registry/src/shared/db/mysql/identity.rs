@@ -1,5 +1,6 @@
 use anyhow::Context as _;
 use async_trait::async_trait;
+use jiff::Timestamp;
 use pesde::signature::KeyKind;
 use pesde::signature::PublicKey;
 use pesde::signature::Signature;
@@ -23,7 +24,7 @@ impl Repository for MySqlBackend {
 	) -> anyhow::Result<Option<Entry<IdentityEntry>>> {
 		let Some(row) = sqlx::query!(
 			r#"
-            SELECT IdentityKeyEntry.pos, IdentityKeyEntry.sig, IdentityKeyEntry.authorising_sig, IdentityKeyEntry.algorithm AS `algorithm: KeyKind`, IdentityKeyEntry.public_key, LogEntry.kind AS `kind: EntryKind`
+            SELECT IdentityKeyEntry.pos, IdentityKeyEntry.sig, IdentityKeyEntry.authorising_sig, IdentityKeyEntry.algorithm AS `algorithm: KeyKind`, IdentityKeyEntry.public_key, LogEntry.kind AS `kind: EntryKind`, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`
             FROM IdentityKeyEntry
             INNER JOIN LogEntry ON LogEntry.pos=IdentityKeyEntry.pos
             WHERE IdentityKeyEntry.identity_id = ?
@@ -63,6 +64,7 @@ impl Repository for MySqlBackend {
 
 		Ok(Some(Entry {
 			pos: row.pos,
+			published_at: Timestamp::from_second(row.published_at)?,
 			payload,
 		}))
 	}

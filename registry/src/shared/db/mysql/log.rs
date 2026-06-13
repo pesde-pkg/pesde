@@ -1,6 +1,7 @@
 use anyhow::Context as _;
 use async_trait::async_trait;
 use futures::StreamExt as _;
+use jiff::Timestamp;
 use pesde::names::Scope;
 use pesde::signature::KeyKind;
 use pesde::signature::PublicKey;
@@ -20,7 +21,7 @@ impl Repository for MySqlBackend {
 	async fn entry(&self, pos: u64) -> anyhow::Result<Option<Entry<EntryPayload>>> {
 		let Some(rec) = sqlx::query!(
 			r#"
-			SELECT kind AS `kind: EntryKind`
+			SELECT kind AS `kind: EntryKind`, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`
 			FROM LogEntry
 			WHERE pos = ?
 			"#,
@@ -31,6 +32,7 @@ impl Repository for MySqlBackend {
 		else {
 			return Ok(None);
 		};
+		let published_at = Timestamp::from_second(rec.published_at)?;
 
 		match rec.kind {
 			EntryKind::Scope => {
@@ -154,6 +156,7 @@ impl Repository for MySqlBackend {
 
 				Ok(Some(Entry {
 					pos,
+					published_at,
 					payload: EntryPayload::Scope(scope_entry),
 				}))
 			}
@@ -166,6 +169,7 @@ impl Repository for MySqlBackend {
 
 				Ok(Some(Entry {
 					pos,
+					published_at,
 					payload: EntryPayload::Identity(IdentityEntry::Register(SignedEntry::new(
 						sig,
 						RegisterIdentityBody {
@@ -184,6 +188,7 @@ impl Repository for MySqlBackend {
 
 				Ok(Some(Entry {
 					pos,
+					published_at,
 					payload: EntryPayload::Identity(IdentityEntry::Rotation(
 						IdentityRotationEntry::new(
 							old_sig
@@ -201,6 +206,7 @@ impl Repository for MySqlBackend {
 				let (scope, manifest) = read_scope_manifest(&self.pool, pos).await?;
 				Ok(Some(Entry {
 					pos,
+					published_at,
 					payload: EntryPayload::AdminScopeTransfer(AdminScopeTransfer {
 						scope,
 						manifest,

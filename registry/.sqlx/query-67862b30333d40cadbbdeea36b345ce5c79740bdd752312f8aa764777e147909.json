@@ -1,10 +1,21 @@
 {
   "db_name": "MySQL",
-  "query": "\n            SELECT ScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`,\n                   Package.name, Package.genesis_pos,\n\t\t\t\t   PublishScopeLogEntry.version, PublishScopeLogEntry.archive_hash, PublishScopeLogEntry.description, PublishScopeLogEntry.license, PublishScopeLogEntry.repository\n            FROM ScopeLogEntry\n            INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=ScopeLogEntry.pos\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n            INNER JOIN Scope ON Scope.id=Package.scope_id\n            WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.version = ?\n            ",
+  "query": "\n            SELECT\n\t\t\t\t\tUNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`,\n\t\t\t\t\tScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`,\n                \tPackage.name, Package.genesis_pos,\n\t\t\t\t\tPublishScopeLogEntry.version, PublishScopeLogEntry.archive_hash, PublishScopeLogEntry.description, PublishScopeLogEntry.license, PublishScopeLogEntry.repository\n            FROM ScopeLogEntry\n\t\t\tINNER JOIN LogEntry ON LogEntry.pos=ScopeLogEntry.pos\n            INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=ScopeLogEntry.pos\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n            INNER JOIN Scope ON Scope.id=Package.scope_id\n            WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.version = ?\n            ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "published_at!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "BINARY",
+          "collation": 63,
+          "max_size": 17
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
         "name": "pos",
         "type_info": {
           "type": "LongLong",
@@ -20,7 +31,7 @@
         }
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "sig",
         "type_info": {
           "type": "Blob",
@@ -36,7 +47,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "author_identity: IdentityId",
         "type_info": {
           "type": "String",
@@ -52,7 +63,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "name",
         "type_info": {
           "type": "VarString",
@@ -68,7 +79,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "genesis_pos",
         "type_info": {
           "type": "LongLong",
@@ -84,7 +95,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "version",
         "type_info": {
           "type": "VarString",
@@ -100,7 +111,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "archive_hash",
         "type_info": {
           "type": "Blob",
@@ -116,7 +127,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "description",
         "type_info": {
           "type": "VarString",
@@ -132,7 +143,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "license",
         "type_info": {
           "type": "VarString",
@@ -148,7 +159,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "repository",
         "type_info": {
           "type": "Blob",
@@ -168,6 +179,7 @@
       "Right": 3
     },
     "nullable": [
+      true,
       false,
       false,
       false,
@@ -180,5 +192,5 @@
       false
     ]
   },
-  "hash": "89491197e36c8d26f42ba9ab7c99a05c3a676bde41eab7fffa6dc23360456c03"
+  "hash": "67862b30333d40cadbbdeea36b345ce5c79740bdd752312f8aa764777e147909"
 }

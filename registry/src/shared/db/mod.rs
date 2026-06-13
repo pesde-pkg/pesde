@@ -1,13 +1,11 @@
 use std::any::Any;
 
 use async_trait::async_trait;
-use futures::stream::BoxStream;
 use merkleberg::MMRIVER;
 use merkleberg::MMRStoreReadOps;
 use merkleberg::MMRStoreWriteOps;
 use pesde::hash::RawHash;
 use pesde::names::Name;
-use pesde::names::PackageName;
 use pesde::names::Scope;
 use pesde::signature::PublicKey;
 use pesde::source::pesde::registry::*;
@@ -193,10 +191,9 @@ pub trait Backend:
 	+ crate::features::identity::Repository
 	+ crate::features::scope::Repository
 	+ crate::features::log::Repository
+	+ crate::features::search::Repository
 {
 	async fn current_size(&self) -> anyhow::Result<u64>;
-
-	async fn all_packages_for_index(&self) -> BoxStream<'_, anyhow::Result<(PackageName, String)>>;
 
 	async fn read_mmr_at(
 		&self,

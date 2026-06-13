@@ -1,10 +1,21 @@
 {
   "db_name": "MySQL",
-  "query": "\n\t\tSELECT DeprecateScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, DeprecateScopeLogEntry.reason\n\t\tFROM DeprecateScopeLogEntry\n\t\tINNER JOIN ScopeLogEntry ON ScopeLogEntry.pos=DeprecateScopeLogEntry.pos\n\t\tWHERE DeprecateScopeLogEntry.package_pos = ?\n\t\tORDER BY DeprecateScopeLogEntry.pos DESC\n\t\tLIMIT 1\n\t\t",
+  "query": "\n\t\tSELECT UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`, YankScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, YankScopeLogEntry.action AS `action: YankRetraction`\n\t\tFROM YankScopeLogEntry\n\t\tINNER JOIN ScopeLogEntry ON ScopeLogEntry.pos=YankScopeLogEntry.pos\n\t\tINNER JOIN LogEntry ON LogEntry.pos=ScopeLogEntry.pos\n\t\tWHERE YankScopeLogEntry.publish_pos = ?\n\t\tORDER BY YankScopeLogEntry.pos DESC\n\t\tLIMIT 1\n\t\t",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "published_at!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "BINARY",
+          "collation": 63,
+          "max_size": 17
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
         "name": "pos",
         "type_info": {
           "type": "LongLong",
@@ -14,13 +25,13 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.DeprecateScopeLogEntry",
+            "table": "test-pesde-registry.YankScopeLogEntry",
             "name": "pos"
           }
         }
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "sig",
         "type_info": {
           "type": "Blob",
@@ -36,7 +47,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "author_identity: IdentityId",
         "type_info": {
           "type": "String",
@@ -52,18 +63,18 @@
         }
       },
       {
-        "ordinal": 3,
-        "name": "reason",
+        "ordinal": 4,
+        "name": "action: YankRetraction",
         "type_info": {
-          "type": "VarString",
-          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
           "collation": 224,
-          "max_size": 1020
+          "max_size": 24
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.DeprecateScopeLogEntry",
-            "name": "reason"
+            "table": "test-pesde-registry.YankScopeLogEntry",
+            "name": "action"
           }
         }
       }
@@ -72,11 +83,12 @@
       "Right": 1
     },
     "nullable": [
+      true,
       false,
       false,
       false,
       false
     ]
   },
-  "hash": "4cddeed24b91679579fc66ff47bfb6a478839233eaeb6a371fb6eb582e3dbeb9"
+  "hash": "24f03fd614ef914c1990a126a8d5c025f79181b3ab72780e797ddf1bdff42a7c"
 }

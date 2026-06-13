@@ -12,6 +12,7 @@ CREATE TABLE TreeNode (
 
 CREATE TABLE LogEntry (
     pos BIGINT UNSIGNED PRIMARY KEY,
+    published_at DATETIME NOT NULL DEFAULT(NOW()),
     kind ENUM ('register_identity', 'identity_rotation', 'scope', 'admin_scope_transfer') NOT NULL,
     FOREIGN KEY (pos) REFERENCES TreeNode (pos)
 );

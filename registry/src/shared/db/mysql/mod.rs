@@ -3,10 +3,8 @@ use std::collections::BTreeMap;
 
 use anyhow::Context as _;
 use async_trait::async_trait;
-use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use futures::lock::Mutex;
-use futures::stream::BoxStream;
 use iter_chunks::IterChunks as _;
 use merkleberg::MMRIVER;
 use pesde::bounded::BoundedBTreeMap;
@@ -14,7 +12,6 @@ use pesde::bounded::BoundedString;
 use pesde::bounded::BoundedVec;
 use pesde::hash::RawHash;
 use pesde::manifest::DependencyType;
-use pesde::names::PackageName;
 use pesde::names::Scope;
 use pesde::signature::KeyKind;
 use pesde::signature::PublicKey;
@@ -43,6 +40,7 @@ mod identity;
 mod log;
 mod package;
 mod scope;
+mod search;
 
 macro_rules! insert_chunked {
 	($conn:expr, $table:literal, $columns:expr, $rows:expr, $bind:expr $(,)?) => {
@@ -116,28 +114,6 @@ impl Backend for MySqlBackend {
 			.fetch_one(&self.pool)
 			.await?
 			.size)
-	}
-
-	async fn all_packages_for_index(&self) -> BoxStream<'_, anyhow::Result<(PackageName, String)>> {
-		sqlx::query!(
-			r#"
-			SELECT Scope.scope, Package.name, latest.description
-			FROM Package
-			INNER JOIN Scope ON Scope.id=Package.scope_id
-			INNER JOIN PublishScopeLogEntry latest ON latest.pos = (
-				SELECT pos FROM PublishScopeLogEntry WHERE package_pos = Package.genesis_pos ORDER BY pos DESC LIMIT 1
-			)
-			"#,
-		)
-		.fetch(&self.pool)
-		.map(|row| {
-			let row = row?;
-			Ok((
-				PackageName::new(row.scope.parse()?, row.name.parse()?),
-				row.description
-			))
-		})
-		.boxed()
 	}
 
 	async fn read_mmr_at(

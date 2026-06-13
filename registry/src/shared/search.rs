@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::Arc;
 
 use actix_web::web;
-use anyhow::Context as _;
 use futures::Stream;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
+use futures::lock::Mutex;
 use futures::stream;
 use itertools::Itertools as _;
 use pesde::names::PackageName;
@@ -26,26 +26,32 @@ use tantivy::schema::FAST;
 use tantivy::schema::Field;
 use tantivy::schema::IndexRecordOption;
 use tantivy::schema::STORED;
-use tantivy::schema::STRING;
 use tantivy::schema::Schema;
 use tantivy::schema::TextFieldIndexing;
 use tantivy::schema::TextOptions;
 use tantivy::schema::Value as _;
 use tantivy::tokenizer::TextAnalyzer;
 
+use crate::features::search::SearchPackage;
 use crate::shared::db::Backend;
 
 const WRITER_HEAP_BYTES: usize = 50 * 1024 * 1024;
 
-pub struct Search {
-	index: Index,
-	reader: IndexReader,
-	writer: Mutex<IndexWriter>,
+#[derive(Debug, Clone, Copy)]
+struct Fields {
 	id: Field,
+	pos: Field,
 	scope: Field,
 	name: Field,
 	description: Field,
 	published_at: Field,
+}
+
+pub struct Search {
+	index: Index,
+	reader: IndexReader,
+	writer: Arc<Mutex<IndexWriter>>,
+	fields: Fields,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,7 +62,7 @@ pub struct QueryResult {
 
 impl Search {
 	pub async fn new(
-		packages: impl Stream<Item = anyhow::Result<(PackageName, String)>>,
+		packages: impl Stream<Item = anyhow::Result<SearchPackage>>,
 	) -> anyhow::Result<Self> {
 		let mut schema = Schema::builder();
 		let field_options = TextOptions::default().set_indexing_options(
@@ -65,11 +71,14 @@ impl Search {
 				.set_index_option(IndexRecordOption::WithFreqsAndPositions),
 		);
 
-		let id = schema.add_text_field("id", STORED | STRING);
-		let scope = schema.add_text_field("scope", field_options.clone());
-		let name = schema.add_text_field("name", field_options.clone());
-		let description = schema.add_text_field("description", field_options);
-		let published_at = schema.add_date_field("published_at", FAST);
+		let fields = Fields {
+			id: schema.add_u64_field("id", STORED),
+			pos: schema.add_u64_field("pos", STORED),
+			scope: schema.add_text_field("scope", field_options.clone()),
+			name: schema.add_text_field("name", field_options.clone()),
+			description: schema.add_text_field("description", field_options),
+			published_at: schema.add_date_field("published_at", FAST),
+		};
 
 		let schema = schema.build();
 
@@ -84,12 +93,14 @@ impl Search {
 		let mut writer = index.writer(WRITER_HEAP_BYTES)?;
 
 		tokio::pin!(packages);
-		while let Some((package, package_description)) = packages.try_next().await? {
+		while let Some(pkg) = packages.try_next().await? {
 			writer.add_document(doc!(
-				id => package.to_string(),
-				scope => package.scope().as_str(),
-				name => package.name().as_str(),
-				description => package_description,
+				fields.id => pkg.id,
+				fields.pos => pkg.pos,
+				fields.scope => pkg.data.name.scope().as_str(),
+				fields.name => pkg.data.name.name().as_str(),
+				fields.description => pkg.data.description,
+				fields.published_at => DateTime::from_timestamp_secs(pkg.data.published_at.as_second()),
 			))?;
 		}
 		writer.commit()?;
@@ -102,29 +113,36 @@ impl Search {
 		Ok(Self {
 			index,
 			reader,
-			writer: Mutex::new(writer),
-			id,
-			scope,
-			name,
-			description,
-			published_at,
+			writer: Arc::new(Mutex::new(writer)),
+			fields,
 		})
 	}
 
-	pub fn upsert(&self, name: &PackageName, description: &str) -> anyhow::Result<()> {
-		let id = name.to_string();
-		let mut writer = self.writer.lock().expect("search index writer poisoned");
-		writer.delete_term(Term::from_field_text(self.id, &id));
-		writer.add_document(doc!(
-			self.id => id,
-			self.scope => name.scope().as_str(),
-			self.name => name.name().as_str(),
-			self.description => description,
-		))?;
-		writer.commit()?;
-		drop(writer);
+	pub async fn update(&self, backend: &dyn Backend, name: PackageName) -> anyhow::Result<()> {
+		let package = backend.searchable_version(&name).await?;
 
-		self.reader.reload()?;
+		let fields = self.fields;
+		let mut writer = self.writer.clone().lock_owned().await;
+		let reader = self.reader.clone();
+		web::block(move || {
+			writer.delete_term(Term::from_field_u64(fields.id, package.id));
+			writer.add_document(doc!(
+				fields.id => package.id,
+				fields.pos => package.pos,
+				fields.scope => name.scope().as_str(),
+				fields.name => name.name().as_str(),
+				fields.description => package.data.description,
+				fields.published_at => DateTime::from_timestamp_secs(package.data.published_at.as_second()),
+			))?;
+			writer.commit()?;
+			drop(writer);
+
+			reader.reload()?;
+
+			Ok::<_, anyhow::Error>(())
+		})
+		.await??;
+
 		Ok(())
 	}
 
@@ -136,12 +154,14 @@ impl Search {
 		offset: usize,
 	) -> anyhow::Result<QueryResult> {
 		let searcher = self.reader.searcher();
-		let id_field = self.id;
+		let fields = self.fields;
 
-		let mut query_parser =
-			QueryParser::for_index(&self.index, vec![self.scope, self.name, self.description]);
-		query_parser.set_field_boost(self.scope, 2.0);
-		query_parser.set_field_boost(self.name, 3.5);
+		let mut query_parser = QueryParser::for_index(
+			&self.index,
+			vec![fields.scope, fields.name, fields.description],
+		);
+		query_parser.set_field_boost(fields.scope, 2.0);
+		query_parser.set_field_boost(fields.name, 3.5);
 
 		let (count, top_docs) = web::block(move || {
 			let (count, top_docs) = if query.is_empty() {
@@ -196,10 +216,8 @@ impl Search {
 			let top_docs = top_docs
 				.into_iter()
 				.map(|addr| {
-					(&searcher.doc::<HashMap<_, _>>(addr).unwrap()[&id_field])
-						.as_str()
-						.unwrap()
-						.parse::<PackageName>()
+					(&searcher.doc::<HashMap<_, _>>(addr).unwrap()[&fields.pos])
+						.as_u64()
 						.unwrap()
 				})
 				.collect::<Vec<_>>();
@@ -209,27 +227,13 @@ impl Search {
 		.await??;
 
 		let results = stream::iter(top_docs)
-			.then(async |name| {
-				let info = backend
-					.package_info(&name)
-					.await?
-					.context("no info for searchable package")?;
-
-				let version = backend
-					.package_version(&name, &info.latest_version)
-					.await?
-					.context("no version for seachable package")?;
+			.then(async |pos| {
+				let data = backend.search_data_by_pos(pos).await?;
 
 				Ok::<_, anyhow::Error>(SearchResultItem {
-					package: name,
-					version: info.latest_version,
-					description: version
-						.publish
-						.payload
-						.into_unsafe_body()
-						.payload
-						.description
-						.into_inner(),
+					package: data.name,
+					version: data.version,
+					description: data.description,
 				})
 			})
 			.try_collect::<Vec<_>>()
@@ -238,5 +242,3 @@ impl Search {
 		Ok(QueryResult { count, results })
 	}
 }
-
-// TODO: this uses the repositories of other features, reorganise

@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n            SELECT IdentityKeyEntry.pos, IdentityKeyEntry.sig, IdentityKeyEntry.authorising_sig, IdentityKeyEntry.algorithm AS `algorithm: KeyKind`, IdentityKeyEntry.public_key, LogEntry.kind AS `kind: EntryKind`\n            FROM IdentityKeyEntry\n            INNER JOIN LogEntry ON LogEntry.pos=IdentityKeyEntry.pos\n            WHERE IdentityKeyEntry.identity_id = ?\n            ORDER BY IdentityKeyEntry.pos DESC\n            LIMIT 1\n            ",
+  "query": "\n            SELECT IdentityKeyEntry.pos, IdentityKeyEntry.sig, IdentityKeyEntry.authorising_sig, IdentityKeyEntry.algorithm AS `algorithm: KeyKind`, IdentityKeyEntry.public_key, LogEntry.kind AS `kind: EntryKind`, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`\n            FROM IdentityKeyEntry\n            INNER JOIN LogEntry ON LogEntry.pos=IdentityKeyEntry.pos\n            WHERE IdentityKeyEntry.identity_id = ?\n            ORDER BY IdentityKeyEntry.pos DESC\n            LIMIT 1\n            ",
   "describe": {
     "columns": [
       {
@@ -98,6 +98,17 @@
             "name": "kind"
           }
         }
+      },
+      {
+        "ordinal": 6,
+        "name": "published_at!",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "BINARY",
+          "collation": 63,
+          "max_size": 17
+        },
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -109,8 +120,9 @@
       true,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "8a60649a6838904fce605d340710077752628cb7d0fa5fe0bf0a282b8390b5ba"
+  "hash": "87df78f3b4860a439e1f3fd1457c3b81b828807166aa967746a45b05507fe8d5"
 }

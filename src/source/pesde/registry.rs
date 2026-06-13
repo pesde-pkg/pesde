@@ -7,6 +7,7 @@ use std::fmt::Display;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use jiff::Timestamp;
 use merkleberg::Merge;
 use semver::Version;
 use serde::Deserialize;
@@ -367,6 +368,8 @@ pub enum EntryPayload {
 pub struct Entry<T> {
 	/// The leaf position of this entry
 	pub pos: u64,
+	/// The time of publishing of this entry
+	pub published_at: Timestamp,
 	/// The payload of this entry
 	pub payload: T,
 }
