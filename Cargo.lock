@@ -207,7 +207,7 @@ dependencies = [
  "foldhash 0.1.5",
  "futures-core",
  "futures-util",
- "impl-more 0.1.9",
+ "impl-more",
  "itoa",
  "language-tags",
  "log",
@@ -239,54 +239,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "actix-web-lab"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a89606b86fd2f8c0ddd72ef0be171e58c919ee0b6914aa7b52354063e5ee361"
-dependencies = [
- "actix-http",
- "actix-router",
- "actix-service",
- "actix-utils",
- "actix-web",
- "actix-web-lab-derive",
- "ahash",
- "arc-swap",
- "bytes",
- "bytestring",
- "csv",
- "derive_more 2.1.1",
- "form_urlencoded",
- "futures-core",
- "futures-util",
- "http 0.2.12",
- "impl-more 0.3.1",
- "itertools",
- "local-channel",
- "mime",
- "pin-project-lite",
- "regex",
- "serde",
- "serde_html_form",
- "serde_json",
- "serde_path_to_error",
- "tokio",
- "tokio-stream",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "actix-web-lab-derive"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ac4d6e04e97fe707286509b4f338e99c5fb7249c770e1da074af5e27faa96b3"
-dependencies = [
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -310,19 +262,6 @@ dependencies = [
  "cfg-if",
  "cipher",
  "cpufeatures 0.2.17",
-]
-
-[[package]]
-name = "ahash"
-version = "0.8.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
-dependencies = [
- "cfg-if",
- "getrandom 0.3.4",
- "once_cell",
- "version_check",
- "zerocopy",
 ]
 
 [[package]]
@@ -1269,27 +1208,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77727bb15fa921304124b128af125e7e3b968275d1b108b379190264f4423710"
 dependencies = [
  "hybrid-array",
-]
-
-[[package]]
-name = "csv"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938"
-dependencies = [
- "csv-core",
- "itoa",
- "ryu",
- "serde_core",
-]
-
-[[package]]
-name = "csv-core"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "704a3c26996a80471189265814dbc2c257598b96b8a7feae2d31ace646bb9782"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -3259,12 +3177,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8a5a9a0ff0086c7a148acb942baaabeadf9504d10400b5a05645853729b9cd2"
 
 [[package]]
-name = "impl-more"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35a84fd5aa25fae5c0f4a33d9cac2ca017fc622cbd089be2229993514990f870"
-
-[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4230,29 +4142,24 @@ dependencies = [
  "actix-cors",
  "actix-multipart",
  "actix-web",
- "actix-web-lab",
  "anyhow",
  "async-compression",
- "async-stream",
  "async-tar",
- "async-trait",
- "const-str",
  "constant_time_eq",
  "dotenvy",
  "fs-err",
  "futures",
- "iter-chunks",
  "itertools",
- "jiff",
  "merkleberg",
  "pesde",
+ "pesde-registry-backend-mysql",
+ "pesde-registry-core",
  "reqwest",
  "rusty-s3",
  "semver",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "sqlx",
  "tantivy",
  "tempfile",
  "thiserror 2.0.18",
@@ -4262,7 +4169,37 @@ dependencies = [
  "tracing",
  "tracing-actix-web",
  "tracing-subscriber",
- "url",
+]
+
+[[package]]
+name = "pesde-registry-backend-mysql"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "const-str",
+ "futures",
+ "iter-chunks",
+ "itertools",
+ "jiff",
+ "merkleberg",
+ "pesde",
+ "pesde-registry-core",
+ "semver",
+ "sqlx",
+]
+
+[[package]]
+name = "pesde-registry-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures",
+ "merkleberg",
+ "pesde",
+ "semver",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -5089,19 +5026,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_html_form"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0946d52b4b7e28823148aebbeceb901012c595ad737920d504fa8634bb099e6f"
-dependencies = [
- "form_urlencoded",
- "indexmap 2.13.0",
- "itoa",
- "ryu",
- "serde_core",
-]
-
-[[package]]
 name = "serde_json"
 version = "1.0.149"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5112,17 +5036,6 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
-]
-
-[[package]]
-name = "serde_path_to_error"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
-dependencies = [
- "itoa",
- "serde",
- "serde_core",
 ]
 
 [[package]]

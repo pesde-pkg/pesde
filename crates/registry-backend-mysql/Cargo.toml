@@ -1,0 +1,24 @@
+[package]
+name = "pesde-registry-backend-mysql"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+itertools = { workspace = true }
+jiff = { workspace = true }
+merkleberg = { workspace = true }
+semver = { workspace = true }
+sqlx = { workspace = true, features = ["mysql"] }
+
+iter-chunks = "0.3.0"
+const-str = "1.1.0"
+
+pesde = { path = "../..", default-features = false, features = ["sqlx"] }
+pesde-registry-core = { path = "../registry-core" }

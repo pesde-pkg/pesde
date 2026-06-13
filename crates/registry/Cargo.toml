@@ -1,0 +1,47 @@
+[package]
+name = "pesde-registry"
+version = "0.3.0"
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+mysql = ["dep:pesde-registry-backend-mysql"]
+
+[dependencies]
+fs-err = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+semver = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+merkleberg = { workspace = true }
+reqwest = { workspace = true }
+toml = { workspace = true }
+async-tar = { workspace = true }
+async-compression = { workspace = true }
+tempfile = { workspace = true }
+sha2 = { workspace = true }
+itertools = { workspace = true }
+
+actix-web = "4.13.0"
+actix-cors = "0.7.1"
+actix-multipart = "0.7.2"
+tracing-actix-web = "0.7.21"
+
+dotenvy = "0.15.7"
+rusty-s3 = "0.9.1"
+constant_time_eq = "0.5.0"
+tantivy = "0.26.1"
+
+pesde = { path = "../..", default-features = false }
+pesde-registry-core = { path = "../registry-core" }
+
+pesde-registry-backend-mysql = { path = "../registry-backend-mysql", optional = true }
