@@ -238,3 +238,5 @@ impl Search {
 		Ok(QueryResult { count, results })
 	}
 }
+
+// TODO: this uses the repositories of other features, reorganise
