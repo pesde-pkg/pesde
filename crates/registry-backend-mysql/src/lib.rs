@@ -434,6 +434,9 @@ async fn insert_scope_envelope<P>(
 	kind: ScopeEntryKind,
 ) -> anyhow::Result<u64> {
 	let scope = body.scope.as_str();
+
+	insert_log_entry(tx, pos, EntryKind::Scope).await?;
+
 	let scope_pos = if let Some(row) =
 		sqlx::query!("SELECT genesis_pos FROM Scope WHERE scope = ?", scope)
 			.fetch_optional(&mut **tx)
@@ -450,7 +453,6 @@ async fn insert_scope_envelope<P>(
 		.await?
 		.last_insert_id()
 	};
-	insert_log_entry(tx, pos, EntryKind::Scope).await?;
 
 	sqlx::query!(
 		"INSERT INTO ScopeLogEntry (pos, sig, scope_pos, author_identity, kind) VALUES (?, ?, ?, ?, ?)",
