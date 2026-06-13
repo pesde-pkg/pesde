@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n            SELECT\n\t\t\t\t\tUNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`,\n\t\t\t\t\tScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`,\n                \tPackage.name, Package.genesis_pos,\n\t\t\t\t\tPublishScopeLogEntry.version, PublishScopeLogEntry.archive_hash, PublishScopeLogEntry.description, PublishScopeLogEntry.license, PublishScopeLogEntry.repository\n            FROM ScopeLogEntry\n\t\t\tINNER JOIN LogEntry ON LogEntry.pos=ScopeLogEntry.pos\n            INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=ScopeLogEntry.pos\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n            INNER JOIN Scope ON Scope.id=Package.scope_id\n            WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.version = ?\n            ",
+  "query": "\n            SELECT\n\t\t\t\t\tUNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`,\n\t\t\t\t\tScopeLogEntry.pos, ScopeLogEntry.sig, ScopeLogEntry.author_identity AS `author_identity: IdentityId`,\n                \tPackage.name, Package.genesis_pos,\n\t\t\t\t\tPublishScopeLogEntry.version, PublishScopeLogEntry.archive_hash, PublishScopeLogEntry.description, PublishScopeLogEntry.license, PublishScopeLogEntry.repository\n            FROM ScopeLogEntry\n\t\t\tINNER JOIN LogEntry ON LogEntry.pos=ScopeLogEntry.pos\n            INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=ScopeLogEntry.pos\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n            INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos\n            WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.version = ?\n            ",
   "describe": {
     "columns": [
       {
@@ -192,5 +192,5 @@
       false
     ]
   },
-  "hash": "67862b30333d40cadbbdeea36b345ce5c79740bdd752312f8aa764777e147909"
+  "hash": "8223c79e479e6554cd422fda2d3ed549f0e221367e6ce41adce5c0d4c86dc903"
 }

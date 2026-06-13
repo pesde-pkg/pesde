@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n            SELECT Package.genesis_pos, DeprecateScopeLogEntry.reason\n\t\t\tFROM Package\n            INNER JOIN Scope ON Scope.id=Package.scope_id\n\t\t\tLEFT JOIN DeprecateScopeLogEntry ON DeprecateScopeLogEntry.package_pos=Package.genesis_pos\n            WHERE Scope.scope = ? AND Package.name = ?\n\t\t\tORDER BY DeprecateScopeLogEntry.pos DESC\n\t\t\tLIMIT 1\n            ",
+  "query": "\n            SELECT Package.genesis_pos, DeprecateScopeLogEntry.reason\n\t\t\tFROM Package\n            INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos\n\t\t\tLEFT JOIN DeprecateScopeLogEntry ON DeprecateScopeLogEntry.package_pos=Package.genesis_pos\n            WHERE Scope.scope = ? AND Package.name = ?\n\t\t\tORDER BY DeprecateScopeLogEntry.pos DESC\n\t\t\tLIMIT 1\n            ",
   "describe": {
     "columns": [
       {
@@ -44,5 +44,5 @@
       true
     ]
   },
-  "hash": "3a34e49c1f70c7f4d5408aa220a411024dc3700c4428fabe73040ff6142ba22f"
+  "hash": "224ef9a353ad9f6319391e77c3486e8f8759d758a63f5826c43098e3e396c0b5"
 }

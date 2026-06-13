@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO Scope (genesis_pos, scope) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c134a5c58a3340b295e03068511058b1a48d9ab5ac75604cdbb9b1d447c448cf"
+}

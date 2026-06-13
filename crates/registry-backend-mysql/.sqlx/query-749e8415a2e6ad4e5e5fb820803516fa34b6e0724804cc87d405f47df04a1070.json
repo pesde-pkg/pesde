@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n\t\t\tSELECT COUNT(PublishScopeLogEntry.pos) AS `total: u64`, PublishScopeLogEntry.version\n\t\t\tFROM Package\n\t\t\tINNER JOIN Scope ON Scope.id=Package.scope_id\n\t\t\tINNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.package_pos=Package.genesis_pos\n\t\t\tWHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.pos > ?\n\t\t\tORDER BY PublishScopeLogEntry.pos DESC\n\t\t\tLIMIT ?\n\t\t\t",
+  "query": "\n\t\t\tSELECT COUNT(PublishScopeLogEntry.pos) AS `total: u64`, PublishScopeLogEntry.version\n\t\t\tFROM Package\n\t\t\tINNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos\n\t\t\tINNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.package_pos=Package.genesis_pos\n\t\t\tWHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.pos > ?\n\t\t\tORDER BY PublishScopeLogEntry.pos DESC\n\t\t\tLIMIT ?\n\t\t\t",
   "describe": {
     "columns": [
       {
@@ -39,5 +39,5 @@
       true
     ]
   },
-  "hash": "cc27ec1e02e153df9d2939216495a2875a39f73ab0e51b8a32bd09afb14935b8"
+  "hash": "749e8415a2e6ad4e5e5fb820803516fa34b6e0724804cc87d405f47df04a1070"
 }

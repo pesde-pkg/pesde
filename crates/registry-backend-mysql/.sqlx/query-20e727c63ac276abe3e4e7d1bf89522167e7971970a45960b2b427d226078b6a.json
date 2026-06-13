@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT genesis_pos FROM Package WHERE scope_pos = ? AND name = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "genesis_pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.Package",
+            "name": "genesis_pos"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "20e727c63ac276abe3e4e7d1bf89522167e7971970a45960b2b427d226078b6a"
+}

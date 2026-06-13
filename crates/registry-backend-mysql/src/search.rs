@@ -17,7 +17,7 @@ impl Repository for MySqlBackend {
 			SELECT Package.genesis_pos, PublishScopeLogEntry.pos, Scope.scope, Package.name, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`
 			FROM PublishScopeLogEntry
 			INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
-			INNER JOIN Scope ON Scope.id=Package.scope_id
+			INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos
             INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos
             WHERE PublishScopeLogEntry.pos = (
                 SELECT PublishScopeLogEntry.pos
@@ -52,7 +52,7 @@ impl Repository for MySqlBackend {
             SELECT Package.genesis_pos, PublishScopeLogEntry.pos, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`
             FROM PublishScopeLogEntry
             INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
-			INNER JOIN Scope ON Scope.id=Package.scope_id
+			INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos
             INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos
             LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)
             WHERE Scope.scope = ? AND Package.name = ?
@@ -83,7 +83,7 @@ impl Repository for MySqlBackend {
             SELECT Scope.scope, Package.name, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`
             FROM PublishScopeLogEntry
             INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
-			INNER JOIN Scope ON Scope.id=Package.scope_id
+			INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos
             INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos
             LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)
             WHERE PublishScopeLogEntry.pos = ?

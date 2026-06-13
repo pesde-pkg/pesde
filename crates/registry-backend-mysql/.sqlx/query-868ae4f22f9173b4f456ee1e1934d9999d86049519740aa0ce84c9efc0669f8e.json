@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n\t\t\tSELECT Package.genesis_pos, PublishScopeLogEntry.pos, Scope.scope, Package.name, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`\n\t\t\tFROM PublishScopeLogEntry\n\t\t\tINNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n\t\t\tINNER JOIN Scope ON Scope.id=Package.scope_id\n            INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos\n            WHERE PublishScopeLogEntry.pos = (\n                SELECT PublishScopeLogEntry.pos\n                FROM PublishScopeLogEntry\n                LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)\n                WHERE PublishScopeLogEntry.package_pos=Package.genesis_pos\n    \t\t\tORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC\n                LIMIT 1\n            )\n\t\t\t",
+  "query": "\n\t\t\tSELECT Package.genesis_pos, PublishScopeLogEntry.pos, Scope.scope, Package.name, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`\n\t\t\tFROM PublishScopeLogEntry\n\t\t\tINNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n\t\t\tINNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos\n            INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos\n            WHERE PublishScopeLogEntry.pos = (\n                SELECT PublishScopeLogEntry.pos\n                FROM PublishScopeLogEntry\n                LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)\n                WHERE PublishScopeLogEntry.package_pos=Package.genesis_pos\n    \t\t\tORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC\n                LIMIT 1\n            )\n\t\t\t",
   "describe": {
     "columns": [
       {
@@ -124,5 +124,5 @@
       true
     ]
   },
-  "hash": "5d0e5889fe855e2f91f245fb0e84cc23a79444a991a25b17420318cb45b3a007"
+  "hash": "868ae4f22f9173b4f456ee1e1934d9999d86049519740aa0ce84c9efc0669f8e"
 }

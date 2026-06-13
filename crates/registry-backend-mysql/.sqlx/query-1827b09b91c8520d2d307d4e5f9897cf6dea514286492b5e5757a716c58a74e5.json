@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n            SELECT Scope.scope, Package.name, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`\n            FROM PublishScopeLogEntry\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n\t\t\tINNER JOIN Scope ON Scope.id=Package.scope_id\n            INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos\n            LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)\n            WHERE PublishScopeLogEntry.pos = ?\n            ORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC\n            LIMIT 1\n            ",
+  "query": "\n            SELECT Scope.scope, Package.name, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`\n            FROM PublishScopeLogEntry\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n\t\t\tINNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos\n            INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos\n            LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)\n            WHERE PublishScopeLogEntry.pos = ?\n            ORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC\n            LIMIT 1\n            ",
   "describe": {
     "columns": [
       {
@@ -90,5 +90,5 @@
       true
     ]
   },
-  "hash": "b9572916d63fc85fda00218369a3f40e975d658fc416b799fa60ce849e3ea3b5"
+  "hash": "1827b09b91c8520d2d307d4e5f9897cf6dea514286492b5e5757a716c58a74e5"
 }

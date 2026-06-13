@@ -38,18 +38,19 @@ CREATE TABLE IdentityKeyEntry (
 CREATE INDEX idx_identity_key_entry_identity ON IdentityKeyEntry (identity_id);
 
 CREATE TABLE Scope (
-    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-    scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE
+    genesis_pos BIGINT UNSIGNED PRIMARY KEY,
+    scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,
+    FOREIGN KEY (genesis_pos) REFERENCES LogEntry (pos)
 );
 
 CREATE TABLE ScopeManifest (
     pos BIGINT UNSIGNED PRIMARY KEY,
-    scope_id BIGINT UNSIGNED NOT NULL,
+    scope_pos BIGINT UNSIGNED NOT NULL,
 
     owner BINARY(16) NOT NULL,
 
     FOREIGN KEY (pos) REFERENCES LogEntry (pos),
-    FOREIGN KEY (scope_id) REFERENCES Scope (id),
+    FOREIGN KEY (scope_pos) REFERENCES Scope (genesis_pos),
     FOREIGN KEY (owner) REFERENCES Identity (identity_id)
 );
 
@@ -71,24 +72,24 @@ CREATE TABLE ScopeLogEntry (
     pos BIGINT UNSIGNED PRIMARY KEY,
     sig TEXT NOT NULL,
 
-    scope_id BIGINT UNSIGNED NOT NULL,
+    scope_pos BIGINT UNSIGNED NOT NULL,
 
     author_identity BINARY(16) NOT NULL,
 
     kind ENUM ('publish', 'yank', 'deprecate', 'manifest_update') NOT NULL,
 
     FOREIGN KEY (pos) REFERENCES LogEntry (pos),
-    FOREIGN KEY (scope_id) REFERENCES Scope (id),
+    FOREIGN KEY (scope_pos) REFERENCES Scope (genesis_pos),
     FOREIGN KEY (author_identity) REFERENCES Identity (identity_id)
 );
 
 CREATE TABLE Package (
     genesis_pos BIGINT UNSIGNED PRIMARY KEY,
-    scope_id BIGINT UNSIGNED NOT NULL,
+    scope_pos BIGINT UNSIGNED NOT NULL,
     name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    UNIQUE (scope_id, name),
+    UNIQUE (scope_pos, name),
     FOREIGN KEY (genesis_pos) REFERENCES ScopeLogEntry (pos),
-    FOREIGN KEY (scope_id) REFERENCES Scope (id)
+    FOREIGN KEY (scope_pos) REFERENCES Scope (genesis_pos)
 );
 
 CREATE TABLE PublishScopeLogEntry (

@@ -40,7 +40,7 @@ impl Repository for MySqlBackend {
 					r#"
                     SELECT ScopeLogEntry.sig, Scope.scope, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, ScopeLogEntry.kind AS `kind: ScopeEntryKind`
                     FROM ScopeLogEntry
-                    INNER JOIN Scope ON Scope.id=ScopeLogEntry.scope_id
+                    INNER JOIN Scope ON Scope.genesis_pos=ScopeLogEntry.scope_pos
                     WHERE ScopeLogEntry.pos = ?
                     "#,
 					pos,
@@ -248,7 +248,7 @@ async fn read_scope_manifest(pool: &MySqlPool, pos: u64) -> anyhow::Result<(Scop
 		r#"
 		SELECT Scope.scope, ScopeManifest.owner AS `owner: IdentityId`, ScopeManifestMember.identity_id AS `identity_id: IdentityId`, ScopeManifestMember.package
 		FROM ScopeManifest
-		INNER JOIN Scope ON Scope.id=ScopeManifest.scope_id
+		INNER JOIN Scope ON Scope.genesis_pos=ScopeManifest.scope_pos
 		LEFT JOIN ScopeManifestMember ON ScopeManifestMember.pos=ScopeManifest.pos
 		WHERE ScopeManifest.pos = ?
 		"#,

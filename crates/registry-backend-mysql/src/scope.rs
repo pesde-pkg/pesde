@@ -24,15 +24,15 @@ impl Repository for MySqlBackend {
 	) -> Result<(), ManifestError> {
 		let conn = as_tx(tx);
 
-		let scope_id = insert_scope_envelope(conn, pos, sig, body, ScopeEntryKind::ManifestUpdate)
+		let scope_pos = insert_scope_envelope(conn, pos, sig, body, ScopeEntryKind::ManifestUpdate)
 			.await
 			.map_err(ManifestError::Internal)?;
 
 		let manifest = &body.payload.manifest;
 		match sqlx::query!(
-			"INSERT INTO ScopeManifest (pos, scope_id, owner) VALUES (?, ?, ?)",
+			"INSERT INTO ScopeManifest (pos, scope_pos, owner) VALUES (?, ?, ?)",
 			pos,
-			scope_id,
+			scope_pos,
 			&manifest.owner,
 		)
 		.execute(&mut **conn)

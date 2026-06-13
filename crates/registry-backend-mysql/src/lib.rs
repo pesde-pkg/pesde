@@ -191,9 +191,9 @@ impl Backend for MySqlBackend {
 				(
 					EXISTS (
 						SELECT 1 FROM Scope
-						INNER JOIN ScopeManifest ON ScopeManifest.scope_id=Scope.id
+						INNER JOIN ScopeManifest ON ScopeManifest.scope_pos=Scope.genesis_pos
 						LEFT JOIN ScopeManifestMember ON ScopeManifestMember.pos=ScopeManifest.pos
-						WHERE ScopeManifest.pos = (SELECT pos FROM ScopeManifest sm WHERE sm.scope_id = Scope.id ORDER BY pos DESC LIMIT 1)
+						WHERE ScopeManifest.pos = (SELECT pos FROM ScopeManifest sm WHERE sm.scope_pos = Scope.genesis_pos ORDER BY pos DESC LIMIT 1)
 						  AND Scope.scope = ? 
 						  AND (ScopeManifest.owner = ?
 						   OR (NOT ? AND ScopeManifestMember.identity_id = ? AND ScopeManifestMember.package IN ('', ?)))
@@ -434,29 +434,34 @@ async fn insert_scope_envelope<P>(
 	kind: ScopeEntryKind,
 ) -> anyhow::Result<u64> {
 	let scope = body.scope.as_str();
-	let scope_id = if let Some(row) = sqlx::query!("SELECT id FROM Scope WHERE scope = ?", scope)
-		.fetch_optional(&mut **tx)
-		.await?
-	{
-		row.id
-	} else {
-		sqlx::query!("INSERT INTO Scope (scope) VALUES (?)", scope)
-			.execute(&mut **tx)
+	let scope_pos = if let Some(row) =
+		sqlx::query!("SELECT genesis_pos FROM Scope WHERE scope = ?", scope)
+			.fetch_optional(&mut **tx)
 			.await?
-			.last_insert_id()
+	{
+		row.genesis_pos
+	} else {
+		sqlx::query!(
+			"INSERT INTO Scope (genesis_pos, scope) VALUES (?, ?)",
+			pos,
+			scope
+		)
+		.execute(&mut **tx)
+		.await?
+		.last_insert_id()
 	};
 	insert_log_entry(tx, pos, EntryKind::Scope).await?;
 
 	sqlx::query!(
-		"INSERT INTO ScopeLogEntry (pos, sig, scope_id, author_identity, kind) VALUES (?, ?, ?, ?, ?)",
+		"INSERT INTO ScopeLogEntry (pos, sig, scope_pos, author_identity, kind) VALUES (?, ?, ?, ?, ?)",
 		pos,
 		sig.to_string(),
-		scope_id,
+		scope_pos,
 		&body.author_identity,
 		kind,
 	)
 	.execute(&mut **tx)
 	.await?;
 
-	Ok(scope_id)
+	Ok(scope_pos)
 }

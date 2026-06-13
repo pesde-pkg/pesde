@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n\t\tSELECT Scope.scope, ScopeManifest.owner AS `owner: IdentityId`, ScopeManifestMember.identity_id AS `identity_id: IdentityId`, ScopeManifestMember.package\n\t\tFROM ScopeManifest\n\t\tINNER JOIN Scope ON Scope.id=ScopeManifest.scope_id\n\t\tLEFT JOIN ScopeManifestMember ON ScopeManifestMember.pos=ScopeManifest.pos\n\t\tWHERE ScopeManifest.pos = ?\n\t\t",
+  "query": "\n\t\tSELECT Scope.scope, ScopeManifest.owner AS `owner: IdentityId`, ScopeManifestMember.identity_id AS `identity_id: IdentityId`, ScopeManifestMember.package\n\t\tFROM ScopeManifest\n\t\tINNER JOIN Scope ON Scope.genesis_pos=ScopeManifest.scope_pos\n\t\tLEFT JOIN ScopeManifestMember ON ScopeManifestMember.pos=ScopeManifest.pos\n\t\tWHERE ScopeManifest.pos = ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -78,5 +78,5 @@
       true
     ]
   },
-  "hash": "fc42c74a62c73a049120095517f02c37edcde1edc1e8a55ac2cac4d2c81a24ce"
+  "hash": "3ee7cb08199bff1b57c5a5efc6ddeffd1b8b5c810a06d939bc3f0d7d468869bc"
 }

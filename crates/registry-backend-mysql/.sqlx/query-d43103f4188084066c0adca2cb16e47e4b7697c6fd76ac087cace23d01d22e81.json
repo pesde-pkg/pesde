@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO ScopeLogEntry (pos, sig, scope_pos, author_identity, kind) VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "d43103f4188084066c0adca2cb16e47e4b7697c6fd76ac087cace23d01d22e81"
+}

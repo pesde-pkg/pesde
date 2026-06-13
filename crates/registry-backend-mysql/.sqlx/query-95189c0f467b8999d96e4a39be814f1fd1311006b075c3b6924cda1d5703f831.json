@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO ScopeManifest (pos, scope_pos, owner) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "95189c0f467b8999d96e4a39be814f1fd1311006b075c3b6924cda1d5703f831"
+}

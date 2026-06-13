@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n\t\t\tSELECT Package.genesis_pos, PublishScopeLogEntry.version\n\t\t\tFROM Package\n\t\t\tINNER JOIN Scope ON Scope.id=Package.scope_id\n\t\t\tINNER JOIN PublishScopeLogEntry\tON PublishScopeLogEntry.package_pos=Package.genesis_pos\n\t\t\tLEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)\n\t\t\tWHERE Scope.scope = ? AND Package.name = ?\n\t\t\tORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC\n\t\t\tLIMIT 1\n\t\t\t",
+  "query": "\n\t\t\tSELECT Package.genesis_pos, PublishScopeLogEntry.version\n\t\t\tFROM Package\n\t\t\tINNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos\n\t\t\tINNER JOIN PublishScopeLogEntry\tON PublishScopeLogEntry.package_pos=Package.genesis_pos\n\t\t\tLEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)\n\t\t\tWHERE Scope.scope = ? AND Package.name = ?\n\t\t\tORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC\n\t\t\tLIMIT 1\n\t\t\t",
   "describe": {
     "columns": [
       {
@@ -44,5 +44,5 @@
       false
     ]
   },
-  "hash": "32f51a525a96bc69e590b0144eb9a1599e86a84e205b84ca86e090cd07038cff"
+  "hash": "308b658042786bdaf9c4d34b27aa852031e91bdcdf3e1a38f01c176c57a8c607"
 }

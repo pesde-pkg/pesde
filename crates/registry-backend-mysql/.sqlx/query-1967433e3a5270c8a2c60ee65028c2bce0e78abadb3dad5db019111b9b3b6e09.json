@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n            SELECT Package.genesis_pos, PublishScopeLogEntry.pos, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`\n            FROM PublishScopeLogEntry\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n\t\t\tINNER JOIN Scope ON Scope.id=Package.scope_id\n            INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos\n            LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)\n            WHERE Scope.scope = ? AND Package.name = ?\n            ORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC\n            LIMIT 1\n            ",
+  "query": "\n            SELECT Package.genesis_pos, PublishScopeLogEntry.pos, PublishScopeLogEntry.version, PublishScopeLogEntry.description, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`\n            FROM PublishScopeLogEntry\n            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos\n\t\t\tINNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos\n            INNER JOIN LogEntry ON LogEntry.pos=PublishScopeLogEntry.pos\n            LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)\n            WHERE Scope.scope = ? AND Package.name = ?\n            ORDER BY (YankScopeLogEntry.action IS NULL OR YankScopeLogEntry.action = 'revoke') DESC, PublishScopeLogEntry.version_ord DESC\n            LIMIT 1\n            ",
   "describe": {
     "columns": [
       {
@@ -90,5 +90,5 @@
       true
     ]
   },
-  "hash": "39dc301580df32dea79b27bb3d0625597306e9e4cbe462a3b6d4375db38e34a9"
+  "hash": "1967433e3a5270c8a2c60ee65028c2bce0e78abadb3dad5db019111b9b3b6e09"
 }

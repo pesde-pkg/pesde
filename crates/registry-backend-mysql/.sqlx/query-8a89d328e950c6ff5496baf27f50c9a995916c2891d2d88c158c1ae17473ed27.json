@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT genesis_pos FROM Package WHERE scope_id = ? AND name = ?",
+  "query": "SELECT genesis_pos FROM Scope WHERE scope = ?",
   "describe": {
     "columns": [
       {
@@ -14,18 +14,18 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.Package",
+            "table": "test-pesde-registry.Scope",
             "name": "genesis_pos"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false
     ]
   },
-  "hash": "5c3ef7b441f3f29b6e51443345da2ccfc31c97c36b332640d1ecc1e4d8c8e909"
+  "hash": "8a89d328e950c6ff5496baf27f50c9a995916c2891d2d88c158c1ae17473ed27"
 }

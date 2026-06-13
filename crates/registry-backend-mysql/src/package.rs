@@ -41,7 +41,7 @@ impl Repository for MySqlBackend {
 			INNER JOIN LogEntry ON LogEntry.pos=ScopeLogEntry.pos
             INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=ScopeLogEntry.pos
             INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
-            INNER JOIN Scope ON Scope.id=Package.scope_id
+            INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos
             WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.version = ?
             "#,
 			name.scope().as_str(),
@@ -91,7 +91,7 @@ impl Repository for MySqlBackend {
 			r#"
 			SELECT Package.genesis_pos, PublishScopeLogEntry.version
 			FROM Package
-			INNER JOIN Scope ON Scope.id=Package.scope_id
+			INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos
 			INNER JOIN PublishScopeLogEntry	ON PublishScopeLogEntry.package_pos=Package.genesis_pos
 			LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos AND YankScopeLogEntry.pos=(SELECT pos FROM YankScopeLogEntry WHERE publish_pos=PublishScopeLogEntry.pos ORDER BY pos DESC LIMIT 1)
 			WHERE Scope.scope = ? AND Package.name = ?
@@ -123,7 +123,7 @@ impl Repository for MySqlBackend {
 			r#"
 			SELECT COUNT(PublishScopeLogEntry.pos) AS `total: u64`, PublishScopeLogEntry.version
 			FROM Package
-			INNER JOIN Scope ON Scope.id=Package.scope_id
+			INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos
 			INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.package_pos=Package.genesis_pos
 			WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.pos > ?
 			ORDER BY PublishScopeLogEntry.pos DESC
@@ -167,11 +167,11 @@ impl Repository for MySqlBackend {
 		let publish = &body.payload;
 		let tx = as_tx(tx);
 
-		let scope_id = insert_scope_envelope(tx, pos, sig, body, ScopeEntryKind::Publish).await?;
+		let scope_pos = insert_scope_envelope(tx, pos, sig, body, ScopeEntryKind::Publish).await?;
 
 		let package_pos = if let Some(row) = sqlx::query!(
-			"SELECT genesis_pos FROM Package WHERE scope_id = ? AND name = ?",
-			scope_id,
+			"SELECT genesis_pos FROM Package WHERE scope_pos = ? AND name = ?",
+			scope_pos,
 			publish.name.as_str(),
 		)
 		.fetch_optional(&mut **tx)
@@ -181,9 +181,9 @@ impl Repository for MySqlBackend {
 			row.genesis_pos
 		} else {
 			sqlx::query!(
-				"INSERT INTO Package (genesis_pos, scope_id, name) VALUES (?, ?, ?)",
+				"INSERT INTO Package (genesis_pos, scope_pos, name) VALUES (?, ?, ?)",
 				pos,
-				scope_id,
+				scope_pos,
 				publish.name.as_str(),
 			)
 			.execute(&mut **tx)
@@ -291,7 +291,7 @@ impl Repository for MySqlBackend {
 			FROM PublishScopeLogEntry
 			LEFT JOIN YankScopeLogEntry ON YankScopeLogEntry.publish_pos=PublishScopeLogEntry.pos
             INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
-            INNER JOIN Scope ON Scope.id=Package.scope_id
+            INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos
             WHERE Scope.scope = ? AND Package.name = ? AND PublishScopeLogEntry.version = ?
 			ORDER BY YankScopeLogEntry.pos DESC
 			LIMIT 1
@@ -346,7 +346,7 @@ impl Repository for MySqlBackend {
 			r#"
             SELECT Package.genesis_pos, DeprecateScopeLogEntry.reason
 			FROM Package
-            INNER JOIN Scope ON Scope.id=Package.scope_id
+            INNER JOIN Scope ON Scope.genesis_pos=Package.scope_pos
 			LEFT JOIN DeprecateScopeLogEntry ON DeprecateScopeLogEntry.package_pos=Package.genesis_pos
             WHERE Scope.scope = ? AND Package.name = ?
 			ORDER BY DeprecateScopeLogEntry.pos DESC
