@@ -1,3 +1,5 @@
+use std::num::NonZero;
+
 use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
@@ -15,8 +17,9 @@ use crate::shared::db::Backend;
 
 #[derive(Debug, Deserialize)]
 struct VersionsQuery {
-	after: Option<u64>,
-	limit: Option<u8>,
+	#[serde(default)]
+	after: u64,
+	limit: Option<NonZero<u8>>,
 }
 
 #[get("/package/{scope}/{name}/versions")]
@@ -28,10 +31,12 @@ pub(super) async fn http_v2(
 ) -> Result<impl Responder, Error> {
 	let (scope, name) = path.into_inner();
 	let package_name = PackageName::new(scope, name);
-	let after = query.after.unwrap_or(0);
-	let limit = query.limit.unwrap_or(50).clamp(1, 200);
+	let limit = query
+		.limit
+		.unwrap_or(NonZero::new(50).unwrap())
+		.min(NonZero::new(20).unwrap());
 
-	let response = handler(app_state.db.as_ref(), &package_name, after, limit).await?;
+	let response = handler(app_state.db.as_ref(), &package_name, query.after, limit).await?;
 	if response.total == 0 {
 		return Ok(HttpResponse::NotFound().finish());
 	}
@@ -43,7 +48,7 @@ async fn handler(
 	db: &dyn Backend,
 	name: &PackageName,
 	after: u64,
-	limit: u8,
+	limit: NonZero<u8>,
 ) -> anyhow::Result<PackageVersionsResponse> {
 	db.package_versions(name, after, limit).await
 }
