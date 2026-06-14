@@ -17,7 +17,7 @@ pub(super) async fn http_v2(
 	body: web::Json<IdentityRotationEntry>,
 ) -> Result<impl Responder, Error> {
 	handler(app_state.db.as_ref(), body.into_inner()).await?;
-	Ok(HttpResponse::Ok().finish())
+	Ok(HttpResponse::Created().finish())
 }
 
 async fn handler(db: &dyn Backend, entry: IdentityRotationEntry) -> Result<(), Error> {

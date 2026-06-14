@@ -92,7 +92,7 @@ pub(super) async fn http_v2(
 		tracing::error!("failed to index published package for search: {e:#?}");
 	}
 
-	Ok(HttpResponse::Ok().finish())
+	Ok(HttpResponse::Created().finish())
 }
 
 async fn json_field<T: DeserializeOwned>(
