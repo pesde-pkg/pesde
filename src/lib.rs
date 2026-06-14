@@ -170,7 +170,7 @@ impl Project {
 		Project {
 			shared: ProjectShared {
 				dir,
-				cas_dir: cas_dir.into().join("v1"),
+				cas_dir: cas_dir.into(),
 				data_dir: data_dir.into(),
 				auth_config,
 				manifests: Default::default(),

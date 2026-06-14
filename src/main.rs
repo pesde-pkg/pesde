@@ -194,7 +194,8 @@ async fn run() -> anyhow::Result<()> {
 	let cas_dir = get_linkable_dir(&project_dir)
 		.await
 		.join(PESDE_DIR)
-		.join("cas");
+		.join("cas")
+		.join("v1");
 
 	tracing::debug!("using cas dir in {}", cas_dir.display());
 
