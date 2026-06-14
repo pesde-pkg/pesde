@@ -1,12 +1,10 @@
-use std::future::Ready;
-use std::future::ready;
-
-use actix_web::FromRequest;
-use actix_web::HttpRequest;
 use actix_web::HttpResponse;
 use actix_web::ResponseError;
-use actix_web::dev::Payload;
+use actix_web::body::MessageBody;
+use actix_web::dev::ServiceRequest;
+use actix_web::dev::ServiceResponse;
 use actix_web::http::header::AUTHORIZATION;
+use actix_web::middleware::Next;
 use actix_web::web;
 use constant_time_eq::constant_time_eq_n;
 use sha2::Digest as _;
@@ -34,50 +32,28 @@ pub fn hash_token(token: &str) -> TokenHash {
 	hasher.finalize().into()
 }
 
-fn authenticate(req: &HttpRequest, required: bool) -> Result<(), Unauthenticated> {
+pub async fn authenticate(
+	req: ServiceRequest,
+	next: Next<impl MessageBody>,
+) -> Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
 	let state = req.app_data::<web::Data<AppState>>().unwrap();
 
-	let Some(expected) = &state.access_token_hash else {
-		return Ok(());
+	let required = if req.method().is_safe() {
+		state.read_requires_auth
+	} else {
+		true
 	};
 
-	if !required {
-		return Ok(());
-	}
-
-	match req
-		.headers()
-		.get(AUTHORIZATION)
-		.and_then(|t| t.to_str().ok())
+	if required
+		&& let Some(expected) = &state.access_token_hash
+		&& req
+			.headers()
+			.get(AUTHORIZATION)
+			.and_then(|t| t.to_str().ok())
+			.is_none_or(|token| !constant_time_eq_n(&hash_token(token), expected))
 	{
-		Some(token) if constant_time_eq_n(&hash_token(token), expected) => Ok(()),
-		_ => Err(Unauthenticated),
+		return Err(Unauthenticated.into());
 	}
-}
 
-pub struct ReadGuard;
-
-impl FromRequest for ReadGuard {
-	type Error = Unauthenticated;
-	type Future = Ready<Result<Self, Unauthenticated>>;
-
-	fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
-		let required = req
-			.app_data::<web::Data<AppState>>()
-			.unwrap()
-			.read_requires_auth;
-
-		ready(authenticate(req, required).map(|_| ReadGuard))
-	}
-}
-
-pub struct WriteGuard;
-
-impl FromRequest for WriteGuard {
-	type Error = Unauthenticated;
-	type Future = Ready<Result<Self, Unauthenticated>>;
-
-	fn from_request(req: &HttpRequest, _: &mut Payload) -> Self::Future {
-		ready(authenticate(req, true).map(|_| WriteGuard))
-	}
+	next.call(req).await
 }

@@ -4,6 +4,7 @@ use actix_web::HttpServer;
 use actix_web::middleware::Compress;
 use actix_web::middleware::NormalizePath;
 use actix_web::middleware::TrailingSlash;
+use actix_web::middleware::from_fn;
 use actix_web::web;
 use pesde_registry_core::db::Backend;
 use rusty_s3::Bucket;
@@ -117,6 +118,7 @@ async fn main() -> std::io::Result<()> {
 			.wrap(Cors::permissive())
 			.wrap(TracingLogger::default())
 			.wrap(Compress::default())
+			.wrap(from_fn(crate::shared::auth::authenticate))
 			.route(
 				"/",
 				web::get()

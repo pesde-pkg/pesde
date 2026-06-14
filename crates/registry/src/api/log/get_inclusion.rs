@@ -10,7 +10,6 @@ use serde::Deserialize;
 
 use crate::AppState;
 use crate::api::log::Error;
-use crate::shared::auth::ReadGuard;
 
 #[derive(Debug, Deserialize)]
 struct InclusionQuery {
@@ -19,7 +18,6 @@ struct InclusionQuery {
 
 #[get("/log/inclusion/{pos}")]
 pub(super) async fn http_v2(
-	_access_guard: ReadGuard,
 	app_state: web::Data<AppState>,
 	path: web::Path<u64>,
 	query: web::Query<InclusionQuery>,

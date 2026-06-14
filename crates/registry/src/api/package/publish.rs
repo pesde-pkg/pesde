@@ -28,7 +28,6 @@ use tokio::io::AsyncReadExt as _;
 
 use crate::AppState;
 use crate::api::package::Error;
-use crate::shared::auth::WriteGuard;
 use crate::shared::blob::BlobStorage;
 use crate::shared::db::append_leaf;
 
@@ -38,7 +37,6 @@ const MAX_README_SIZE: u64 = 256 * 1024;
 
 #[post("/package/publish")]
 pub(super) async fn http_v2(
-	_access_guard: WriteGuard,
 	app_state: web::Data<AppState>,
 	mut payload: Multipart,
 ) -> Result<impl Responder, Error> {

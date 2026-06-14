@@ -9,11 +9,9 @@ use pesde_registry_core::db::Backend;
 
 use crate::AppState;
 use crate::api::identity::error::Error;
-use crate::shared::auth::ReadGuard;
 
 #[get("/identity/{identity_id}")]
 pub(super) async fn http_v2(
-	_access_guard: ReadGuard,
 	app_state: web::Data<AppState>,
 	identity_id: web::Path<IdentityId>,
 ) -> Result<impl Responder, Error> {

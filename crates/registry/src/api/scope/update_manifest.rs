@@ -8,12 +8,10 @@ use pesde_registry_core::db::ScopeControl;
 
 use crate::AppState;
 use crate::api::scope::error::Error;
-use crate::shared::auth::WriteGuard;
 use crate::shared::db::append_leaf;
 
 #[post("/scope/manifest")]
 pub(super) async fn http_v2(
-	_access_guard: WriteGuard,
 	app_state: web::Data<AppState>,
 	body: web::Json<ManifestUpdateScopeEntry>,
 ) -> Result<impl Responder, Error> {

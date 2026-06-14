@@ -10,11 +10,9 @@ use pesde_registry_core::db::Backend;
 
 use crate::AppState;
 use crate::api::package::Error;
-use crate::shared::auth::ReadGuard;
 
 #[get("/package/{scope}/{name}")]
 pub(super) async fn http_v2(
-	_access_guard: ReadGuard,
 	app_state: web::Data<AppState>,
 	path: web::Path<(Scope, Name)>,
 ) -> Result<impl Responder, Error> {

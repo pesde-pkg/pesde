@@ -11,11 +11,9 @@ use semver::Version;
 
 use crate::AppState;
 use crate::api::package::Error;
-use crate::shared::auth::ReadGuard;
 
 #[get("/package/{scope}/{name}/{version}")]
 pub(super) async fn http_v2(
-	_access_guard: ReadGuard,
 	app_state: web::Data<AppState>,
 	path: web::Path<(Scope, Name, Version)>,
 ) -> Result<impl Responder, Error> {

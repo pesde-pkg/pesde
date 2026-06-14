@@ -9,12 +9,10 @@ use pesde_registry_core::db::ScopeControl;
 
 use crate::AppState;
 use crate::api::package::Error;
-use crate::shared::auth::WriteGuard;
 use crate::shared::db::append_leaf;
 
 #[post("/package/yank")]
 pub(super) async fn http_v2(
-	_access_guard: WriteGuard,
 	app_state: web::Data<AppState>,
 	body: web::Json<YankScopeEntry>,
 ) -> Result<impl Responder, Error> {

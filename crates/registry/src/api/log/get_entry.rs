@@ -8,11 +8,9 @@ use pesde_registry_core::db::Backend;
 
 use crate::AppState;
 use crate::api::log::Error;
-use crate::shared::auth::ReadGuard;
 
 #[get("/log/entry/{pos}")]
 pub(super) async fn http_v2(
-	_access_guard: ReadGuard,
 	app_state: web::Data<AppState>,
 	path: web::Path<u64>,
 ) -> Result<impl Responder, Error> {

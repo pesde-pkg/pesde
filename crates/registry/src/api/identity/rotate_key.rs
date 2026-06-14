@@ -7,12 +7,10 @@ use pesde_registry_core::db::Backend;
 
 use crate::AppState;
 use crate::api::identity::error::Error;
-use crate::shared::auth::WriteGuard;
 use crate::shared::db::append_leaf;
 
 #[post("/identity/rotate")]
 pub(super) async fn http_v2(
-	_access_guard: WriteGuard,
 	app_state: web::Data<AppState>,
 	body: web::Json<IdentityRotationEntry>,
 ) -> Result<impl Responder, Error> {

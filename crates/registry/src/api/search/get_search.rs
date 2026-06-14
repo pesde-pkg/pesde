@@ -6,7 +6,6 @@ use serde::Deserialize;
 
 use crate::AppState;
 use crate::api::search::error::Error;
-use crate::shared::auth::ReadGuard;
 
 const DEFAULT_LIMIT: usize = 20;
 const MAX_LIMIT: usize = 100;
@@ -23,7 +22,6 @@ struct SearchQuery {
 
 #[get("/search")]
 pub(super) async fn http_v2(
-	_access_guard: ReadGuard,
 	app_state: web::Data<AppState>,
 	query: web::Query<SearchQuery>,
 ) -> Result<impl Responder, Error> {

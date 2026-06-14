@@ -9,13 +9,11 @@ use semver::Version;
 
 use crate::AppState;
 use crate::api::package::Error;
-use crate::shared::auth::ReadGuard;
 use crate::shared::blob::BlobResponse;
 use crate::shared::blob::BlobStorage;
 
 #[get("/package/{scope}/{name}/{version}/archive")]
 pub(super) async fn http_v2(
-	_access_guard: ReadGuard,
 	app_state: web::Data<AppState>,
 	path: web::Path<(Scope, Name, Version)>,
 ) -> Result<impl Responder, Error> {
