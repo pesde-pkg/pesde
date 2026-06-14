@@ -49,7 +49,6 @@ async fn handler(
 	let proof = mmr.gen_inclusion_proof(from).await?;
 
 	Ok(InclusionProofResponse {
-		index: proof.index(),
 		proof: proof.proof().to_vec(),
 	})
 }

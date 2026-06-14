@@ -1,24 +1,37 @@
 //! pesde package source backend abstraction
 use crate::Project;
 use crate::Url;
+use crate::hash::Hash;
 use crate::names::PackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::pesde::PesdeSourceState;
-use crate::source::pesde::registry::LogHeadResponse;
+use crate::source::pesde::registry::*;
 use async_stream::try_stream;
+use fs_err::tokio as fs;
 use futures::Stream;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
+use merkleberg::Merge as _;
+use merkleberg::mmriver::InclusionProof;
 use relative_path::RelativePathBuf;
+use reqwest::RequestBuilder;
 use reqwest::header::AUTHORIZATION;
 use semver::Version;
+use serde::Deserialize;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::str::FromStr;
 use std::sync::Arc;
+use tempfile::Builder;
+use tokio::io::AsyncBufReadExt as _;
 use tokio::io::AsyncReadExt as _;
+use tokio::io::AsyncWriteExt as _;
+use tokio::io::BufReader;
+use tokio::task::spawn_blocking;
 
 /// A source of pesde packages
 pub trait PesdePackageSourceBackend: Debug + Display + Send + Sync {
@@ -83,6 +96,63 @@ impl ApiPesdePackageSourceBackend {
 	pub fn api_url(&self) -> &Url {
 		&self.api_url
 	}
+
+	fn api_url_str(&self) -> &str {
+		let str = self.api_url().as_url().as_str();
+		str.strip_suffix('/').unwrap_or(str)
+	}
+
+	fn authed_request(&self, project: &Project, request: RequestBuilder) -> RequestBuilder {
+		if let Some(token) = project.auth_config().tokens().get(&self.api_url) {
+			tracing::debug!("using token for {}", self.api_url);
+			return request.header(AUTHORIZATION, token);
+		}
+
+		request
+	}
+
+	async fn included_entry<
+		P: Serialize + DeserializeOwned,
+		E: Into<Entry<P>> + DeserializeOwned,
+	>(
+		&self,
+		project: &Project,
+		state: &PesdeSourceState,
+		url: String,
+	) -> Result<Entry<P>, errors::ApiIncludedEntryError> {
+		let entry = self
+			.authed_request(project, project.reqwest().get(url))
+			.send()
+			.await?
+			.error_for_status()?
+			.json::<E>()
+			.await?
+			.into();
+
+		let inclusion_proof = self
+			.authed_request(
+				project,
+				project.reqwest().get(format!(
+					"{}/v2/log/inclusion/{}",
+					self.api_url_str(),
+					entry.pos
+				)),
+			)
+			.send()
+			.await?
+			.error_for_status()?
+			.json::<InclusionProofResponse>()
+			.await?;
+
+		let inclusion_proof =
+			InclusionProof::<CurrentMmrMerge>::new(entry.pos, inclusion_proof.proof);
+		let nodehash = CurrentMmrMerge::leaf_hash(&canonical_bytes(&entry.payload)).unwrap();
+		if !inclusion_proof.verify(nodehash, &state.accumulator.peaks)? {
+			return Err(errors::ApiIncludedEntryErrorKind::InvalidInclusionProof.into());
+		}
+
+		Ok(entry)
+	}
 }
 
 impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
@@ -94,23 +164,22 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 		project: &Project,
 		old_state: Option<&PesdeSourceState>,
 	) -> Result<Option<LogHeadResponse>, Self::RefreshError> {
-		let mut url = format!(
-			"{}/v2/log/head",
-			self.api_url().as_url().as_str().trim_end_matches('/')
-		)
-		.parse::<url::Url>()?;
-		if let Some(old_state) = old_state {
-			url.query_pairs_mut()
-				.append_pair("size_from", &old_state.mmr_size.to_string());
-		}
+		let response = self
+			.authed_request(
+				project,
+				project.reqwest().get({
+					let query = if let Some(old_state) = old_state {
+						format_args!("?size_from={}", old_state.mmr_size)
+					} else {
+						format_args!("")
+					};
 
-		let mut request = project.reqwest().get(url);
-		if let Some(token) = project.auth_config().tokens().get(&self.api_url) {
-			tracing::debug!("using token for {}", self.api_url);
-			request = request.header(AUTHORIZATION, token);
-		}
+					format!("{}/v2/log/head{query}", self.api_url_str())
+				}),
+			)
+			.send()
+			.await?;
 
-		let response = request.send().await?;
 		match response.status() {
 			reqwest::StatusCode::OK => Ok(Some(response.json().await?)),
 			// no packages have yet been published
@@ -125,7 +194,7 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 	async fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
-		_state: &PesdeSourceState,
+		state: &PesdeSourceState,
 		package: &PackageName,
 		version: &Version,
 		reporter: Arc<R>,
@@ -133,29 +202,88 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 		impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send,
 		Self::DownloadError,
 	> {
-		let url = format!(
-			"{}/v2/package/{}/{}/{}/archive",
-			self.api_url().as_url().as_str().trim_end_matches('/'),
-			urlencoding::encode(package.scope().as_str()),
-			urlencoding::encode(package.name().as_str()),
-			urlencoding::encode(&version.to_string()),
-		)
-		.parse::<url::Url>()?;
+		let url_scope = urlencoding::encode(package.scope().as_str());
+		let url_name = urlencoding::encode(package.name().as_str());
+		let url_version = version.to_string();
+		let url_version = urlencoding::encode(&url_version);
 
-		let mut request = project.reqwest().get(url);
-		if let Some(token) = project.auth_config().tokens().get(&self.api_url) {
-			tracing::debug!("using token for {}", self.api_url);
-			request = request.header(AUTHORIZATION, token);
+		#[derive(Debug, Deserialize)]
+		#[serde(transparent)]
+		struct PublishedEntry(PackageVersionResponse);
+
+		impl From<PublishedEntry> for Entry<PublishScopeEntry> {
+			fn from(value: PublishedEntry) -> Self {
+				value.0.publish
+			}
 		}
-		let response = request.send().await?.error_for_status()?;
 
-		// TODO: validate archive hash, package entry
+		let package = self
+			.included_entry::<PublishScopeEntry, PublishedEntry>(
+				project,
+				state,
+				format!(
+					"{}/v2/package/{url_scope}/{url_name}/{url_version}",
+					self.api_url_str()
+				),
+			)
+			.await?;
+
+		let response = self
+			.authed_request(
+				project,
+				project.reqwest().get(format!(
+					"{}/v2/package/{url_scope}/{url_name}/{url_version}/archive",
+					self.api_url_str()
+				)),
+			)
+			.send()
+			.await?
+			.error_for_status()?;
 
 		let stream = try_stream!({
-			let bytes = crate::reporters::response_to_async_buf_read(response, reporter.clone());
-			tokio::pin!(bytes);
+			let archive_bytes =
+				crate::reporters::response_to_async_buf_read(response, reporter.clone());
+			tokio::pin!(archive_bytes);
 
-			let decoder = async_compression::tokio::bufread::ZstdDecoder::new(bytes);
+			// TODO: verify
+			let package = package.payload.into_unsafe_body();
+			let payload_hash = package.payload.archive_hash;
+			let mut hasher = payload_hash.algorithm().hasher();
+
+			let temp_path = spawn_blocking(move || Builder::new().make(|_| Ok(())))
+				.await
+				.unwrap()
+				.map_err(errors::ApiDownloadErrorKind::OpenArchive)?
+				.into_temp_path();
+			let mut archive_file = fs::File::create(temp_path.to_path_buf())
+				.await
+				.map_err(errors::ApiDownloadErrorKind::OpenArchive)?;
+
+			loop {
+				let bytes = archive_bytes
+					.fill_buf()
+					.await
+					.map_err(errors::ApiDownloadErrorKind::ReadBytes)?;
+				if bytes.is_empty() {
+					break;
+				}
+				let bytes_amt = bytes.len();
+
+				hasher.update(bytes);
+				archive_file
+					.write_all(bytes)
+					.await
+					.map_err(errors::ApiDownloadErrorKind::WriteBytes)?;
+
+				archive_bytes.consume(bytes_amt);
+			}
+
+			if Hash::new(payload_hash.algorithm(), hasher.finalize()).unwrap() != payload_hash {
+				Err(errors::ApiDownloadErrorKind::ArchiveIntegrityVerificationFailed)?;
+			}
+
+			let decoder =
+				async_compression::tokio::bufread::ZstdDecoder::new(BufReader::new(archive_file));
 			let mut archive = tokio_tar::Archive::new(decoder);
 			let mut entries_stream = archive
 				.entries()
@@ -293,13 +421,27 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = ApiRefreshError))]
 	#[non_exhaustive]
 	pub enum ApiRefreshErrorKind {
-		/// The built API url was invalid
-		#[error("invalid API URL")]
-		InvalidApiUrl(#[from] url::ParseError),
+		/// An error occurred while interacting with reqwest
+		#[error("error interacting with reqwest")]
+		ReqwestError(#[from] reqwest::Error),
+	}
 
-		/// An error occurred while sending the request
-		#[error("error sending request to API")]
-		RequestError(#[from] reqwest::Error),
+	/// Errors that can occur when attempting to get and validate an entry in the API pesde package source backend
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ApiIncludedEntryError))]
+	#[non_exhaustive]
+	pub enum ApiIncludedEntryErrorKind {
+		/// An error occurred while interacting with reqwest
+		#[error("error interacting with reqwest")]
+		ReqwestError(#[from] reqwest::Error),
+
+		/// An error occurred while interacting with Merkleberg
+		#[error("error interacting with merkleberg")]
+		MerklebergError(#[from] merkleberg::Error),
+
+		/// The inclusion proof verification has failed
+		#[error("inclusion proof couldn't verify entry")]
+		InvalidInclusionProof,
 	}
 
 	/// Errors that can occur when downloading from an API pesde package source backend
@@ -307,13 +449,25 @@ pub mod errors {
 	#[thiserror_ext(newtype(name = ApiDownloadError))]
 	#[non_exhaustive]
 	pub enum ApiDownloadErrorKind {
-		/// The built API url was invalid
-		#[error("invalid API URL")]
-		InvalidApiUrl(#[from] url::ParseError),
-
 		/// An error occurred while sending the request
 		#[error("error sending request to API")]
 		RequestError(#[from] reqwest::Error),
+
+		/// An error occurred while attempting to fetch an included entry
+		#[error("error fetching included entry")]
+		IncludedEntry(#[from] ApiIncludedEntryError),
+
+		/// An error occurred while reading the archive bytes
+		#[error("error reading archive bytes")]
+		ReadBytes(#[source] std::io::Error),
+
+		/// An error occurred while writing the archive bytes
+		#[error("error writing archive bytes")]
+		WriteBytes(#[source] std::io::Error),
+
+		/// The archive failed integrity verification
+		#[error("error validating archive integrity")]
+		ArchiveIntegrityVerificationFailed,
 
 		/// An error occurred opening the archive
 		#[error("error opening archive")]

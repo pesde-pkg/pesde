@@ -433,8 +433,6 @@ pub struct LogHeadResponse {
 /// The response of the log inclusion endpoint
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InclusionProofResponse {
-	/// The index of the entry the proof is for
-	pub index: u64,
 	/// The proof path from the entry to the peaks
 	pub proof: Vec<<CurrentMmrMerge as Merge>::Item>,
 }
