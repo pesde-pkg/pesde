@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use digest::DynDigest;
-use sha2::Sha512;
+use sha2::Sha384;
 
 use crate::ser_display_deser_fromstr;
 
@@ -55,9 +55,9 @@ impl FromStr for RawHash {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum HashAlgorithm {
-	/// The SHA-256 hash algorithm
+	/// The SHA-384 hash algorithm
 	#[default]
-	Sha512,
+	Sha384,
 }
 ser_display_deser_fromstr!(HashAlgorithm);
 
@@ -66,7 +66,7 @@ impl HashAlgorithm {
 	#[must_use]
 	pub fn hasher(self) -> Box<dyn DynDigest + Send> {
 		match self {
-			HashAlgorithm::Sha512 => Box::new(Sha512::default()),
+			HashAlgorithm::Sha384 => Box::new(Sha384::default()),
 		}
 	}
 
@@ -80,7 +80,7 @@ impl HashAlgorithm {
 impl Display for HashAlgorithm {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			HashAlgorithm::Sha512 => write!(f, "sha512"),
+			HashAlgorithm::Sha384 => write!(f, "sha384"),
 		}
 	}
 }
@@ -90,7 +90,7 @@ impl FromStr for HashAlgorithm {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
-			"sha512" => Ok(HashAlgorithm::Sha512),
+			"sha384" => Ok(HashAlgorithm::Sha384),
 			_ => Err(
 				errors::HashAlgorithmFromStrErrorKind::UnknownHashAlgorithm(s.to_string()).into(),
 			),

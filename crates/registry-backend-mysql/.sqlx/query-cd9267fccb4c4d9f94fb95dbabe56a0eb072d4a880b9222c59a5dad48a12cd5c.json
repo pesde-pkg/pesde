@@ -1,21 +1,21 @@
 {
   "db_name": "MySQL",
-  "query": "SELECT sha512 AS `sha512: RawHash` FROM TreeNode WHERE pos = ?",
+  "query": "SELECT sha384 AS `sha384: RawHash` FROM TreeNode WHERE pos = ?",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "sha512: RawHash",
+        "name": "sha384: RawHash",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
           "collation": 63,
-          "max_size": 64
+          "max_size": 48
         },
         "origin": {
           "Table": {
             "table": "test-pesde-registry.TreeNode",
-            "name": "sha512"
+            "name": "sha384"
           }
         }
       }
@@ -27,5 +27,5 @@
       false
     ]
   },
-  "hash": "53e1048f5a01db118f6827e5f184fe6b82945f95fd37789a844f16a119e34add"
+  "hash": "cd9267fccb4c4d9f94fb95dbabe56a0eb072d4a880b9222c59a5dad48a12cd5c"
 }
