@@ -189,8 +189,10 @@ pub struct PublishBody {
 	#[serde(default, skip_serializing_if = "<[_]>::is_empty")]
 	pub authors: BoundedVec<BoundedString<MAX_AUTHOR_LEN>, MAX_AUTHORS>,
 	/// The repository of the package
+	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub repository: Option<Bounded<Url, MAX_URL_LEN>>,
 	/// The dependencies of the package
+	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub dependencies:
 		BoundedBTreeMap<Alias, (RegistryDependencySpecifier, DependencyType), MAX_DEPENDENCIES>,
 }
