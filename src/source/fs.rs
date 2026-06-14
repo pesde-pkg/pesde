@@ -16,7 +16,8 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
 use tempfile::Builder;
-use tokio::io::AsyncReadExt as _;
+use tokio::io::AsyncBufRead;
+use tokio::io::AsyncBufReadExt as _;
 use tokio::io::AsyncWriteExt as _;
 use tokio::task::JoinSet;
 use tokio::task::spawn_blocking;
@@ -80,7 +81,7 @@ fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
 		.join(rest)
 }
 
-pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
+pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
 	cas_dir: impl AsRef<Path>,
 	mut contents: R,
 ) -> std::io::Result<(PathBuf, Hash)> {
@@ -91,7 +92,6 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
 
 	let hash_algorithm = HashAlgorithm::default();
 	let mut hasher = hash_algorithm.hasher();
-	let mut buf = [0; 8 * 1024];
 
 	let temp_path = spawn_blocking(move || Builder::new().make_in(&tmp_dir, |_| Ok(())))
 		.await
@@ -100,14 +100,16 @@ pub(crate) async fn store_in_cas<R: tokio::io::AsyncRead + Unpin>(
 	let mut file_writer = fs::File::create(temp_path.to_path_buf()).await?;
 
 	loop {
-		let bytes_read = contents.read(&mut buf).await?;
-		if bytes_read == 0 {
+		let bytes = contents.fill_buf().await?;
+		if bytes.is_empty() {
 			break;
 		}
+		let bytes_amt = bytes.len();
 
-		let bytes = &buf[..bytes_read];
 		hasher.update(bytes);
 		file_writer.write_all(bytes).await?;
+
+		contents.consume(bytes_amt);
 	}
 
 	let hash = Hash::new(hash_algorithm, hasher.finalize());
