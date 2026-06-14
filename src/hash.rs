@@ -141,7 +141,7 @@ impl Hash {
 
 impl Display for Hash {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}-{}", self.algorithm, self.hash)
+		write!(f, "{}:{}", self.algorithm, self.hash)
 	}
 }
 
@@ -150,7 +150,7 @@ impl FromStr for Hash {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (algorithm, hash) = s
-			.split_once('-')
+			.split_once(':')
 			.ok_or(errors::HashFromStrErrorKind::InvalidHashFormat)?;
 
 		// prevent mismatches between serialized and deserialized hashes due to case differences in the hash value

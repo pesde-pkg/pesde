@@ -61,7 +61,7 @@ impl Display for PublicKey {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(
 			f,
-			"{} {}",
+			"{}:{}",
 			self.kind,
 			base64::engine::general_purpose::STANDARD_NO_PAD.encode(&self.data)
 		)
@@ -73,7 +73,7 @@ impl FromStr for PublicKey {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (kind, key) = s
-			.split_once(' ')
+			.split_once(':')
 			.ok_or(errors::PublicKeyParseErrorKind::InvalidFormat)?;
 
 		let kind: KeyKind = kind.parse()?;
@@ -135,7 +135,7 @@ impl SignatureKind {
 impl Display for SignatureKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			SignatureKind::SshEd25519Sha512 => write!(f, "ssh-ed25519-sha512"),
+			SignatureKind::SshEd25519Sha512 => write!(f, "ssh_ed25519_sha512"),
 		}
 	}
 }
@@ -145,7 +145,7 @@ impl FromStr for SignatureKind {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
-			"ssh-ed25519-sha512" => Ok(Self::SshEd25519Sha512),
+			"ssh_ed25519_sha512" => Ok(Self::SshEd25519Sha512),
 			_ => {
 				Err(errors::SignatureKindParseErrorKind::UnknownSignatureKind(s.to_string()).into())
 			}
@@ -165,11 +165,8 @@ impl Display for Signature {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(
 			f,
-			"{} {}",
+			"{}:{}",
 			self.kind,
-			// TODO: decide on an engine. STANDARD is the most common since it is how most SSH signatures are represented, but it includes padding which is unnecessary
-			// STANDARD_NO_PAD is the same without the padding, but it is less common and may be less recognizable to users
-			// URL_SAFE variants are also available, but they're the least recognizable
 			base64::engine::general_purpose::STANDARD_NO_PAD.encode(&self.data)
 		)
 	}
@@ -180,7 +177,7 @@ impl FromStr for Signature {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (kind, signature) = s
-			.split_once(' ')
+			.split_once(':')
 			.ok_or(errors::SignatureParseErrorKind::InvalidFormat)?;
 
 		let kind: SignatureKind = kind.parse()?;
