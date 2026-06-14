@@ -417,7 +417,7 @@ impl LegacyPesdePackageSourceBackend for GitLegacyPesdePackageSourceBackend {
 			tokio::pin!(bytes);
 
 			let decoder = async_compression::tokio::bufread::GzipDecoder::new(bytes);
-			let archive = async_tar::Archive::new(decoder);
+			let mut archive = tokio_tar::Archive::new(decoder);
 			let mut entries_stream = archive
 				.entries()
 				.map_err(errors::GitDownloadErrorKind::OpenArchive)?;

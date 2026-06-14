@@ -25,7 +25,7 @@ tracing-subscriber = { workspace = true }
 merkleberg = { workspace = true }
 reqwest = { workspace = true }
 toml = { workspace = true }
-async-tar = { workspace = true }
+astral-tokio-tar = { workspace = true }
 async-compression = { workspace = true }
 tempfile = { workspace = true }
 sha2 = { workspace = true }

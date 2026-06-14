@@ -360,6 +360,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "astral-tokio-tar"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb50a7aae84a03bf55b067832bc376f4961b790c97e64d3eacee97d389b90277"
+dependencies = [
+ "filetime",
+ "futures-core",
+ "libc",
+ "portable-atomic",
+ "rustc-hash",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -492,21 +507,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "async-tar"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e9933aa2da420042c67e2ea83eec765919347d9742592744dc97cc42ef20c5d"
-dependencies = [
- "filetime",
- "futures-core",
- "libc",
- "redox_syscall 0.7.3",
- "tokio",
- "tokio-stream",
- "xattr",
 ]
 
 [[package]]
@@ -4089,9 +4089,9 @@ name = "pesde"
 version = "0.7.3"
 dependencies = [
  "anyhow",
+ "astral-tokio-tar",
  "async-compression",
  "async-stream",
- "async-tar",
  "async-trait",
  "async_zip",
  "base64",
@@ -4151,8 +4151,8 @@ dependencies = [
  "actix-multipart",
  "actix-web",
  "anyhow",
+ "astral-tokio-tar",
  "async-compression",
- "async-tar",
  "constant_time_eq",
  "dotenvy",
  "fs-err",
@@ -7020,16 +7020,6 @@ name = "writeable"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9edde0db4769d2dc68579893f2306b26c6ecfbe0ef499b013d731b7b9247e0b9"
-
-[[package]]
-name = "xattr"
-version = "1.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
-dependencies = [
- "libc",
- "rustix",
-]
 
 [[package]]
 name = "xdg-home"

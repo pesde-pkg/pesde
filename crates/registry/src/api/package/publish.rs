@@ -148,7 +148,7 @@ async fn handler(
 		.context("failed to spawn tempdir creation")?
 		.context("failed to create tempdir")?;
 
-	async_tar::Archive::new(async_compression::tokio::bufread::ZstdDecoder::new(
+	tokio_tar::Archive::new(async_compression::tokio::bufread::ZstdDecoder::new(
 		&*archive.clone(),
 	))
 	.unpack(tempdir.path())

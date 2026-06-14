@@ -156,7 +156,7 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 			tokio::pin!(bytes);
 
 			let decoder = async_compression::tokio::bufread::ZstdDecoder::new(bytes);
-			let archive = async_tar::Archive::new(decoder);
+			let mut archive = tokio_tar::Archive::new(decoder);
 			let mut entries_stream = archive
 				.entries()
 				.map_err(errors::ApiDownloadErrorKind::OpenArchive)?;
