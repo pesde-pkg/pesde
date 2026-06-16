@@ -29,6 +29,7 @@ use std::sync::Arc;
 use tempfile::Builder;
 use tokio::io::AsyncBufReadExt as _;
 use tokio::io::AsyncReadExt as _;
+use tokio::io::AsyncSeekExt as _;
 use tokio::io::AsyncWriteExt as _;
 use tokio::io::BufReader;
 use tokio::task::spawn_blocking;
@@ -257,7 +258,7 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 				.into_temp_path();
 			let mut archive_file = fs::File::create(temp_path.to_path_buf())
 				.await
-				.map_err(errors::ApiDownloadErrorKind::OpenArchive)?;
+				.map_err(errors::ApiDownloadErrorKind::WriteBytes)?;
 
 			loop {
 				let bytes = archive_bytes
@@ -282,6 +283,10 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 				Err(errors::ApiDownloadErrorKind::ArchiveIntegrityVerificationFailed)?;
 			}
 
+			archive_file
+				.rewind()
+				.await
+				.map_err(errors::ApiDownloadErrorKind::WriteBytes)?;
 			let decoder =
 				async_compression::tokio::bufread::ZstdDecoder::new(BufReader::new(archive_file));
 			let mut archive = tokio_tar::Archive::new(decoder);
