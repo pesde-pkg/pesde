@@ -15,7 +15,7 @@ use backend::IndexFile;
 use backend::LegacyPesdePackageBackends;
 use backend::LegacyPesdePackageSourceBackend as _;
 use backend::VersionId;
-use futures::StreamExt as _;
+use futures::TryStreamExt as _;
 use pkg_ref::LegacyPesdePackageRef;
 use serde::Deserialize;
 use serde::Serialize;
@@ -269,8 +269,7 @@ impl PackageSource for LegacyPesdePackageSource {
 
 		let mut entries = BTreeMap::new();
 
-		while let Some(entry_result) = entries_stream.next().await {
-			let (path, contents) = entry_result?;
+		while let Some((path, contents)) = entries_stream.try_next().await? {
 			let Some(name) = path.file_name() else {
 				continue;
 			};

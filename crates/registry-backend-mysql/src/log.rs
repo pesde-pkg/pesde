@@ -1,6 +1,6 @@
 use anyhow::Context as _;
 use async_trait::async_trait;
-use futures::StreamExt as _;
+use futures::TryStreamExt as _;
 use jiff::Timestamp;
 use pesde::names::Scope;
 use pesde::signature::KeyKind;
@@ -257,7 +257,7 @@ async fn read_scope_manifest(pool: &MySqlPool, pos: u64) -> anyhow::Result<(Scop
 	.fetch(pool);
 
 	let mut result = None;
-	while let Some(row) = members.next().await.transpose()? {
+	while let Some(row) = members.try_next().await? {
 		let manifest = if let Some((_, manifest)) = &mut result {
 			manifest
 		} else {

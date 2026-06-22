@@ -72,8 +72,10 @@ impl HashAlgorithm {
 
 	/// Returns the optimal prefix length of the hash for storage in the CAS
 	#[must_use]
-	pub fn optimal_prefix_length(self) -> usize {
-		2
+	pub fn optimal_prefix_parts(self) -> &'static [usize] {
+		match self {
+			HashAlgorithm::Sha384 => &[2],
+		}
 	}
 }
 

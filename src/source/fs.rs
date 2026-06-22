@@ -65,11 +65,18 @@ async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
 
 fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
 	let encoded = hash.hash().to_string();
-	let (prefix, rest) = encoded.split_at(hash.algorithm().optimal_prefix_length());
-	cas_dir
-		.join(hash.algorithm().to_string())
-		.join(prefix)
-		.join(rest)
+
+	let mut path = cas_dir.join(hash.algorithm().to_string());
+	let mut hash_str = encoded.as_str();
+
+	for length in hash.algorithm().optimal_prefix_parts() {
+		let (prefix, rest) = hash_str.split_at(*length);
+		path.push(prefix);
+		hash_str = rest;
+	}
+	path.push(hash_str);
+
+	path
 }
 
 pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
@@ -92,10 +99,10 @@ pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
 
 	loop {
 		let bytes = contents.fill_buf().await?;
-		if bytes.is_empty() {
+		let bytes_amt = bytes.len();
+		if bytes_amt == 0 {
 			break;
 		}
-		let bytes_amt = bytes.len();
 
 		hasher.update(bytes);
 		file_writer.write_all(bytes).await?;

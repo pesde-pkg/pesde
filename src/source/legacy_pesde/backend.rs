@@ -16,7 +16,6 @@ use crate::source::wally::specifier::IndexWallyDependencySpecifier;
 use crate::util::ToEscaped as _;
 use async_stream::try_stream;
 use futures::Stream;
-use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use relative_path::RelativePathBuf;
 use reqwest::header::ACCEPT;
@@ -422,9 +421,11 @@ impl LegacyPesdePackageSourceBackend for GitLegacyPesdePackageSourceBackend {
 				.entries()
 				.map_err(errors::GitDownloadErrorKind::OpenArchive)?;
 
-			while let Some(entry_result) = entries_stream.next().await {
-				let mut entry = entry_result.map_err(errors::GitDownloadErrorKind::ReadEntry)?;
-
+			while let Some(mut entry) = entries_stream
+				.try_next()
+				.await
+				.map_err(errors::GitDownloadErrorKind::ReadEntry)?
+			{
 				let path = entry
 					.path()
 					.map_err(errors::GitDownloadErrorKind::ReadEntry)?;

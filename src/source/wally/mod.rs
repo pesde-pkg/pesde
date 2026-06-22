@@ -27,7 +27,7 @@ use crate::source::wally::pkg_ref::WallyPackageRef;
 use crate::util::ToEscaped as _;
 use crate::version_matches;
 use fs_err::tokio as fs;
-use futures::StreamExt as _;
+use futures::TryStreamExt as _;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -251,8 +251,7 @@ impl PackageSource for WallyPackageSource {
 
 		let mut entries = BTreeMap::new();
 
-		while let Some(entry_result) = entries_stream.next().await {
-			let (path, contents) = entry_result?;
+		while let Some((path, contents)) = entries_stream.try_next().await? {
 			let Some(name) = path.file_name() else {
 				continue;
 			};

@@ -1,7 +1,6 @@
 //! pesde package source backend abstraction
 use crate::Project;
 use crate::Url;
-use crate::hash::Hash;
 use crate::names::PackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
@@ -10,7 +9,6 @@ use crate::source::pesde::registry::*;
 use async_stream::try_stream;
 use fs_err::tokio as fs;
 use futures::Stream;
-use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use merkleberg::Merge as _;
 use merkleberg::mmriver::InclusionProof;
@@ -265,10 +263,10 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 					.fill_buf()
 					.await
 					.map_err(errors::ApiDownloadErrorKind::ReadBytes)?;
-				if bytes.is_empty() {
+				let bytes_amt = bytes.len();
+				if bytes_amt == 0 {
 					break;
 				}
-				let bytes_amt = bytes.len();
 
 				hasher.update(bytes);
 				archive_file
@@ -279,7 +277,7 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 				archive_bytes.consume(bytes_amt);
 			}
 
-			if Hash::new(payload_hash.algorithm(), hasher.finalize()).unwrap() != payload_hash {
+			if hasher.finalize().as_ref() != payload_hash.hash().as_bytes() {
 				Err(errors::ApiDownloadErrorKind::ArchiveIntegrityVerificationFailed)?;
 			}
 
@@ -294,9 +292,11 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 				.entries()
 				.map_err(errors::ApiDownloadErrorKind::OpenArchive)?;
 
-			while let Some(entry_result) = entries_stream.next().await {
-				let mut entry = entry_result.map_err(errors::ApiDownloadErrorKind::ReadEntry)?;
-
+			while let Some(mut entry) = entries_stream
+				.try_next()
+				.await
+				.map_err(errors::ApiDownloadErrorKind::ReadEntry)?
+			{
 				let path = entry
 					.path()
 					.map_err(errors::ApiDownloadErrorKind::ReadEntry)?;
