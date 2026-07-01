@@ -22,7 +22,6 @@ use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
-use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::git::backend::GitPackageBackends;
@@ -34,8 +33,9 @@ use crate::source::pesde::PesdeVersionedManifest;
 use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
 use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
-use crate::util::simplify_path;
+use crate::util::relative_path_level;
 use fs_err::tokio as fs;
+use relative_path::RelativePath;
 use semver::BuildMetadata;
 use semver::Version;
 use std::collections::BTreeMap;
@@ -153,9 +153,9 @@ impl PackageSource for GitPackageSource {
 			};
 
 			let dependencies = transform_pesde_dependencies(
-				subproject,
 				manifest.as_manifest(),
 				self.repo.repo_url(),
+				&specifier.path,
 			)?;
 
 			return Ok(ResolveResult {
@@ -220,8 +220,8 @@ impl PackageSource for GitPackageSource {
 				);
 				reporter.report_done();
 
-				return toml::from_str::<PackageFs>(&s).map_err(|e| {
-					errors::DownloadErrorKind::DeserializeFile(self.repo.to_string(), e).into()
+				return serde_json::from_str(&s).map_err(|e| {
+					errors::DownloadErrorKind::DeserializeIndex(self.repo.to_string(), e).into()
 				});
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -248,7 +248,7 @@ impl PackageSource for GitPackageSource {
 					continue;
 				}
 
-				fs_entries.insert(entry.path, FsEntry::Directory);
+				fs_entries.insert(entry.path, None);
 				continue;
 			}
 
@@ -284,7 +284,7 @@ impl PackageSource for GitPackageSource {
 					.await
 					.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
-				Ok::<_, errors::DownloadError>((entry.path, FsEntry::File(hash)))
+				Ok::<_, errors::DownloadError>((entry.path, Some(hash)))
 			});
 		}
 
@@ -303,7 +303,7 @@ impl PackageSource for GitPackageSource {
 
 		fs::write(
 			&index_file,
-			toml::to_string(&fs)
+			serde_json::to_string(&fs)
 				.map_err(|e| errors::DownloadErrorKind::SerializeIndex(self.repo.to_string(), e))?,
 		)
 		.await
@@ -337,13 +337,15 @@ impl PackageSource for GitPackageSource {
 }
 
 fn transform_pesde_dependencies(
-	subproject: &Subproject,
 	manifest: &Manifest,
 	repo_url: &GixUrl,
+	path: &RelativePath,
 ) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
 	let dependencies = manifest
 		.all_dependencies()
 		.map_err(errors::ResolveErrorKind::CollectDependencies)?;
+
+	let repo_level = relative_path_level(path);
 
 	dependencies
 		.into_iter()
@@ -377,9 +379,8 @@ fn transform_pesde_dependencies(
 				}
 				DependencySpecifiers::Git(_) => {}
 				DependencySpecifiers::Path(specifier) => {
-					if let RelativeOrAbsolutePath::Relative(path) = &specifier.path
-						&& simplify_path(&path.to_path(subproject.dir()))
-							.starts_with(subproject.dir())
+					if let RelativeOrAbsolutePath::Relative(dep_path) = &specifier.path
+						&& repo_level >= -relative_path_level(dep_path)
 					{
 						// no-op, the path is relative and within the subproject, so it's allowed
 					} else if std::env::var("PESDE_IMPURE_GIT_DEP_PATHS")
@@ -413,7 +414,7 @@ pub mod errors {
 	pub enum DownloadErrorKind {
 		/// An error occurred deserializing a file in the backend
 		#[error("error deserializing file in backend {0}")]
-		DeserializeFile(String, #[source] toml::de::Error),
+		DeserializeIndex(String, #[source] serde_json::Error),
 
 		/// An error occurred getting Wally exports
 		#[error("error getting wally exports")]
@@ -441,7 +442,7 @@ pub mod errors {
 
 		/// An error occurred serializing the index file for the backend
 		#[error("error serializing the index file for backend {0}")]
-		SerializeIndex(String, #[source] toml::ser::Error),
+		SerializeIndex(String, #[source] serde_json::Error),
 	}
 
 	/// Errors that can occur when resolving a package from a Git package source

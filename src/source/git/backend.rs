@@ -50,7 +50,7 @@ pub trait GitPackageSourceBackend: Debug + Display + Send + Sync {
 		&self,
 		project: &Project,
 		rev: String,
-		path: Option<RelativePathBuf>,
+		path: RelativePathBuf,
 	) -> impl Future<Output = Result<TreeId, Self::ResolveRevError>> + Send;
 
 	/// Reads a file from the backend
@@ -128,7 +128,7 @@ impl GitPackageSourceBackend for GixPackageSourceBackend {
 		&self,
 		project: &Project,
 		rev: String,
-		path: Option<RelativePathBuf>,
+		path: RelativePathBuf,
 	) -> Result<TreeId, Self::ResolveRevError> {
 		let repo_path = self.repo_path(project);
 		let repo_url = self.repo_url.clone();
@@ -147,7 +147,9 @@ impl GitPackageSourceBackend for GixPackageSourceBackend {
 				.peel_to_tree()
 				.map_err(|e| errors::ResolveRevErrorKind::ParseObjectToTree(repo_url.clone(), e))?;
 
-			let tree = if let Some(path) = &path {
+			let tree = if path.as_str().is_empty() {
+				root_tree
+			} else {
 				root_tree
 					.lookup_entry_by_path(path.as_str())
 					.map_err(|e| {
@@ -168,8 +170,6 @@ impl GitPackageSourceBackend for GixPackageSourceBackend {
 					.map_err(|e| {
 						errors::ResolveRevErrorKind::ParseObjectToTree(repo_url.clone(), e)
 					})?
-			} else {
-				root_tree
 			};
 
 			Ok(tree.id.to_string().into())
@@ -327,7 +327,7 @@ impl GitPackageSourceBackend for GitPackageBackends {
 		&self,
 		project: &Project,
 		rev: String,
-		path: Option<RelativePathBuf>,
+		path: RelativePathBuf,
 	) -> Result<TreeId, Self::ResolveRevError> {
 		match self {
 			GitPackageBackends::Git(repo) => repo.resolve_rev(project, rev, path).await,

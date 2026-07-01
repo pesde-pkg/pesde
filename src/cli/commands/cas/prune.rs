@@ -13,7 +13,6 @@ use futures::future::BoxFuture;
 use pesde::Subproject;
 use pesde::hash::Hash;
 use pesde::hash::HashAlgorithm;
-use pesde::source::fs::FsEntry;
 use pesde::source::fs::PackageFs;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -107,10 +106,10 @@ async fn discover_cas_packages(cas_dir: &Path) -> anyhow::Result<HashMap<PathBuf
 		path: PathBuf,
 	) -> BoxFuture<'static, anyhow::Result<HashMap<PathBuf, PackageFs>>> {
 		async move {
-			match fs::read_to_string(&path).await {
+			match fs::read(&path).await {
 				Ok(contents) => {
-					let fs =
-						toml::from_str(&contents).context("failed to deserialize PackageFs")?;
+					let fs = serde_json::from_slice(&contents)
+						.context("failed to deserialize PackageFs")?;
 
 					return Ok(HashMap::from([(path, fs)]));
 				}
@@ -277,7 +276,7 @@ impl PruneCommand {
 			};
 
 			for entry in entries.into_values() {
-				let FsEntry::File(hash) = entry else {
+				let Some(hash) = entry else {
 					continue;
 				};
 

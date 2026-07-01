@@ -1,5 +1,6 @@
 //! Code that we want to share between the lib and bin without exposing it in the public API
 use fs_err::tokio as fs;
+use relative_path::RelativePath;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::de::MapAccess;
@@ -7,7 +8,6 @@ use serde::de::Visitor;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -137,18 +137,20 @@ pub async fn symlink_dir(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
 }
 
 #[must_use]
-pub fn simplify_path(path: &Path) -> PathBuf {
-	let mut result = PathBuf::new();
-	for component in path.components() {
-		match component {
-			Component::CurDir => {}
-			Component::ParentDir => {
-				result.pop();
-			}
-			_ => result.push(component),
-		}
-	}
-	result
+pub fn relative_path_is_empty(path: &RelativePath) -> bool {
+	path.as_str().is_empty()
+}
+
+#[must_use]
+pub fn relative_path_level(path: &RelativePath) -> isize {
+	use relative_path::Component;
+	path.components()
+		.map(|ct| match ct {
+			Component::CurDir => 0,
+			Component::Normal(_) => 1,
+			Component::ParentDir => -1,
+		})
+		.sum()
 }
 
 pub trait ToEscaped {

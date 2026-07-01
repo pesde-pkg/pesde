@@ -15,7 +15,6 @@ use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
-use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::wally::backend::GitWallyPackageSourceBackend;
@@ -223,7 +222,8 @@ impl PackageSource for WallyPackageSource {
 
 				reporter.report_done();
 
-				return toml::from_str::<PackageFs>(&s).map_err(Into::into);
+				return Ok(serde_json::from_str(&s)
+					.map_err(errors::DownloadErrorKind::DeserializeIndex)?);
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
 			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
@@ -247,7 +247,7 @@ impl PackageSource for WallyPackageSource {
 				if IGNORED_DIRS.contains(&name) {
 					continue;
 				}
-				entries.insert(path, FsEntry::Directory);
+				entries.insert(path, None);
 				continue;
 			};
 
@@ -259,7 +259,7 @@ impl PackageSource for WallyPackageSource {
 				.await
 				.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
-			entries.insert(path, FsEntry::File(hash));
+			entries.insert(path, Some(hash));
 		}
 
 		let fs = PackageFs::Cached(entries);
@@ -270,9 +270,12 @@ impl PackageSource for WallyPackageSource {
 				.map_err(errors::DownloadErrorKind::WriteIndex)?;
 		}
 
-		fs::write(&index_file, toml::to_string(&fs)?)
-			.await
-			.map_err(errors::DownloadErrorKind::WriteIndex)?;
+		fs::write(
+			&index_file,
+			serde_json::to_string(&fs).map_err(errors::DownloadErrorKind::SerializeIndex)?,
+		)
+		.await
+		.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
 		Ok(fs)
 	}
@@ -340,7 +343,7 @@ pub mod errors {
 
 		/// Error deserializing index file
 		#[error("error deserializing index file")]
-		Deserialize(#[from] toml::de::Error),
+		DeserializeIndex(#[source] serde_json::Error),
 
 		/// Error reading index file
 		#[error("error reading index file")]
@@ -352,7 +355,7 @@ pub mod errors {
 
 		/// Error serializing index file
 		#[error("error serializing index file")]
-		SerializeIndex(#[from] toml::ser::Error),
+		SerializeIndex(#[source] serde_json::Error),
 
 		/// Error getting package exports
 		#[error("error getting package exports")]

@@ -19,8 +19,8 @@ pub struct GitDependencySpecifier {
 	/// The revision of the package, can be a branch, tag or commit hash
 	pub rev: String,
 	/// The path of the package in the repository
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub path: Option<RelativePathBuf>,
+	#[serde(default, skip_serializing_if = "crate::util::relative_path_is_empty")]
+	pub path: RelativePathBuf,
 	/// The realm of the package
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub realm: Option<Realm>,
@@ -45,6 +45,6 @@ pub struct IndexGitDependencySpecifier {
 	/// The version specifier of the package
 	pub rev: String,
 	/// The path of the package in the repository
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub path: Option<RelativePathBuf>,
+	#[serde(default, skip_serializing_if = "crate::util::relative_path_is_empty")]
+	pub path: RelativePathBuf,
 }

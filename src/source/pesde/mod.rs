@@ -39,7 +39,6 @@ use crate::source::Realm;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
 use crate::source::StructureKind;
-use crate::source::fs::FsEntry;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::git::specifier::GitDependencySpecifier;
@@ -241,7 +240,8 @@ impl PackageSource for PesdePackageSource {
 
 				reporter.report_done();
 
-				return toml::from_str::<PackageFs>(&s).map_err(Into::into);
+				return Ok(serde_json::from_str(&s)
+					.map_err(errors::DownloadErrorKind::DeserializeIndex)?);
 			}
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
 			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
@@ -266,7 +266,7 @@ impl PackageSource for PesdePackageSource {
 				if IGNORED_DIRS.contains(&name) {
 					continue;
 				}
-				entries.insert(path, FsEntry::Directory);
+				entries.insert(path, None);
 				continue;
 			};
 
@@ -277,7 +277,7 @@ impl PackageSource for PesdePackageSource {
 			let (_, hash) = store_in_cas(project.cas_dir(), &*contents)
 				.await
 				.map_err(errors::DownloadErrorKind::WriteIndex)?;
-			entries.insert(path, FsEntry::File(hash));
+			entries.insert(path, Some(hash));
 		}
 
 		let fs = PackageFs::Cached(entries);
@@ -288,9 +288,12 @@ impl PackageSource for PesdePackageSource {
 				.map_err(errors::DownloadErrorKind::WriteIndex)?;
 		}
 
-		fs::write(&index_file, toml::to_string(&fs)?)
-			.await
-			.map_err(errors::DownloadErrorKind::WriteIndex)?;
+		fs::write(
+			&index_file,
+			serde_json::to_string(&fs).map_err(errors::DownloadErrorKind::SerializeIndex)?,
+		)
+		.await
+		.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
 		Ok(fs)
 	}
@@ -432,11 +435,11 @@ pub mod errors {
 
 		/// Error serializing index file
 		#[error("error serializing index file")]
-		SerializeIndex(#[from] toml::ser::Error),
+		SerializeIndex(#[source] serde_json::Error),
 
 		/// Error deserializing index file
 		#[error("error deserializing index file")]
-		DeserializeIndex(#[from] toml::de::Error),
+		DeserializeIndex(#[source] serde_json::Error),
 	}
 
 	/// Errors that can occur when getting the target for a package from a pesde package source

@@ -8,6 +8,7 @@ use crate::source::Realm;
 use crate::source::RealmExt;
 use crate::util;
 use fs_err::tokio as fs;
+use relative_path::RelativePath;
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -18,21 +19,11 @@ use std::path::PathBuf;
 use tempfile::Builder;
 use tokio::io::AsyncBufRead;
 use tokio::io::AsyncBufReadExt as _;
+use tokio::io::AsyncRead;
 use tokio::io::AsyncWriteExt as _;
 use tokio::task::JoinSet;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
-
-/// A file system entry
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FsEntry {
-	/// A file with the given hash
-	#[serde(rename = "f")]
-	File(Hash),
-	/// A directory
-	#[serde(rename = "d")]
-	Directory,
-}
 
 /// A package's file system
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,7 +31,7 @@ pub enum FsEntry {
 #[serde(untagged)]
 pub enum PackageFs {
 	/// A package stored in the CAS, meaning it is cached
-	Cached(BTreeMap<RelativePathBuf, FsEntry>),
+	Cached(BTreeMap<RelativePathBuf, Option<Hash>>),
 	/// A package that's to be copied
 	Copy(PathBuf),
 }
@@ -129,7 +120,7 @@ pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
 }
 
 async fn package_fs_cas(
-	entries: &BTreeMap<RelativePathBuf, FsEntry>,
+	entries: &BTreeMap<RelativePathBuf, Option<Hash>>,
 	destination: &Path,
 	cas_dir_path: &Path,
 	link: bool,
@@ -137,10 +128,7 @@ async fn package_fs_cas(
 	let mut tasks = entries
 		.iter()
 		.map(|(path, entry)| {
-			let cas_file_path = match entry {
-				FsEntry::File(hash) => Some(cas_path(hash, cas_dir_path)),
-				FsEntry::Directory => None,
-			};
+			let cas_file_path = entry.as_ref().map(|hash| cas_path(hash, cas_dir_path));
 			let path = path.to_path(destination);
 
 			async move {
@@ -241,14 +229,49 @@ impl PackageFs {
 	pub async fn write_to(
 		&self,
 		destination: impl AsRef<Path> + Debug,
-		cas_path: impl AsRef<Path> + Debug,
+		cas_dir: impl AsRef<Path> + Debug,
 		link: bool,
 	) -> std::io::Result<()> {
 		match self {
 			PackageFs::Cached(entries) => {
-				package_fs_cas(entries, destination.as_ref(), cas_path.as_ref(), link).await
+				package_fs_cas(entries, destination.as_ref(), cas_dir.as_ref(), link).await
 			}
 			PackageFs::Copy(src) => package_fs_copy(src, destination.as_ref()).await,
 		}
+	}
+
+	/// Reads the contents of the file and returns a reader
+	pub async fn read_file(
+		&self,
+		file: impl AsRef<RelativePath>,
+		cas_dir: impl AsRef<Path> + Debug,
+	) -> std::io::Result<impl AsyncRead> {
+		let file = file.as_ref();
+		let cas_dir = cas_dir.as_ref();
+
+		let path = match self {
+			PackageFs::Cached(entries) => {
+				let hash = match entries.get(file) {
+					Some(Some(hash)) => hash,
+					Some(_) => {
+						return Err(std::io::Error::new(
+							std::io::ErrorKind::IsADirectory,
+							format!("path `{file}` is a directory"),
+						));
+					}
+					None => {
+						return Err(std::io::Error::new(
+							std::io::ErrorKind::NotFound,
+							format!("file `{file}` not found"),
+						));
+					}
+				};
+
+				cas_path(hash, cas_dir)
+			}
+			PackageFs::Copy(source) => file.to_path(source),
+		};
+
+		fs::File::open(path).await
 	}
 }

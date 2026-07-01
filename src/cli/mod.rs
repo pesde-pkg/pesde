@@ -127,7 +127,7 @@ impl AnyPackageIdentifier {
 				DependencySpecifiers::Git(GitDependencySpecifier {
 					repo: url.clone(),
 					rev: ver.clone(),
-					path: None,
+					path: Default::default(),
 					realm,
 				}),
 			),
