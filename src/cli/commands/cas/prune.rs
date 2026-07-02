@@ -13,6 +13,7 @@ use futures::future::BoxFuture;
 use pesde::Subproject;
 use pesde::hash::Hash;
 use pesde::hash::HashAlgorithm;
+use pesde::hash::RawHash;
 use pesde::source::fs::PackageFs;
 use std::collections::HashMap;
 use std::collections::HashSet;
