@@ -229,10 +229,9 @@ impl PackageSource for WallyPackageSource {
 			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
 		}
 
-		let entries_stream = self
-			.repo
-			.download_entries(project, &pkg_ref.name, package.id.version(), reporter)
-			.await?;
+		let entries_stream =
+			self.repo
+				.download_entries(project, &pkg_ref.name, package.id.version(), reporter);
 		tokio::pin!(entries_stream);
 
 		let mut entries = BTreeMap::new();

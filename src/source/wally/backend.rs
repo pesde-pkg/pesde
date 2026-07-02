@@ -52,17 +52,20 @@ pub trait WallyPackageSourceBackend: Debug + Display + Send + Sync {
 		&self,
 		project: &Project,
 	) -> impl Future<Output = Result<(), Self::RefreshError>> + Send;
+
 	/// Reads the config for this backend
 	fn config(
 		&self,
 		project: &Project,
 	) -> impl Future<Output = Result<WallyIndexConfig, Self::ConfigError>> + Send;
+
 	/// Reads an index file for a package
 	fn read_index_file(
 		&self,
 		project: &Project,
 		pkg_name: WallyPackageName,
 	) -> impl Future<Output = Result<Option<String>, Self::ReadIndexFileError>> + Send;
+
 	/// Downloads entries for a package version
 	fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
@@ -70,12 +73,7 @@ pub trait WallyPackageSourceBackend: Debug + Display + Send + Sync {
 		pkg_name: &WallyPackageName,
 		version: &Version,
 		reporter: Arc<R>,
-	) -> impl Future<
-		Output = Result<
-			impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send,
-			Self::DownloadError,
-		>,
-	> + Send;
+	) -> impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send;
 }
 
 /// A Git-based Wally package source backend
@@ -176,52 +174,50 @@ impl WallyPackageSourceBackend for GitWallyPackageSourceBackend {
 		.unwrap()
 	}
 
-	async fn download_entries<R: DownloadProgressReporter + 'static>(
+	fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
 		pkg_name: &WallyPackageName,
 		version: &Version,
 		reporter: Arc<R>,
-	) -> Result<
-		impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send,
-		Self::DownloadError,
-	> {
-		let config = self.config(project).await?;
+	) -> impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send
+	{
+		try_stream!({
+			let config = self.config(project).await?;
 
-		let mut request = project
-			.reqwest()
-			.get(format!(
-				"{}/v1/package-contents/{}/{}/{}",
-				config.api.as_str().trim_end_matches('/'),
-				urlencoding::encode(pkg_name.scope()),
-				urlencoding::encode(pkg_name.name()),
-				urlencoding::encode(&version.to_string())
-			))
-			.header(
-				"Wally-Version",
-				std::env::var("PESDE_WALLY_VERSION")
-					.as_deref()
-					.unwrap_or("0.3.2"),
-			);
+			let mut request = project
+				.reqwest()
+				.get(format!(
+					"{}/v1/package-contents/{}/{}/{}",
+					config.api.as_str().trim_end_matches('/'),
+					urlencoding::encode(pkg_name.scope()),
+					urlencoding::encode(pkg_name.name()),
+					urlencoding::encode(&version.to_string())
+				))
+				.header(
+					"Wally-Version",
+					std::env::var("PESDE_WALLY_VERSION")
+						.as_deref()
+						.unwrap_or("0.3.2"),
+				);
 
-		if let Some(token) = project.auth_config().tokens().get(&self.repo_url) {
-			tracing::debug!("using token for {}", self.repo_url);
-			request = request.header(AUTHORIZATION, token);
-		}
+			if let Some(token) = project.auth_config().tokens().get(&self.repo_url) {
+				tracing::debug!("using token for {}", self.repo_url);
+				request = request.header(AUTHORIZATION, token);
+			}
 
-		let response = request.send().await?.error_for_status()?;
+			let response = request.send().await?.error_for_status()?;
 
-		let total_len = response.content_length().unwrap_or(0);
-		let bytes = crate::reporters::response_to_async_buf_read(response, reporter.clone());
-		tokio::pin!(bytes);
+			let total_len = response.content_length().unwrap_or(0);
+			let bytes = crate::reporters::response_to_async_buf_read(response, reporter.clone());
+			tokio::pin!(bytes);
 
-		let mut archive_bytes = Vec::with_capacity(total_len as usize);
-		bytes
-			.read_to_end(&mut archive_bytes)
-			.await
-			.map_err(errors::GitDownloadErrorKind::ReadEntryContents)?;
+			let mut archive_bytes = Vec::with_capacity(total_len as usize);
+			bytes
+				.read_to_end(&mut archive_bytes)
+				.await
+				.map_err(errors::GitDownloadErrorKind::ReadEntryContents)?;
 
-		let stream = try_stream!({
 			let zip_file = BufReader::new(std::io::Cursor::new(archive_bytes));
 
 			let mut archive =
@@ -250,9 +246,7 @@ impl WallyPackageSourceBackend for GitWallyPackageSourceBackend {
 
 				yield (path, Some(contents));
 			}
-		});
-
-		Ok(stream)
+		})
 	}
 }
 
@@ -318,23 +312,18 @@ impl WallyPackageSourceBackend for WallyPackageBackends {
 		}
 	}
 
-	async fn download_entries<R: DownloadProgressReporter + 'static>(
+	fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
 		pkg_name: &WallyPackageName,
 		version: &Version,
 		reporter: Arc<R>,
-	) -> Result<
-		impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send,
-		Self::DownloadError,
-	> {
+	) -> impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send
+	{
 		match self {
-			WallyPackageBackends::Git(repo) => {
-				let stream = repo
-					.download_entries(project, pkg_name, version, reporter)
-					.await?;
-				Ok(stream.map(|r| r.map_err(|e| errors::DownloadErrorKind::Git(e).into())))
-			}
+			WallyPackageBackends::Git(repo) => repo
+				.download_entries(project, pkg_name, version, reporter)
+				.map(|r| r.map_err(|e| errors::DownloadErrorKind::Git(e).into())),
 		}
 	}
 }

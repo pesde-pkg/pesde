@@ -271,17 +271,20 @@ pub trait PesdePackageSourceBackend: Debug + Display + Send + Sync {
 		&self,
 		project: &Project,
 	) -> impl Future<Output = Result<(), Self::RefreshError>> + Send;
+
 	/// Reads the config for this backend
 	fn config(
 		&self,
 		project: &Project,
 	) -> impl Future<Output = Result<IndexConfig, Self::ConfigError>> + Send;
+
 	/// Reads an index file for a package
 	fn read_index_file(
 		&self,
 		project: &Project,
 		name: PackageName,
 	) -> impl Future<Output = Result<Option<IndexFile>, Self::ReadIndexFileError>> + Send;
+
 	/// Downloads entries for a package version
 	fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
@@ -289,12 +292,7 @@ pub trait PesdePackageSourceBackend: Debug + Display + Send + Sync {
 		package: &PackageName,
 		version_id: &VersionId,
 		reporter: Arc<R>,
-	) -> impl Future<
-		Output = Result<
-			impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send,
-			Self::DownloadError,
-		>,
-	> + Send;
+	) -> impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send;
 }
 
 /// A Git-based pesde package source backend
@@ -389,36 +387,34 @@ impl PesdePackageSourceBackend for GitPesdePackageSourceBackend {
 		.unwrap()
 	}
 
-	async fn download_entries<R: DownloadProgressReporter + 'static>(
+	fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
 		package: &PackageName,
 		version_id: &VersionId,
 		reporter: Arc<R>,
-	) -> Result<
-		impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send,
-		Self::DownloadError,
-	> {
-		let config = self.config(project).await?;
-		let url = config
-			.download()
-			.replace("{PACKAGE}", &encode(&package.to_string()))
-			.replace("{PACKAGE_VERSION}", &encode(&version_id.0.to_string()))
-			.replace("{PACKAGE_TARGET}", &encode(&version_id.1.to_string()));
+	) -> impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send
+	{
+		try_stream!({
+			let config = self.config(project).await?;
+			let url = config
+				.download()
+				.replace("{PACKAGE}", &encode(&package.to_string()))
+				.replace("{PACKAGE_VERSION}", &encode(&version_id.0.to_string()))
+				.replace("{PACKAGE_TARGET}", &encode(&version_id.1.to_string()));
 
-		let mut request = project
-			.reqwest()
-			.get(&url)
-			.header(ACCEPT, "application/octet-stream");
+			let mut request = project
+				.reqwest()
+				.get(&url)
+				.header(ACCEPT, "application/octet-stream");
 
-		if let Some(token) = project.auth_config().tokens().get(&self.repo_url) {
-			tracing::debug!("using token for {}", self.repo_url);
-			request = request.header(AUTHORIZATION, token);
-		}
+			if let Some(token) = project.auth_config().tokens().get(&self.repo_url) {
+				tracing::debug!("using token for {}", self.repo_url);
+				request = request.header(AUTHORIZATION, token);
+			}
 
-		let response = request.send().await?.error_for_status()?;
+			let response = request.send().await?.error_for_status()?;
 
-		let stream = try_stream!({
 			let bytes = crate::reporters::response_to_async_buf_read(response, reporter.clone());
 			tokio::pin!(bytes);
 
@@ -455,9 +451,7 @@ impl PesdePackageSourceBackend for GitPesdePackageSourceBackend {
 
 				yield (rel_path, Some(contents));
 			}
-		});
-
-		Ok(stream)
+		})
 	}
 }
 
@@ -523,23 +517,18 @@ impl PesdePackageSourceBackend for PesdePackageBackends {
 		}
 	}
 
-	async fn download_entries<R: DownloadProgressReporter + 'static>(
+	fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
 		package: &PackageName,
 		version_id: &VersionId,
 		reporter: Arc<R>,
-	) -> Result<
-		impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send,
-		Self::DownloadError,
-	> {
+	) -> impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send
+	{
 		match self {
-			PesdePackageBackends::Git(repo) => {
-				let stream = repo
-					.download_entries(project, package, version_id, reporter)
-					.await?;
-				Ok(stream.map(|r| r.map_err(|e| errors::DownloadErrorKind::Git(e).into())))
-			}
+			PesdePackageBackends::Git(repo) => repo
+				.download_entries(project, package, version_id, reporter)
+				.map(|r| r.map_err(|e| errors::DownloadErrorKind::Git(e).into())),
 		}
 	}
 }

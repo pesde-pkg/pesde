@@ -248,10 +248,9 @@ impl PackageSource for PesdePackageSource {
 		}
 
 		let version_id = VersionId::new(package.id.version().clone(), pkg_ref.target);
-		let entries_stream = self
-			.repo
-			.download_entries(project, &pkg_ref.name, &version_id, reporter)
-			.await?;
+		let entries_stream =
+			self.repo
+				.download_entries(project, &pkg_ref.name, &version_id, reporter);
 		tokio::pin!(entries_stream);
 
 		let mut entries = BTreeMap::new();
