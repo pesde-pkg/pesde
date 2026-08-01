@@ -93,6 +93,16 @@ where
 	})
 }
 
+#[cfg(windows)]
+fn parse_force_symlink(value: Option<&str>) -> bool {
+	value.is_some_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+}
+
+#[cfg(windows)]
+fn force_symlink() -> bool {
+	parse_force_symlink(std::env::var("PESDE_FORCE_SYMLINK").ok().as_deref())
+}
+
 pub async fn symlink_file(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
 	#[cfg(unix)]
 	{
@@ -100,7 +110,7 @@ pub async fn symlink_file(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
 	}
 	#[cfg(windows)]
 	{
-		if std::env::var("PESDE_FORCE_SYMLINK").is_ok() {
+		if force_symlink() {
 			return fs::symlink_file(src, dst).await;
 		}
 
@@ -115,7 +125,7 @@ pub async fn symlink_dir(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
 	}
 	#[cfg(windows)]
 	{
-		if std::env::var("PESDE_FORCE_SYMLINK").is_ok() {
+		if force_symlink() {
 			return fs::symlink_dir(src, dst).await;
 		}
 
