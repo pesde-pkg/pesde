@@ -25,7 +25,7 @@ impl DependencyGraphNode {
 	/// Returns the directory to store the contents of the package in, e.g. foo+1.0.0/1.0.0
 	#[must_use]
 	pub fn container_dir(package_id: &PackageId, structure_kind: &StructureKind) -> PathBuf {
-		let base = PathBuf::from(package_id.to_string().escaped());
+		let base = PathBuf::from(package_id.escaped());
 
 		match structure_kind {
 			StructureKind::Wally(name) => base.join(&**name),

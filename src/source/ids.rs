@@ -6,6 +6,7 @@ use crate::source::errors::PackageRefParseError;
 use crate::source::errors::PackageSourcesFromStr;
 use crate::source::path::PathPackageSource;
 use crate::source::path::local_version;
+use crate::util::ToEscaped as _;
 use semver::Version;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -39,6 +40,12 @@ impl PackageId {
 	#[must_use]
 	pub fn version(&self) -> &Version {
 		&self.0.2
+	}
+
+	/// Returns this package ID as a string that can be used in the filesystem
+	#[must_use]
+	pub fn escaped(&self) -> String {
+		self.to_string().replacen("https://", "", 1).escaped()
 	}
 }
 
@@ -164,5 +171,17 @@ mod tests {
 			let id: PackageId = serialized.parse().unwrap();
 			assert_eq!(id.to_string(), serialized);
 		}
+	}
+
+	#[test]
+	fn escaped_package_ids() {
+		let id = "wally:https://github.com/pesde-pkg/index:foo/bar@1.2.3"
+			.parse::<PackageId>()
+			.unwrap();
+
+		assert_eq!(
+			id.escaped(),
+			"wally-github.com-pesde-pkg-index-foo-bar-1.2.3"
+		);
 	}
 }

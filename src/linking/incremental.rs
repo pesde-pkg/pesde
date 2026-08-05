@@ -4,7 +4,6 @@ use crate::Project;
 use crate::graph::DependencyGraph;
 use crate::source::Realm;
 use crate::source::RealmExt as _;
-use crate::util::ToEscaped as _;
 use crate::util::remove_empty_dir;
 use fs_err::tokio as fs;
 use std::collections::HashSet;
@@ -49,7 +48,7 @@ impl Project {
 
 				while let Some(pkg_id) = queue.pop() {
 					if let Some(node) = graph.nodes.get(pkg_id)
-						&& expected_ids.insert(pkg_id.to_string().escaped())
+						&& expected_ids.insert(pkg_id.escaped())
 					{
 						for dep in node.dependencies.values() {
 							queue.push(&dep.id);
