@@ -1,36 +1,29 @@
 //! Data models for the registry
 
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::fmt::Display;
 use std::marker::PhantomData;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use jiff::Timestamp;
 use merkleberg::Merge;
+use semver::Prerelease;
 use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
+use thiserror::Error;
+use uuid::Uuid;
 
-use crate::Url;
 use crate::bounded::Bounded;
-use crate::bounded::BoundedBTreeMap;
+use crate::bounded::BoundedBTreeSet;
 use crate::bounded::BoundedString;
-use crate::bounded::BoundedVec;
 use crate::hash::Hash;
 use crate::hash::HashAlgorithm;
 use crate::hash::RawHash;
-use crate::manifest::Alias;
-use crate::manifest::DependencyType;
-use crate::manifest::MAX_AUTHOR_LEN;
-use crate::manifest::MAX_AUTHORS;
-use crate::manifest::MAX_DESCRIPTION_LEN;
-use crate::manifest::MAX_URL_LEN;
-use crate::manifest::MAX_VERSION_LEN;
 use crate::names::Name;
-use crate::names::PackageName;
 use crate::names::Scope;
+use crate::ser_display_deser_fromstr;
 use crate::signature::PublicKey;
 use crate::signature::Signature;
 
@@ -42,387 +35,422 @@ pub fn canonical_bytes(data: &impl Serialize) -> Vec<u8> {
 		.encode()
 }
 
-/// An entry with an associated signature
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SignedEntry<T> {
-	/// The signature over the canonical serialisation of body
-	pub sig: Signature,
-	/// The body being signed
-	body: T,
-}
-
-impl<T> SignedEntry<T> {
-	/// Returns the body, unvalidated against the signature
-	#[must_use]
-	pub fn unsafe_body(&self) -> &T {
-		&self.body
-	}
-
-	/// Returns the body, unvalidated against the signature
-	#[must_use]
-	pub fn into_unsafe_body(self) -> T {
-		self.body
-	}
-}
-
-impl<T: Serialize> SignedEntry<T> {
-	/// Constructs a new signed entry from the signature and body
-	pub fn new(sig: Signature, body: T) -> Self {
-		Self { sig, body }
-	}
-
-	/// Verifies the signature of this entry against the returned public key and returns the body if it matches
-	#[must_use]
-	pub fn verify(&self, public_key: impl FnOnce(&T) -> &PublicKey) -> Option<&T> {
-		self.sig
-			.verify(public_key(&self.body), &canonical_bytes(&self.body))
-			.then_some(&self.body)
-	}
-
-	/// Verifies the signature of this entry against the returned public key and returns the body and signature if it matches
-	#[must_use]
-	pub fn into_verified(
-		self,
-		public_key: impl FnOnce(&T) -> &PublicKey,
-	) -> Option<(Signature, T)> {
-		self.sig
-			.verify(public_key(&self.body), &canonical_bytes(&self.body))
-			.then_some((self.sig, self.body))
-	}
-
-	/// Verifies the signature of this entry against the given public key and returns the body and signature if it matches
-	#[must_use]
-	pub fn into_verified_external(self, public_key: &PublicKey) -> Option<(Signature, T)> {
-		self.sig
-			.verify(public_key, &canonical_bytes(&self.body))
-			.then_some((self.sig, self.body))
-	}
-}
-
-/// A UUID which acts as a stable identifier for an identity
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
-#[cfg_attr(feature = "sqlx", sqlx(transparent))]
-#[serde(transparent)]
-pub struct IdentityId(pub uuid::Uuid);
-
-impl Display for IdentityId {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		self.0.fmt(f)
-	}
-}
-
-/// A member of a scope
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScopeMember {
-	/// Write access to every package in the scope
-	AllPackages,
-	/// Write access to the listed packages
-	Packages(BTreeSet<Name>),
-}
-
-impl ScopeMember {
-	/// Whether this member may write to `package`
-	#[must_use]
-	pub fn can_write(&self, package: &Name) -> bool {
-		match self {
-			ScopeMember::AllPackages => true,
-			ScopeMember::Packages(packages) => packages.contains(package),
-		}
-	}
-}
-
-/// The manifest for a scope, describing its owner and members
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScopeManifest {
-	/// The sole identity permitted to manage this scope's manifest
-	pub owner: IdentityId,
-	/// Members with write access to some or all of the scope's packages
-	pub members: BTreeMap<IdentityId, ScopeMember>,
-}
-
-impl ScopeManifest {
-	/// Whether `of` may write to `package`
-	#[must_use]
-	pub fn can_write(&self, of: &IdentityId, package: &Name) -> bool {
-		self.owner == *of
-			|| self
-				.members
-				.get(of)
-				.is_some_and(|member| member.can_write(package))
-	}
-}
-
-/// Dependency specifiers stored by a pesde registry
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum RegistryDependencySpecifier {
-	/// A pesde registry dependency
-	Pesde(crate::source::pesde::specifier::RegistryPesdeDependencySpecifier),
-	/// A Wally registry dependency
-	Wally(crate::source::wally::specifier::RegistryWallyDependencySpecifier),
-}
-
-/// Maximum number of dependencies a published package may declare
-pub const MAX_DEPENDENCIES: usize = u8::MAX as usize;
-
-/// Maximum length, in characters, of a deprecation reason
-pub const MAX_REASON_LEN: usize = 255;
-
-/// The body of a Publish entry
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PublishBody {
-	/// The name of the package being published
-	pub name: Name,
-	/// The version of the package being published
-	pub version: Bounded<Version, MAX_VERSION_LEN>,
-	/// The hash of the archive containing the package contents
-	pub archive_hash: Hash,
-	/// The description of the package
-	#[serde(default, skip_serializing_if = "str::is_empty")]
-	pub description: BoundedString<MAX_DESCRIPTION_LEN>,
-	/// The license of the package
-	#[serde(default, skip_serializing_if = "str::is_empty")]
-	pub license: BoundedString<MAX_DESCRIPTION_LEN>,
-	/// The authors of the package
-	#[serde(default, skip_serializing_if = "<[_]>::is_empty")]
-	pub authors: BoundedVec<BoundedString<MAX_AUTHOR_LEN>, MAX_AUTHORS>,
-	/// The repository of the package
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub repository: Option<Bounded<Url, MAX_URL_LEN>>,
-	/// The dependencies of the package
-	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-	pub dependencies:
-		BoundedBTreeMap<Alias, (RegistryDependencySpecifier, DependencyType), MAX_DEPENDENCIES>,
-}
-
-/// Whether a yank is being applied or retracted
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
-#[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
-#[serde(rename_all = "snake_case")]
-pub enum YankRetraction {
-	/// Apply the yank
-	Add,
-	/// Revoke the yank
-	Revoke,
-}
-
-/// The body of a Yank entry
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct YankBody {
-	/// The name of the package being yanked
-	pub name: Name,
-	/// The version of the package being yanked
-	pub version: Bounded<Version, MAX_VERSION_LEN>,
-	/// Whether the version is being yanked or unyanked
-	pub action: YankRetraction,
-}
-
-/// The body of a Deprecate entry
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DeprecateBody {
-	/// The name of the package being deprecated
-	pub name: Name,
-	/// The reason for deprecation, or empty if retracting
-	#[serde(default, skip_serializing_if = "str::is_empty")]
-	pub reason: BoundedString<MAX_REASON_LEN>,
-}
-
-/// The body of a ManifestUpdate entry
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScopeManifestUpdateBody {
-	/// The complete new manifest, replacing the previous one entirely
-	pub manifest: ScopeManifest,
-}
-
-/// The payload of a scope entry
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ScopeEntryBody<P> {
-	/// The scope this entry belongs to
-	pub scope: Scope,
-	/// The identity of the author
-	pub author_identity: IdentityId,
-	/// The payload of this entry
-	pub payload: P,
-}
-
-/// The body of a RegisterIdentity entry
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RegisterIdentityBody {
-	/// The client-generated ID of this identity
-	pub identity_id: IdentityId,
-	/// The initial public key for this identity
-	pub public_key: PublicKey,
-}
-
-/// The body of an IdentityRotation entry
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct IdentityRotationBody {
-	/// The identity being rotated
-	pub identity_id: IdentityId,
-	/// The new public key to associate with this identity after rotation
-	pub new_public_key: PublicKey,
-}
-
-/// Rotation of the public key for an existing identity
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct IdentityRotationEntry {
-	/// Signature by the old key, authorising the rotation
-	pub old_sig: Signature,
-	/// Signature by the new key, proving possession
-	pub new_sig: Signature,
-	/// The body being signed by both keys
-	body: IdentityRotationBody,
-}
-
-impl IdentityRotationEntry {
-	/// Constructs a new rotation entry from both signatures and the body
-	#[must_use]
-	pub fn new(old_sig: Signature, new_sig: Signature, body: IdentityRotationBody) -> Self {
-		Self {
-			old_sig,
-			new_sig,
-			body,
-		}
-	}
-
-	/// Returns the body, unvalidated against the signatures
-	#[must_use]
-	pub fn unsafe_body(&self) -> &IdentityRotationBody {
-		&self.body
-	}
-
-	/// Verifies both signatures and returns them with the body if they match
-	#[must_use]
-	pub fn into_verified(
-		self,
-		old_key: &PublicKey,
-	) -> Option<(Signature, Signature, IdentityRotationBody)> {
-		let bytes = canonical_bytes(&self.body);
-		(self.old_sig.verify(old_key, &bytes)
-			&& self.new_sig.verify(&self.body.new_public_key, &bytes))
-		.then_some((self.old_sig, self.new_sig, self.body))
-	}
-}
-
-/// A forced scope ownership transfer done by the registry administrator, without the consent of the previous owner
-/// Intended solely for administrative interventions including e.g. squatting or legal disputes
-/// This entry should be brought up to the user interactively if encountered during installation
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AdminScopeTransfer {
-	/// The scope being transferred
-	pub scope: Scope,
-	/// The new manifest to install, including the new owner
-	pub manifest: ScopeManifest,
-}
-
-/// A publish scope entry
-pub type PublishScopeEntry = SignedEntry<ScopeEntryBody<PublishBody>>;
-/// A yank scope entry
-pub type YankScopeEntry = SignedEntry<ScopeEntryBody<YankBody>>;
-/// A deprecate scope entry
-pub type DeprecateScopeEntry = SignedEntry<ScopeEntryBody<DeprecateBody>>;
-/// A manifest-update scope entry
-pub type ManifestUpdateScopeEntry = SignedEntry<ScopeEntryBody<ScopeManifestUpdateBody>>;
-
-/// A scope-chained entry of any kind, as it appears in the log
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ScopeEntry {
-	/// Publishing a new package version
-	Publish(PublishScopeEntry),
-	/// Yanking of an existing package version
-	Yank(YankScopeEntry),
-	/// Deprecation of an existing package
-	Deprecate(DeprecateScopeEntry),
-	/// Complete replacement of the scope manifest
-	ManifestUpdate(ManifestUpdateScopeEntry),
-}
-
-/// Registration of a new identity, anchoring its initial public key
-pub type RegisterIdentityEntry = SignedEntry<RegisterIdentityBody>;
-/// A forced scope ownership transfer initiated by the registry operator
-pub type AdminScopeTransferEntry = AdminScopeTransfer;
-
-/// An identity-chained entry of any kind, as it appears in the log
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum IdentityEntry {
-	/// Registration of a new identity, anchoring its initial public key
-	Register(RegisterIdentityEntry),
-	/// Rotation of the public key for an existing identity
-	Rotation(IdentityRotationEntry),
-}
-
-/// All possible entry payloads in the registry log
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EntryPayload {
-	/// A scope-related entry
-	Scope(ScopeEntry),
-	/// An identity-related entry
-	Identity(IdentityEntry),
-	/// A forced scope ownership transfer initiated by the registry operator
-	AdminScopeTransfer(AdminScopeTransferEntry),
-}
-
-/// An entry in the registry log, at a known leaf position
+/// An entry in a log, at a known leaf position
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry<T> {
 	/// The leaf position of this entry
 	pub pos: u64,
 	/// The time of publishing of this entry
+	/// This value is server authoritative because of time sync issues a client provided value would pose
 	pub published_at: Timestamp,
 	/// The payload of this entry
 	pub payload: T,
 }
 
-/// The response of the package version endpoint
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackageVersionResponse {
-	/// The publish entry for this version
-	pub publish: Entry<PublishScopeEntry>,
-	/// The yank entry, present only while the version is currently yanked
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub yank: Option<Entry<YankScopeEntry>>,
+/// A structure that carries an owner key
+pub trait WithOwner {
+	/// The owner's key
+	fn owner(&self) -> &PublicKey;
 }
 
-/// The response of the package versions endpoint
+/// An unvalidated record carrying a signature and a signer
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackageVersionsResponse {
-	/// The versions
-	pub versions: Vec<PackageVersionResponse>,
-	/// The total amount of versions
-	pub total: u64,
+pub struct UnvalidatedSigned<T: WithOwner> {
+	/// The signature
+	pub sig: Signature,
+	/// The person signing this if it isn't the owner
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub signer: Option<PublicKey>,
+	/// The body
+	#[serde(flatten)]
+	pub body: T,
 }
 
-/// The response of the package info endpoint
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PackageInfoResponse {
-	/// The package-level deprecation entry, present only while currently deprecated
-	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub deprecation: Option<Entry<DeprecateScopeEntry>>,
-	/// The latest version of this package: the largest non-prereleased, non-yanked version
-	/// In case nothing matches, the conditions are ignored as ordered in the text
-	pub latest_version: Version,
+/// The signed entry was illegal in some way, e.g. the signature didn't match or it doubly specified an owner
+#[derive(Debug, Error)]
+#[error("the signed entry was illegal")]
+pub struct SignedValidationFailed;
+
+/// A validated wrapper over [UnvalidatedSigned], allowing construction only if it's legal
+#[derive(Debug, Clone, Serialize)]
+#[serde(transparent)]
+pub struct Signed<T: WithOwner>(UnvalidatedSigned<T>);
+
+impl<T: WithOwner + Serialize> Signed<T> {
+	/// Validates the passed in [UnvalidatedSigned] and returns Some if it's valid
+	pub fn new(input: UnvalidatedSigned<T>) -> Result<Self, SignedValidationFailed> {
+		if input
+			.signer
+			.as_ref()
+			.is_some_and(|s| s == input.body.owner())
+		{
+			return Err(SignedValidationFailed);
+		}
+
+		if !input.sig.verify(
+			input.signer.as_ref().unwrap_or(input.body.owner()),
+			&canonical_bytes(&input.body),
+		) {
+			return Err(SignedValidationFailed);
+		}
+
+		Ok(Self(input))
+	}
+
+	/// Returns the underlying [UnvalidatedSigned]
+	pub fn into_inner(self) -> UnvalidatedSigned<T> {
+		self.0
+	}
 }
 
-/// A single hit from the package search endpoint
+impl<'de, T: WithOwner + Serialize + Deserialize<'de>> Deserialize<'de> for Signed<T> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		Self::new(UnvalidatedSigned::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+	}
+}
+
+/// The body of [GenesisEntry]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SearchResultItem {
-	/// The name of the package
-	pub name: PackageName,
-	/// The version of the package
-	pub version: Version,
-	/// The description of the package
-	pub description: String,
-	/// The time of publishing of this package
-	pub published_at: Timestamp,
+pub struct GenesisRevision {
+	/// The scope name being created
+	pub scope_name: Scope,
+	/// The owner of the scope
+	pub owner: PublicKey,
 }
 
-/// The response of the log head endpoint
+impl WithOwner for GenesisRevision {
+	fn owner(&self) -> &PublicKey {
+		&self.owner
+	}
+}
+
+/// The scope creation entry in the registry's global log
+pub type GenesisEntry = Entry<Signed<GenesisRevision>>;
+
+/// Maximum amount of packages a [Grant] can have
+pub const MAX_GRANT_PACKAGES: usize = 255;
+
+/// Maximum length, in characters, of a deprecation reason
+pub const MAX_REASON_LEN: usize = 255;
+
+/// The grant a scope member possesses
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeGrant {
+	/// The member can write to all packages
+	AllPackages,
+	/// The member can write to only the named packages
+	Only(BoundedBTreeSet<Name, MAX_GRANT_PACKAGES>),
+}
+
+impl ScopeGrant {
+	/// Whether this grant allows the member to update this package
+	#[must_use]
+	pub fn covers(&self, package: &Name) -> bool {
+		match self {
+			ScopeGrant::AllPackages => true,
+			ScopeGrant::Only(packages) => packages.contains(package),
+		}
+	}
+}
+
+/// An operation to the scope issued by a registry admin
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AdminOpKind {
+	/// The admin is transferring ownership
+	TransferOwnership {
+		/// The new owner
+		new_owner: PublicKey,
+	},
+	/// A package's yank status is being updated
+	SetYanked {
+		/// The package being updated
+		pkg: Name,
+		/// The version being updated
+		version: PesdeVersionForRegistry,
+		/// Whether it is yanked
+		yanked: bool,
+	},
+}
+
+/// An operation to the scope issued by a regular user
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SignedOpKind {
+	/// A member is rotating their key
+	RotateKey {
+		/// The key to be rotated (the one signing this entry)
+		old_key: PublicKey,
+		/// The key to replace the old key with
+		new_key: PublicKey,
+		/// The proof of possession of the new key
+		new_key_proof: Signature,
+		/// A value used to prevent playbacks, this is what [new_key_proof] signs
+		nonce: Uuid,
+	},
+	/// A member is leaving this scope
+	MemberLeave {
+		/// The member leaving
+		member: PublicKey,
+	},
+	/// The owner is transferring ownership
+	TransferOwnership {
+		/// The new owner
+		new_owner: PublicKey,
+		/// The proof of consent of the new owner
+		new_owner_consent: Signature,
+		/// A value used to prevent playbacks, this is what [new_owner_consent] signs
+		nonce: Uuid,
+	},
+	/// A member is being added
+	AddMember {
+		/// The new member's key
+		member: PublicKey,
+		/// The grant they're being added with
+		grant: ScopeGrant,
+		/// The proof of consent of the new member
+		consent: Signature,
+		/// A value used to prevent playbacks, this is what [consent] signs
+		nonce: Uuid,
+	},
+	/// The owner is changing a member's grant
+	UpdateMemberGrant {
+		/// The member's key
+		member: PublicKey,
+		/// The new grant
+		grant: ScopeGrant,
+	},
+	/// The owner is removing a member
+	RemoveMember {
+		/// The member being removed
+		member: PublicKey,
+	},
+	/// A new version of a package is being published
+	PublishVersion {
+		/// The package being published
+		pkg: Name,
+		/// The version being published
+		version: PesdeVersionForRegistry,
+		/// The hash of manifest being published
+		manifest: Hash,
+		/// The hash of the archive being published
+		archive_hash: Hash,
+	},
+	/// A package's yank status is being updated
+	SetYanked {
+		/// The package being updated
+		pkg: Name,
+		/// The version being updated
+		version: PesdeVersionForRegistry,
+		/// Whether it is yanked
+		yanked: bool,
+	},
+	/// A package's deprecation status is being updated
+	SetDeprecation {
+		/// The package being updated
+		pkg: Name,
+		/// The reason this package is deprecated
+		reason: BoundedString<MAX_REASON_LEN>,
+	},
+}
+
+/// An operation to the scope
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "op_kind", rename_all = "snake_case")]
+pub enum ScopeOp {
+	/// An entry issued by a normal user
+	Signed(Signed<ScopeEntryBody<SignedOpKind>>),
+	/// An entry issued by the registry admin
+	Admin(ScopeEntryBody<AdminOpKind>),
+}
+
+/// The body of [ScopeOp]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScopeEntryBody<Op> {
+	/// The name of the scope
+	pub scope_name: Scope,
+	/// The scope's owner
+	pub scope_owner: PublicKey,
+	/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[PublicKey], [ScopeGrant]>
+	pub scope_members_root: RawHash,
+	/// The hash of the previous entry in this scope's log
+	pub prev_hash: RawHash,
+	/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersion], [PackageVersionState]>
+	pub versions_root: RawHash,
+	/// The root of the tree holding package deprecations. [merkle_bplustree::MerkleBPlusTree]<[Name], [BoundedString<MAX_REASON_LEN>]>
+	pub deprecations_root: RawHash,
+	/// The operation this entry carries
+	pub op: Op,
+}
+
+impl WithOwner for ScopeEntryBody<SignedOpKind> {
+	fn owner(&self) -> &PublicKey {
+		&self.scope_owner
+	}
+}
+
+/// An entry in the scope's chain
+pub type ScopeChainEntry = Entry<ScopeOp>;
+
+/// An opinionated subset of (Cargo) SemVer.
+/// Differences from [Version]:
+/// - build metadata is not allowed: it is ambiguous (can't specify it) and overall has little to no purpose
+/// - only lowercase ASCII is allowed: while without this requirement versions can be deterministically chosen, they are surprising to users: `1.2.3-hello` is not `1.2.3-Hello`
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PesdeStyleVersion {
+	/// [Version::major]
+	pub major: u64,
+	/// [Version::minor]
+	pub minor: u64,
+	/// [Version::patch]
+	pub patch: u64,
+	/// [Version::pre]
+	pre: Prerelease,
+}
+ser_display_deser_fromstr!(PesdeStyleVersion);
+
+impl PesdeStyleVersion {
+	/// [Version::pre]
+	#[must_use]
+	pub fn pre(&self) -> &Prerelease {
+		&self.pre
+	}
+}
+
+impl Display for PesdeStyleVersion {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let pre = if self.pre.is_empty() {
+			format_args!("")
+		} else {
+			format_args!("-{}", self.pre)
+		};
+
+		write!(f, "{}.{}.{}{}", self.major, self.minor, self.patch, pre)
+	}
+}
+
+/// Errors that can occur when parsing a [PesdeStyleVersion] from str
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum PesdeStyleVersionFromStrError {
+	/// The version was not valid SemVer
+	#[error("failed to parse input as semver")]
+	SemVer(#[from] semver::Error),
+
+	/// The version contained build metadata
+	#[error("pesde style versions mustn't contain build metadata")]
+	HasBuildMetadata,
+
+	/// The version's prerelease wasn't lowercase
+	#[error("pesde style versions' prereleases must be lowercase")]
+	UpperPrerelease,
+}
+
+impl FromStr for PesdeStyleVersion {
+	type Err = PesdeStyleVersionFromStrError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let semver_version = Version::parse(s)?;
+		if !semver_version.build.is_empty() {
+			return Err(Self::Err::HasBuildMetadata);
+		}
+
+		if semver_version.pre.chars().any(|c| c.is_ascii_uppercase()) {
+			return Err(Self::Err::UpperPrerelease);
+		}
+
+		Ok(Self {
+			major: semver_version.major,
+			minor: semver_version.minor,
+			patch: semver_version.patch,
+			pre: semver_version.pre,
+		})
+	}
+}
+
+/// Maximum length, in characters, of a serialised version
+pub const MAX_VERSION_LEN: usize = 255;
+
+/// A [PesdeStyleVersion] with a maximum length
+pub type PesdeVersionForRegistry = Bounded<PesdeStyleVersion, MAX_VERSION_LEN>;
+
+/// The key to the map a [ScopeEntryBody::versions_root] points to. Pair of package name and version
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PackageVersion {
+	/// The package name this keys
+	pub name: Name,
+	/// The package version this keys
+	pub version: PesdeStyleVersion,
+}
+ser_display_deser_fromstr!(PackageVersion);
+
+impl Display for PackageVersion {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}@{}", self.name, self.version)
+	}
+}
+
+/// Errors that can occur when parsing a [PackageVersion] from str
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum PackageVersionFromStrError {
+	/// The input string wasn't in the form of `name@version`
+	#[error("`{0}` can't be parsed as `name@version`")]
+	BadInput(Box<str>),
+
+	/// The name was invalid
+	#[error("failed to parse name")]
+	MalformedName(#[from] crate::names::errors::PackageNameError),
+
+	/// The version was invalid
+	#[error("failed to parse version")]
+	MalformedVersion(#[from] PesdeStyleVersionFromStrError),
+}
+
+impl FromStr for PackageVersion {
+	type Err = PackageVersionFromStrError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let Some((name, version)) = s.split_once('@') else {
+			return Err(Self::Err::BadInput(s.into()));
+		};
+
+		Ok(Self {
+			name: name.parse()?,
+			version: version.parse()?,
+		})
+	}
+}
+
+/// The value to the map a [ScopeEntryBody::versions_root] points to.
+/// Monitors must ensure archive_hash is never changed, unlike the mutable [Self::yank_state]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageVersionState {
+	/// The hash of the archive containing the package's contents
+	pub archive_hash: Hash,
+	/// The version's yank status
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub yank_state: Option<VersionYankState>,
+}
+
+/// A yank state of a version. In the case of an admin yank, only an admin is able to unyank it
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VersionYankState {
+	/// The package is yanked with a normal yank and can be accessed if it has been observed
+	Yanked,
+	/// The package has been yanked by an admin; it is no longer accessible
+	AdminYanked,
+}
+
+/// The response of a log head endpoint
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogHeadResponse {
-	/// The accumulator of the head entry in the log
+	/// The accumulator of the log
 	pub accumulator: MmrAccumulator,
 	/// The MMR's current size
 	pub mmr_size: u64,
@@ -430,14 +458,14 @@ pub struct LogHeadResponse {
 	pub proof_paths: Vec<Vec<<CurrentMmrMerge as Merge>::Item>>,
 }
 
-/// The response of the log inclusion endpoint
+/// The response of a log inclusion endpoint
 #[derive(Debug, Serialize, Deserialize)]
-pub struct InclusionProofResponse {
+pub struct LogInclusionProofResponse {
 	/// The proof path from the entry to the peaks
 	pub proof: Vec<<CurrentMmrMerge as Merge>::Item>,
 }
 
-/// MMR accumulator
+/// A MMR accumulator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MmrAccumulator {
 	/// The hash algorithm used for all peaks
@@ -457,16 +485,16 @@ pub trait THashAlgorithm {
 
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct Sha384Hash;
-impl THashAlgorithm for Sha384Hash {
-	const ALGORITHM: HashAlgorithm = HashAlgorithm::Sha384;
+pub struct Blake3Hash;
+impl THashAlgorithm for Blake3Hash {
+	const ALGORITHM: HashAlgorithm = HashAlgorithm::Blake3;
 }
 
 /// The current hash algorithm used by the registry
-pub const CURRENT_HASH_ALGORITHM: HashAlgorithm = HashAlgorithm::Sha384;
+pub const CURRENT_HASH_ALGORITHM: HashAlgorithm = HashAlgorithm::Blake3;
 
 /// The [Merge] implementation using the [CURRENT_HASH_ALGORITHM]
-pub type CurrentMmrMerge = MmrMerge<Sha384Hash>;
+pub type CurrentMmrMerge = MmrMerge<Blake3Hash>;
 
 #[doc(hidden)]
 #[derive(Debug)]
@@ -480,7 +508,7 @@ impl<A: THashAlgorithm> Merge for MmrMerge<A> {
 		let mut hasher = A::ALGORITHM.hasher();
 		hasher.update(&[LEAF_DOMAIN]);
 		hasher.update(data);
-		Ok(hasher.finalize().into())
+		Ok(hasher.finalize().into_hash())
 	}
 
 	fn merge_pos(
@@ -493,6 +521,6 @@ impl<A: THashAlgorithm> Merge for MmrMerge<A> {
 		hasher.update(&pos.to_be_bytes());
 		hasher.update(left.as_bytes());
 		hasher.update(right.as_bytes());
-		Ok(hasher.finalize().into())
+		Ok(hasher.finalize().into_hash())
 	}
 }

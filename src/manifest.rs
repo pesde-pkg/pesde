@@ -9,8 +9,8 @@ use crate::source::DependencySpecifiers;
 use crate::source::PackageExports;
 use crate::source::Realm;
 use crate::source::ids::PackageId;
+use crate::source::pesde::registry::PesdeVersionForRegistry;
 use relative_path::RelativePathBuf;
-use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -27,8 +27,6 @@ pub const MAX_DESCRIPTION_LEN: usize = 255;
 pub const MAX_AUTHORS: usize = 255;
 /// Maximum length, in characters, of a single author entry
 pub const MAX_AUTHOR_LEN: usize = 255;
-/// Maximum length, in characters, of a serialised version
-pub const MAX_VERSION_LEN: usize = 255;
 /// Maximum length, in characters, of a serialised version requirement
 pub const MAX_VERSION_REQ_LEN: usize = 255;
 /// Maximum length, in characters, of a serialised URL
@@ -64,7 +62,7 @@ pub struct Manifest {
 	/// The name of the package
 	pub name: PackageName,
 	/// The version of the package
-	pub version: Bounded<Version, MAX_VERSION_LEN>,
+	pub version: PesdeVersionForRegistry,
 	/// The description of the package
 	#[serde(default)]
 	pub description: BoundedString<MAX_DESCRIPTION_LEN>,

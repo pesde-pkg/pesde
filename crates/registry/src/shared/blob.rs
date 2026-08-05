@@ -1,8 +1,8 @@
+use pesde::source::pesde::registry::PesdeVersionForRegistry;
 use reqwest::Body;
 use reqwest::header::CONTENT_ENCODING;
 use reqwest::header::CONTENT_TYPE;
 use rusty_s3::actions::PutObject;
-use semver::Version;
 use std::path::PathBuf;
 use tokio::io::AsyncBufRead;
 use tokio_util::io::ReaderStream;
@@ -53,7 +53,7 @@ impl From<BlobResponse> for HttpResponse {
 	}
 }
 
-fn object_key(prefix: &str, name: &PackageName, version: &Version) -> String {
+fn object_key(prefix: &str, name: &PackageName, version: &PesdeVersionForRegistry) -> String {
 	format!("{prefix}/{}/{}/{version}", name.scope(), name.name())
 }
 
@@ -61,7 +61,7 @@ impl BlobStorage {
 	pub async fn get_package_archive(
 		&self,
 		name: &PackageName,
-		version: &Version,
+		version: &PesdeVersionForRegistry,
 	) -> anyhow::Result<Option<BlobResponse>> {
 		self.get_object("packages", name, version, ARCHIVE_CONTENT_TYPE)
 			.await
@@ -70,7 +70,7 @@ impl BlobStorage {
 	pub async fn put_package_archive<R: AsyncBufRead + Unpin + Send + 'static>(
 		&self,
 		name: &PackageName,
-		version: &Version,
+		version: &PesdeVersionForRegistry,
 		data: R,
 	) -> anyhow::Result<()> {
 		self.put_object(
@@ -87,7 +87,7 @@ impl BlobStorage {
 	pub async fn get_package_readme(
 		&self,
 		name: &PackageName,
-		version: &Version,
+		version: &PesdeVersionForRegistry,
 	) -> anyhow::Result<Option<BlobResponse>> {
 		self.get_object("readmes", name, version, README_CONTENT_TYPE)
 			.await
@@ -96,7 +96,7 @@ impl BlobStorage {
 	pub async fn put_package_readme<R: AsyncBufRead + Unpin + Send + 'static>(
 		&self,
 		name: &PackageName,
-		version: &Version,
+		version: &PesdeVersionForRegistry,
 		data: R,
 	) -> anyhow::Result<()> {
 		self.put_object("readmes", name, version, data, README_CONTENT_TYPE, None)
@@ -107,7 +107,7 @@ impl BlobStorage {
 		&self,
 		prefix: &str,
 		name: &PackageName,
-		version: &Version,
+		version: &PesdeVersionForRegistry,
 		content_type: &'static str,
 	) -> anyhow::Result<Option<BlobResponse>> {
 		match self {
@@ -135,7 +135,7 @@ impl BlobStorage {
 		&self,
 		prefix: &str,
 		name: &PackageName,
-		version: &Version,
+		version: &PesdeVersionForRegistry,
 		mut data: R,
 		content_type: &str,
 		content_encoding: Option<&str>,

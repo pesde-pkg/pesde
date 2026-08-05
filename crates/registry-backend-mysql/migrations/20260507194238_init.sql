@@ -7,7 +7,7 @@ INSERT INTO Tree (size) VALUES (0);
 
 CREATE TABLE TreeNode (
     pos BIGINT UNSIGNED PRIMARY KEY,
-    sha384 BINARY(48) NOT NULL    
+    blake3 BINARY(32) NOT NULL    
 );
 
 CREATE TABLE LogEntry (

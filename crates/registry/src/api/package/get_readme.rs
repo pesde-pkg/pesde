@@ -5,7 +5,7 @@ use actix_web::web;
 use pesde::names::Name;
 use pesde::names::PackageName;
 use pesde::names::Scope;
-use semver::Version;
+use pesde::source::pesde::registry::PesdeVersionForRegistry;
 
 use crate::AppState;
 use crate::api::package::Error;
@@ -15,7 +15,7 @@ use crate::shared::blob::BlobStorage;
 #[get("/package/{scope}/{name}/{version}/readme")]
 pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
-	path: web::Path<(Scope, Name, Version)>,
+	path: web::Path<(Scope, Name, PesdeVersionForRegistry)>,
 ) -> Result<impl Responder, Error> {
 	let (scope, name, version) = path.into_inner();
 	let package_name = PackageName::new(scope, name);
@@ -30,7 +30,7 @@ pub(super) async fn http_v2(
 async fn handler(
 	blob: &BlobStorage,
 	name: &PackageName,
-	version: &Version,
+	version: &PesdeVersionForRegistry,
 ) -> anyhow::Result<Option<BlobResponse>> {
 	blob.get_package_readme(name, version).await
 }

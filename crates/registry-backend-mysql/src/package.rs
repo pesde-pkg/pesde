@@ -10,7 +10,6 @@ use pesde::source::pesde::registry::*;
 use pesde_registry_core::features::package::PackageWriteError;
 use pesde_registry_core::features::package::Repository;
 use pesde_registry_core::util::semver_ord;
-use semver::Version;
 use sqlx::MySqlPool;
 use sqlx::error::DatabaseError;
 
@@ -28,7 +27,7 @@ impl Repository for MySqlBackend {
 	async fn package_version(
 		&self,
 		name: &PackageName,
-		version: &Version,
+		version: &PesdeVersionForRegistry,
 	) -> anyhow::Result<Option<PackageVersionResponse>> {
 		let Some(row) = sqlx::query!(
 			r#"
@@ -393,7 +392,7 @@ async fn current_yank(
 	pool: &MySqlPool,
 	publish_pos: u64,
 	name: &PackageName,
-	version: &Version,
+	version: &PesdeVersionForRegistry,
 ) -> anyhow::Result<Option<Entry<YankScopeEntry>>> {
 	let Some(row) = sqlx::query!(
 		r#"

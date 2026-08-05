@@ -9,13 +9,12 @@ use base64::Engine as _;
 use crate::ser_display_deser_fromstr;
 
 /// A key kind
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
 #[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
 #[non_exhaustive]
 pub enum KeyKind {
 	/// An Ed25519 key
-	#[default]
 	Ed25519,
 }
 ser_display_deser_fromstr!(KeyKind);
@@ -50,7 +49,7 @@ impl FromStr for KeyKind {
 }
 
 /// A public key
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PublicKey {
 	kind: KeyKind,
 	data: Arc<[u8]>,

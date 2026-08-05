@@ -66,10 +66,11 @@ async-compression = { workspace = true, features = ["gzip"] }
 async-stream = { workspace = true }
 tempfile = { workspace = true }
 async-trait = { workspace = true }
-sha2 = { workspace = true }
+blake3 = { workspace = true }
 sqlx = { workspace = true, optional = true }
 itertools = { workspace = true }
 jiff = { workspace = true }
+merkle-bplustree = { workspace = true }
 
 gix = { version = "0.80.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
@@ -91,8 +92,6 @@ async_zip = { version = "0.0.18", features = [
 ] }
 croshet = "0.1.0"
 paste = "1.0.15"
-
-digest = "0.10.7"
 
 fast32 = "1.0.3"
 base64 = "0.22.1"
@@ -162,7 +161,7 @@ async-compression = { version = "0.4.41", features = ["tokio", "zstd"] }
 async-stream = "0.3.6"
 async-trait = "0.1.89"
 tempfile = "3.27.0"
-sha2 = "0.10.9"
+blake3 = "1.8.5"
 sqlx = { version = "0.9.0", default-features = false, features = [
     "runtime-tokio",
     "tls-rustls",
@@ -175,6 +174,7 @@ jiff = { version = "0.2.23", default-features = false, features = [
     "serde",
     "std",
 ] }
+merkle-bplustree = { path = "../merkle-bplustree" }
 
 [profile.dev.package.full_moon]
 opt-level = 3

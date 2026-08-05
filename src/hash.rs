@@ -3,9 +3,6 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use digest::DynDigest;
-use sha2::Sha384;
-
 use crate::ser_display_deser_fromstr;
 
 /// A raw hash digest
@@ -55,26 +52,34 @@ impl FromStr for RawHash {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum HashAlgorithm {
-	/// The SHA-384 hash algorithm
+	/// The BLAKE3 hash algorithm
 	#[default]
-	Sha384,
+	Blake3,
 }
 ser_display_deser_fromstr!(HashAlgorithm);
 
 impl HashAlgorithm {
 	/// Returns a hasher for this hash algorithm
 	#[must_use]
-	pub fn hasher(self) -> Box<dyn DynDigest + Send> {
+	pub fn hasher(self) -> Hasher {
 		match self {
-			HashAlgorithm::Sha384 => Box::new(Sha384::default()),
+			Self::Blake3 => Hasher(HasherInner::Blake3(blake3::Hasher::new())),
+		}
+	}
+
+	/// Returns the length, in bytes, of this algorithm's output size
+	#[must_use]
+	pub const fn output_size(self) -> usize {
+		match self {
+			Self::Blake3 => blake3::OUT_LEN,
 		}
 	}
 
 	/// Returns the optimal prefix length of the hash for storage in the CAS
 	#[must_use]
-	pub fn optimal_prefix_parts(self) -> &'static [usize] {
+	pub const fn optimal_prefix_parts(self) -> &'static [usize] {
 		match self {
-			HashAlgorithm::Sha384 => &[2],
+			Self::Blake3 => &[2],
 		}
 	}
 }
@@ -82,7 +87,7 @@ impl HashAlgorithm {
 impl Display for HashAlgorithm {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			HashAlgorithm::Sha384 => write!(f, "sha384"),
+			HashAlgorithm::Blake3 => write!(f, "blake3"),
 		}
 	}
 }
@@ -92,10 +97,41 @@ impl FromStr for HashAlgorithm {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
-			"sha384" => Ok(HashAlgorithm::Sha384),
+			"blake3" => Ok(HashAlgorithm::Blake3),
 			_ => Err(
 				errors::HashAlgorithmFromStrErrorKind::UnknownHashAlgorithm(s.to_string()).into(),
 			),
+		}
+	}
+}
+
+enum HasherInner {
+	Blake3(blake3::Hasher),
+}
+
+/// A constructor of a hash allowing passing in data in chunks
+pub struct Hasher(HasherInner);
+
+impl Hasher {
+	/// Appends a new chunk of data to the hasher state
+	pub fn update(&mut self, input: &[u8]) {
+		match &mut self.0 {
+			HasherInner::Blake3(blake3) => blake3.update(input),
+		};
+	}
+
+	/// Returns the [Hash] the inputs created
+	#[must_use]
+	pub fn finalize(self) -> Hash {
+		match self.0 {
+			HasherInner::Blake3(blake3) => {
+				let bytes: [u8; _] = blake3.finalize().into();
+
+				Hash {
+					algorithm: HashAlgorithm::Blake3,
+					hash: bytes.into(),
+				}
+			}
 		}
 	}
 }
@@ -113,7 +149,7 @@ impl Hash {
 	#[must_use]
 	pub fn new(algorithm: HashAlgorithm, hash: impl Into<RawHash>) -> Option<Self> {
 		let hash = hash.into();
-		if hash.as_bytes().len() != algorithm.hasher().output_size() {
+		if hash.as_bytes().len() != algorithm.output_size() {
 			return None;
 		}
 
@@ -125,7 +161,7 @@ impl Hash {
 	pub fn from_bytes(algorithm: HashAlgorithm, bytes: impl AsRef<[u8]>) -> Self {
 		let mut hasher = algorithm.hasher();
 		hasher.update(bytes.as_ref());
-		Self::new(algorithm, hasher.finalize()).unwrap()
+		hasher.finalize()
 	}
 
 	/// Returns the hash algorithm used to create this hash
@@ -138,6 +174,12 @@ impl Hash {
 	#[must_use]
 	pub fn hash(&self) -> &RawHash {
 		&self.hash
+	}
+
+	/// Consumes self and returns the hash value
+	#[must_use]
+	pub fn into_hash(self) -> RawHash {
+		self.hash
 	}
 }
 
@@ -164,7 +206,7 @@ impl FromStr for Hash {
 		}
 
 		let algorithm: HashAlgorithm = algorithm.parse()?;
-		let mut data = Vec::with_capacity(algorithm.hasher().output_size());
+		let mut data = Vec::with_capacity(algorithm.output_size());
 		fast32::base32::CROCKFORD_LOWER.decode_into(hash.as_bytes(), &mut data)?;
 
 		let hash = Self::new(algorithm, data);

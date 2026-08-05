@@ -7,10 +7,10 @@ use pesde::source::pesde::registry::DeprecateBody;
 use pesde::source::pesde::registry::PackageInfoResponse;
 use pesde::source::pesde::registry::PackageVersionResponse;
 use pesde::source::pesde::registry::PackageVersionsResponse;
+use pesde::source::pesde::registry::PesdeVersionForRegistry;
 use pesde::source::pesde::registry::PublishBody;
 use pesde::source::pesde::registry::ScopeEntryBody;
 use pesde::source::pesde::registry::YankBody;
-use semver::Version;
 
 use crate::db::WriteStore;
 
@@ -43,7 +43,7 @@ pub trait Repository {
 	async fn package_version(
 		&self,
 		name: &PackageName,
-		version: &Version,
+		version: &PesdeVersionForRegistry,
 	) -> anyhow::Result<Option<PackageVersionResponse>>;
 
 	async fn package_info(&self, name: &PackageName)

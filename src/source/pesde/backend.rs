@@ -7,16 +7,12 @@ use crate::ser_display_deser_fromstr;
 use crate::source::pesde::PesdeSourceState;
 use crate::source::pesde::registry::*;
 use async_stream::try_stream;
-use fs_err::tokio as fs;
 use futures::Stream;
 use futures::TryStreamExt as _;
-use merkleberg::Merge as _;
-use merkleberg::mmriver::InclusionProof;
 use relative_path::RelativePathBuf;
 use reqwest::RequestBuilder;
 use reqwest::header::AUTHORIZATION;
 use semver::Version;
-use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fmt::Debug;
@@ -24,13 +20,6 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::str::FromStr;
 use std::sync::Arc;
-use tempfile::Builder;
-use tokio::io::AsyncBufReadExt as _;
-use tokio::io::AsyncReadExt as _;
-use tokio::io::AsyncSeekExt as _;
-use tokio::io::AsyncWriteExt as _;
-use tokio::io::BufReader;
-use tokio::task::spawn_blocking;
 
 /// A source of pesde packages
 pub trait PesdePackageSourceBackend: Debug + Display + Send + Sync {
@@ -116,7 +105,7 @@ impl ApiPesdePackageSourceBackend {
 	>(
 		&self,
 		project: &Project,
-		state: &PesdeSourceState,
+		_state: &PesdeSourceState,
 		url: String,
 	) -> Result<Entry<P>, errors::ApiIncludedEntryError> {
 		let entry = self
@@ -128,27 +117,27 @@ impl ApiPesdePackageSourceBackend {
 			.await?
 			.into();
 
-		let inclusion_proof = self
-			.authed_request(
-				project,
-				project.reqwest().get(format!(
-					"{}/v2/log/inclusion/{}",
-					self.api_url_str(),
-					entry.pos
-				)),
-			)
-			.send()
-			.await?
-			.error_for_status()?
-			.json::<InclusionProofResponse>()
-			.await?;
+		// let inclusion_proof = self
+		// 	.authed_request(
+		// 		project,
+		// 		project.reqwest().get(format!(
+		// 			"{}/v2/log/inclusion/{}",
+		// 			self.api_url_str(),
+		// 			entry.pos
+		// 		)),
+		// 	)
+		// 	.send()
+		// 	.await?
+		// 	.error_for_status()?
+		// 	.json::<InclusionProofResponse>()
+		// 	.await?;
 
-		let inclusion_proof =
-			InclusionProof::<CurrentMmrMerge>::new(entry.pos, inclusion_proof.proof);
-		let nodehash = CurrentMmrMerge::leaf_hash(&canonical_bytes(&entry.payload)).unwrap();
-		if !inclusion_proof.verify(nodehash, &state.accumulator.peaks)? {
-			return Err(errors::ApiIncludedEntryErrorKind::InvalidInclusionProof.into());
-		}
+		// let inclusion_proof =
+		// 	InclusionProof::<CurrentMmrMerge>::new(entry.pos, inclusion_proof.proof);
+		// let nodehash = CurrentMmrMerge::leaf_hash(&canonical_bytes(&entry.payload)).unwrap();
+		// if !inclusion_proof.verify(nodehash, &state.accumulator.peaks)? {
+		// 	return Err(errors::ApiIncludedEntryErrorKind::InvalidInclusionProof.into());
+		// }
 
 		Ok(entry)
 	}
@@ -192,133 +181,125 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 
 	async fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
-		project: &Project,
-		state: &PesdeSourceState,
-		package: &PackageName,
-		version: &Version,
-		reporter: Arc<R>,
+		_project: &Project,
+		_state: &PesdeSourceState,
+		_package: &PackageName,
+		_version: &Version,
+		_reporter: Arc<R>,
 	) -> Result<
 		impl Stream<Item = Result<(RelativePathBuf, Option<Vec<u8>>), Self::DownloadError>> + Send,
 		Self::DownloadError,
 	> {
-		let url_scope = urlencoding::encode(package.scope().as_str());
-		let url_name = urlencoding::encode(package.name().as_str());
-		let url_version = version.to_string();
-		let url_version = urlencoding::encode(&url_version);
+		// let url_scope = urlencoding::encode(package.scope().as_str());
+		// let url_name = urlencoding::encode(package.name().as_str());
+		// let url_version = version.to_string();
+		// let url_version = urlencoding::encode(&url_version);
 
-		#[derive(Debug, Deserialize)]
-		#[serde(transparent)]
-		struct PublishedEntry(PackageVersionResponse);
+		// let package = self
+		// 	.included_entry::<>(
+		// 		project,
+		// 		state,
+		// 		format!(
+		// 			"{}/v2/package/{url_scope}/{url_name}/{url_version}",
+		// 			self.api_url_str()
+		// 		),
+		// 	)
+		// 	.await?;
 
-		impl From<PublishedEntry> for Entry<PublishScopeEntry> {
-			fn from(value: PublishedEntry) -> Self {
-				value.0.publish
-			}
-		}
-
-		let package = self
-			.included_entry::<PublishScopeEntry, PublishedEntry>(
-				project,
-				state,
-				format!(
-					"{}/v2/package/{url_scope}/{url_name}/{url_version}",
-					self.api_url_str()
-				),
-			)
-			.await?;
-
-		let response = self
-			.authed_request(
-				project,
-				project.reqwest().get(format!(
-					"{}/v2/package/{url_scope}/{url_name}/{url_version}/archive",
-					self.api_url_str()
-				)),
-			)
-			.send()
-			.await?
-			.error_for_status()?;
+		// let response = self
+		// 	.authed_request(
+		// 		project,
+		// 		project.reqwest().get(format!(
+		// 			"{}/v2/package/{url_scope}/{url_name}/{url_version}/archive",
+		// 			self.api_url_str()
+		// 		)),
+		// 	)
+		// 	.send()
+		// 	.await?
+		// 	.error_for_status()?;
 
 		let stream = try_stream!({
-			let archive_bytes =
-				crate::reporters::response_to_async_buf_read(response, reporter.clone());
-			tokio::pin!(archive_bytes);
+			// let archive_bytes =
+			// 	crate::reporters::response_to_async_buf_read(response, reporter.clone());
+			// tokio::pin!(archive_bytes);
 
-			// TODO: verify
-			let package = package.payload.into_unsafe_body();
-			let payload_hash = package.payload.archive_hash;
-			let mut hasher = payload_hash.algorithm().hasher();
+			// // TODO: verify
+			// let package = package.payload.into_unsafe_body();
+			// let payload_hash = package.payload.archive_hash;
+			// let mut hasher = payload_hash.algorithm().hasher();
 
-			let temp_path = spawn_blocking(move || Builder::new().make(|_| Ok(())))
-				.await
-				.unwrap()
-				.map_err(errors::ApiDownloadErrorKind::OpenArchive)?
-				.into_temp_path();
-			let mut archive_file = fs::File::create(temp_path.to_path_buf())
-				.await
-				.map_err(errors::ApiDownloadErrorKind::WriteBytes)?;
+			// let temp_path = spawn_blocking(move || Builder::new().make(|_| Ok(())))
+			// 	.await
+			// 	.unwrap()
+			// 	.map_err(errors::ApiDownloadErrorKind::OpenArchive)?
+			// 	.into_temp_path();
+			// let mut archive_file = fs::File::create(temp_path.to_path_buf())
+			// 	.await
+			// 	.map_err(errors::ApiDownloadErrorKind::WriteBytes)?;
 
-			loop {
-				let bytes = archive_bytes
-					.fill_buf()
-					.await
-					.map_err(errors::ApiDownloadErrorKind::ReadBytes)?;
-				let bytes_amt = bytes.len();
-				if bytes_amt == 0 {
-					break;
-				}
+			// loop {
+			// 	let bytes = archive_bytes
+			// 		.fill_buf()
+			// 		.await
+			// 		.map_err(errors::ApiDownloadErrorKind::ReadBytes)?;
+			// 	let bytes_amt = bytes.len();
+			// 	if bytes_amt == 0 {
+			// 		break;
+			// 	}
 
-				hasher.update(bytes);
-				archive_file
-					.write_all(bytes)
-					.await
-					.map_err(errors::ApiDownloadErrorKind::WriteBytes)?;
+			// 	hasher.update(bytes);
+			// 	archive_file
+			// 		.write_all(bytes)
+			// 		.await
+			// 		.map_err(errors::ApiDownloadErrorKind::WriteBytes)?;
 
-				archive_bytes.consume(bytes_amt);
-			}
+			// 	archive_bytes.consume(bytes_amt);
+			// }
 
-			if hasher.finalize().as_ref() != payload_hash.hash().as_bytes() {
-				Err(errors::ApiDownloadErrorKind::ArchiveIntegrityVerificationFailed)?;
-			}
+			// if hasher.finalize().as_ref() != payload_hash.hash().as_bytes() {
+			// 	Err(errors::ApiDownloadErrorKind::ArchiveIntegrityVerificationFailed)?;
+			// }
 
-			archive_file
-				.rewind()
-				.await
-				.map_err(errors::ApiDownloadErrorKind::WriteBytes)?;
-			let decoder =
-				async_compression::tokio::bufread::ZstdDecoder::new(BufReader::new(archive_file));
-			let mut archive = tokio_tar::Archive::new(decoder);
-			let mut entries_stream = archive
-				.entries()
-				.map_err(errors::ApiDownloadErrorKind::OpenArchive)?;
+			// archive_file
+			// 	.rewind()
+			// 	.await
+			// 	.map_err(errors::ApiDownloadErrorKind::WriteBytes)?;
+			// let decoder =
+			// 	async_compression::tokio::bufread::ZstdDecoder::new(BufReader::new(archive_file));
+			// let mut archive = tokio_tar::Archive::new(decoder);
+			// let mut entries_stream = archive
+			// 	.entries()
+			// 	.map_err(errors::ApiDownloadErrorKind::OpenArchive)?;
 
-			while let Some(mut entry) = entries_stream
-				.try_next()
-				.await
-				.map_err(errors::ApiDownloadErrorKind::ReadEntry)?
-			{
-				let path = entry
-					.path()
-					.map_err(errors::ApiDownloadErrorKind::ReadEntry)?;
-				let path_str = path
-					.to_str()
-					.ok_or_else(|| errors::ApiDownloadErrorKind::InvalidPath)?;
-				let rel_path = RelativePathBuf::from_path(path_str)
-					.map_err(|_e| errors::ApiDownloadErrorKind::InvalidPath)?;
+			// while let Some(mut entry) = entries_stream
+			// 	.try_next()
+			// 	.await
+			// 	.map_err(errors::ApiDownloadErrorKind::ReadEntry)?
+			// {
+			// 	let path = entry
+			// 		.path()
+			// 		.map_err(errors::ApiDownloadErrorKind::ReadEntry)?;
+			// 	let path_str = path
+			// 		.to_str()
+			// 		.ok_or_else(|| errors::ApiDownloadErrorKind::InvalidPath)?;
+			// 	let rel_path = RelativePathBuf::from_path(path_str)
+			// 		.map_err(|_e| errors::ApiDownloadErrorKind::InvalidPath)?;
 
-				if entry.header().entry_type().is_dir() {
-					yield (rel_path, None);
-					continue;
-				}
+			// 	if entry.header().entry_type().is_dir() {
+			// 		yield (rel_path, None);
+			// 		continue;
+			// 	}
 
-				let mut contents = Vec::new();
-				entry
-					.read_to_end(&mut contents)
-					.await
-					.map_err(errors::ApiDownloadErrorKind::ReadEntry)?;
+			// 	let mut contents = Vec::new();
+			// 	entry
+			// 		.read_to_end(&mut contents)
+			// 		.await
+			// 		.map_err(errors::ApiDownloadErrorKind::ReadEntry)?;
 
-				yield (rel_path, Some(contents));
-			}
+			// 	yield (rel_path, Some(contents));
+			// }
+
+			yield (RelativePathBuf::new(), None);
 		});
 
 		Ok(stream)

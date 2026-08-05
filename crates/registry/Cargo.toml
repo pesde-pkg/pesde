@@ -28,7 +28,7 @@ toml = { workspace = true }
 astral-tokio-tar = { workspace = true }
 async-compression = { workspace = true }
 tempfile = { workspace = true }
-sha2 = { workspace = true }
+blake3 = { workspace = true }
 itertools = { workspace = true }
 
 actix-web = "4.13.0"

@@ -1,7 +1,7 @@
-use semver::Version;
+use pesde::source::pesde::registry::PesdeVersionForRegistry;
 
 #[must_use]
-pub fn semver_ord(version: &Version) -> Vec<u8> {
+pub fn semver_ord(version: &PesdeVersionForRegistry) -> Vec<u8> {
 	// Algorithm taken from crates.io
 	// https://github.com/rust-lang/crates.io/blob/6c50d4111e49211e0e4e3bd955be0594dfbf5c18/migrations/2026-05-26-120000-0000_semver_ord_v2/up.sql
 
@@ -16,10 +16,10 @@ pub fn semver_ord(version: &Version) -> Vec<u8> {
 	ord_num(&mut result, &version.minor.to_string());
 	ord_num(&mut result, &version.patch.to_string());
 
-	if version.pre.is_empty() {
+	if version.pre().is_empty() {
 		result.push(0x03);
 	} else {
-		for part in version.pre.split('.') {
+		for part in version.pre().split('.') {
 			if part.chars().all(|c| c.is_ascii_digit()) {
 				result.push(0x01);
 				ord_num(&mut result, part);

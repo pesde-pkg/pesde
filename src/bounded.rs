@@ -1,6 +1,7 @@
 //! Length limited types
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt::Display;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -86,16 +87,25 @@ impl<K, V> Collection for BTreeMap<K, V> {
 	}
 }
 
+impl<T> Collection for BTreeSet<T> {
+	fn len(&self) -> usize {
+		self.len()
+	}
+}
+
 /// A collection of at most `N` elements
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[serde(transparent)]
-pub struct BoundedCollection<C, const N: usize>(C);
+pub struct BoundedCollection<C: Collection, const N: usize>(C);
 
 /// A `Vec` of at most `N` elements
 pub type BoundedVec<T, const N: usize> = BoundedCollection<Vec<T>, N>;
 
 /// A `BTreeMap` of at most `N` entries
 pub type BoundedBTreeMap<K, V, const N: usize> = BoundedCollection<BTreeMap<K, V>, N>;
+
+/// A `BTreeSet` of at most `N` entries
+pub type BoundedBTreeSet<T, const N: usize> = BoundedCollection<BTreeSet<T>, N>;
 
 impl<C: Collection, const N: usize> BoundedCollection<C, N> {
 	/// Wraps a collection, ensuring its length is compatbile
@@ -115,7 +125,7 @@ impl<C: Collection, const N: usize> BoundedCollection<C, N> {
 	}
 }
 
-impl<C, const N: usize> Deref for BoundedCollection<C, N> {
+impl<C: Collection, const N: usize> Deref for BoundedCollection<C, N> {
 	type Target = C;
 
 	fn deref(&self) -> &C {

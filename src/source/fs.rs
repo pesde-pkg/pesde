@@ -88,8 +88,7 @@ pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
 	let tmp_dir = cas_dir.join(".tmp");
 	fs::create_dir_all(&tmp_dir).await?;
 
-	let hash_algorithm = HashAlgorithm::default();
-	let mut hasher = hash_algorithm.hasher();
+	let mut hasher = HashAlgorithm::default().hasher();
 
 	let temp_path = spawn_blocking(move || Builder::new().make_in(&tmp_dir, |_| Ok(())))
 		.await
@@ -110,7 +109,7 @@ pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
 		contents.consume(bytes_amt);
 	}
 
-	let hash = Hash::new(hash_algorithm, hasher.finalize()).unwrap();
+	let hash = hasher.finalize();
 
 	let cas_path = cas_path(&hash, cas_dir);
 	fs::create_dir_all(cas_path.parent().unwrap()).await?;
