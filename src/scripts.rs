@@ -44,21 +44,17 @@ pub async fn execute_script<H: ExecuteScriptHooks>(
 	let parsed_script = croshet::parser::parse(script)?;
 
 	let (stdout, stderr, stdin) = hooks.stdio();
+	let mut options = croshet::ExecuteOptionsBuilder::new()
+		.cwd(subproject.dir())
+		.stdout(stdout)
+		.stderr(stderr)
+		.stdin(stdin)
+		.args(args)
+		.build()
+		.unwrap();
+	options.env_vars = std::env::vars_os().collect();
 
-	let (code, stdio_result) = tokio::join!(
-		croshet::execute(
-			parsed_script,
-			croshet::ExecuteOptionsBuilder::new()
-				.cwd(subproject.dir())
-				.stdout(stdout)
-				.stderr(stderr)
-				.stdin(stdin)
-				.args(args)
-				.build()
-				.unwrap(),
-		),
-		hooks.run(),
-	);
+	let (code, stdio_result) = tokio::join!(croshet::execute(parsed_script, options), hooks.run(),);
 	stdio_result.map_err(errors::ExecuteScriptError::Hooks)?;
 
 	Ok(code)
