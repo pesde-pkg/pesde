@@ -54,7 +54,7 @@ pub async fn execute_script<H: ExecuteScriptHooks>(
 		.unwrap();
 	options.env_vars = std::env::vars_os().collect();
 
-	let (code, stdio_result) = tokio::join!(croshet::execute(parsed_script, options), hooks.run(),);
+	let (code, stdio_result) = tokio::join!(croshet::execute(parsed_script, options), hooks.run());
 	stdio_result.map_err(errors::ExecuteScriptError::Hooks)?;
 
 	Ok(code)
