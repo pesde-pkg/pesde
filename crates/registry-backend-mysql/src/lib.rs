@@ -32,11 +32,11 @@ use sqlx::query_builder::Separated;
 use sqlx::types::Type;
 
 use pesde_registry_core::db::Backend;
-use pesde_registry_core::db::ReadStore;
+use pesde_registry_core::db::MmrReadStore;
+use pesde_registry_core::db::MmrWriteStore;
 use pesde_registry_core::db::ScopeAccess;
 use pesde_registry_core::db::ScopeControl;
 use pesde_registry_core::db::StoreError;
-use pesde_registry_core::db::WriteStore;
 
 mod identity;
 mod log;
@@ -123,7 +123,7 @@ impl Backend for MySqlBackend {
 	async fn read_mmr_at(
 		&self,
 		size: u64,
-	) -> anyhow::Result<MMRIVER<CurrentMmrMerge, Box<dyn ReadStore>>> {
+	) -> anyhow::Result<MMRIVER<CurrentMerkleHasher, Box<dyn MmrReadStore>>> {
 		Ok(MMRIVER::new(
 			size,
 			Box::new(MySqlReadStore {
@@ -132,14 +132,14 @@ impl Backend for MySqlBackend {
 		))
 	}
 
-	async fn begin_write(&self) -> anyhow::Result<Box<dyn WriteStore>> {
+	async fn begin_write(&self) -> anyhow::Result<Box<dyn MmrWriteStore>> {
 		let tx = self.pool.begin().await?;
 		Ok(Box::new(MySqlWriteStore { tx: Mutex::new(tx) }))
 	}
 
 	async fn current_identity_key(
 		&self,
-		store: &mut Box<dyn WriteStore>,
+		store: &mut Box<dyn MmrWriteStore>,
 		id: &IdentityId,
 	) -> anyhow::Result<Option<PublicKey>> {
 		let Some(row) = sqlx::query!(
@@ -161,7 +161,7 @@ impl Backend for MySqlBackend {
 		build_public_key(row.algorithm, row.public_key).map(Some)
 	}
 
-	async fn lock_tree(&self, store: &mut Box<dyn WriteStore>) -> anyhow::Result<u64> {
+	async fn lock_tree(&self, store: &mut Box<dyn MmrWriteStore>) -> anyhow::Result<u64> {
 		Ok(sqlx::query!("SELECT size FROM Tree FOR UPDATE")
 			.fetch_one(&mut **as_tx(store))
 			.await?
@@ -170,7 +170,7 @@ impl Backend for MySqlBackend {
 
 	async fn scope_write_access(
 		&self,
-		store: &mut Box<dyn WriteStore>,
+		store: &mut Box<dyn MmrWriteStore>,
 		scope: &Scope,
 		identity: &IdentityId,
 		control: ScopeControl<'_>,
@@ -184,7 +184,7 @@ impl Backend for MySqlBackend {
 			ScopeControl::Owner => ("", true, false),
 		};
 
-		let check = async |store: &mut Box<dyn WriteStore>| {
+		let check = async |store: &mut Box<dyn MmrWriteStore>| {
 			let row = sqlx::query!(
 				r#"
 				SELECT
@@ -242,7 +242,7 @@ struct MySqlReadStore {
 }
 
 #[async_trait]
-impl ReadStore for MySqlReadStore {
+impl MmrReadStore for MySqlReadStore {
 	async fn get_node(&self, pos: u64) -> Result<Option<RawHash>, StoreError> {
 		get_hash(&self.pool, pos)
 			.await
@@ -255,7 +255,7 @@ struct MySqlWriteStore {
 }
 
 #[async_trait]
-impl WriteStore for MySqlWriteStore {
+impl MmrWriteStore for MySqlWriteStore {
 	async fn get_node(&self, pos: u64) -> Result<Option<RawHash>, StoreError> {
 		get_hash(&mut **self.tx.lock().await, pos)
 			.await
@@ -289,7 +289,7 @@ impl WriteStore for MySqlWriteStore {
 	}
 }
 
-fn as_tx(store: &mut Box<dyn WriteStore>) -> &mut MySqlTransaction<'static> {
+fn as_tx(store: &mut Box<dyn MmrWriteStore>) -> &mut MySqlTransaction<'static> {
 	(&mut **store as &mut dyn Any)
 		.downcast_mut::<MySqlWriteStore>()
 		.expect("write store does not belong to the mysql backend")

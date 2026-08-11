@@ -31,7 +31,7 @@ use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::pesde::backend::ApiPesdePackageSourceBackend;
 use crate::source::pesde::registry::CURRENT_HASH_ALGORITHM;
-use crate::source::pesde::registry::CurrentMmrMerge;
+use crate::source::pesde::registry::CurrentMerkleHasher;
 use crate::source::pesde::registry::MmrAccumulator;
 use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
@@ -146,7 +146,7 @@ impl PackageSource for PesdePackageSource {
 					return Err(errors::RefreshErrorKind::ConsistencyProofFailed.into());
 				}
 
-				let proof = ConsistencyProof::<CurrentMmrMerge>::new(
+				let proof = ConsistencyProof::<CurrentMerkleHasher>::new(
 					old_state.mmr_size,
 					remote_state.mmr_size,
 					remote_state.proof_paths,

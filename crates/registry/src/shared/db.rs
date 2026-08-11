@@ -1,7 +1,7 @@
 use merkleberg::MMRIVER;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
-use pesde_registry_core::db::WriteStore;
+use pesde_registry_core::db::MmrWriteStore;
 use serde::Serialize;
 
 #[cfg(not(any(feature = "mysql")))]
@@ -23,11 +23,11 @@ pub async fn connect(url: &str) -> Box<dyn Backend> {
 }
 
 pub async fn append_leaf(
-	store: Box<dyn WriteStore>,
+	store: Box<dyn MmrWriteStore>,
 	pos: u64,
 	body: &impl Serialize,
-) -> anyhow::Result<(Box<dyn WriteStore>, u64)> {
-	let mut mmr: MMRIVER<CurrentMmrMerge, Box<dyn WriteStore>> = MMRIVER::new(pos, store);
+) -> anyhow::Result<(Box<dyn MmrWriteStore>, u64)> {
+	let mut mmr: MMRIVER<CurrentMerkleHasher, Box<dyn MmrWriteStore>> = MMRIVER::new(pos, store);
 	mmr.push(&canonical_bytes(body)).await?;
 	mmr.commit().await?;
 

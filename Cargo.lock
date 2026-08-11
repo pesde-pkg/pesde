@@ -3732,6 +3732,7 @@ dependencies = [
 name = "merkle-bplustree"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "derive-where",
  "mappable-rc",
  "thiserror 2.0.18",
@@ -4262,6 +4263,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "futures",
+ "merkle-bplustree",
  "merkleberg",
  "pesde",
  "semver",

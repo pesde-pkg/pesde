@@ -69,7 +69,7 @@ impl Repository for MySqlBackend {
 						.fetch_one(&self.pool)
 						.await?;
 
-						ScopeEntry::Publish(SignedEntry::new(
+						ScopeEntryPayload::Publish(SignedEntry::new(
 							sig,
 							ScopeEntryBody {
 								scope,
@@ -102,7 +102,7 @@ impl Repository for MySqlBackend {
 						.fetch_one(&self.pool)
 						.await?;
 
-						ScopeEntry::Yank(SignedEntry::new(
+						ScopeEntryPayload::Yank(SignedEntry::new(
 							sig,
 							ScopeEntryBody {
 								scope,
@@ -128,7 +128,7 @@ impl Repository for MySqlBackend {
 						.fetch_one(&self.pool)
 						.await?;
 
-						ScopeEntry::Deprecate(SignedEntry::new(
+						ScopeEntryPayload::Deprecate(SignedEntry::new(
 							sig,
 							ScopeEntryBody {
 								scope,
@@ -143,7 +143,7 @@ impl Repository for MySqlBackend {
 					ScopeEntryKind::ManifestUpdate => {
 						let (_, manifest) = read_scope_manifest(&self.pool, pos).await?;
 
-						ScopeEntry::ManifestUpdate(SignedEntry::new(
+						ScopeEntryPayload::ManifestUpdate(SignedEntry::new(
 							sig,
 							ScopeEntryBody {
 								scope,

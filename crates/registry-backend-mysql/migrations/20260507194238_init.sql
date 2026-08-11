@@ -1,156 +1,391 @@
-CREATE TABLE Tree (
+-- this table is purely for storage optimisation - PQ keys are much longer than 32 byte ed25519
+CREATE TABLE public_key (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    algorithm ENUM ('ed25519') NOT NULL,
+    data VARBINARY(4096) NOT NULL,
+
+    UNIQUE (algorithm, data)
+);
+
+CREATE TABLE global_log (
     _id BIT(1) PRIMARY KEY DEFAULT 0 CHECK (_id = 0),
     size BIGINT UNSIGNED NOT NULL
 );
 
-INSERT INTO Tree (size) VALUES (0);
+INSERT INTO global_log (size) VALUES (0);
 
-CREATE TABLE TreeNode (
+CREATE TABLE global_log_node (
     pos BIGINT UNSIGNED PRIMARY KEY,
-    blake3 BINARY(32) NOT NULL    
+    blake3 BINARY(32) NOT NULL
 );
 
-CREATE TABLE LogEntry (
+CREATE TABLE global_log_entry (
     pos BIGINT UNSIGNED PRIMARY KEY,
     published_at DATETIME NOT NULL DEFAULT(NOW()),
-    kind ENUM ('register_identity', 'identity_rotation', 'scope', 'admin_scope_transfer') NOT NULL,
-    FOREIGN KEY (pos) REFERENCES TreeNode (pos)
+
+    FOREIGN KEY (pos) REFERENCES global_log_node (pos)
 );
 
-CREATE TABLE Identity (
-    identity_id BINARY(16) PRIMARY KEY
-);
-
-CREATE TABLE IdentityKeyEntry (
+CREATE TABLE global_log_genesis_entry (
     pos BIGINT UNSIGNED PRIMARY KEY,
-    sig TEXT NOT NULL,
-    authorising_sig TEXT,
+    scope BIGINT UNSIGNED NOT NULL UNIQUE,
+    owner_id BIGINT UNSIGNED NOT NULL,
 
-    identity_id BINARY(16) NOT NULL,
-    algorithm ENUM ('ed25519') NOT NULL,
-    public_key VARBINARY(1024) NOT NULL,
-
-    UNIQUE (algorithm, public_key),
-    FOREIGN KEY (pos) REFERENCES LogEntry (pos),
-    FOREIGN KEY (identity_id) REFERENCES Identity (identity_id)
+    FOREIGN KEY (pos) REFERENCES global_log_entry (pos),
+    FOREIGN KEY (owner_id) REFERENCES public_key (id)
 );
 
-CREATE INDEX idx_identity_key_entry_identity ON IdentityKeyEntry (identity_id);
-
-CREATE TABLE Scope (
+CREATE TABLE scope (
     genesis_pos BIGINT UNSIGNED PRIMARY KEY,
-    scope VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,
-    FOREIGN KEY (genesis_pos) REFERENCES LogEntry (pos)
+    name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL UNIQUE,
+    log_size BIGINT UNSIGNED NOT NULL,
+
+    FOREIGN KEY (genesis_pos) REFERENCES global_log_genesis_entry (pos)
 );
 
-CREATE TABLE ScopeManifest (
-    pos BIGINT UNSIGNED PRIMARY KEY,
-    scope_pos BIGINT UNSIGNED NOT NULL,
+CREATE TABLE scope_log_node (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,
+    blake3 BINARY(32) NOT NULL,
 
-    owner BINARY(16) NOT NULL,
-
-    FOREIGN KEY (pos) REFERENCES LogEntry (pos),
-    FOREIGN KEY (scope_pos) REFERENCES Scope (genesis_pos),
-    FOREIGN KEY (owner) REFERENCES Identity (identity_id)
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope) REFERENCES scope (genesis_pos)
 );
 
-CREATE TABLE ScopeManifestMember (
+CREATE TABLE scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,
+    
+    published_at DATETIME NOT NULL DEFAULT(NOW()),
+    
+    sig BLOB,
+    prev_blake3 BINARY(32) NOT NULL,
+    versions_root_blake3 BINARY(32) NOT NULL,
+    deprecated_root_blake3 BINARY(32) NOT NULL,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES scope_log_node (scope, pos)
+);
+
+CREATE TABLE signed_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,
+    op_kind ENUM (
+        'add_member',
+        'update_member_grant',
+        'rotate_key',
+        'remove_member',
+        'transfer_ownership',
+        'publish_version',
+        'set_yanked',
+        'set_deprecation'
+    ),
+    signer BIGINT UNSIGNED,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES scope_log_entry (scope, pos),
+    FOREIGN KEY (signer) REFERENCES public_key (id)
+);
+
+CREATE TABLE scope_member_grant (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT
+);
+
+CREATE TABLE scope_member_grant_package (
+    grant_id BIGINT UNSIGNED NOT NULL,
+    package VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+
+    PRIMARY KEY (grant_id, package),
+    FOREIGN KEY (grant_id) REFERENCES scope_member_grant (id)
+);
+
+CREATE TABLE scope_members_node (
+    blake3 BINARY(32) PRIMARY KEY,
+    kind ENUM ('leaf', 'internal') NOT NULL
+);
+
+CREATE TABLE scope_members_leaf_node_entry (
+    node_blake3 BINARY(32) NOT NULL,
+    idx SMALLINT UNSIGNED NOT NULL,
+
+    member BIGINT UNSIGNED NOT NULL,
+    grant_id BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (node_blake3, idx),
+    FOREIGN KEY (node_blake3) REFERENCES scope_members_node (blake3),
+    FOREIGN KEY (member) REFERENCES public_key (id),
+    FOREIGN KEY (grant_id) REFERENCES scope_member_grant (id)
+);
+
+CREATE TABLE scope_members_internal_node_key (
+    node_blake3 BINARY(32) NOT NULL,
+    idx SMALLINT UNSIGNED NOT NULL,
+
+    member BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (node_blake3, idx),
+    FOREIGN KEY (node_blake3) REFERENCES scope_members_node (blake3),
+    FOREIGN KEY (member) REFERENCES public_key (id)
+);
+
+CREATE TABLE scope_members_internal_node_child (
+    node_blake3 BINARY(32) NOT NULL,
+    idx SMALLINT UNSIGNED NOT NULL,
+    
+    child_blake3 BINARY(32) NOT NULL,
+
+    PRIMARY KEY (node_blake3, idx),
+    FOREIGN KEY (node_blake3) REFERENCES scope_members_node (blake3),
+    FOREIGN KEY (child_blake3) REFERENCES scope_members_node (blake3)
+);
+
+CREATE TABLE signed_add_member_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,  
+
+    scope_members_root_blake3 BINARY(32) NOT NULL,
+
+    member BIGINT UNSIGNED NOT NULL,
+    grant_id BIGINT UNSIGNED NOT NULL,
+    consent BLOB NOT NULL,
+    nonce BINARY(16) NOT NULL UNIQUE,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES signed_scope_log_entry (scope, pos),
+    FOREIGN KEY (scope_members_root_blake3) REFERENCES scope_members_node (blake3),
+    FOREIGN KEY (member) REFERENCES public_key (id),
+    FOREIGN KEY (grant_id) REFERENCES scope_member_grant (id)
+);
+
+CREATE TABLE signed_update_member_grant_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,  
+
+    scope_members_root_blake3 BINARY(32) NOT NULL,
+
+    member BIGINT UNSIGNED NOT NULL,
+    grant_id BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES signed_scope_log_entry (scope, pos),
+    FOREIGN KEY (scope_members_root_blake3) REFERENCES scope_members_node (blake3),
+    FOREIGN KEY (member) REFERENCES public_key (id),
+    FOREIGN KEY (grant_id) REFERENCES scope_member_grant (id)
+);
+
+CREATE TABLE signed_rotate_key_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,  
+
+    scope_members_root_blake3 BINARY(32) NOT NULL,
+
+    new_member BIGINT UNSIGNED NOT NULL,
+    proof BLOB NOT NULL,
+    nonce BINARY(16) NOT NULL UNIQUE,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES signed_scope_log_entry (scope, pos),
+    FOREIGN KEY (scope_members_root_blake3) REFERENCES scope_members_node (blake3),
+    FOREIGN KEY (new_member) REFERENCES public_key (id)
+);
+
+CREATE TABLE signed_remove_member_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,  
+
+    scope_members_root_blake3 BINARY(32) NOT NULL,
+
+    member BIGINT UNSIGNED,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES signed_scope_log_entry (scope, pos),
+    FOREIGN KEY (scope_members_root_blake3) REFERENCES scope_members_node (blake3),
+    FOREIGN KEY (member) REFERENCES public_key (id)
+);
+
+CREATE TABLE signed_transfer_ownership_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
     pos BIGINT UNSIGNED NOT NULL,
 
-    identity_id BINARY(16) NOT NULL,
-    -- a specific package name granting write access to it, or '' for all packages
-    package VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
+    new_owner BIGINT UNSIGNED NOT NULL,
+    proof BLOB NOT NULL,
+    nonce BINARY(16) NOT NULL UNIQUE,    
 
-    PRIMARY KEY (pos, identity_id, package),
-    FOREIGN KEY (pos) REFERENCES ScopeManifest (pos),
-    FOREIGN KEY (identity_id) REFERENCES Identity (identity_id)
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES signed_scope_log_entry (scope, pos),
+    FOREIGN KEY (new_owner) REFERENCES public_key (id)
 );
 
-CREATE INDEX idx_manifest_member_identity ON ScopeManifestMember (identity_id);
-
-CREATE TABLE ScopeLogEntry (
-    pos BIGINT UNSIGNED PRIMARY KEY,
-    sig TEXT NOT NULL,
-
-    scope_pos BIGINT UNSIGNED NOT NULL,
-
-    author_identity BINARY(16) NOT NULL,
-
-    kind ENUM ('publish', 'yank', 'deprecate', 'manifest_update') NOT NULL,
-
-    FOREIGN KEY (pos) REFERENCES LogEntry (pos),
-    FOREIGN KEY (scope_pos) REFERENCES Scope (genesis_pos),
-    FOREIGN KEY (author_identity) REFERENCES Identity (identity_id)
-);
-
-CREATE TABLE Package (
-    genesis_pos BIGINT UNSIGNED PRIMARY KEY,
-    scope_pos BIGINT UNSIGNED NOT NULL,
+CREATE TABLE scope_package (
+    scope BIGINT UNSIGNED NOT NULL,
+    genesis_pos BIGINT UNSIGNED NOT NULL,
+    
     name VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    UNIQUE (scope_pos, name),
-    FOREIGN KEY (genesis_pos) REFERENCES ScopeLogEntry (pos),
-    FOREIGN KEY (scope_pos) REFERENCES Scope (genesis_pos)
+
+    PRIMARY KEY (scope, genesis_pos),
+    FOREIGN KEY (scope) REFERENCES scope (genesis_pos),
+    FOREIGN KEY (scope, genesis_pos) REFERENCES signed_scope_log_entry (scope, pos),
+    UNIQUE (scope, name)
 );
 
-CREATE TABLE PublishScopeLogEntry (
-    pos BIGINT UNSIGNED PRIMARY KEY,
+CREATE TABLE versions_node (
+    blake3 BINARY(32) PRIMARY KEY,
+    kind ENUM ('leaf', 'internal') NOT NULL
+);
+
+CREATE TABLE versions_leaf_node_entry (
+    node_blake3 BINARY(32) NOT NULL,
+    idx SMALLINT UNSIGNED NOT NULL,
+
+    scope BIGINT UNSIGNED NOT NULL,
+    version_pos BIGINT UNSIGNED NOT NULL,
+    yank_state ENUM ('yanked', 'admin_yanked'),
+
+    PRIMARY KEY (node_blake3, idx),
+    FOREIGN KEY (node_blake3) REFERENCES versions_node (blake3),
+    FOREIGN KEY (scope, version_pos) REFERENCES signed_scope_log_entry (scope, pos)
+);
+
+CREATE TABLE versions_internal_node_key (
+    node_blake3 BINARY(32) NOT NULL,
+    idx SMALLINT UNSIGNED NOT NULL,
+
+    scope BIGINT UNSIGNED NOT NULL,
+    version_pos BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (node_blake3, idx),
+    FOREIGN KEY (node_blake3) REFERENCES versions_node (blake3),
+    FOREIGN KEY (scope, version_pos) REFERENCES signed_scope_log_entry (scope, pos)
+);
+
+CREATE TABLE versions_internal_node_child (
+    node_blake3 BINARY(32) NOT NULL,
+    idx SMALLINT UNSIGNED NOT NULL,
+    
+    child_blake3 BINARY(32) NOT NULL,
+
+    PRIMARY KEY (node_blake3, idx),
+    FOREIGN KEY (node_blake3) REFERENCES versions_node (blake3),
+    FOREIGN KEY (child_blake3) REFERENCES versions_node (blake3)
+);
+
+CREATE TABLE signed_publish_version_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,
+
+    versions_root_blake3 BINARY(32) NOT NULL,
 
     package_pos BIGINT UNSIGNED NOT NULL,
-    version VARCHAR(255) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
-    version_ord VARBINARY(512) NOT NULL,
-    archive_hash TEXT NOT NULL,
+    version VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    archive_hash VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
-    description VARCHAR(255) NOT NULL,
-    license VARCHAR(255) NOT NULL,
-    repository TEXT NOT NULL,
-
-    UNIQUE (package_pos, version),
-    FOREIGN KEY (pos) REFERENCES ScopeLogEntry (pos),
-    FOREIGN KEY (package_pos) REFERENCES Package (genesis_pos)
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES signed_scope_log_entry (scope, pos),
+    FOREIGN KEY (versions_root_blake3) REFERENCES versions_node (blake3),
+    FOREIGN KEY (scope, package_pos) REFERENCES scope_package (scope, genesis_pos),
+    UNIQUE (scope, package_pos, version)
 );
 
-CREATE INDEX idx_publish_version_seq ON PublishScopeLogEntry (version_ord);
+CREATE TABLE signed_set_yanked_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,  
 
-CREATE TABLE PublishAuthor (
-    pos BIGINT UNSIGNED NOT NULL,
-    seq TINYINT UNSIGNED NOT NULL,
-    author VARCHAR(255) NOT NULL,
+    versions_root_blake3 BINARY(32) NOT NULL,
 
-    PRIMARY KEY (pos, seq),
-    FOREIGN KEY (pos) REFERENCES PublishScopeLogEntry (pos)
+    package_version_pos BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES signed_scope_log_entry (scope, pos),
+    FOREIGN KEY (versions_root_blake3) REFERENCES versions_node (blake3),
+    FOREIGN KEY (scope, package_version_pos) REFERENCES signed_publish_version_scope_log_entry (scope, pos)
 );
 
-CREATE TABLE PublishDependency (
-    pos BIGINT UNSIGNED NOT NULL,
-    alias VARCHAR(255) CHARACTER SET ascii NOT NULL,
-    dependency_type ENUM ('standard', 'peer', 'dev') NOT NULL,
-
-    kind ENUM ('pesde', 'wally') NOT NULL,
-    name VARCHAR(255) CHARACTER SET ascii NOT NULL,
-    version_req VARCHAR(255) CHARACTER SET ascii NOT NULL,
-    registry TEXT,
-    realm ENUM ('shared', 'server'),
-
-    PRIMARY KEY (pos, alias),
-    FOREIGN KEY (pos) REFERENCES PublishScopeLogEntry (pos)
+CREATE TABLE deprecations_node (
+    blake3 BINARY(32) PRIMARY KEY,
+    kind ENUM ('leaf', 'internal') NOT NULL
 );
 
-CREATE TABLE YankScopeLogEntry (
-    pos BIGINT UNSIGNED PRIMARY KEY,
+CREATE TABLE deprecations_leaf_node_entry (
+    node_blake3 BINARY(32) NOT NULL,
+    idx SMALLINT UNSIGNED NOT NULL,
 
-    publish_pos BIGINT UNSIGNED NOT NULL,
-    action ENUM ('add', 'revoke') NOT NULL,
-
-    FOREIGN KEY (pos) REFERENCES ScopeLogEntry (pos),
-    FOREIGN KEY (publish_pos) REFERENCES PublishScopeLogEntry (pos)
-);
-
-CREATE TABLE DeprecateScopeLogEntry (
-    pos BIGINT UNSIGNED PRIMARY KEY,
-
+    scope BIGINT UNSIGNED NOT NULL,
     package_pos BIGINT UNSIGNED NOT NULL,
     reason VARCHAR(255) NOT NULL,
 
-    FOREIGN KEY (pos) REFERENCES ScopeLogEntry (pos),
-    FOREIGN KEY (package_pos) REFERENCES Package (genesis_pos)
+    PRIMARY KEY (node_blake3, idx),
+    FOREIGN KEY (node_blake3) REFERENCES deprecations_node (blake3),
+    FOREIGN KEY (scope, package_pos) REFERENCES scope_package (scope, genesis_pos)
+);
+
+CREATE TABLE deprecations_internal_node_key (
+    node_blake3 BINARY(32) NOT NULL,
+    idx SMALLINT UNSIGNED NOT NULL,
+
+    scope BIGINT UNSIGNED NOT NULL,
+    package_pos BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (node_blake3, idx),
+    FOREIGN KEY (node_blake3) REFERENCES deprecations_node (blake3),
+    FOREIGN KEY (scope, package_pos) REFERENCES scope_package (scope, genesis_pos)
+);
+
+CREATE TABLE deprecations_internal_node_child (
+    node_blake3 BINARY(32) NOT NULL,
+    idx SMALLINT UNSIGNED NOT NULL,
+    
+    child_blake3 BINARY(32) NOT NULL,
+
+    PRIMARY KEY (node_blake3, idx),
+    FOREIGN KEY (node_blake3) REFERENCES deprecations_node (blake3),
+    FOREIGN KEY (child_blake3) REFERENCES deprecations_node (blake3)
+);
+
+CREATE TABLE signed_set_deprecation_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,  
+
+    deprecated_root_blake3 BINARY(32) NOT NULL,
+
+    package_pos BIGINT UNSIGNED NOT NULL,
+    reason VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES signed_scope_log_entry (scope, pos),
+    FOREIGN KEY (deprecated_root_blake3) REFERENCES deprecations_node (blake3),
+    FOREIGN KEY (scope, package_pos) REFERENCES scope_package (scope, genesis_pos)
+);
+
+CREATE TABLE admin_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,
+    op_kind ENUM ('transfer_ownership', 'set_yanked'),
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES scope_log_entry (scope, pos)
+);
+
+CREATE TABLE admin_transfer_ownership_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,
+    
+    new_owner BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES admin_scope_log_entry (scope, pos),
+    FOREIGN KEY (new_owner) REFERENCES public_key (id)
+);
+
+CREATE TABLE admin_set_yanked_scope_log_entry (
+    scope BIGINT UNSIGNED NOT NULL,
+    pos BIGINT UNSIGNED NOT NULL,
+    
+    versions_root_blake3 BINARY(32) NOT NULL,
+
+    package_version_pos BIGINT UNSIGNED NOT NULL,
+
+    PRIMARY KEY (scope, pos),
+    FOREIGN KEY (scope, pos) REFERENCES admin_scope_log_entry (scope, pos),
+    FOREIGN KEY (versions_root_blake3) REFERENCES versions_node (blake3),
+    FOREIGN KEY (scope, package_version_pos) REFERENCES signed_publish_version_scope_log_entry (scope, pos)
 );

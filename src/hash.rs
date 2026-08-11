@@ -1,5 +1,6 @@
 //! Hashing
 use std::fmt::Display;
+use std::io::Write;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -133,6 +134,17 @@ impl Hasher {
 				}
 			}
 		}
+	}
+}
+
+impl Write for Hasher {
+	fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+		self.update(buf);
+		Ok(buf.len())
+	}
+
+	fn flush(&mut self) -> std::io::Result<()> {
+		Ok(())
 	}
 }
 

@@ -5,7 +5,7 @@ use pesde::signature::KeyKind;
 use pesde::signature::PublicKey;
 use pesde::signature::Signature;
 use pesde::source::pesde::registry::*;
-use pesde_registry_core::db::WriteStore;
+use pesde_registry_core::db::MmrWriteStore;
 use pesde_registry_core::features::identity::IdentityWriteError;
 use pesde_registry_core::features::identity::Repository;
 use sqlx::error::DatabaseError;
@@ -71,7 +71,7 @@ impl Repository for MySqlBackend {
 
 	async fn insert_register(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		sig: &Signature,
 		body: &RegisterIdentityBody,
@@ -104,7 +104,7 @@ impl Repository for MySqlBackend {
 
 	async fn insert_rotation(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		old_sig: &Signature,
 		new_sig: &Signature,

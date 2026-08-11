@@ -3,7 +3,7 @@ use itertools::Either;
 use pesde::names::Name;
 use pesde::signature::Signature;
 use pesde::source::pesde::registry::*;
-use pesde_registry_core::db::WriteStore;
+use pesde_registry_core::db::MmrWriteStore;
 use pesde_registry_core::features::scope::ManifestError;
 use pesde_registry_core::features::scope::Repository;
 use sqlx::error::DatabaseError;
@@ -17,7 +17,7 @@ use crate::insert_scope_envelope;
 impl Repository for MySqlBackend {
 	async fn insert_manifest_update(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		sig: &Signature,
 		body: &ScopeEntryBody<ScopeManifestUpdateBody>,

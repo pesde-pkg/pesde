@@ -3,16 +3,9 @@ use std::num::NonZero;
 use async_trait::async_trait;
 use pesde::names::PackageName;
 use pesde::signature::Signature;
-use pesde::source::pesde::registry::DeprecateBody;
-use pesde::source::pesde::registry::PackageInfoResponse;
-use pesde::source::pesde::registry::PackageVersionResponse;
-use pesde::source::pesde::registry::PackageVersionsResponse;
-use pesde::source::pesde::registry::PesdeVersionForRegistry;
-use pesde::source::pesde::registry::PublishBody;
-use pesde::source::pesde::registry::ScopeEntryBody;
-use pesde::source::pesde::registry::YankBody;
+use pesde::source::pesde::registry::*;
 
-use crate::db::WriteStore;
+use crate::db::MmrWriteStore;
 
 #[derive(Debug, thiserror::Error)]
 pub enum PackageWriteError {
@@ -58,7 +51,7 @@ pub trait Repository {
 
 	async fn insert_publish(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		sig: &Signature,
 		body: &ScopeEntryBody<PublishBody>,
@@ -66,7 +59,7 @@ pub trait Repository {
 
 	async fn insert_yank(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		sig: &Signature,
 		body: &ScopeEntryBody<YankBody>,
@@ -74,7 +67,7 @@ pub trait Repository {
 
 	async fn insert_deprecate(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		sig: &Signature,
 		body: &ScopeEntryBody<DeprecateBody>,

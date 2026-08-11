@@ -1,10 +1,8 @@
 use async_trait::async_trait;
 use pesde::signature::Signature;
-use pesde::source::pesde::registry::IdentityId;
-use pesde::source::pesde::registry::ScopeEntryBody;
-use pesde::source::pesde::registry::ScopeManifestUpdateBody;
+use pesde::source::pesde::registry::*;
 
-use crate::db::WriteStore;
+use crate::db::MmrWriteStore;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ManifestError {
@@ -19,7 +17,7 @@ pub enum ManifestError {
 pub trait Repository {
 	async fn insert_manifest_update(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		sig: &Signature,
 		body: &ScopeEntryBody<ScopeManifestUpdateBody>,

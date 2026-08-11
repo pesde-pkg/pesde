@@ -7,6 +7,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use jiff::Timestamp;
+use merkle_bplustree::TreeConfig;
+use merkle_bplustree::hasher::Hasher;
+use merkle_bplustree::storage::ReadNodeStorage;
 use merkleberg::Merge;
 use semver::Prerelease;
 use semver::Version;
@@ -47,26 +50,19 @@ pub struct Entry<T> {
 	pub payload: T,
 }
 
-/// A structure that carries an owner key
-pub trait WithOwner {
-	/// The owner's key
-	fn owner(&self) -> &PublicKey;
-}
-
 /// An unvalidated record carrying a signature and a signer
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UnvalidatedSigned<T: WithOwner> {
+pub struct UnvalidatedSigned<T> {
 	/// The signature
 	pub sig: Signature,
-	/// The person signing this if it isn't the owner
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub signer: Option<PublicKey>,
+	/// The person signing this
+	pub signer: PublicKey,
 	/// The body
 	#[serde(flatten)]
 	pub body: T,
 }
 
-/// The signed entry was illegal in some way, e.g. the signature didn't match or it doubly specified an owner
+/// The signed entry was illegal in some way, e.g. the signature didn't match
 #[derive(Debug, Error)]
 #[error("the signed entry was illegal")]
 pub struct SignedValidationFailed;
@@ -74,23 +70,15 @@ pub struct SignedValidationFailed;
 /// A validated wrapper over [UnvalidatedSigned], allowing construction only if it's legal
 #[derive(Debug, Clone, Serialize)]
 #[serde(transparent)]
-pub struct Signed<T: WithOwner>(UnvalidatedSigned<T>);
+pub struct Signed<T>(UnvalidatedSigned<T>);
 
-impl<T: WithOwner + Serialize> Signed<T> {
+impl<T: Serialize> Signed<T> {
 	/// Validates the passed in [UnvalidatedSigned] and returns Some if it's valid
 	pub fn new(input: UnvalidatedSigned<T>) -> Result<Self, SignedValidationFailed> {
-		if input
-			.signer
-			.as_ref()
-			.is_some_and(|s| s == input.body.owner())
+		if !input
+			.sig
+			.verify(&input.signer, &canonical_bytes(&input.body))
 		{
-			return Err(SignedValidationFailed);
-		}
-
-		if !input.sig.verify(
-			input.signer.as_ref().unwrap_or(input.body.owner()),
-			&canonical_bytes(&input.body),
-		) {
 			return Err(SignedValidationFailed);
 		}
 
@@ -103,7 +91,7 @@ impl<T: WithOwner + Serialize> Signed<T> {
 	}
 }
 
-impl<'de, T: WithOwner + Serialize + Deserialize<'de>> Deserialize<'de> for Signed<T> {
+impl<'de, T: Serialize + Deserialize<'de>> Deserialize<'de> for Signed<T> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
@@ -112,23 +100,17 @@ impl<'de, T: WithOwner + Serialize + Deserialize<'de>> Deserialize<'de> for Sign
 	}
 }
 
-/// The body of [GenesisEntry]
+/// The payload of [GenesisEntry]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GenesisRevision {
+pub struct ScopeGenesisPayload {
 	/// The scope name being created
 	pub scope_name: Scope,
-	/// The owner of the scope
-	pub owner: PublicKey,
-}
-
-impl WithOwner for GenesisRevision {
-	fn owner(&self) -> &PublicKey {
-		&self.owner
-	}
+	/// The hash of the first entry in the scope's log
+	pub first_entry_hash: Hash,
 }
 
 /// The scope creation entry in the registry's global log
-pub type GenesisEntry = Entry<Signed<GenesisRevision>>;
+pub type GenesisEntry = Entry<Signed<ScopeGenesisPayload>>;
 
 /// Maximum amount of packages a [Grant] can have
 pub const MAX_GRANT_PACKAGES: usize = 255;
@@ -137,24 +119,108 @@ pub const MAX_GRANT_PACKAGES: usize = 255;
 pub const MAX_REASON_LEN: usize = 255;
 
 /// The grant a scope member possesses
+/// An empty grant means the member can update all packages in the scope
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ScopeGrant {
-	/// The member can write to all packages
-	AllPackages,
-	/// The member can write to only the named packages
-	Only(BoundedBTreeSet<Name, MAX_GRANT_PACKAGES>),
-}
+#[serde(transparent)]
+pub struct ScopeGrant(pub BoundedBTreeSet<Name, MAX_GRANT_PACKAGES>);
 
 impl ScopeGrant {
 	/// Whether this grant allows the member to update this package
 	#[must_use]
 	pub fn covers(&self, package: &Name) -> bool {
-		match self {
-			ScopeGrant::AllPackages => true,
-			ScopeGrant::Only(packages) => packages.contains(package),
+		if self.0.is_empty() {
+			return true;
 		}
+
+		self.0.contains(package)
 	}
+}
+
+/// An operation to the scope issued by a regular user
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SignedOpKind {
+	/// A member is being added
+	AddMember {
+		/// The new member's key
+		member: PublicKey,
+		/// The grant they're being added with
+		grant: ScopeGrant,
+		/// The proof of consent of the new member
+		consent: Signature,
+		/// A value used to prevent playbacks, this is what [consent] signs
+		nonce: Uuid,
+		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
+		scope_members_root: RawHash,
+	},
+	/// The owner is changing a member's grant
+	UpdateMemberGrant {
+		/// The member's key
+		member: PublicKey,
+		/// The new grant
+		grant: ScopeGrant,
+		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
+		scope_members_root: RawHash,
+	},
+	/// A member is rotating their key
+	RotateKey {
+		/// The key to replace the old key with
+		new_key: PublicKey,
+		/// The proof of possession of the new key
+		new_key_proof: Signature,
+		/// A value used to prevent playbacks, this is what [new_key_proof] signs
+		nonce: Uuid,
+		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
+		scope_members_root: RawHash,
+	},
+	/// The owner is removing a member
+	RemoveMember {
+		/// The member being removed. None if the member is removing themselves (signing key is who's leaving)
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		member: Option<PublicKey>,
+		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
+		scope_members_root: RawHash,
+	},
+	/// The owner is transferring ownership
+	TransferOwnership {
+		/// The new owner
+		new_owner: PublicKey,
+		/// The proof of consent of the new owner
+		new_owner_consent: Signature,
+		/// A value used to prevent playbacks, this is what [new_owner_consent] signs
+		nonce: Uuid,
+	},
+	/// A new version of a package is being published
+	PublishVersion {
+		/// The package being published
+		pkg: Name,
+		/// The version being published
+		version: PesdeVersionForRegistry,
+		/// The hash of the archive being published
+		archive_hash: Hash,
+		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
+		versions_root: RawHash,
+	},
+	/// A package's yank status is being updated
+	SetYanked {
+		/// The package being updated
+		pkg: Name,
+		/// The version being updated
+		version: PesdeVersionForRegistry,
+		/// Whether it is yanked
+		yanked: bool,
+		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
+		versions_root: RawHash,
+	},
+	/// A package's deprecation status is being updated
+	SetDeprecation {
+		/// The package being updated
+		pkg: Name,
+		/// The reason this package is deprecated
+		reason: BoundedString<MAX_REASON_LEN>,
+		/// The root of the tree holding package deprecations. [merkle_bplustree::MerkleBPlusTree]<[PackageDeprecationsTreeConfig]>
+		deprecations_root: RawHash,
+	},
 }
 
 /// An operation to the scope issued by a registry admin
@@ -174,98 +240,9 @@ pub enum AdminOpKind {
 		version: PesdeVersionForRegistry,
 		/// Whether it is yanked
 		yanked: bool,
+		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
+		versions_root: RawHash,
 	},
-}
-
-/// An operation to the scope issued by a regular user
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SignedOpKind {
-	/// A member is rotating their key
-	RotateKey {
-		/// The key to be rotated (the one signing this entry)
-		old_key: PublicKey,
-		/// The key to replace the old key with
-		new_key: PublicKey,
-		/// The proof of possession of the new key
-		new_key_proof: Signature,
-		/// A value used to prevent playbacks, this is what [new_key_proof] signs
-		nonce: Uuid,
-	},
-	/// A member is leaving this scope
-	MemberLeave {
-		/// The member leaving
-		member: PublicKey,
-	},
-	/// The owner is transferring ownership
-	TransferOwnership {
-		/// The new owner
-		new_owner: PublicKey,
-		/// The proof of consent of the new owner
-		new_owner_consent: Signature,
-		/// A value used to prevent playbacks, this is what [new_owner_consent] signs
-		nonce: Uuid,
-	},
-	/// A member is being added
-	AddMember {
-		/// The new member's key
-		member: PublicKey,
-		/// The grant they're being added with
-		grant: ScopeGrant,
-		/// The proof of consent of the new member
-		consent: Signature,
-		/// A value used to prevent playbacks, this is what [consent] signs
-		nonce: Uuid,
-	},
-	/// The owner is changing a member's grant
-	UpdateMemberGrant {
-		/// The member's key
-		member: PublicKey,
-		/// The new grant
-		grant: ScopeGrant,
-	},
-	/// The owner is removing a member
-	RemoveMember {
-		/// The member being removed
-		member: PublicKey,
-	},
-	/// A new version of a package is being published
-	PublishVersion {
-		/// The package being published
-		pkg: Name,
-		/// The version being published
-		version: PesdeVersionForRegistry,
-		/// The hash of manifest being published
-		manifest: Hash,
-		/// The hash of the archive being published
-		archive_hash: Hash,
-	},
-	/// A package's yank status is being updated
-	SetYanked {
-		/// The package being updated
-		pkg: Name,
-		/// The version being updated
-		version: PesdeVersionForRegistry,
-		/// Whether it is yanked
-		yanked: bool,
-	},
-	/// A package's deprecation status is being updated
-	SetDeprecation {
-		/// The package being updated
-		pkg: Name,
-		/// The reason this package is deprecated
-		reason: BoundedString<MAX_REASON_LEN>,
-	},
-}
-
-/// An operation to the scope
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "op_kind", rename_all = "snake_case")]
-pub enum ScopeOp {
-	/// An entry issued by a normal user
-	Signed(Signed<ScopeEntryBody<SignedOpKind>>),
-	/// An entry issued by the registry admin
-	Admin(ScopeEntryBody<AdminOpKind>),
 }
 
 /// The body of [ScopeOp]
@@ -273,28 +250,24 @@ pub enum ScopeOp {
 pub struct ScopeEntryBody<Op> {
 	/// The name of the scope
 	pub scope_name: Scope,
-	/// The scope's owner
-	pub scope_owner: PublicKey,
-	/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[PublicKey], [ScopeGrant]>
-	pub scope_members_root: RawHash,
 	/// The hash of the previous entry in this scope's log
-	pub prev_hash: RawHash,
-	/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersion], [PackageVersionState]>
-	pub versions_root: RawHash,
-	/// The root of the tree holding package deprecations. [merkle_bplustree::MerkleBPlusTree]<[Name], [BoundedString<MAX_REASON_LEN>]>
-	pub deprecations_root: RawHash,
+	pub prev_hash: Hash,
 	/// The operation this entry carries
 	pub op: Op,
 }
 
-impl WithOwner for ScopeEntryBody<SignedOpKind> {
-	fn owner(&self) -> &PublicKey {
-		&self.scope_owner
-	}
+/// The payload of an entry in the scope's log
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "payload_kind", rename_all = "snake_case")]
+pub enum ScopeEntryPayload {
+	/// An entry issued by a normal user
+	Signed(Signed<ScopeEntryBody<SignedOpKind>>),
+	/// An entry issued by the registry admin
+	Admin(ScopeEntryBody<AdminOpKind>),
 }
 
 /// An entry in the scope's chain
-pub type ScopeChainEntry = Entry<ScopeOp>;
+pub type ScopeEntry = Entry<ScopeEntryPayload>;
 
 /// An opinionated subset of (Cargo) SemVer.
 /// Differences from [Version]:
@@ -447,6 +420,36 @@ pub enum VersionYankState {
 	AdminYanked,
 }
 
+/// The tree config for the Merkle B+Tree [ScopeEntryBody::scope_members_root] points to
+pub struct ScopeMembersTreeConfig<S>(PhantomData<S>);
+impl<S: ReadNodeStorage<Self> + 'static> TreeConfig for ScopeMembersTreeConfig<S> {
+	type Key = PublicKey;
+	type Value = ScopeGrant;
+	type Hasher = CurrentMerkleHasher;
+	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 15>;
+	type Storage = S;
+}
+
+/// The tree config for the Merkle B+Tree [ScopeEntryBody::versions_root] points to
+pub struct PackageVersionsTreeConfig<S>(PhantomData<S>);
+impl<S: ReadNodeStorage<Self> + 'static> TreeConfig for PackageVersionsTreeConfig<S> {
+	type Key = PackageVersion;
+	type Value = PackageVersionState;
+	type Hasher = CurrentMerkleHasher;
+	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 63>;
+	type Storage = S;
+}
+
+/// The tree config for the Merkle B+Tree [ScopeEntryBody::deprecations_root] points to
+pub struct PackageDeprecationsTreeConfig<S>(PhantomData<S>);
+impl<S: ReadNodeStorage<Self> + 'static> TreeConfig for PackageDeprecationsTreeConfig<S> {
+	type Key = Name;
+	type Value = BoundedString<MAX_REASON_LEN>;
+	type Hasher = CurrentMerkleHasher;
+	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 15>;
+	type Storage = S;
+}
+
 /// The response of a log head endpoint
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogHeadResponse {
@@ -455,14 +458,14 @@ pub struct LogHeadResponse {
 	/// The MMR's current size
 	pub mmr_size: u64,
 	/// The consistency proof paths
-	pub proof_paths: Vec<Vec<<CurrentMmrMerge as Merge>::Item>>,
+	pub proof_paths: Vec<Vec<<CurrentMerkleHasher as Merge>::Item>>,
 }
 
 /// The response of a log inclusion endpoint
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogInclusionProofResponse {
 	/// The proof path from the entry to the peaks
-	pub proof: Vec<<CurrentMmrMerge as Merge>::Item>,
+	pub proof: Vec<<CurrentMerkleHasher as Merge>::Item>,
 }
 
 /// A MMR accumulator
@@ -474,39 +477,20 @@ pub struct MmrAccumulator {
 	pub peaks: Arc<[RawHash]>,
 }
 
-const LEAF_DOMAIN: u8 = 0x00;
-const NODE_DOMAIN: u8 = 0x01;
-
-// TODO: remove this once adt_const_params is stable
-#[doc(hidden)]
-pub trait THashAlgorithm {
-	const ALGORITHM: HashAlgorithm;
-}
-
-#[doc(hidden)]
-#[derive(Debug)]
-pub struct Blake3Hash;
-impl THashAlgorithm for Blake3Hash {
-	const ALGORITHM: HashAlgorithm = HashAlgorithm::Blake3;
-}
-
 /// The current hash algorithm used by the registry
 pub const CURRENT_HASH_ALGORITHM: HashAlgorithm = HashAlgorithm::Blake3;
 
-/// The [Merge] implementation using the [CURRENT_HASH_ALGORITHM]
-pub type CurrentMmrMerge = MmrMerge<Blake3Hash>;
-
-#[doc(hidden)]
+/// The [Merge] and [Hasher] implementation using the [CURRENT_HASH_ALGORITHM]
 #[derive(Debug)]
-pub struct MmrMerge<A: THashAlgorithm>(PhantomData<A>);
+pub struct CurrentMerkleHasher;
 
-impl<A: THashAlgorithm> Merge for MmrMerge<A> {
+impl Merge for CurrentMerkleHasher {
 	type Item = RawHash;
 	type Error = Infallible;
 
 	fn leaf_hash(data: &[u8]) -> Result<Self::Item, Self::Error> {
-		let mut hasher = A::ALGORITHM.hasher();
-		hasher.update(&[LEAF_DOMAIN]);
+		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		hasher.update(&[0x00]);
 		hasher.update(data);
 		Ok(hasher.finalize().into_hash())
 	}
@@ -516,11 +500,66 @@ impl<A: THashAlgorithm> Merge for MmrMerge<A> {
 		left: &Self::Item,
 		right: &Self::Item,
 	) -> Result<Self::Item, Self::Error> {
-		let mut hasher = A::ALGORITHM.hasher();
-		hasher.update(&[NODE_DOMAIN]);
+		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		hasher.update(&[0x01]);
 		hasher.update(&pos.to_be_bytes());
 		hasher.update(left.as_bytes());
 		hasher.update(right.as_bytes());
 		Ok(hasher.finalize().into_hash())
+	}
+}
+
+impl<K: Serialize, V: Serialize> Hasher<K, V> for CurrentMerkleHasher {
+	type Output = RawHash;
+
+	fn empty_hash() -> Self::Output {
+		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		hasher.update(&[0x10]);
+		hasher.finalize().into_hash()
+	}
+
+	fn hash_key(key: &K) -> Self::Output {
+		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		hasher.update(&[0x11]);
+		hasher.update(&canonical_bytes(key));
+		hasher.finalize().into_hash()
+	}
+
+	fn hash_value(value: &V) -> Self::Output {
+		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		hasher.update(&[0x12]);
+		hasher.update(&canonical_bytes(value));
+		hasher.finalize().into_hash()
+	}
+
+	fn hash_slot(key: &K, child: &Self::Output) -> Self::Output {
+		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		hasher.update(&[0x13]);
+		hasher.update(&canonical_bytes(key));
+		hasher.update(child.as_bytes());
+		hasher.finalize().into_hash()
+	}
+
+	fn merge_hashes(a: &Self::Output, b: &Self::Output) -> Self::Output {
+		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		hasher.update(a.as_bytes());
+		hasher.update(b.as_bytes());
+		hasher.finalize().into_hash()
+	}
+
+	fn hash_leaf(entry_count: usize, merkle_root: &Self::Output) -> Self::Output {
+		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		hasher.update(&[0x14]);
+		hasher.update(&(entry_count as u64).to_be_bytes());
+		hasher.update(merkle_root.as_bytes());
+		hasher.finalize().into_hash()
+	}
+
+	fn hash_internal(child_count: usize, slots_root: &Self::Output) -> Self::Output {
+		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		hasher.update(&[0x15]);
+		hasher.update(&(child_count as u64).to_be_bytes());
+		hasher.update(slots_root.as_bytes());
+		hasher.finalize().into_hash()
 	}
 }

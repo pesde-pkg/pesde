@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use pesde::names::PackageName;
-use pesde::source::pesde::registry::SearchResultItem;
 
 #[derive(Debug)]
 pub struct SearchPackage {

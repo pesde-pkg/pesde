@@ -14,5 +14,6 @@ futures = { workspace = true }
 merkleberg = { workspace = true }
 semver = { workspace = true }
 thiserror = { workspace = true }
+merkle-bplustree = { workspace = true }
 
 pesde = { path = "../..", default-features = false }

@@ -16,7 +16,7 @@ use sqlx::error::DatabaseError;
 use crate::DependencyKind;
 use crate::MySqlBackend;
 use crate::ScopeEntryKind;
-use crate::WriteStore;
+use crate::MmrWriteStore;
 use crate::as_tx;
 use crate::build_publish_body;
 use crate::insert_chunked;
@@ -158,7 +158,7 @@ impl Repository for MySqlBackend {
 
 	async fn insert_publish(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		sig: &Signature,
 		body: &ScopeEntryBody<PublishBody>,
@@ -277,7 +277,7 @@ impl Repository for MySqlBackend {
 
 	async fn insert_yank(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		sig: &Signature,
 		body: &ScopeEntryBody<YankBody>,
@@ -334,7 +334,7 @@ impl Repository for MySqlBackend {
 
 	async fn insert_deprecate(
 		&self,
-		tx: &mut Box<dyn WriteStore>,
+		tx: &mut Box<dyn MmrWriteStore>,
 		pos: u64,
 		sig: &Signature,
 		body: &ScopeEntryBody<DeprecateBody>,

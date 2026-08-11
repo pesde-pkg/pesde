@@ -1,22 +1,22 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use merkleberg::MMRIVER;
+use merkle_bplustree::HasherOutput;
+use merkle_bplustree::TreeConfig;
+use merkle_bplustree::node::TreeNode;
+use merkle_bplustree::storage::ReadNodeStorage;
 use merkleberg::MMRStoreReadOps;
 use merkleberg::MMRStoreWriteOps;
 use pesde::hash::RawHash;
-use pesde::names::Name;
-use pesde::names::Scope;
-use pesde::signature::PublicKey;
-use pesde::source::pesde::registry::CurrentMmrMerge;
-use pesde::source::pesde::registry::IdentityId;
+use pesde::source::pesde::registry::CurrentMerkleHasher;
 
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub struct StoreError(pub anyhow::Error);
 
 #[async_trait]
-pub trait ReadStore: Send + Sync {
+pub trait MmrReadStore: Send + Sync {
 	async fn get_node(&self, pos: u64) -> Result<Option<RawHash>, StoreError>;
 
 	async fn get_nodes(&self, positions: Vec<u64>) -> Result<Vec<Option<RawHash>>, StoreError> {
@@ -28,7 +28,7 @@ pub trait ReadStore: Send + Sync {
 	}
 }
 
-impl MMRStoreReadOps<RawHash> for Box<dyn ReadStore> {
+impl MMRStoreReadOps<RawHash> for Box<dyn MmrReadStore> {
 	type Error = StoreError;
 
 	async fn get_elem(&self, pos: u64) -> Result<Option<RawHash>, StoreError> {
@@ -43,8 +43,9 @@ impl MMRStoreReadOps<RawHash> for Box<dyn ReadStore> {
 	}
 }
 
+// explicitly not MmrReadStore to avoid hard to spot bugs
 #[async_trait]
-pub trait WriteStore: Send + Sync + Any {
+pub trait MmrWriteStore: Send + Sync + Any {
 	async fn get_node(&self, pos: u64) -> Result<Option<RawHash>, StoreError>;
 
 	async fn get_nodes(&self, positions: Vec<u64>) -> Result<Vec<Option<RawHash>>, StoreError> {
@@ -60,7 +61,7 @@ pub trait WriteStore: Send + Sync + Any {
 	async fn commit(self: Box<Self>) -> anyhow::Result<()>;
 }
 
-impl MMRStoreReadOps<RawHash> for Box<dyn WriteStore> {
+impl MMRStoreReadOps<RawHash> for Box<dyn MmrWriteStore> {
 	type Error = StoreError;
 
 	async fn get_elem(&self, pos: u64) -> Result<Option<RawHash>, StoreError> {
@@ -75,7 +76,7 @@ impl MMRStoreReadOps<RawHash> for Box<dyn WriteStore> {
 	}
 }
 
-impl MMRStoreWriteOps<RawHash> for Box<dyn WriteStore> {
+impl MMRStoreWriteOps<RawHash> for Box<dyn MmrWriteStore> {
 	type Error = StoreError;
 
 	async fn append(&mut self, pos: u64, elems: Vec<RawHash>) -> Result<(), StoreError> {
@@ -83,102 +84,14 @@ impl MMRStoreWriteOps<RawHash> for Box<dyn WriteStore> {
 	}
 }
 
-pub enum ScopeControl<'a> {
-	Write(&'a Name),
-	PublishOrCreate(&'a Name),
-	Owner,
-}
-
-pub struct ScopeAccess {
-	pub pos: u64,
-	pub scope_exists: bool,
-}
-
-pub struct AuthorKey {
-	pub identity: IdentityId,
-	pub key: PublicKey,
-}
-
 #[async_trait]
 pub trait Backend:
 	Send
 	+ Sync
 	+ crate::features::package::Repository
-	+ crate::features::identity::Repository
 	+ crate::features::scope::Repository
 	+ crate::features::log::Repository
 	+ crate::features::search::Repository
 {
-	async fn current_size(&self) -> anyhow::Result<u64>;
-
-	async fn read_mmr_at(
-		&self,
-		size: u64,
-	) -> anyhow::Result<MMRIVER<CurrentMmrMerge, Box<dyn ReadStore>>>;
-
-	async fn read_mmr(&self) -> anyhow::Result<MMRIVER<CurrentMmrMerge, Box<dyn ReadStore>>> {
-		self.read_mmr_at(self.current_size().await?).await
-	}
-
-	async fn begin_write(&self) -> anyhow::Result<Box<dyn WriteStore>>;
-
-	async fn current_identity_key(
-		&self,
-		store: &mut Box<dyn WriteStore>,
-		id: &IdentityId,
-	) -> anyhow::Result<Option<PublicKey>>;
-
-	async fn lock_tree(&self, store: &mut Box<dyn WriteStore>) -> anyhow::Result<u64>;
-
-	async fn scope_write_access(
-		&self,
-		store: &mut Box<dyn WriteStore>,
-		scope: &Scope,
-		identity: &IdentityId,
-		control: ScopeControl<'_>,
-	) -> anyhow::Result<Option<ScopeAccess>>;
-
-	async fn author_key(
-		&self,
-		store: &mut Box<dyn WriteStore>,
-		id: &IdentityId,
-	) -> anyhow::Result<Option<AuthorKey>> {
-		Ok(self
-			.current_identity_key(store, id)
-			.await?
-			.map(|key| AuthorKey { identity: *id, key }))
-	}
-
-	async fn lock_tree_as(
-		&self,
-		store: &mut Box<dyn WriteStore>,
-		author: &AuthorKey,
-	) -> anyhow::Result<Option<u64>> {
-		let pos = self.lock_tree(store).await?;
-		Ok(self
-			.author_key(store, &author.identity)
-			.await?
-			.is_some_and(|new| author.key == new.key)
-			.then_some(pos))
-	}
-
-	async fn authorize_scope_write(
-		&self,
-		store: &mut Box<dyn WriteStore>,
-		scope: &Scope,
-		author: &AuthorKey,
-		control: ScopeControl<'_>,
-	) -> anyhow::Result<Option<ScopeAccess>> {
-		let Some(access) = self
-			.scope_write_access(store, scope, &author.identity, control)
-			.await?
-		else {
-			return Ok(None);
-		};
-		Ok(self
-			.author_key(store, &author.identity)
-			.await?
-			.is_some_and(|new| author.key == new.key)
-			.then_some(access))
-	}
+	async fn begin_write(&self) -> anyhow::Result<Box<dyn MmrWriteStore>>;
 }
