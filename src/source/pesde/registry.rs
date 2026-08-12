@@ -421,33 +421,30 @@ pub enum VersionYankState {
 }
 
 /// The tree config for the Merkle B+Tree [ScopeEntryBody::scope_members_root] points to
-pub struct ScopeMembersTreeConfig<S>(PhantomData<S>);
-impl<S: ReadNodeStorage<Self> + 'static> TreeConfig for ScopeMembersTreeConfig<S> {
+pub struct ScopeMembersTreeConfig;
+impl TreeConfig for ScopeMembersTreeConfig {
 	type Key = PublicKey;
 	type Value = ScopeGrant;
 	type Hasher = CurrentMerkleHasher;
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 15>;
-	type Storage = S;
 }
 
 /// The tree config for the Merkle B+Tree [ScopeEntryBody::versions_root] points to
-pub struct PackageVersionsTreeConfig<S>(PhantomData<S>);
-impl<S: ReadNodeStorage<Self> + 'static> TreeConfig for PackageVersionsTreeConfig<S> {
+pub struct PackageVersionsTreeConfig;
+impl TreeConfig for PackageVersionsTreeConfig {
 	type Key = PackageVersion;
 	type Value = PackageVersionState;
 	type Hasher = CurrentMerkleHasher;
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 63>;
-	type Storage = S;
 }
 
 /// The tree config for the Merkle B+Tree [ScopeEntryBody::deprecations_root] points to
-pub struct PackageDeprecationsTreeConfig<S>(PhantomData<S>);
-impl<S: ReadNodeStorage<Self> + 'static> TreeConfig for PackageDeprecationsTreeConfig<S> {
+pub struct PackageDeprecationsTreeConfig;
+impl TreeConfig for PackageDeprecationsTreeConfig {
 	type Key = Name;
 	type Value = BoundedString<MAX_REASON_LEN>;
 	type Hasher = CurrentMerkleHasher;
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 15>;
-	type Storage = S;
 }
 
 /// The response of a log head endpoint
