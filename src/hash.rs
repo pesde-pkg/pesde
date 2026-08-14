@@ -1,10 +1,23 @@
-//! Hashing
+//! Hashing.
+//! In pesde, hashes are always encoded as lowercase Crockford base32 because:
+//! - base32 is a power of 2 base which makes interacting with it efficient
+//! - the alphabet is filesystem friendly: ASCII and not case sensitive
+//! - one character carries 5 bits as opposed to base16's 4
+//! - Crockford's alphabet makes it harder to confuse hashes
 use std::fmt::Display;
 use std::io::Write;
 use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::ser_display_deser_fromstr;
+
+mod encoding {
+	fast32::make_base32_alpha!(
+		STRICT_CROCKFORD_LOWER,
+		STRICT_DEC_CROCKFORD_LOWER,
+		b"0123456789abcdefghjkmnpqrstvwxyz"
+	);
+}
 
 /// A raw hash digest
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -35,7 +48,7 @@ impl AsRef<[u8]> for RawHash {
 
 impl Display for RawHash {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", fast32::base32::CROCKFORD_LOWER.encode(&self.0))
+		write!(f, "{}", encoding::STRICT_CROCKFORD_LOWER.encode(&self.0))
 	}
 }
 
@@ -43,7 +56,7 @@ impl FromStr for RawHash {
 	type Err = fast32::DecodeError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		fast32::base32::CROCKFORD_LOWER
+		encoding::STRICT_CROCKFORD_LOWER
 			.decode(s.as_bytes())
 			.map(Into::into)
 	}
@@ -209,17 +222,9 @@ impl FromStr for Hash {
 			.split_once(':')
 			.ok_or(errors::HashFromStrErrorKind::InvalidHashFormat)?;
 
-		// prevent mismatches between serialized and deserialized hashes due to case differences in the hash value
-		if hash
-			.chars()
-			.any(|c| c.is_ascii_alphabetic() && !c.is_ascii_lowercase())
-		{
-			return Err(errors::HashFromStrErrorKind::InvalidHashFormat.into());
-		}
-
 		let algorithm: HashAlgorithm = algorithm.parse()?;
 		let mut data = Vec::with_capacity(algorithm.output_size());
-		fast32::base32::CROCKFORD_LOWER.decode_into(hash.as_bytes(), &mut data)?;
+		encoding::STRICT_CROCKFORD_LOWER.decode_into(hash.as_bytes(), &mut data)?;
 
 		let hash = Self::new(algorithm, data);
 		Ok(hash.ok_or(errors::HashFromStrErrorKind::InvalidHashFormat)?)
