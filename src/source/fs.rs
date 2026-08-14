@@ -1,6 +1,7 @@
 //! Packages' filesystems
 use crate::hash::Hash;
 use crate::hash::HashAlgorithm;
+use crate::hash::Hasher as _;
 use crate::source::ADDITIONAL_FORBIDDEN_FILES;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
@@ -64,12 +65,16 @@ async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
 }
 
 fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
-	let encoded = hash.hash().to_string();
+	let encoded = hash.encoded();
 
 	let mut path = cas_dir.join(hash.algorithm().to_string());
 	let mut hash_str = encoded.as_str();
 
-	for length in hash.algorithm().optimal_prefix_parts() {
+	let parts: &'static [usize] = match hash {
+		Hash::Blake3(_) => &[2],
+	};
+
+	for length in parts {
 		let (prefix, rest) = hash_str.split_at(*length);
 		path.push(prefix);
 		hash_str = rest;

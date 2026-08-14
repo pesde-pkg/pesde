@@ -13,7 +13,6 @@ use futures::future::BoxFuture;
 use pesde::Subproject;
 use pesde::hash::Hash;
 use pesde::hash::HashAlgorithm;
-use pesde::hash::RawHash;
 use pesde::source::fs::PackageFs;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -188,15 +187,8 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<Hash>> {
 							return Ok(HashSet::new());
 						}
 
-						let hash = Hash::new(
-							algorithm,
-							RawHash::from_str(&accumulated)
-								.context("failed to decode hash from path")?,
-						);
-
-						if hash.is_none() {
-							tracing::warn!("corrupt hash at `{}`", path.display());
-						}
+						let hash = Hash::from_encoded(algorithm, &accumulated)
+							.context("failed to decode hash from path")?;
 
 						fs::remove_file(&path)
 							.await
@@ -206,7 +198,7 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<Hash>> {
 							remove_empty_dir(parent).await?;
 						}
 
-						Ok(hash.into_iter().collect())
+						Ok(HashSet::from([hash]))
 					}
 				})
 				.collect::<JoinSet<Result<HashSet<Hash>, anyhow::Error>>>()

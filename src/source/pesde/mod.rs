@@ -30,7 +30,6 @@ use crate::source::SourceState;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::pesde::backend::ApiPesdePackageSourceBackend;
-use crate::source::pesde::registry::CURRENT_HASH_ALGORITHM;
 use crate::source::pesde::registry::CurrentMerkleHasher;
 use crate::source::pesde::registry::MmrAccumulator;
 use crate::util::ToEscaped as _;
@@ -124,7 +123,6 @@ impl PackageSource for PesdePackageSource {
 			(None, None) => PesdeSourceState {
 				mmr_size: 0,
 				accumulator: MmrAccumulator {
-					algorithm: CURRENT_HASH_ALGORITHM,
 					peaks: Arc::from([]),
 				},
 			},

@@ -2,14 +2,12 @@
 
 use std::convert::Infallible;
 use std::fmt::Display;
-use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
 
 use jiff::Timestamp;
 use merkle_bplustree::TreeConfig;
 use merkle_bplustree::hasher::Hasher;
-use merkle_bplustree::storage::ReadNodeStorage;
 use merkleberg::Merge;
 use semver::Prerelease;
 use semver::Version;
@@ -21,9 +19,9 @@ use uuid::Uuid;
 use crate::bounded::Bounded;
 use crate::bounded::BoundedBTreeSet;
 use crate::bounded::BoundedString;
+use crate::hash::Blake3Hash;
 use crate::hash::Hash;
-use crate::hash::HashAlgorithm;
-use crate::hash::RawHash;
+use crate::hash::Hasher as _;
 use crate::names::Name;
 use crate::names::Scope;
 use crate::ser_display_deser_fromstr;
@@ -151,7 +149,7 @@ pub enum SignedOpKind {
 		/// A value used to prevent playbacks, this is what [consent] signs
 		nonce: Uuid,
 		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: RawHash,
+		scope_members_root: CurrentHash,
 	},
 	/// The owner is changing a member's grant
 	UpdateMemberGrant {
@@ -160,7 +158,7 @@ pub enum SignedOpKind {
 		/// The new grant
 		grant: ScopeGrant,
 		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: RawHash,
+		scope_members_root: CurrentHash,
 	},
 	/// A member is rotating their key
 	RotateKey {
@@ -171,7 +169,7 @@ pub enum SignedOpKind {
 		/// A value used to prevent playbacks, this is what [new_key_proof] signs
 		nonce: Uuid,
 		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: RawHash,
+		scope_members_root: CurrentHash,
 	},
 	/// The owner is removing a member
 	RemoveMember {
@@ -179,7 +177,7 @@ pub enum SignedOpKind {
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		member: Option<PublicKey>,
 		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: RawHash,
+		scope_members_root: CurrentHash,
 	},
 	/// The owner is transferring ownership
 	TransferOwnership {
@@ -199,7 +197,7 @@ pub enum SignedOpKind {
 		/// The hash of the archive being published
 		archive_hash: Hash,
 		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
-		versions_root: RawHash,
+		versions_root: CurrentHash,
 	},
 	/// A package's yank status is being updated
 	SetYanked {
@@ -210,7 +208,7 @@ pub enum SignedOpKind {
 		/// Whether it is yanked
 		yanked: bool,
 		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
-		versions_root: RawHash,
+		versions_root: CurrentHash,
 	},
 	/// A package's deprecation status is being updated
 	SetDeprecation {
@@ -219,7 +217,7 @@ pub enum SignedOpKind {
 		/// The reason this package is deprecated
 		reason: BoundedString<MAX_REASON_LEN>,
 		/// The root of the tree holding package deprecations. [merkle_bplustree::MerkleBPlusTree]<[PackageDeprecationsTreeConfig]>
-		deprecations_root: RawHash,
+		deprecations_root: CurrentHash,
 	},
 }
 
@@ -241,7 +239,7 @@ pub enum AdminOpKind {
 		/// Whether it is yanked
 		yanked: bool,
 		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
-		versions_root: RawHash,
+		versions_root: CurrentHash,
 	},
 }
 
@@ -468,28 +466,26 @@ pub struct LogInclusionProofResponse {
 /// A MMR accumulator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MmrAccumulator {
-	/// The hash algorithm used for all peaks
-	pub algorithm: HashAlgorithm,
 	/// The peak hashes
-	pub peaks: Arc<[RawHash]>,
+	pub peaks: Arc<[CurrentHash]>,
 }
 
-/// The current hash algorithm used by the registry
-pub const CURRENT_HASH_ALGORITHM: HashAlgorithm = HashAlgorithm::Blake3;
+/// The current hash used by the registry
+pub type CurrentHash = Blake3Hash;
 
-/// The [Merge] and [Hasher] implementation using the [CURRENT_HASH_ALGORITHM]
+/// The [Merge] and [Hasher] implementation using the [CurrentHash]
 #[derive(Debug)]
 pub struct CurrentMerkleHasher;
 
 impl Merge for CurrentMerkleHasher {
-	type Item = RawHash;
+	type Item = CurrentHash;
 	type Error = Infallible;
 
 	fn leaf_hash(data: &[u8]) -> Result<Self::Item, Self::Error> {
-		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x00]);
 		hasher.update(data);
-		Ok(hasher.finalize().into_hash())
+		Ok(hasher.finalize())
 	}
 
 	fn merge_pos(
@@ -497,66 +493,66 @@ impl Merge for CurrentMerkleHasher {
 		left: &Self::Item,
 		right: &Self::Item,
 	) -> Result<Self::Item, Self::Error> {
-		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x01]);
 		hasher.update(&pos.to_be_bytes());
-		hasher.update(left.as_bytes());
-		hasher.update(right.as_bytes());
-		Ok(hasher.finalize().into_hash())
+		hasher.update(left.0.as_ref());
+		hasher.update(right.0.as_ref());
+		Ok(hasher.finalize())
 	}
 }
 
 impl<K: Serialize, V: Serialize> Hasher<K, V> for CurrentMerkleHasher {
-	type Output = RawHash;
+	type Output = CurrentHash;
 
 	fn empty_hash() -> Self::Output {
-		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x10]);
-		hasher.finalize().into_hash()
+		hasher.finalize()
 	}
 
 	fn hash_key(key: &K) -> Self::Output {
-		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x11]);
 		hasher.update(&canonical_bytes(key));
-		hasher.finalize().into_hash()
+		hasher.finalize()
 	}
 
 	fn hash_value(value: &V) -> Self::Output {
-		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x12]);
 		hasher.update(&canonical_bytes(value));
-		hasher.finalize().into_hash()
+		hasher.finalize()
 	}
 
 	fn hash_slot(key: &K, child: &Self::Output) -> Self::Output {
-		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x13]);
 		hasher.update(&canonical_bytes(key));
-		hasher.update(child.as_bytes());
-		hasher.finalize().into_hash()
+		hasher.update(child.0.as_ref());
+		hasher.finalize()
 	}
 
 	fn merge_hashes(a: &Self::Output, b: &Self::Output) -> Self::Output {
-		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
-		hasher.update(a.as_bytes());
-		hasher.update(b.as_bytes());
-		hasher.finalize().into_hash()
+		let mut hasher = CurrentHash::hasher();
+		hasher.update(a.0.as_ref());
+		hasher.update(b.0.as_ref());
+		hasher.finalize()
 	}
 
 	fn hash_leaf(entry_count: usize, merkle_root: &Self::Output) -> Self::Output {
-		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x14]);
 		hasher.update(&(entry_count as u64).to_be_bytes());
-		hasher.update(merkle_root.as_bytes());
-		hasher.finalize().into_hash()
+		hasher.update(merkle_root.0.as_ref());
+		hasher.finalize()
 	}
 
 	fn hash_internal(child_count: usize, slots_root: &Self::Output) -> Self::Output {
-		let mut hasher = CURRENT_HASH_ALGORITHM.hasher();
+		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x15]);
 		hasher.update(&(child_count as u64).to_be_bytes());
-		hasher.update(slots_root.as_bytes());
-		hasher.finalize().into_hash()
+		hasher.update(slots_root.0.as_ref());
+		hasher.finalize()
 	}
 }
