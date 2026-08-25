@@ -162,7 +162,8 @@ macro_rules! algos {
 					type Err = errors::HashDecodeError;
 
 					fn from_str(s: &str) -> Result<Self, Self::Err> {
-						let mut data = Vec::with_capacity(Self::ALGORITHM.output_size());
+						let mut data = Vec::new();
+						data.reserve_exact(Self::ALGORITHM.output_size());
 						encoding::STRICT_CROCKFORD_LOWER.decode_into(s.as_bytes(), &mut data)?;
 
 						Ok(Self::new(data)?)
