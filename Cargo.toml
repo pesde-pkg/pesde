@@ -60,7 +60,7 @@ tokio = { version = "1.47.1", features = ["process", "macros"] }
 tokio-util = "0.7.16"
 async-stream = "0.3.6"
 futures = "0.3.31"
-full_moon = { version = "2.0.0", features = ["luau"] }
+full_moon = { version = "2.2.0", features = ["luau"] }
 url = { version = "2.5.7", features = ["serde"] }
 jiff = { version = "0.2.15", default-features = false, features = ["serde", "std"] }
 sha2 = "0.10.9"
