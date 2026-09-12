@@ -18,12 +18,10 @@ use uuid::Uuid;
 
 use crate::bounded::Bounded;
 use crate::bounded::BoundedBTreeSet;
-use crate::bounded::BoundedString;
 use crate::hash::Blake3Hash;
 use crate::hash::Hash;
 use crate::hash::Hasher as _;
-use crate::names::Name;
-use crate::names::Scope;
+use crate::names::LocalName;
 use crate::ser_display_deser_fromstr;
 use crate::signature::PublicKey;
 use crate::signature::Signature;
@@ -98,11 +96,41 @@ impl<'de, T: Serialize + Deserialize<'de>> Deserialize<'de> for Signed<T> {
 	}
 }
 
+/// The scope id; hash of the scope name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ScopeId(CurrentHash);
+
+impl ScopeId {
+	/// Creates a new [Self] from a [Scope](crate::names::Scope)
+	#[must_use]
+	pub fn from(name: &crate::names::Scope) -> Self {
+		let mut hasher = CurrentHash::hasher();
+		hasher.update(name.as_str().as_bytes());
+		Self(hasher.finalize())
+	}
+}
+
+/// The local name id; hash of the package local name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
+#[serde(transparent)]
+pub struct LocalNameId(CurrentHash);
+
+impl LocalNameId {
+	/// Creates a new [Self] from a [LocalName](crate::names::LocalName)
+	#[must_use]
+	pub fn from(name: &crate::names::LocalName) -> Self {
+		let mut hasher = CurrentHash::hasher();
+		hasher.update(name.as_str().as_bytes());
+		Self(hasher.finalize())
+	}
+}
+
 /// The payload of [GenesisEntry]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScopeGenesisPayload {
-	/// The scope name being created
-	pub scope_name: Scope,
+	/// The scope id being created
+	pub scope_id: ScopeId,
 	/// The hash of the first entry in the scope's log
 	pub first_entry_hash: Hash,
 }
@@ -120,12 +148,12 @@ pub const MAX_REASON_LEN: usize = 255;
 /// An empty grant means the member can update all packages in the scope
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ScopeGrant(pub BoundedBTreeSet<Name, MAX_GRANT_PACKAGES>);
+pub struct ScopeGrant(pub BoundedBTreeSet<LocalNameId, MAX_GRANT_PACKAGES>);
 
 impl ScopeGrant {
 	/// Whether this grant allows the member to update this package
 	#[must_use]
-	pub fn covers(&self, package: &Name) -> bool {
+	pub fn covers(&self, package: &LocalNameId) -> bool {
 		if self.0.is_empty() {
 			return true;
 		}
@@ -191,7 +219,7 @@ pub enum SignedOpKind {
 	/// A new version of a package is being published
 	PublishVersion {
 		/// The package being published
-		pkg: Name,
+		pkg: LocalNameId,
 		/// The version being published
 		version: PesdeVersionForRegistry,
 		/// The hash of the archive being published
@@ -202,7 +230,7 @@ pub enum SignedOpKind {
 	/// A package's yank status is being updated
 	SetYanked {
 		/// The package being updated
-		pkg: Name,
+		pkg: LocalNameId,
 		/// The version being updated
 		version: PesdeVersionForRegistry,
 		/// Whether it is yanked
@@ -213,9 +241,9 @@ pub enum SignedOpKind {
 	/// A package's deprecation status is being updated
 	SetDeprecation {
 		/// The package being updated
-		pkg: Name,
-		/// The reason this package is deprecated
-		reason: BoundedString<MAX_REASON_LEN>,
+		pkg: LocalNameId,
+		/// The hash of the reason this package is deprecated
+		reason_hash: Hash,
 		/// The root of the tree holding package deprecations. [merkle_bplustree::MerkleBPlusTree]<[PackageDeprecationsTreeConfig]>
 		deprecations_root: CurrentHash,
 	},
@@ -233,7 +261,7 @@ pub enum AdminOpKind {
 	/// A package's yank status is being updated
 	SetYanked {
 		/// The package being updated
-		pkg: Name,
+		pkg: LocalNameId,
 		/// The version being updated
 		version: PesdeVersionForRegistry,
 		/// Whether it is yanked
@@ -246,8 +274,8 @@ pub enum AdminOpKind {
 /// The body of [ScopeOp]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScopeEntryBody<Op> {
-	/// The name of the scope
-	pub scope_name: Scope,
+	/// The id of the scope
+	pub scope_id: ScopeId,
 	/// The hash of the previous entry in this scope's log
 	pub prev_hash: Hash,
 	/// The operation this entry carries
@@ -280,7 +308,7 @@ pub struct PesdeStyleVersion {
 	/// [Version::patch]
 	pub patch: u64,
 	/// [Version::pre]
-	pre: Prerelease,
+	pre: Bounded<Prerelease, 10>,
 }
 ser_display_deser_fromstr!(PesdeStyleVersion);
 
@@ -319,6 +347,10 @@ pub enum PesdeStyleVersionFromStrError {
 	/// The version's prerelease wasn't lowercase
 	#[error("pesde style versions' prereleases must be lowercase")]
 	UpperPrerelease,
+
+	/// The version's prerelease was too long
+	#[error("pesde style versions' prereleases must be shorter")]
+	PrereleaseLength(#[source] crate::bounded::errors::TooLongError),
 }
 
 impl FromStr for PesdeStyleVersion {
@@ -338,7 +370,8 @@ impl FromStr for PesdeStyleVersion {
 			major: semver_version.major,
 			minor: semver_version.minor,
 			patch: semver_version.patch,
-			pre: semver_version.pre,
+			pre: Bounded::new(semver_version.pre)
+				.map_err(PesdeStyleVersionFromStrError::PrereleaseLength)?,
 		})
 	}
 }
@@ -349,26 +382,26 @@ pub const MAX_VERSION_LEN: usize = 255;
 /// A [PesdeStyleVersion] with a maximum length
 pub type PesdeVersionForRegistry = Bounded<PesdeStyleVersion, MAX_VERSION_LEN>;
 
-/// The key to the map a [ScopeEntryBody::versions_root] points to. Pair of package name and version
+/// Pair of local name and version.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PackageVersion {
-	/// The package name this keys
-	pub name: Name,
+pub struct VersionedLocalName {
+	/// The local name this keys
+	pub local_name: LocalName,
 	/// The package version this keys
 	pub version: PesdeStyleVersion,
 }
-ser_display_deser_fromstr!(PackageVersion);
+ser_display_deser_fromstr!(VersionedLocalName);
 
-impl Display for PackageVersion {
+impl Display for VersionedLocalName {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}@{}", self.name, self.version)
+		write!(f, "{}@{}", self.local_name, self.version)
 	}
 }
 
-/// Errors that can occur when parsing a [PackageVersion] from str
+/// Errors that can occur when parsing a [VersionedLocalName] from str
 #[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum PackageVersionFromStrError {
+pub enum VersionedLocalNameFromStrError {
 	/// The input string wasn't in the form of `name@version`
 	#[error("`{0}` can't be parsed as `name@version`")]
 	BadInput(Box<str>),
@@ -382,16 +415,16 @@ pub enum PackageVersionFromStrError {
 	MalformedVersion(#[from] PesdeStyleVersionFromStrError),
 }
 
-impl FromStr for PackageVersion {
-	type Err = PackageVersionFromStrError;
+impl FromStr for VersionedLocalName {
+	type Err = VersionedLocalNameFromStrError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let Some((name, version)) = s.split_once('@') else {
+		let Some((local_name, version)) = s.split_once('@') else {
 			return Err(Self::Err::BadInput(s.into()));
 		};
 
 		Ok(Self {
-			name: name.parse()?,
+			local_name: local_name.parse()?,
 			version: version.parse()?,
 		})
 	}
@@ -430,7 +463,7 @@ impl TreeConfig for ScopeMembersTreeConfig {
 /// The tree config for the Merkle B+Tree [ScopeEntryBody::versions_root] points to
 pub struct PackageVersionsTreeConfig;
 impl TreeConfig for PackageVersionsTreeConfig {
-	type Key = PackageVersion;
+	type Key = VersionedLocalName;
 	type Value = PackageVersionState;
 	type Hasher = CurrentMerkleHasher;
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 63>;
@@ -439,8 +472,8 @@ impl TreeConfig for PackageVersionsTreeConfig {
 /// The tree config for the Merkle B+Tree [ScopeEntryBody::deprecations_root] points to
 pub struct PackageDeprecationsTreeConfig;
 impl TreeConfig for PackageDeprecationsTreeConfig {
-	type Key = Name;
-	type Value = BoundedString<MAX_REASON_LEN>;
+	type Key = LocalNameId;
+	type Value = Hash;
 	type Hasher = CurrentMerkleHasher;
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 15>;
 }
@@ -514,21 +547,30 @@ impl<K: Serialize, V: Serialize> Hasher<K, V> for CurrentMerkleHasher {
 	fn hash_key(key: &K) -> Self::Output {
 		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x11]);
-		hasher.update(&canonical_bytes(key));
+		cbor_core::Value::serialized(key)
+			.unwrap()
+			.write_to(&mut hasher)
+			.unwrap();
 		hasher.finalize()
 	}
 
 	fn hash_value(value: &V) -> Self::Output {
 		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x12]);
-		hasher.update(&canonical_bytes(value));
+		cbor_core::Value::serialized(value)
+			.unwrap()
+			.write_to(&mut hasher)
+			.unwrap();
 		hasher.finalize()
 	}
 
 	fn hash_slot(key: &K, child: &Self::Output) -> Self::Output {
 		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x13]);
-		hasher.update(&canonical_bytes(key));
+		cbor_core::Value::serialized(key)
+			.unwrap()
+			.write_to(&mut hasher)
+			.unwrap();
 		hasher.update(child.0.as_ref());
 		hasher.finalize()
 	}

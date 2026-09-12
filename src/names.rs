@@ -58,13 +58,13 @@ impl Scope {
 	}
 }
 
-/// A validated package name part (1–32 chars, a-z/0-9/_, no leading/trailing _, not all digits)
+/// A validated package name local part (1–32 chars, a-z/0-9/_, no leading/trailing _, not all digits)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Name(Arc<str>);
+pub struct LocalName(Arc<str>);
 
-ser_display_deser_fromstr!(Name);
+ser_display_deser_fromstr!(LocalName);
 
-impl FromStr for Name {
+impl FromStr for LocalName {
 	type Err = errors::PackageNameError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -72,13 +72,15 @@ impl FromStr for Name {
 			return Err(errors::PackageNameErrorKind::InvalidNameLength(s.to_string()).into());
 		}
 		if s.chars().all(|c| c.is_ascii_digit()) {
-			return Err(
-				errors::PackageNameErrorKind::OnlyDigits(ErrorPart::Name, s.to_string()).into(),
-			);
+			return Err(errors::PackageNameErrorKind::OnlyDigits(
+				ErrorPart::LocalName,
+				s.to_string(),
+			)
+			.into());
 		}
 		if s.starts_with('_') || s.ends_with('_') {
 			return Err(errors::PackageNameErrorKind::PrePostfixUnderscore(
-				ErrorPart::Name,
+				ErrorPart::LocalName,
 				s.to_string(),
 			)
 			.into());
@@ -88,7 +90,7 @@ impl FromStr for Name {
 			.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 		{
 			return Err(errors::PackageNameErrorKind::InvalidCharacters(
-				ErrorPart::Name,
+				ErrorPart::LocalName,
 				s.to_string(),
 			)
 			.into());
@@ -97,13 +99,13 @@ impl FromStr for Name {
 	}
 }
 
-impl Display for Name {
+impl Display for LocalName {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_str(&self.0)
 	}
 }
 
-impl Name {
+impl LocalName {
 	/// Returns the name as a str
 	#[must_use]
 	pub fn as_str(&self) -> &str {
@@ -116,22 +118,22 @@ impl Name {
 pub enum ErrorPart {
 	/// The scope of the package name is invalid
 	Scope,
-	/// The name of the package name is invalid
-	Name,
+	/// The local name of the package name is invalid
+	LocalName,
 }
 
 impl Display for ErrorPart {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			ErrorPart::Scope => write!(f, "scope"),
-			ErrorPart::Name => write!(f, "name"),
+			ErrorPart::LocalName => write!(f, "local name"),
 		}
 	}
 }
 
 /// A pesde package name
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct PackageName(Arc<(Scope, Name)>);
+pub struct PackageName(Arc<(Scope, LocalName)>);
 
 ser_display_deser_fromstr!(PackageName);
 
@@ -139,28 +141,28 @@ impl FromStr for PackageName {
 	type Err = errors::PackageNameError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let (scope, name) = s
+		let (scope, local_name) = s
 			.split_once('/')
 			.ok_or_else(|| errors::PackageNameErrorKind::InvalidFormat(s.to_string()))?;
 
 		Ok(Self(Arc::new((
 			Scope::from_str(scope)?,
-			Name::from_str(name)?,
+			LocalName::from_str(local_name)?,
 		))))
 	}
 }
 
 impl Display for PackageName {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}/{}", self.scope(), self.name())
+		write!(f, "{}/{}", self.scope(), self.local_name())
 	}
 }
 
 impl PackageName {
 	/// Creates a new `PackageName` from already-validated parts
 	#[must_use]
-	pub fn new(scope: Scope, name: Name) -> Self {
-		Self(Arc::new((scope, name)))
+	pub fn new(scope: Scope, local_name: LocalName) -> Self {
+		Self(Arc::new((scope, local_name)))
 	}
 
 	/// Returns the scope of the package name
@@ -171,7 +173,7 @@ impl PackageName {
 
 	/// Returns the name part of the package name
 	#[must_use]
-	pub fn name(&self) -> &Name {
+	pub fn local_name(&self) -> &LocalName {
 		&self.0.1
 	}
 }
@@ -185,11 +187,14 @@ impl FromStr for WallyPackageName {
 	type Err = errors::WallyPackageNameError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let (scope, name) = s
+		let (scope, local_name) = s
 			.split_once('/')
 			.ok_or_else(|| errors::WallyPackageNameErrorKind::InvalidFormat(s.to_string()))?;
 
-		for (reason, part) in [(ErrorPart::Scope, scope), (ErrorPart::Name, name)] {
+		for (reason, part) in [
+			(ErrorPart::Scope, scope),
+			(ErrorPart::LocalName, local_name),
+		] {
 			if part.is_empty() || part.len() > 64 {
 				return Err(errors::WallyPackageNameErrorKind::InvalidLength(
 					reason,
@@ -210,13 +215,13 @@ impl FromStr for WallyPackageName {
 			}
 		}
 
-		Ok(Self(Arc::new((scope.into(), name.into()))))
+		Ok(Self(Arc::new((scope.into(), local_name.into()))))
 	}
 }
 
 impl Display for WallyPackageName {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}/{}", self.scope(), self.name())
+		write!(f, "{}/{}", self.scope(), self.local_name())
 	}
 }
 
@@ -227,9 +232,9 @@ impl WallyPackageName {
 		&self.0.0
 	}
 
-	/// Returns the name of the package name
+	/// Returns the local name of the package name
 	#[must_use]
-	pub fn name(&self) -> &str {
+	pub fn local_name(&self) -> &str {
 		&self.0.1
 	}
 }
@@ -244,8 +249,8 @@ pub mod errors {
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = PackageNameError))]
 	pub enum PackageNameErrorKind {
-		/// The package name is not in the format `scope/name`
-		#[error("package name `{0}` is not in the format `scope/name`")]
+		/// The package name is not in the format `scope/local_name`
+		#[error("package name `{0}` is not in the format `scope/local_name`")]
 		InvalidFormat(String),
 
 		/// The package name is outside the allowed characters: a-z, 0-9, and _
@@ -264,8 +269,8 @@ pub mod errors {
 		#[error("package scope `{0}` is not within 3-32 characters long")]
 		InvalidScopeLength(String),
 
-		/// The package name's name part is not within 1-32 characters long
-		#[error("package name `{0}` is not within 1-32 characters long")]
+		/// The package name's local name part is not within 1-32 characters long
+		#[error("package local name `{0}` is not within 1-32 characters long")]
 		InvalidNameLength(String),
 	}
 
@@ -274,8 +279,8 @@ pub mod errors {
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = WallyPackageNameError))]
 	pub enum WallyPackageNameErrorKind {
-		/// The package name is not in the format `scope/name`
-		#[error("wally package name `{0}` is not in the format `scope/name`")]
+		/// The package name is not in the format `scope/local_name`
+		#[error("wally package name `{0}` is not in the format `scope/local_name`")]
 		InvalidFormat(String),
 
 		/// The package name is outside the allowed characters: a-z, 0-9, and -
@@ -285,15 +290,5 @@ pub mod errors {
 		/// The package name is not within 1-64 characters long
 		#[error("wally package {0} `{1}` is not within 1-64 characters long")]
 		InvalidLength(ErrorPart, String),
-	}
-
-	/// Errors that can occur when working with package names
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = PackageNamesError))]
-	#[non_exhaustive]
-	pub enum PackageNamesErrorKind {
-		/// The package name is invalid
-		#[error("invalid package name {0}")]
-		InvalidPackageName(String),
 	}
 }

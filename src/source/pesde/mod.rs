@@ -199,7 +199,7 @@ impl PackageSource for PesdePackageSource {
 			.join("pesde")
 			.join(self.repo.to_string().escaped())
 			.join(pkg_ref.name.scope().to_string().escaped())
-			.join(pkg_ref.name.name().to_string().escaped())
+			.join(pkg_ref.name.local_name().to_string().escaped())
 			.join(package.id.version().to_string());
 
 		match fs::read_to_string(&index_file).await {

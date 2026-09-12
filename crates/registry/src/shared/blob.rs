@@ -54,7 +54,7 @@ impl From<BlobResponse> for HttpResponse {
 }
 
 fn object_key(prefix: &str, name: &PackageName, version: &PesdeVersionForRegistry) -> String {
-	format!("{prefix}/{}/{}/{version}", name.scope(), name.name())
+	format!("{prefix}/{}/{}/{version}", name.scope(), name.local_name())
 }
 
 impl BlobStorage {

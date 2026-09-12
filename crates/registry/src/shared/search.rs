@@ -129,7 +129,7 @@ impl Search {
 				fields.id => package.id,
 				fields.pos => package.pos,
 				fields.scope => name.scope().as_str(),
-				fields.name => name.name().as_str(),
+				fields.name => name.local_name().as_str(),
 				fields.description => package.item.description,
 				fields.published_at => DateTime::from_timestamp_secs(package.item.published_at.as_second()),
 			))?;

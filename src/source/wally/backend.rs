@@ -167,7 +167,7 @@ impl WallyPackageSourceBackend for GitWallyPackageSourceBackend {
 			let tree: Result<gix::Tree, errors::GitReadIndexFileError> =
 				root_tree(&repo).map_err(|e| errors::GitReadIndexFileErrorKind::Tree(e).into());
 			let tree = tree?;
-			read_file(&tree, [pkg_name.scope(), pkg_name.name()])
+			read_file(&tree, [pkg_name.scope(), pkg_name.local_name()])
 				.map_err(|e| errors::GitReadIndexFileErrorKind::ReadFile(e).into())
 		})
 		.await
@@ -191,7 +191,7 @@ impl WallyPackageSourceBackend for GitWallyPackageSourceBackend {
 					"{}/v1/package-contents/{}/{}/{}",
 					config.api.as_url().as_str().trim_end_matches('/'),
 					urlencoding::encode(pkg_name.scope()),
-					urlencoding::encode(pkg_name.name()),
+					urlencoding::encode(pkg_name.local_name()),
 					urlencoding::encode(&version.to_string())
 				))
 				.header(

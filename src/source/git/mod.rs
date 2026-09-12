@@ -203,7 +203,7 @@ impl PackageSource for GitPackageSource {
 		Ok(ResolveResult {
 			source: PackageSources::Git(self.clone()),
 			pkg_ref: PackageRefs::Git(GitPackageRef { tree_id }),
-			structure_kind: StructureKind::Wally(package.name.name().into()),
+			structure_kind: StructureKind::Wally(package.name.local_name().into()),
 			versions: BTreeMap::from([(tree_version, dependencies)]),
 		})
 	}

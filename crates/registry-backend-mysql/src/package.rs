@@ -425,7 +425,7 @@ async fn current_yank(
 				scope: name.scope().clone(),
 				author_identity: row.author_identity,
 				payload: YankBody {
-					name: name.name().clone(),
+					name: name.local_name().clone(),
 					version: Bounded::new(version.clone())?,
 					action: row.action,
 				},
@@ -466,7 +466,7 @@ async fn current_deprecation(
 				scope: name.scope().clone(),
 				author_identity: row.author_identity,
 				payload: DeprecateBody {
-					name: name.name().clone(),
+					name: name.local_name().clone(),
 					reason: row.reason.parse()?,
 				},
 			},

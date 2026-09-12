@@ -201,7 +201,7 @@ impl PackageSource for WallyPackageSource {
 			pkg_ref: PackageRefs::Wally(WallyPackageRef {
 				name: specifier.name.clone(),
 			}),
-			structure_kind: StructureKind::Wally(specifier.name.name().into()),
+			structure_kind: StructureKind::Wally(specifier.name.local_name().into()),
 			versions,
 		})
 	}
@@ -224,7 +224,7 @@ impl PackageSource for WallyPackageSource {
 			.join("wally")
 			.join(self.repo.to_string().escaped())
 			.join(pkg_ref.name.scope().to_string().escaped())
-			.join(pkg_ref.name.name().to_string().escaped())
+			.join(pkg_ref.name.local_name().to_string().escaped())
 			.join(package.id.version().to_string());
 
 		match fs::read_to_string(&index_file).await {

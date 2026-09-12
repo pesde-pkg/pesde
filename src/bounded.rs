@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 /// A value whose textual form is at most `N` characters
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize)]
 #[serde(transparent)]
 pub struct Bounded<T, const N: usize>(T);
 

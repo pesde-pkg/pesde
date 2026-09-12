@@ -190,7 +190,7 @@ async fn handler(
 	}
 
 	if manifest.name.scope() != &body.scope
-		|| manifest.name.name() != &body.payload.name
+		|| manifest.name.local_name() != &body.payload.name
 		|| *manifest.version != *body.payload.version
 		|| *manifest.description != *body.payload.description
 		|| *manifest.license != *body.payload.license

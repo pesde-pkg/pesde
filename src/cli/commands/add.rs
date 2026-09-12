@@ -113,8 +113,10 @@ impl AddCommand {
 		let alias = match self.alias {
 			Some(alias) => alias,
 			None => match &self.package {
-				AnyPackageIdentifier::PesdePackageName(versioned) => versioned.0.name().as_str(),
-				AnyPackageIdentifier::WallyPackageName(versioned) => versioned.0.name(),
+				AnyPackageIdentifier::PesdePackageName(versioned) => {
+					versioned.0.local_name().as_str()
+				}
+				AnyPackageIdentifier::WallyPackageName(versioned) => versioned.0.local_name(),
 				AnyPackageIdentifier::Git((url, _)) => {
 					url.path().split('/').next_back().unwrap_or(url.path())
 				}
