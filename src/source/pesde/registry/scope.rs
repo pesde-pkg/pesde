@@ -224,6 +224,10 @@ pub enum ScopeEntryPayload {
 
 /// An entry in the scope's chain
 pub type ScopeEntry = Entry<ScopeEntryPayload>;
+/// An entry in the scope's chain, issued by a normal scope member
+pub type UserScopeEntry<Op> = Entry<Signed<UserScopePayload<Op>>>;
+/// An entry in the scope's chain, issued by the registry admin
+pub type AdminScopeEntry<Op> = Entry<AdminScopePayload<Op>>;
 
 /// An opinionated subset of (Cargo) SemVer.
 /// Differences from [Version]:

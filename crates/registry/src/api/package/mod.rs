@@ -10,7 +10,7 @@ mod yank;
 
 pub use error::Error;
 
-pub fn http_v2(cfg: &mut actix_web::web::ServiceConfig) {
+pub(super) fn http_v2(cfg: &mut actix_web::web::ServiceConfig) {
 	cfg.service(deprecate::http_v2)
 		.service(get_archive::http_v2)
 		.service(get_readme::http_v2)

@@ -124,14 +124,7 @@ async fn main() -> std::io::Result<()> {
 				web::get()
 					.to(async || concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"))),
 			)
-			.service(
-				web::scope("/v2")
-					.configure(api::log::http_v2)
-					.configure(api::package::http_v2)
-					.configure(api::scope::http_v2)
-					.configure(api::identity::http_v2)
-					.configure(api::search::http_v2),
-			)
+			.configure(api::api)
 	})
 	.bind((address, port))?
 	.run()
