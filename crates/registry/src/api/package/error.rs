@@ -1,7 +1,5 @@
 use actix_web::HttpResponse;
 use actix_web::ResponseError;
-use pesde_registry_core::features::package::PackageWriteError;
-use pesde_registry_core::features::scope::ManifestError;
 
 use crate::shared::error::Category;
 use crate::shared::error::http_response;
@@ -10,12 +8,6 @@ use crate::shared::error::http_response;
 pub(super) enum Error {
 	#[error(transparent)]
 	Internal(#[from] anyhow::Error),
-
-	#[error("signature verification failed")]
-	InvalidSignature,
-
-	#[error("the identity is not registered")]
-	UnknownIdentity,
 
 	#[error("not authorized to perform this action in the scope")]
 	Unauthorized,
@@ -41,41 +33,20 @@ pub(super) enum Error {
 	#[error("the archive hash does not match the uploaded data")]
 	ArchiveHashMismatch,
 
-	#[error("{0}")]
-	BadRequest(String),
-}
+	#[error(transparent)]
+	Multipart(#[from] actix_multipart::MultipartError),
 
-impl From<PackageWriteError> for Error {
-	fn from(error: PackageWriteError) -> Self {
-		match error {
-			PackageWriteError::VersionAlreadyExists => Error::VersionAlreadyExists,
-			PackageWriteError::UnknownPackageVersion => Error::UnknownPackageVersion,
-			PackageWriteError::AlreadyYanked => Error::AlreadyYanked,
-			PackageWriteError::NotYanked => Error::NotYanked,
-			PackageWriteError::AlreadyDeprecated => Error::AlreadyDeprecated,
-			PackageWriteError::NotDeprecated => Error::NotDeprecated,
-			PackageWriteError::Internal(e) => Error::Internal(e),
-		}
-	}
-}
-
-impl From<ManifestError> for Error {
-	fn from(error: ManifestError) -> Self {
-		match error {
-			ManifestError::Internal(e) => Error::Internal(e),
-			e @ ManifestError::UnregisteredIdentity(_) => Error::BadRequest(e.to_string()),
-		}
-	}
+	#[error("`{name}` field exceeds the maximum size of {limit} bytes")]
+	FieldTooLarge { name: &'static str, limit: usize },
 }
 
 impl ResponseError for Error {
 	fn error_response(&self) -> HttpResponse {
 		let category = match self {
 			Error::Internal(_) => Category::Internal,
-			Error::InvalidSignature
-			| Error::ArchiveHashMismatch
-			| Error::UnknownIdentity
-			| Error::BadRequest(_) => Category::BadRequest,
+			Error::ArchiveHashMismatch | Error::Multipart(_) | Error::FieldTooLarge { .. } => {
+				Category::BadRequest
+			}
 			Error::Unauthorized => Category::Unauthorized,
 			Error::UnknownPackageVersion => Category::NotFound,
 			Error::VersionAlreadyExists

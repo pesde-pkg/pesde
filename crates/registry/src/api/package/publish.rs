@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::io::Cursor;
 
 use actix_multipart::Field;
@@ -13,21 +12,16 @@ use fs_err::tokio as fs;
 use futures::TryFutureExt as _;
 use futures::TryStreamExt as _;
 use pesde::MANIFEST_FILE_NAME;
-use pesde::bounded::Bounded;
 use pesde::hash::Hash;
 use pesde::manifest::Manifest;
 use pesde::names::PackageName;
-use pesde::source::DependencySpecifiers;
 use pesde::source::pesde::registry::*;
-use pesde::source::pesde::specifier::RegistryPesdeDependencySpecifier;
-use pesde::source::wally::specifier::RegistryWallyDependencySpecifier;
 use pesde_registry_core::db::Backend;
-use pesde_registry_core::db::ScopeControl;
 use serde::de::DeserializeOwned;
 use tokio::io::AsyncReadExt as _;
 
 use crate::AppState;
-use crate::api::package::Error;
+use crate::api::package::error::Error;
 use crate::shared::blob::BlobStorage;
 use crate::shared::db::append_leaf;
 
@@ -35,32 +29,22 @@ const MAX_ENTRY_SIZE: usize = 64 * 1024;
 const README_FILE_NAME: &str = "README.md";
 const MAX_README_SIZE: u64 = 256 * 1024;
 
-#[post("/package/publish")]
+#[post("/scope/log/entry")]
 pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
 	mut payload: Multipart,
 ) -> Result<impl Responder, Error> {
-	let mut entry: Option<PublishScopeEntry> = None;
-	let mut scope_entry: Option<ManifestUpdateScopeEntry> = None;
+	let mut scope_entry_payload: Option<UserScopeEntryPayload<PublishVersionSignedOpBody>> = None;
+	let mut global_entry_payload: Option<ScopeGenesisEntryPayload> = None;
 	let mut archive: Option<Bytes> = None;
 
-	while let Some(mut field) = payload.try_next().await.map_err(|e| bad_multipart(&e))? {
-		match field.name() {
-			Some("entry") => entry = Some(json_field(&mut field, MAX_ENTRY_SIZE, "entry").await?),
-			Some("scope") => {
-				scope_entry = Some(json_field(&mut field, MAX_ENTRY_SIZE, "scope").await?);
-			}
-			Some("archive") => {
-				let limit = app_state.max_archive_size;
-				archive = Some(
-					field
-						.bytes(limit)
-						.await
-						.map_err(|_e| field_too_large("archive", limit))?
-						.map_err(|e| bad_multipart(&e))?,
-				);
-			}
-			_ => {}
+	while let Some(mut field) = payload.try_next().await? {
+		if let Some(field) = FieldExt::new("scope_entry", &mut field) {
+			scope_entry_payload = Some(field.json(MAX_ENTRY_SIZE).await?)
+		} else if let Some(field) = FieldExt::new("global_entry", &mut field) {
+			global_entry_payload = Some(field.json(MAX_ENTRY_SIZE).await?);
+		} else if let Some(field) = FieldExt::new("archive", &mut field) {
+			archive = Some(field.bytes(app_state.max_archive_size).await?);
 		}
 	}
 
@@ -93,51 +77,55 @@ pub(super) async fn http_v2(
 	Ok(HttpResponse::Created().finish())
 }
 
-async fn json_field<T: DeserializeOwned>(
-	field: &mut Field,
-	limit: usize,
-	name: &str,
-) -> Result<T, Error> {
-	let bytes = field
-		.bytes(limit)
-		.await
-		.map_err(|_e| field_too_large(name, limit))?
-		.map_err(|e| bad_multipart(&e))?;
-
-	serde_json::from_slice(&bytes)
-		.map_err(|e| Error::BadRequest(format!("invalid `{name}` field: {e}")))
+struct FieldExt<'a> {
+	field: &'a mut Field,
+	name: &'static str,
 }
+impl<'a> FieldExt<'a> {
+	fn new(name: &'static str, field: &'a mut Field) -> Option<Self> {
+		field
+			.name()
+			.is_some_and(|n| n == name)
+			.then_some(Self { field, name })
+	}
 
-fn field_too_large(name: &str, limit: usize) -> Error {
-	Error::BadRequest(format!(
-		"`{name}` field exceeds the maximum size of {limit} bytes"
-	))
-}
+	async fn bytes(&mut self, limit: usize) -> Result<Bytes, Error> {
+		self.field
+			.bytes(limit)
+			.map_err(|_| Error::FieldTooLarge {
+				name: self.name,
+				limit,
+			})
+			.await?
+			.map_err(Into::into)
+	}
 
-fn bad_multipart(e: &actix_multipart::MultipartError) -> Error {
-	Error::BadRequest(format!("invalid multipart request: {e}"))
+	async fn json<T: DeserializeOwned>(&mut self, limit: usize) -> Result<T, Error> {
+		let bytes = self.bytes(limit).await?;
+
+		serde_json::from_slice(&bytes).map_err(Into::into)
+	}
 }
 
 async fn handler(
 	db: &dyn Backend,
 	blob: &BlobStorage,
-	entry: PublishScopeEntry,
-	scope_entry: Option<ManifestUpdateScopeEntry>,
+	scope_entry_payload: UserScopeEntryPayload<PublishVersionSignedOpBody>,
+	global_entry_payload: Option<ScopeGenesisEntryPayload>,
 	archive: Bytes,
 ) -> Result<(), Error> {
-	let mut store = db.begin_write().await?;
+	let scope_entry_payload = scope_entry_payload.into_inner();
+	let op_payload = &scope_entry_payload.body.op_payload;
+	let scope_id = &op_payload.scope_id;
 
-	let author = db
-		.author_key(&mut store, &entry.unsafe_body().author_identity)
-		.await?
-		.ok_or(Error::UnknownIdentity)?;
-	let Some((sig, body)) = entry.into_verified_external(&author.key) else {
-		return Err(Error::InvalidSignature);
-	};
+	// let mut (scope_size, scope_tx) = match global_entry_payload {
+	// 	Some(payload) => {
+	// 		let () = db.begin_write_creating(scope_id).await?;
+	// 	}
+	// };
 
-	if Hash::from_bytes(body.payload.archive_hash.algorithm(), &archive)
-		!= body.payload.archive_hash
-	{
+	let op_hash = &op_payload.op.archive_hash;
+	if Hash::digest(op_hash.algorithm(), &archive) != *op_hash {
 		return Err(Error::ArchiveHashMismatch);
 	}
 
@@ -202,122 +190,7 @@ async fn handler(
 		));
 	}
 
-	let manifest_deps = manifest
-		.all_dependencies()
-		.map_err(|e| Error::BadRequest(format!("invalid manifest dependencies: {e}")))?;
-	if manifest_deps.len() != body.payload.dependencies.len() {
-		return Err(Error::BadRequest(
-			"the manifest dependencies do not match the entry".to_string(),
-		));
-	}
-	for (alias, (manifest_spec, manifest_ty)) in &manifest_deps {
-		let Some((entry_spec, entry_ty)) = body.payload.dependencies.get(alias) else {
-			return Err(Error::BadRequest(format!(
-				"dependency `{alias}` is missing from the entry"
-			)));
-		};
-
-		let manifest_spec = match manifest_spec {
-			DependencySpecifiers::Pesde(s) => {
-				RegistryDependencySpecifier::Pesde(RegistryPesdeDependencySpecifier {
-					name: s.name.clone(),
-					version: Bounded::new(s.version.clone()).map_err(|_e| {
-						Error::BadRequest(format!(
-							"invalid pesde dependency `{alias}` version value"
-						))
-					})?,
-					registry: Some(&*s.registry)
-						.filter(|r| !r.is_empty())
-						.map(|r| {
-							r.parse().map_err(|_e| {
-								Error::BadRequest(format!(
-									"invalid pesde dependency `{alias}` registry value"
-								))
-							})
-						})
-						.transpose()?,
-					realm: s.realm,
-				})
-			}
-			DependencySpecifiers::Wally(s) => {
-				RegistryDependencySpecifier::Wally(RegistryWallyDependencySpecifier {
-					name: s.name.clone(),
-					version: Bounded::new(s.version.clone()).map_err(|_e| {
-						Error::BadRequest(format!(
-							"invalid wally dependency `{alias}` version value"
-						))
-					})?,
-					index: s.index.parse().map_err(|_e| {
-						Error::BadRequest(format!(
-							"invalid wally dependency `{alias}` registry value"
-						))
-					})?,
-					realm: s.realm,
-				})
-			}
-			_ => {
-				return Err(Error::BadRequest(format!(
-					"dependency `{alias}` is not a registry dependency"
-				)));
-			}
-		};
-
-		if *entry_spec != manifest_spec || entry_ty != manifest_ty {
-			return Err(Error::BadRequest(format!(
-				"dependency `{alias}` does not match the manifest"
-			)));
-		}
-	}
-
-	let Some(access) = db
-		.authorize_scope_write(
-			&mut store,
-			&body.scope,
-			&author,
-			ScopeControl::PublishOrCreate(&body.payload.name),
-		)
-		.await?
-	else {
-		return Err(Error::Unauthorized);
-	};
-
-	let (store, publish_pos) = if access.scope_exists {
-		(store, access.pos)
-	} else {
-		let Some(scope_entry) = scope_entry else {
-			return Err(Error::BadRequest(
-				"scope does not exist; a signed scope manifest must accompany the publish"
-					.to_string(),
-			));
-		};
-
-		if scope_entry.unsafe_body().scope != body.scope
-			|| scope_entry.unsafe_body().author_identity != body.author_identity
-		{
-			return Err(Error::BadRequest(
-				"the scope creation entry must be authored by the publisher for the same scope"
-					.to_string(),
-			));
-		}
-		let Some((scope_sig, scope_body)) = scope_entry.into_verified_external(&author.key) else {
-			return Err(Error::InvalidSignature);
-		};
-		let expected_manifest = ScopeManifest {
-			owner: body.author_identity,
-			members: BTreeMap::new(),
-		};
-		if scope_body.payload.manifest != expected_manifest {
-			return Err(Error::BadRequest(
-				"a new scope's manifest must name the publisher as its sole owner".to_string(),
-			));
-		}
-
-		let (mut store, publish_pos) = append_leaf(store, access.pos, &scope_body).await?;
-		db.insert_manifest_update(&mut store, access.pos, &scope_sig, &scope_body)
-			.await?;
-		(store, publish_pos)
-	};
-
+	todo!();
 	let (mut store, _) = append_leaf(store, publish_pos, &body).await?;
 	db.insert_publish(&mut store, publish_pos, &sig, &body)
 		.await?;

@@ -25,8 +25,10 @@ impl WithSigner for ScopeGenesisPayload {
 #[serde(untagged)]
 pub enum GlobalEntryPayload {
 	/// A scope has been created
-	ScopeGenesis(Signed<ScopeGenesisPayload>),
+	ScopeGenesis(ScopeGenesisEntryPayload),
 }
 
 /// An entry in the registry's global log
 pub type GlobalEntry = Entry<GlobalEntryPayload>;
+/// A scope creation entry payload
+pub type ScopeGenesisEntryPayload = Signed<ScopeGenesisPayload>;
