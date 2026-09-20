@@ -55,7 +55,6 @@ pub trait MmrWriteStore: Send + Sync + Any {
 
 	async fn append_nodes(&mut self, pos: u64, elems: Vec<CurrentHash>) -> Result<(), StoreError>;
 	async fn set_size(&mut self, size: u64) -> anyhow::Result<()>;
-	async fn commit(self: Box<Self>) -> anyhow::Result<()>;
 }
 
 impl MMRStoreReadOps<CurrentHash> for Box<dyn MmrWriteStore> {
@@ -90,7 +89,7 @@ pub enum PermissionWidth<'a> {
 pub enum ExistingScopeLockResult {
 	Ok {
 		tx: Box<dyn ScopeWriteTransaction>,
-		scope_size: u64,
+		scope_size: NonZero<u64>,
 	},
 	Unauthorized,
 	DoesntExist,
@@ -133,11 +132,14 @@ pub trait ScopeWriteTransaction:
 	MmrWriteStore + crate::features::scope::ScopeWriteRepository
 {
 	async fn commit(self: Box<Self>) -> anyhow::Result<()>;
+	async fn rollback(self: Box<Self>) -> anyhow::Result<()>;
 }
 
 #[async_trait]
 pub trait GlobalWriteTransaction:
 	MmrWriteStore + crate::features::log::GlobalWriteRepository
 {
-	fn into_scope_transaction(self: Box<Self>) -> (u64, Box<dyn ScopeWriteTransaction>);
+	fn into_scope_transaction(self: Box<Self>) -> Box<dyn ScopeWriteTransaction>;
+
+	async fn rollback(self: Box<Self>) -> anyhow::Result<()>;
 }

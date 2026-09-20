@@ -170,8 +170,8 @@ ops!(
 	{
 		/// The grant they're being added with
 		grant: ScopeGrant,
-		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: CurrentHash,
+		/// The root of the tree holding scope members
+		scope_members_root: ScopeMembersTree,
 	},
 	/// The owner is changing a member's grant
 	UpdateMemberGrant "update_member_grant" {
@@ -179,24 +179,24 @@ ops!(
 		member: PublicKey,
 		/// The new grant
 		grant: ScopeGrant,
-		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: CurrentHash,
+		/// The root of the tree holding scope members
+		scope_members_root: ScopeMembersTree,
 	},
 	/// A member is rotating their key
 	RotateKey "rotate_key"
 	/// The key to replace the old key with
 	consent new_key
 	{
-		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: CurrentHash,
+		/// The root of the tree holding scope members
+		scope_members_root: ScopeMembersTree,
 	},
 	/// The owner is removing a member
 	RemoveMember "remove_member" {
 		/// The member being removed. None if the member is removing themselves (signing key is who's leaving)
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		member: Option<PublicKey>,
-		/// The root of the tree holding scope members. [merkle_bplustree::MerkleBPlusTree]<[ScopeMembersTreeConfig]>
-		scope_members_root: CurrentHash,
+		/// The root of the tree holding scope members
+		scope_members_root: ScopeMembersTree,
 	},
 	/// The owner is transferring ownership
 	TransferOwnership "transfer_ownership"
@@ -212,8 +212,8 @@ ops!(
 		version: PesdeVersionForRegistry,
 		/// The hash of the archive being published
 		archive_hash: Hash,
-		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
-		versions_root: CurrentHash,
+		/// The root of the tree holding package versions
+		versions_root: PackageVersionsTree,
 	},
 	/// A package's yank status is being updated
 	SetYanked "set_yanked" {
@@ -223,17 +223,17 @@ ops!(
 		version: PesdeVersionForRegistry,
 		/// Whether it is yanked
 		yanked: bool,
-		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
-		versions_root: CurrentHash,
+		/// The root of the tree holding package versions
+		versions_root: PackageVersionsTree,
 	},
 	/// A package's deprecation status is being updated
 	SetDeprecation "set_deprecation" {
 		/// The package being updated
 		pkg: LocalNameId,
 		/// The hash of the reason this package is deprecated
-		reason_hash: Hash,
-		/// The root of the tree holding package deprecations. [merkle_bplustree::MerkleBPlusTree]<[PackageDeprecationsTreeConfig]>
-		deprecations_root: CurrentHash,
+		reason_hash: Option<Hash>,
+		/// The root of the tree holding package deprecations
+		deprecations_root: PackageDeprecationsTree,
 	},
 );
 
@@ -254,8 +254,8 @@ ops!(
 		version: PesdeVersionForRegistry,
 		/// Whether it is yanked
 		yanked: bool,
-		/// The root of the tree holding package versions. [merkle_bplustree::MerkleBPlusTree]<[PackageVersionsTreeConfig]>
-		versions_root: CurrentHash,
+		/// The root of the tree holding package versions
+		versions_root: PackageVersionsTree,
 	},
 );
 

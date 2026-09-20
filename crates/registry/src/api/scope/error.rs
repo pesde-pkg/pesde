@@ -21,6 +21,15 @@ pub(super) enum Error {
 
 	#[error("scope write not authorised")]
 	Unauthorized,
+
+	#[error("`prev_hash` doesn't match")]
+	InvalidPrevHash,
+
+	#[error("cannot treat scope owner as a member")]
+	OwnerAsMember,
+
+	#[error("cannot change key to the same one")]
+	KeyChangeNoChange,
 }
 
 impl ResponseError for Error {
@@ -31,6 +40,8 @@ impl ResponseError for Error {
 			Error::Merkleberg(_) => Category::Internal,
 			Error::PublishVersionInPostEntry => Category::BadRequest,
 			Error::ScopeNotFound => Category::NotFound,
+			Error::InvalidPrevHash => Category::Conflict,
+			Error::OwnerAsMember | Error::KeyChangeNoChange => Category::BadRequest,
 			Error::Unauthorized => Category::Unauthorized,
 		};
 		http_response(category, self)

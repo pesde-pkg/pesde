@@ -76,6 +76,16 @@ impl<T: Tagged> Consent<T> {
 
 		Signed::new(with_context).map(|s| Self(s, PhantomData))
 	}
+
+	/// Returns the underlying [UnvalidatedConsent]
+	#[must_use]
+	pub fn inner(&self) -> UnvalidatedSigned<&UnvalidatedConsent> {
+		let UnvalidatedSigned { sig, body } = self.0.inner();
+		UnvalidatedSigned::<&UnvalidatedConsent> {
+			sig: sig.clone(),
+			body: &body.terms,
+		}
+	}
 }
 
 impl<T: Tagged> Serialize for Consent<T> {
@@ -83,12 +93,7 @@ impl<T: Tagged> Serialize for Consent<T> {
 	where
 		S: serde::Serializer,
 	{
-		let unvalidated = self.0.inner();
-		UnvalidatedSigned::<&UnvalidatedConsent> {
-			sig: unvalidated.sig.clone(),
-			body: &unvalidated.body.terms,
-		}
-		.serialize(serializer)
+		self.inner().serialize(serializer)
 	}
 }
 
@@ -189,7 +194,7 @@ impl FromStr for VersionedLocalName {
 	}
 }
 
-/// The value the map keyed by [PackageVersionsTreeConfig] points to.
+/// The state of a published package version.
 /// Monitors must ensure archive_hash is never changed, unlike the mutable [Self::yank_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageVersionState {
@@ -210,27 +215,33 @@ pub enum VersionYankState {
 	AdminYanked,
 }
 
-/// The tree config for the Merkle B+Tree `scope_members_root` points to
-pub struct ScopeMembersTreeConfig;
-impl TreeConfig for ScopeMembersTreeConfig {
+/// The Merkle B+Tree that contains scope members along their grants
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ScopeMembersTree(pub CurrentHash);
+impl TreeConfig for ScopeMembersTree {
 	type Key = PublicKey;
 	type Value = ScopeGrant;
 	type Hasher = CurrentMerkleHasher;
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 15>;
 }
 
-/// The tree config for the Merkle B+Tree `versions_root` points to
-pub struct PackageVersionsTreeConfig;
-impl TreeConfig for PackageVersionsTreeConfig {
+/// The Merkle B+Tree that contains package versions along their state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PackageVersionsTree(pub CurrentHash);
+impl TreeConfig for PackageVersionsTree {
 	type Key = VersionedLocalName;
 	type Value = PackageVersionState;
 	type Hasher = CurrentMerkleHasher;
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 63>;
 }
 
-/// The tree config for the Merkle B+Tree `deprecations_root` points to
-pub struct PackageDeprecationsTreeConfig;
-impl TreeConfig for PackageDeprecationsTreeConfig {
+/// The Merkle B+Tree that contains package deprecations along their reasons
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PackageDeprecationsTree(pub CurrentHash);
+impl TreeConfig for PackageDeprecationsTree {
 	type Key = LocalNameId;
 	type Value = Hash;
 	type Hasher = CurrentMerkleHasher;

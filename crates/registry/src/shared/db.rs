@@ -2,6 +2,7 @@ use merkleberg::MMRIVER;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::MmrWriteStore;
+use pesde_registry_core::db::ScopeWriteTransaction;
 use serde::Serialize;
 
 #[cfg(not(any(feature = "mysql")))]
@@ -35,4 +36,22 @@ pub async fn append_leaf(
 	let mut store = mmr.into_store();
 	store.set_size(next_pos).await?;
 	Ok((store, next_pos))
+}
+
+pub async fn run_tx<T, E: From<anyhow::Error>>(
+	mut tx: Box<dyn ScopeWriteTransaction>,
+	cb: impl AsyncFnOnce(&mut dyn ScopeWriteTransaction) -> Result<T, E>,
+) -> Result<T, E> {
+	match cb(&mut *tx).await {
+		Ok(t) => {
+			tx.commit().await?;
+			Ok(t)
+		}
+		Err(e) => {
+			if let Err(e) = tx.rollback().await {
+				tracing::error!(?e, "failed to rollback transaction");
+			}
+			Err(e)
+		}
+	}
 }
