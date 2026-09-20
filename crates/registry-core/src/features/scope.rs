@@ -1,13 +1,26 @@
+use std::num::NonZero;
+
 use async_trait::async_trait;
 use pesde::source::pesde::registry::*;
 
 #[async_trait]
-pub trait Repository {}
+pub trait ScopeReadRepository {
+	async fn scope_log_size(&self, scope: &ScopeId) -> anyhow::Result<Option<NonZero<u64>>>;
+
+	async fn scope_log_entry(
+		&self,
+		scope: &ScopeId,
+		pos: u64,
+	) -> anyhow::Result<Option<ScopeEntry>>;
+
+	async fn scope_state(
+		&self,
+		scope: &ScopeId,
+		at_size: NonZero<u64>,
+	) -> anyhow::Result<Option<ScopeStateResponse>>;
+}
 
 #[async_trait]
-pub trait ScopeWriteRepository {}
-
-#[async_trait]
-pub trait GlobalWriteRepository {
-	async fn insert_global_entry(&mut self, global_entry: GlobalEntry) -> anyhow::Result<()>;
+pub trait ScopeWriteRepository: ScopeReadRepository {
+	async fn insert_entry(&mut self, entry: ScopeEntry) -> anyhow::Result<()>;
 }

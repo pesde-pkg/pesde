@@ -106,7 +106,10 @@ pub enum CreatingScopeLockResult {
 
 #[async_trait]
 pub trait Backend:
-	Send + Sync + crate::features::scope::Repository + crate::features::log::Repository
+	Send
+	+ Sync
+	+ crate::features::log::GlobalReadRepository
+	+ crate::features::scope::ScopeReadRepository
 {
 	fn global_mmr_read_store(&self) -> Box<dyn MmrReadStore>;
 
@@ -134,7 +137,7 @@ pub trait ScopeWriteTransaction:
 
 #[async_trait]
 pub trait GlobalWriteTransaction:
-	MmrWriteStore + crate::features::scope::GlobalWriteRepository
+	MmrWriteStore + crate::features::log::GlobalWriteRepository
 {
 	fn into_scope_transaction(self: Box<Self>) -> (u64, Box<dyn ScopeWriteTransaction>);
 }

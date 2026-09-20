@@ -1,8 +1,9 @@
+use std::num::NonZero;
+
 use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
-use merkleberg::MMRIVER;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 
@@ -17,7 +18,7 @@ pub(super) async fn http_v2(
 	query: web::Query<LogHeadQuery>,
 ) -> Result<impl Responder, Error> {
 	let Some(head) = handler(app_state.db.as_ref(), query.into_inner()).await? else {
-		return Ok(HttpResponse::NotFound().finish());
+		return Ok(HttpResponse::NoContent().finish());
 	};
 
 	Ok(HttpResponse::Ok().json(head))
@@ -25,7 +26,12 @@ pub(super) async fn http_v2(
 
 async fn handler(db: &dyn Backend, query: LogHeadQuery) -> Result<Option<LogHeadResponse>, Error> {
 	let current_size = db.global_log_size().await?;
-	let mmr = MMRIVER::new(current_size, db.global_mmr_read_store());
 
-	log_head(mmr, query).await
+	if let Some(current_size) = NonZero::new(current_size) {
+		log_head(current_size, db.global_mmr_read_store(), query)
+			.await
+			.map(Some)
+	} else {
+		Ok(None)
+	}
 }

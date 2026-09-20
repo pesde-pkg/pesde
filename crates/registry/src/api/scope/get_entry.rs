@@ -36,8 +36,11 @@ async fn handler(
 		pos,
 		|pos| db.scope_log_entry(scope_id, pos),
 		async || {
-			let size = db.scope_log_size(scope_id).await?;
-			Ok(MMRIVER::new(size, db.scope_mmr_read_store(scope_id)))
+			let size = db
+				.scope_log_size(scope_id)
+				.await?
+				.ok_or(Error::ScopeNotFound)?;
+			Ok(MMRIVER::new(size.get(), db.scope_mmr_read_store(scope_id)))
 		},
 		query,
 	)

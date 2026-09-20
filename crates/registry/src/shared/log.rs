@@ -13,12 +13,11 @@ pub struct LogHeadQuery {
 }
 
 pub async fn log_head<E: FromLogError>(
-	mmr: MMRIVER<CurrentMerkleHasher, Box<dyn MmrReadStore>>,
+	mmr_size: NonZero<u64>,
+	mmr_store: Box<dyn MmrReadStore>,
 	query: LogHeadQuery,
-) -> Result<Option<LogHeadResponse>, E> {
-	if mmr.mmr_size() == 0 {
-		return Ok(None);
-	}
+) -> Result<LogHeadResponse, E> {
+	let mmr = MMRIVER::<CurrentMerkleHasher, _>::new(mmr_size.get(), mmr_store);
 
 	let consistency_proof = match query.from_size {
 		Some(from_size) => mmr
@@ -29,13 +28,13 @@ pub async fn log_head<E: FromLogError>(
 		None => Vec::new(),
 	};
 
-	Ok(Some(LogHeadResponse {
+	Ok(LogHeadResponse {
 		accumulator: MmrAccumulator {
 			peaks: mmr.get_accumulator().await?.into(),
 		},
 		mmr_size: mmr.mmr_size(),
 		consistency_proof,
-	}))
+	})
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,13 +42,13 @@ pub struct LogEntryQuery {
 	at_size: Option<NonZero<u64>>,
 }
 
-pub async fn log_entry<P, E: FromLogError>(
+pub async fn log_entry<P: EntryPayload, E: FromLogError>(
 	pos: u64,
 	get_entry: impl AsyncFnOnce(u64) -> anyhow::Result<Option<Entry<P>>>,
 	get_mmr: impl AsyncFnOnce() -> anyhow::Result<MMRIVER<CurrentMerkleHasher, Box<dyn MmrReadStore>>>,
 	query: LogEntryQuery,
 ) -> Result<Option<LogEntryResponse<P>>, E> {
-	if query.at_size.is_some_and(|s| s.get() < pos) {
+	if query.at_size.is_some_and(|s| pos >= s.get()) {
 		return Err(merkleberg::Error::GenProofForInvalidLeaves.into());
 	}
 
@@ -71,11 +70,8 @@ pub async fn log_entry<P, E: FromLogError>(
 	};
 
 	let (entry, inclusion_proof) = tokio::try_join!(entry, inclusion_proof)?;
-	let Some(entry) = entry else {
-		return Ok(None);
-	};
 
-	Ok(Some(LogEntryResponse {
+	Ok(entry.map(|entry| LogEntryResponse {
 		entry,
 		inclusion_proof,
 	}))

@@ -2,6 +2,7 @@
 
 use std::convert::Infallible;
 use std::fmt::Display;
+use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -40,9 +41,68 @@ pub fn canonical_bytes(data: &impl Serialize) -> Vec<u8> {
 		.encode()
 }
 
+/// A tagged object
+pub trait Tagged {
+	/// The tag of this value
+	const TAG: &'static str;
+}
+
+/// A tag of an operation
+#[derive(Debug, Clone, Copy)]
+pub struct OpTag<T: Tagged>(PhantomData<T>);
+
+impl<T: Tagged> Default for OpTag<T> {
+	fn default() -> Self {
+		Self(PhantomData)
+	}
+}
+
+impl<T: Tagged> Serialize for OpTag<T> {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		T::TAG.serialize(serializer)
+	}
+}
+
+impl<'de, T: Tagged> Deserialize<'de> for OpTag<T> {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		struct Visitor(&'static str);
+		impl serde::de::Visitor<'_> for Visitor {
+			type Value = ();
+
+			fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+				write!(formatter, "string {:?}", self.0)
+			}
+
+			fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+			where
+				E: serde::de::Error,
+			{
+				if v == self.0 {
+					Ok(())
+				} else {
+					Err(E::invalid_value(serde::de::Unexpected::Str(v), &self))
+				}
+			}
+		}
+
+		deserializer
+			.deserialize_str(Visitor(T::TAG))
+			.map(|_| Default::default())
+	}
+}
+
+/// Things that can be an [Entry]'s payload
+pub trait EntryPayload {}
+
 /// An entry in a log, at a known leaf position
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Entry<T> {
+pub struct Entry<T: EntryPayload> {
 	/// The leaf position of this entry
 	pub pos: u64,
 	/// The time of publishing of this entry
@@ -52,15 +112,15 @@ pub struct Entry<T> {
 	pub payload: T,
 }
 
-/// An object that carries its own signing key
-pub trait WithSigner {
+/// An object that can be signed & carries its own signing key
+pub trait Signable {
 	/// The key that should sign this
 	fn signer(&self) -> &PublicKey;
 }
 
 /// An unvalidated record carrying a signature and a signer
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UnvalidatedSigned<T: WithSigner> {
+pub struct UnvalidatedSigned<T> {
 	/// The signature
 	pub sig: Signature,
 	/// The body
@@ -68,27 +128,32 @@ pub struct UnvalidatedSigned<T: WithSigner> {
 	pub body: T,
 }
 
-/// The signed entry was illegal in some way, e.g. the signature didn't match
+/// The signature didn't match what was expected
 #[derive(Debug, Error)]
-#[error("the signed entry was illegal")]
-pub struct SignedValidationFailed;
+#[error("invalid signature")]
+pub struct BadSignature;
 
 /// A validated wrapper over [UnvalidatedSigned], allowing construction only if it's legal
 #[derive(Debug, Clone, Serialize)]
 #[serde(transparent)]
-pub struct Signed<T: WithSigner>(UnvalidatedSigned<T>);
+pub struct Signed<T: Signable>(UnvalidatedSigned<T>);
 
-impl<T: WithSigner + Serialize> Signed<T> {
+impl<T: Signable + Serialize> Signed<T> {
 	/// Validates the passed in [UnvalidatedSigned] and returns Some if it's valid
-	pub fn new(input: UnvalidatedSigned<T>) -> Result<Self, SignedValidationFailed> {
+	pub fn new(input: UnvalidatedSigned<T>) -> Result<Self, BadSignature> {
 		if !input
 			.sig
 			.verify(input.body.signer(), &canonical_bytes(&input.body))
 		{
-			return Err(SignedValidationFailed);
+			return Err(BadSignature);
 		}
 
 		Ok(Self(input))
+	}
+
+	/// Returns a reference to the underlying [UnvalidatedSigned]
+	pub fn inner(&self) -> &UnvalidatedSigned<T> {
+		&self.0
 	}
 
 	/// Returns the underlying [UnvalidatedSigned]
@@ -97,7 +162,7 @@ impl<T: WithSigner + Serialize> Signed<T> {
 	}
 }
 
-impl<'de, T: WithSigner + Serialize + Deserialize<'de>> Deserialize<'de> for Signed<T> {
+impl<'de, T: Signable + Serialize + Deserialize<'de>> Deserialize<'de> for Signed<T> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
@@ -121,6 +186,12 @@ impl ScopeId {
 	}
 }
 
+impl Display for ScopeId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.0.fmt(f)
+	}
+}
+
 /// The local name id; hash of the package local name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
 #[serde(transparent)]
@@ -133,6 +204,12 @@ impl LocalNameId {
 		let mut hasher = CurrentHash::hasher();
 		hasher.update(name.as_str().as_bytes());
 		Self(hasher.finalize())
+	}
+}
+
+impl Display for LocalNameId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.0.fmt(f)
 	}
 }
 

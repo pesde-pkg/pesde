@@ -98,49 +98,6 @@ impl ApiPesdePackageSourceBackend {
 
 		request
 	}
-
-	async fn included_entry<
-		P: Serialize + DeserializeOwned,
-		E: Into<Entry<P>> + DeserializeOwned,
-	>(
-		&self,
-		project: &Project,
-		_state: &PesdeSourceState,
-		url: String,
-	) -> Result<Entry<P>, errors::ApiIncludedEntryError> {
-		let entry = self
-			.authed_request(project, project.reqwest().get(url))
-			.send()
-			.await?
-			.error_for_status()?
-			.json::<E>()
-			.await?
-			.into();
-
-		// let inclusion_proof = self
-		// 	.authed_request(
-		// 		project,
-		// 		project.reqwest().get(format!(
-		// 			"{}/v2/log/inclusion/{}",
-		// 			self.api_url_str(),
-		// 			entry.pos
-		// 		)),
-		// 	)
-		// 	.send()
-		// 	.await?
-		// 	.error_for_status()?
-		// 	.json::<InclusionProofResponse>()
-		// 	.await?;
-
-		// let inclusion_proof =
-		// 	InclusionProof::<CurrentMmrMerge>::new(entry.pos, inclusion_proof.proof);
-		// let nodehash = CurrentMmrMerge::leaf_hash(&canonical_bytes(&entry.payload)).unwrap();
-		// if !inclusion_proof.verify(nodehash, &state.accumulator.peaks)? {
-		// 	return Err(errors::ApiIncludedEntryErrorKind::InvalidInclusionProof.into());
-		// }
-
-		Ok(entry)
-	}
 }
 
 impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
@@ -171,7 +128,7 @@ impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
 		match response.status() {
 			reqwest::StatusCode::OK => Ok(Some(response.json().await?)),
 			// no packages have yet been published
-			reqwest::StatusCode::NOT_FOUND => Ok(None),
+			reqwest::StatusCode::NO_CONTENT => Ok(None),
 			_ => response
 				.error_for_status()
 				.map(|_| None)
