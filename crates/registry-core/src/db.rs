@@ -1,4 +1,4 @@
-use std::any::Any;
+use std::num::NonZero;
 
 use async_trait::async_trait;
 use merkleberg::MMRStoreReadOps;
@@ -24,7 +24,7 @@ pub trait MmrReadStore: Send + Sync {
 	}
 }
 
-impl MMRStoreReadOps<CurrentHash> for Box<dyn MmrReadStore> {
+impl MMRStoreReadOps<CurrentHash> for &dyn MmrReadStore {
 	type Error = StoreError;
 
 	async fn get_elem(&self, pos: u64) -> Result<Option<CurrentHash>, StoreError> {
@@ -39,40 +39,28 @@ impl MMRStoreReadOps<CurrentHash> for Box<dyn MmrReadStore> {
 	}
 }
 
-// explicitly not MmrReadStore to avoid hard to spot bugs
 #[async_trait]
-pub trait MmrWriteStore: Send + Sync + Any {
-	async fn get_node(&self, pos: u64) -> Result<Option<CurrentHash>, StoreError>;
-
-	async fn get_nodes(&self, positions: Vec<u64>) -> Result<Vec<Option<CurrentHash>>, StoreError> {
-		let mut nodes = Vec::new();
-		nodes.reserve_exact(positions.len());
-		for pos in positions {
-			nodes.push(self.get_node(pos).await?);
-		}
-		Ok(nodes)
-	}
-
+pub trait MmrWriteStore: MmrReadStore {
 	async fn append_nodes(&mut self, pos: u64, elems: Vec<CurrentHash>) -> Result<(), StoreError>;
 	async fn set_size(&mut self, size: u64) -> anyhow::Result<()>;
 }
 
-impl MMRStoreReadOps<CurrentHash> for Box<dyn MmrWriteStore> {
+impl MMRStoreReadOps<CurrentHash> for &dyn MmrWriteStore {
 	type Error = StoreError;
 
-	async fn get_elem(&self, pos: u64) -> Result<Option<CurrentHash>, StoreError> {
-		self.get_node(pos).await
+	async fn get_elem(&self, pos: u64) -> Result<Option<CurrentHash>, Self::Error> {
+		(*self as &dyn MmrReadStore).get_elem(pos).await
 	}
 
 	async fn get_elems(
 		&self,
 		positions: impl Iterator<Item = u64> + Send,
-	) -> Result<Vec<Option<CurrentHash>>, StoreError> {
-		self.get_nodes(positions.collect()).await
+	) -> Result<Vec<Option<CurrentHash>>, Self::Error> {
+		(*self as &dyn MmrReadStore).get_elems(positions).await
 	}
 }
 
-impl MMRStoreWriteOps<CurrentHash> for Box<dyn MmrWriteStore> {
+impl MMRStoreWriteOps<CurrentHash> for dyn MmrWriteStore {
 	type Error = StoreError;
 
 	async fn append(&mut self, pos: u64, elems: Vec<CurrentHash>) -> Result<(), StoreError> {

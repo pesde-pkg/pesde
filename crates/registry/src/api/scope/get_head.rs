@@ -36,5 +36,5 @@ async fn handler(
 		.await?
 		.ok_or(Error::ScopeNotFound)?;
 
-	log_head(current_size, db.scope_mmr_read_store(scope_id), query).await
+	log_head(current_size, &*db.scope_mmr_read_store(scope_id), query).await
 }

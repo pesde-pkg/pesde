@@ -14,10 +14,10 @@ pub struct LogHeadQuery {
 
 pub async fn log_head<E: FromLogError>(
 	mmr_size: NonZero<u64>,
-	mmr_store: Box<dyn MmrReadStore>,
+	mmr_store: &dyn MmrReadStore,
 	query: LogHeadQuery,
 ) -> Result<LogHeadResponse, E> {
-	let mmr = MMRIVER::<CurrentMerkleHasher, _>::new(mmr_size.get(), mmr_store);
+	let mmr = MMRIVER::<CurrentMerkleHasher, _>::new(mmr_size.get(), &*mmr_store);
 
 	let consistency_proof = match query.from_size {
 		Some(from_size) => mmr
@@ -44,8 +44,8 @@ pub struct LogEntryQuery {
 
 pub async fn log_entry<P: EntryPayload, E: FromLogError>(
 	pos: u64,
-	get_entry: impl AsyncFnOnce(u64) -> anyhow::Result<Option<Entry<P>>>,
-	get_mmr: impl AsyncFnOnce() -> anyhow::Result<MMRIVER<CurrentMerkleHasher, Box<dyn MmrReadStore>>>,
+	get_entry: impl AsyncFnOnce(u64) -> Result<Option<Entry<P>>, E>,
+	get_mmr: impl AsyncFnOnce() -> Result<(NonZero<u64>, Box<dyn MmrReadStore>), E>,
 	query: LogEntryQuery,
 ) -> Result<Option<LogEntryResponse<P>>, E> {
 	if query.at_size.is_some_and(|s| pos >= s.get()) {
@@ -56,13 +56,13 @@ pub async fn log_entry<P: EntryPayload, E: FromLogError>(
 	let inclusion_proof = async {
 		Ok(match query.at_size {
 			Some(at_size) => {
-				let mmr = get_mmr().await?;
+				let (mmr_size, mmr_store) = get_mmr().await?;
 
-				if mmr.mmr_size() < at_size.get() {
+				if mmr_size < at_size {
 					return Err(merkleberg::Error::GenProofForInvalidLeaves.into());
 				}
 
-				let mmr = MMRIVER::<CurrentMerkleHasher, _>::new(at_size.get(), mmr.into_store());
+				let mmr = MMRIVER::<CurrentMerkleHasher, _>::new(at_size.get(), &*mmr_store);
 				mmr.gen_inclusion_proof(pos).await?.proof().to_vec()
 			}
 			None => Vec::new(),

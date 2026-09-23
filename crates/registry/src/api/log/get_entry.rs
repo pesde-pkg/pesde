@@ -1,8 +1,10 @@
+use std::num::NonZero;
+
 use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
-use merkleberg::MMRIVER;
+use futures::TryFutureExt;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 
@@ -32,10 +34,16 @@ async fn handler(
 ) -> Result<Option<LogEntryResponse<GlobalEntryPayload>>, Error> {
 	log_entry(
 		pos,
-		|pos| db.global_log_entry(pos),
+		|pos| db.global_log_entry(pos).map_err(Into::into),
 		async || {
 			let size = db.global_log_size().await?;
-			Ok(MMRIVER::new(size, db.global_mmr_read_store()))
+			let Some(size) = NonZero::new(size) else {
+				return Err(Error::SizeOutOfRange {
+					requested: pos,
+					current: 0,
+				});
+			};
+			Ok((size, db.global_mmr_read_store()))
 		},
 		query,
 	)

@@ -2,7 +2,7 @@ use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
-use merkleberg::MMRIVER;
+use futures::TryFutureExt as _;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 
@@ -34,13 +34,13 @@ async fn handler(
 ) -> Result<Option<LogEntryResponse<ScopeEntryPayload>>, Error> {
 	log_entry(
 		pos,
-		|pos| db.scope_log_entry(scope_id, pos),
+		|pos| db.scope_log_entry(scope_id, pos).map_err(Into::into),
 		async || {
 			let size = db
 				.scope_log_size(scope_id)
 				.await?
 				.ok_or(Error::ScopeNotFound)?;
-			Ok(MMRIVER::new(size.get(), db.scope_mmr_read_store(scope_id)))
+			Ok((size, db.scope_mmr_read_store(scope_id)))
 		},
 		query,
 	)

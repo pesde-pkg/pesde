@@ -24,11 +24,11 @@ pub async fn connect(url: &str) -> Box<dyn Backend> {
 }
 
 pub async fn append_leaf(
-	store: Box<dyn MmrWriteStore>,
+	store: &mut dyn MmrWriteStore,
 	pos: u64,
 	body: &impl Serialize,
 ) -> anyhow::Result<(Box<dyn MmrWriteStore>, u64)> {
-	let mut mmr: MMRIVER<CurrentMerkleHasher, Box<dyn MmrWriteStore>> = MMRIVER::new(pos, store);
+	let mut mmr: MMRIVER<CurrentMerkleHasher, _> = MMRIVER::new(pos, store);
 	mmr.push(&canonical_bytes(body)).await?;
 	mmr.commit().await?;
 

@@ -28,7 +28,7 @@ async fn handler(db: &dyn Backend, query: LogHeadQuery) -> Result<Option<LogHead
 	let current_size = db.global_log_size().await?;
 
 	if let Some(current_size) = NonZero::new(current_size) {
-		log_head(current_size, db.global_mmr_read_store(), query)
+		log_head(current_size, &*db.global_mmr_read_store(), query)
 			.await
 			.map(Some)
 	} else {
