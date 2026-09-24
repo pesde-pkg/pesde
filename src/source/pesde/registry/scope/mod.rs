@@ -86,6 +86,12 @@ impl<T: Tagged> Consent<T> {
 			body: &body.terms,
 		}
 	}
+
+	/// Returns the consenter
+	#[must_use]
+	pub fn consenter(&self) -> &PublicKey {
+		&self.0.0.body.terms.consenter
+	}
 }
 
 impl<T: Tagged> Serialize for Consent<T> {
@@ -163,37 +169,6 @@ pub const MAX_VERSION_LEN: usize = 255;
 /// A [PesdeStyleVersion] with a maximum length
 pub type PesdeVersionForRegistry = Bounded<PesdeStyleVersion, MAX_VERSION_LEN>;
 
-/// Pair of local name and version.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct VersionedLocalName {
-	/// The local name this keys
-	pub local_name: LocalName,
-	/// The package version this keys
-	pub version: PesdeStyleVersion,
-}
-ser_display_deser_fromstr!(VersionedLocalName);
-
-impl Display for VersionedLocalName {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}@{}", self.local_name, self.version)
-	}
-}
-
-impl FromStr for VersionedLocalName {
-	type Err = VersionedLocalNameFromStrError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let Some((local_name, version)) = s.split_once('@') else {
-			return Err(Self::Err::BadInput(s.into()));
-		};
-
-		Ok(Self {
-			local_name: local_name.parse()?,
-			version: version.parse()?,
-		})
-	}
-}
-
 /// The state of a published package version.
 /// Monitors must ensure archive_hash is never changed, unlike the mutable [Self::yank_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,7 +181,7 @@ pub struct PackageVersionState {
 }
 
 /// A yank state of a version. In the case of an admin yank, only an admin is able to unyank it
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VersionYankState {
 	/// The package is yanked with a normal yank and can be accessed if it has been observed
@@ -231,7 +206,7 @@ impl TreeConfig for ScopeMembersTree {
 #[serde(transparent)]
 pub struct PackageVersionsTree(pub CurrentHash);
 impl TreeConfig for PackageVersionsTree {
-	type Key = VersionedLocalName;
+	type Key = (LocalNameId, PesdeVersionForRegistry);
 	type Value = PackageVersionState;
 	type Hasher = CurrentMerkleHasher;
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 63>;
@@ -267,21 +242,4 @@ pub enum PesdeStyleVersionFromStrError {
 	/// The version's prerelease was too long
 	#[error("pesde style versions' prereleases must be shorter")]
 	PrereleaseLength(#[source] crate::bounded::errors::TooLongError),
-}
-
-/// Errors that can occur when parsing a [VersionedLocalName] from str
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum VersionedLocalNameFromStrError {
-	/// The input string wasn't in the form of `name@version`
-	#[error("`{0}` can't be parsed as `name@version`")]
-	BadInput(Box<str>),
-
-	/// The name was invalid
-	#[error("failed to parse name")]
-	MalformedName(#[from] crate::names::errors::PackageNameError),
-
-	/// The version was invalid
-	#[error("failed to parse version")]
-	MalformedVersion(#[from] PesdeStyleVersionFromStrError),
 }

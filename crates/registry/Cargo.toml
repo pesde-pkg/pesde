@@ -31,6 +31,7 @@ async-compression = { workspace = true }
 tempfile = { workspace = true }
 blake3 = { workspace = true }
 itertools = { workspace = true }
+merkle-bplustree = { workspace = true }
 
 actix-web = "4.13.0"
 actix-cors = "0.7.1"

@@ -4211,6 +4211,7 @@ dependencies = [
  "fs-err",
  "futures",
  "itertools",
+ "merkle-bplustree",
  "merkleberg",
  "pesde",
  "pesde-registry-core",

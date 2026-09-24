@@ -30,6 +30,9 @@ pub(super) enum Error {
 
 	#[error("cannot change key to the same one")]
 	KeyChangeNoChange,
+
+	#[error("invalid tree root")]
+	ComputedRootDifferent,
 }
 
 impl ResponseError for Error {
@@ -41,7 +44,9 @@ impl ResponseError for Error {
 			Error::PublishVersionInPostEntry => Category::BadRequest,
 			Error::ScopeNotFound => Category::NotFound,
 			Error::InvalidPrevHash => Category::Conflict,
-			Error::OwnerAsMember | Error::KeyChangeNoChange => Category::BadRequest,
+			Error::OwnerAsMember | Error::KeyChangeNoChange | Error::ComputedRootDifferent => {
+				Category::BadRequest
+			}
 			Error::Unauthorized => Category::Unauthorized,
 		};
 		http_response(category, self)
