@@ -32,6 +32,24 @@ pub(super) enum Error {
 	#[error("cannot change key to the same one")]
 	KeyChangeNoChange,
 
+	#[error("cannot change grant to the same one")]
+	GrantNoChange,
+
+	#[error("key already exists")]
+	KeyAlreadyExists,
+
+	#[error("key isn't a scope member")]
+	KeyNotFound,
+
+	#[error("already in expected state")]
+	AlreadyInState,
+
+	#[error("version doesn't exist")]
+	VersionNotFound,
+
+	#[error("version is admin yanked and therefore cannot be modified")]
+	VersionAdminYanked,
+
 	#[error("invalid tree root")]
 	ComputedRootDifferent,
 }
@@ -44,10 +62,16 @@ impl ResponseError for Error {
 			Error::Merkleberg(_) => Category::Internal,
 			Error::PublishVersionInPostEntry => Category::BadRequest,
 			Error::ScopeNotFound => Category::NotFound,
-			Error::InvalidPrevHash => Category::Conflict,
-			Error::OwnerAsMember | Error::KeyChangeNoChange | Error::ComputedRootDifferent => {
-				Category::BadRequest
-			}
+			Error::InvalidPrevHash
+			| Error::KeyAlreadyExists
+			| Error::AlreadyInState
+			| Error::VersionAdminYanked => Category::Conflict,
+			Error::OwnerAsMember
+			| Error::KeyChangeNoChange
+			| Error::GrantNoChange
+			| Error::KeyNotFound
+			| Error::VersionNotFound
+			| Error::ComputedRootDifferent => Category::BadRequest,
 			Error::Unauthorized => Category::Unauthorized,
 		};
 		http_response(category, self)

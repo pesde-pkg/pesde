@@ -151,8 +151,8 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 						.await
 					{
 						Ok(_) => Ok(()),
-						Err(InsertNewError::AlreadyExists) => Err(Error::AlreadyExists),
-						Err(InsertNewError::StorageError(e)) => Err(e),
+						Err(InsertNewError::AlreadyExists) => Err(Error::KeyAlreadyExists),
+						Err(InsertNewError::StorageError(e)) => Err(e.into()),
 					}
 				})
 				.await?;
@@ -168,8 +168,8 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				run_tree(tx, &state, scope_members_root, async |tree| {
 					match tree.insert(member.clone(), grant.clone()).await? {
 						Some(g) if g == *grant => Err(Error::GrantNoChange),
-						Some(g) => Ok(()),
-						None => Err(Error::NotInScope),
+						Some(_) => Ok(()),
+						None => Err(Error::KeyNotFound),
 					}
 				})
 				.await?;
@@ -182,14 +182,14 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 			}) => {
 				let state = scope_state().await?;
 				run_tree(tx, &state, scope_members_root, async |tree| {
-					let Some(grant) = tree.delete(new_key.consenter()).await? else {
+					let Some(grant) = tree.delete(signer).await? else {
 						return Err(Error::Unauthorized);
 					};
 
 					match tree.insert_new(new_key.consenter().clone(), grant).await {
 						Ok(_) => Ok(()),
-						Err(InsertNewError::AlreadyExists) => Err(Error::AlreadyExists),
-						Err(InsertNewError::StorageError(e)) => Err(e),
+						Err(InsertNewError::AlreadyExists) => Err(Error::KeyAlreadyExists),
+						Err(InsertNewError::StorageError(e)) => Err(e.into()),
 					}
 				})
 				.await?;
@@ -209,7 +209,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 					tree.delete(member.as_ref().unwrap_or(signer))
 						.await?
 						.is_some()
-						.ok_or(Error::Unauthorized)
+						.ok_or(Error::AlreadyInState)
 				})
 				.await?;
 			}
@@ -232,7 +232,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 					};
 
 					if version.yank_state == Some(VersionYankState::AdminYanked) {
-						return Err(Error::AdminYanked);
+						return Err(Error::VersionAdminYanked);
 					}
 
 					let new_state = if *yanked {
