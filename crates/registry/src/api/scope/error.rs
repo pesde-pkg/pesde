@@ -1,5 +1,6 @@
 use actix_web::HttpResponse;
 use actix_web::ResponseError;
+use pesde_registry_core::db::StoreError;
 
 use crate::shared::error::Category;
 use crate::shared::error::http_response;
@@ -54,3 +55,8 @@ impl ResponseError for Error {
 }
 
 impl FromLogError for Error {}
+impl From<StoreError> for Error {
+	fn from(value: StoreError) -> Self {
+		Error::Internal(value.0)
+	}
+}

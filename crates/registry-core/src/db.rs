@@ -97,6 +97,9 @@ pub trait Backend:
 	+ Sync
 	+ crate::features::log::GlobalReadRepository
 	+ crate::features::scope::ScopeReadRepository
+	+ crate::features::tree::TreeReadRepository<ScopeMembersTree>
+	+ crate::features::tree::TreeReadRepository<PackageVersionsTree>
+	+ crate::features::tree::TreeReadRepository<PackageDeprecationsTree>
 {
 	fn global_mmr_read_store(&self) -> Box<dyn MmrReadStore>;
 
@@ -117,7 +120,11 @@ pub trait Backend:
 
 #[async_trait]
 pub trait ScopeWriteTransaction:
-	MmrWriteStore + crate::features::scope::ScopeWriteRepository
+	MmrWriteStore
+	+ crate::features::scope::ScopeWriteRepository
+	+ crate::features::tree::TreeWriteRepository<ScopeMembersTree>
+	+ crate::features::tree::TreeWriteRepository<PackageVersionsTree>
+	+ crate::features::tree::TreeWriteRepository<PackageDeprecationsTree>
 {
 	async fn commit(self: Box<Self>) -> anyhow::Result<()>;
 	async fn rollback(self: Box<Self>) -> anyhow::Result<()>;

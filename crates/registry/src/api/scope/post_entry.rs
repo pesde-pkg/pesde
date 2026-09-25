@@ -3,7 +3,6 @@ use actix_web::Responder;
 use actix_web::post;
 use actix_web::web;
 use merkle_bplustree::InsertNewError;
-use merkle_bplustree::MerkleBPlusTree;
 use merkleberg::MMRIVER;
 use pesde::hash::Hash;
 use pesde::source::pesde::registry::*;
@@ -13,6 +12,7 @@ use pesde_registry_core::db::PermissionWidth;
 
 use crate::AppState;
 use crate::api::scope::error::Error;
+use crate::api::scope::run_tree;
 use crate::shared::db::run_tx;
 
 #[post("/scope/log/entry")]
@@ -145,25 +145,17 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				scope_members_root,
 			}) => {
 				let state = scope_state().await?;
-				let scope_members = MerkleBPlusTree::<ScopeMembersTree, _>::from_root_hash(
-					&state.scope_members_root,
-					todo!(),
-					Default::default(),
-				)
+				run_tree(tx, &state, scope_members_root, async |tree| {
+					match tree
+						.insert_new(member.consenter().clone(), grant.clone())
+						.await
+					{
+						Ok(_) => Ok(()),
+						Err(InsertNewError::AlreadyExists) => Err(Error::AlreadyExists),
+						Err(InsertNewError::StorageError(e)) => Err(e),
+					}
+				})
 				.await?;
-
-				match scope_members
-					.insert_new(member.consenter().clone(), grant.clone())
-					.await
-				{
-					Ok(_) => {}
-					Err(InsertNewError::AlreadyExists) => return Err(Error::AlreadyExists),
-					Err(InsertNewError::StorageError(e)) => return Err(e),
-				}
-
-				if scope_members.root_hash() != scope_members_root.0 {
-					return Err(Error::ComputedRootDifferent);
-				}
 			}
 			UserScopeOp::UpdateMemberGrant(UpdateMemberGrantUserScopeOpBody {
 				kind: _,
@@ -173,21 +165,14 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				scope_members_root,
 			}) => {
 				let state = scope_state().await?;
-				let scope_members = MerkleBPlusTree::<ScopeMembersTree, _>::from_root_hash(
-					&state.scope_members_root,
-					todo!(),
-					Default::default(),
-				)
+				run_tree(tx, &state, scope_members_root, async |tree| {
+					match tree.insert(member.clone(), grant.clone()).await? {
+						Some(g) if g == *grant => Err(Error::GrantNoChange),
+						Some(g) => Ok(()),
+						None => Err(Error::NotInScope),
+					}
+				})
 				.await?;
-
-				let old = scope_members.insert(member.clone(), grant.clone()).await?;
-				if old.is_none_or(|g| g == *grant) {
-					return Err(Error::NotInScope);
-				}
-
-				if scope_members.root_hash() != scope_members_root.0 {
-					return Err(Error::ComputedRootDifferent);
-				}
 			}
 			UserScopeOp::RotateKey(RotateKeyUserScopeOpBody {
 				kind: _,
@@ -196,29 +181,18 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				scope_members_root,
 			}) => {
 				let state = scope_state().await?;
-				let scope_members = MerkleBPlusTree::<ScopeMembersTree, _>::from_root_hash(
-					&state.scope_members_root,
-					todo!(),
-					Default::default(),
-				)
+				run_tree(tx, &state, scope_members_root, async |tree| {
+					let Some(grant) = tree.delete(new_key.consenter()).await? else {
+						return Err(Error::Unauthorized);
+					};
+
+					match tree.insert_new(new_key.consenter().clone(), grant).await {
+						Ok(_) => Ok(()),
+						Err(InsertNewError::AlreadyExists) => Err(Error::AlreadyExists),
+						Err(InsertNewError::StorageError(e)) => Err(e),
+					}
+				})
 				.await?;
-
-				let Some(grant) = scope_members.delete(new_key.consenter()).await? else {
-					return Err(Error::Unauthorized);
-				};
-
-				match scope_members
-					.insert_new(new_key.consenter().clone(), grant)
-					.await
-				{
-					Ok(_) => {}
-					Err(InsertNewError::AlreadyExists) => return Err(Error::AlreadyExists),
-					Err(InsertNewError::StorageError(e)) => return Err(e),
-				}
-
-				if scope_members.root_hash() != scope_members_root.0 {
-					return Err(Error::ComputedRootDifferent);
-				}
 			}
 			UserScopeOp::RemoveMember(RemoveMemberUserScopeOpBody {
 				kind: _,
@@ -227,29 +201,17 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				scope_members_root,
 			}) => {
 				let state = scope_state().await?;
-
 				if state.owner == *signer && member.is_none() {
 					return Err(Error::OwnerAsMember);
 				}
 
-				let scope_members = MerkleBPlusTree::<ScopeMembersTree, _>::from_root_hash(
-					&state.scope_members_root,
-					todo!(),
-					Default::default(),
-				)
+				run_tree(tx, &state, scope_members_root, async |tree| {
+					tree.delete(member.as_ref().unwrap_or(signer))
+						.await?
+						.is_some()
+						.ok_or(Error::Unauthorized)
+				})
 				.await?;
-
-				if scope_members
-					.delete(member.as_ref().unwrap_or(signer))
-					.await?
-					.is_none()
-				{
-					return Err(Error::Unauthorized);
-				};
-
-				if scope_members.root_hash() != scope_members_root.0 {
-					return Err(Error::ComputedRootDifferent);
-				}
 			}
 			UserScopeOp::TransferOwnership(_) => {}
 			UserScopeOp::PublishVersion(_) => unreachable!(),
@@ -262,39 +224,33 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				versions_root,
 			}) => {
 				let state = scope_state().await?;
-				let versions = MerkleBPlusTree::<PackageVersionsTree, _>::from_root_hash(
-					&state.versions_root,
-					todo!(),
-					Default::default(),
-				)
+				run_tree(tx, &state, versions_root, async |tree| {
+					let key = (pkg.clone(), version.clone());
+
+					let Some(mut version) = tree.get(&key).await? else {
+						return Err(Error::VersionNotFound);
+					};
+
+					if version.yank_state == Some(VersionYankState::AdminYanked) {
+						return Err(Error::AdminYanked);
+					}
+
+					let new_state = if *yanked {
+						Some(VersionYankState::Yanked)
+					} else {
+						None
+					};
+
+					if version.yank_state == new_state {
+						return Err(Error::AlreadyInState);
+					}
+					version.yank_state = new_state;
+
+					tree.insert(key, version).await?;
+
+					Ok(())
+				})
 				.await?;
-
-				let key = (pkg.clone(), version.clone());
-
-				let Some(mut version) = versions.get(&key).await? else {
-					return Err(Error::VersionNotFound);
-				};
-
-				if version.yank_state == Some(VersionYankState::AdminYanked) {
-					return Err(Error::AdminYanked);
-				}
-
-				let new_state = if *yanked {
-					Some(VersionYankState::Yanked)
-				} else {
-					None
-				};
-
-				if version.yank_state == new_state {
-					return Err(Error::AlreadyInState);
-				}
-				version.yank_state = new_state;
-
-				versions.insert(key, version).await?;
-
-				if versions.root_hash() != versions_root.0 {
-					return Err(Error::ComputedRootDifferent);
-				}
 			}
 			UserScopeOp::SetDeprecation(SetDeprecationUserScopeOpBody {
 				kind: _,
@@ -306,33 +262,24 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				// TODO: insert plaintext reason, compare hash
 
 				let state = scope_state().await?;
-				let deprecations = MerkleBPlusTree::<PackageDeprecationsTree, _>::from_root_hash(
-					&state.deprecations_root,
-					todo!(),
-					Default::default(),
-				)
-				.await?;
-
-				match reason_hash {
-					Some(new_state) => {
-						if deprecations
+				run_tree(
+					tx,
+					&state,
+					deprecations_root,
+					async |tree| match reason_hash {
+						Some(new_state) => tree
 							.insert(pkg.clone(), new_state.clone())
 							.await?
-							.is_some_and(|o| o == *new_state)
-						{
-							return Err(Error::AlreadyInState);
-						}
-					}
-					None => {
-						if deprecations.delete(pkg).await?.is_none() {
-							return Err(Error::AlreadyInState);
-						}
-					}
-				}
-
-				if deprecations.root_hash() != deprecations_root.0 {
-					return Err(Error::ComputedRootDifferent);
-				}
+							.is_none_or(|o| o != *new_state)
+							.ok_or(Error::AlreadyInState),
+						None => tree
+							.delete(pkg)
+							.await?
+							.is_some()
+							.ok_or(Error::AlreadyInState),
+					},
+				)
+				.await?;
 			}
 		};
 
