@@ -169,6 +169,16 @@ pub const MAX_VERSION_LEN: usize = 255;
 /// A [PesdeStyleVersion] with a maximum length
 pub type PesdeVersionForRegistry = Bounded<PesdeStyleVersion, MAX_VERSION_LEN>;
 
+/// The request body for the publish scope entry endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishScopeUserEntryBody {
+	/// The entry payload
+	pub payload: Signed<UserScopeOp>,
+	/// The deprecation reason; must be non-empty if deprecating and empty (not present) otherwise
+	#[serde(default, skip_serializing_if = "str::is_empty")]
+	pub deprecation_reason: Box<str>,
+}
+
 /// The state of a published package version.
 /// Monitors must ensure archive_hash is never changed, unlike the mutable [Self::yank_state]
 #[derive(Debug, Clone, Serialize, Deserialize)]

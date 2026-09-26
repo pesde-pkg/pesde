@@ -45,7 +45,7 @@ pub trait MmrWriteStore: MmrReadStore {
 	async fn set_size(&mut self, size: u64) -> anyhow::Result<()>;
 }
 
-impl MMRStoreReadOps<CurrentHash> for &dyn MmrWriteStore {
+impl MMRStoreReadOps<CurrentHash> for &mut dyn MmrWriteStore {
 	type Error = StoreError;
 
 	async fn get_elem(&self, pos: u64) -> Result<Option<CurrentHash>, Self::Error> {
@@ -60,7 +60,7 @@ impl MMRStoreReadOps<CurrentHash> for &dyn MmrWriteStore {
 	}
 }
 
-impl MMRStoreWriteOps<CurrentHash> for dyn MmrWriteStore {
+impl MMRStoreWriteOps<CurrentHash> for &mut dyn MmrWriteStore {
 	type Error = StoreError;
 
 	async fn append(&mut self, pos: u64, elems: Vec<CurrentHash>) -> Result<(), StoreError> {

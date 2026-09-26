@@ -74,9 +74,11 @@ macro_rules! ops {
 							#[serde(flatten)]
 							header: $headerty,
 							$(
+								$(#[$consentmeta])*
 								$consentfield: UnvalidatedSigned<UnvalidatedConsent>,
 							)?
 							$(
+								$(#[$fieldmeta])*
 								$field: $fieldty
 							),*
 						}

@@ -26,16 +26,16 @@ pub async fn connect(url: &str) -> Box<dyn Backend> {
 pub async fn append_leaf(
 	store: &mut dyn MmrWriteStore,
 	pos: u64,
-	body: &impl Serialize,
-) -> anyhow::Result<(Box<dyn MmrWriteStore>, u64)> {
-	let mut mmr: MMRIVER<CurrentMerkleHasher, _> = MMRIVER::new(pos, store);
+	body: &Entry<impl EntryPayload + Serialize>,
+) -> anyhow::Result<u64> {
+	let mut mmr = MMRIVER::<CurrentMerkleHasher, _>::new(pos, store);
 	mmr.push(&canonical_bytes(body)).await?;
 	mmr.commit().await?;
 
 	let next_pos = mmr.mmr_size();
-	let mut store = mmr.into_store();
+	let store = mmr.into_store();
 	store.set_size(next_pos).await?;
-	Ok((store, next_pos))
+	Ok(next_pos)
 }
 
 pub async fn run_tx<T, E: From<anyhow::Error>>(

@@ -3,7 +3,6 @@ use actix_web::Responder;
 use actix_web::post;
 use actix_web::web;
 use merkle_bplustree::InsertNewError;
-use merkleberg::MMRIVER;
 use pesde::hash::Hash;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
@@ -13,29 +12,45 @@ use pesde_registry_core::db::PermissionWidth;
 use crate::AppState;
 use crate::api::scope::error::Error;
 use crate::api::scope::run_tree;
+use crate::shared::db::append_leaf;
 use crate::shared::db::run_tx;
 
 #[post("/scope/log/entry")]
 pub(super) async fn http_v2(
 	app_state: web::Data<AppState>,
-	body: web::Json<Signed<UserScopeOp>>,
+	body: web::Json<PublishScopeUserEntryBody>,
 ) -> Result<impl Responder, Error> {
 	let entry = handler(app_state.db.as_ref(), body.into_inner()).await?;
-
 	Ok(HttpResponse::Ok().json(entry))
 }
 
-async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<ScopeEntry, Error> {
-	let payload = payload.inner();
-
-	let UnvalidatedSigned { sig: _, body: op } = &payload;
+async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<ScopeEntry, Error> {
+	let PublishScopeUserEntryBody {
+		payload,
+		deprecation_reason,
+	} = body;
+	let UnvalidatedSigned { sig: _, body: op } = payload.inner();
 	let UserScopeOpHeader {
 		common: ScopeOpHeader {
 			scope_id,
-			prev_hash: given_prev_hash,
+			prev_hash: _,
 		},
 		signer,
 	} = op.header();
+
+	if let UserScopeOp::SetDeprecation(SetDeprecationUserScopeOpBody {
+		reason_hash: Some(reason_hash),
+		..
+	}) = op
+	{
+		if deprecation_reason.is_empty()
+			|| Hash::digest(reason_hash.algorithm(), deprecation_reason.as_bytes()) != *reason_hash
+		{
+			return Err(Error::InvalidReasonHash);
+		}
+	} else if !deprecation_reason.is_empty() {
+		return Err(Error::DeprecationReasonPresent);
+	}
 
 	let permissions = match op {
 		UserScopeOp::AddMember(AddMemberUserScopeOpBody {
@@ -45,6 +60,8 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 			grant: _,
 			scope_members_root: _,
 		}) => {
+			// only the owner can append this operation, so this simple check avoids a database lookup for completely
+			// nonsensical data
 			if member.consenter() == signer {
 				return Err(Error::OwnerAsMember);
 			}
@@ -118,7 +135,16 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 		ExistingScopeLockResult::Unauthorized => return Err(Error::Unauthorized),
 	};
 
-	run_tx(tx, async |tx| {
+	run_tx(tx, async move |tx| {
+		let UnvalidatedSigned { sig: _, body: op } = payload.inner();
+		let UserScopeOpHeader {
+			common: ScopeOpHeader {
+				scope_id,
+				prev_hash: given_prev_hash,
+			},
+			signer,
+		} = op.header();
+
 		let prev_entry = tx
 			.scope_log_entry(scope_id, scope_size.get())
 			.await?
@@ -259,8 +285,6 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				reason_hash,
 				deprecations_root,
 			}) => {
-				// TODO: insert plaintext reason, compare hash
-
 				let state = scope_state().await?;
 				run_tree(
 					tx,
@@ -280,12 +304,24 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 					},
 				)
 				.await?;
+
+				if let Some(hash) = reason_hash {
+					tx.set_deprecation_plaintext(hash, &deprecation_reason)
+						.await?;
+				}
 			}
 		};
 
-		let mmr = MMRIVER::<CurrentMerkleHasher, _>::new(scope_size.get(), tx);
+		let entry = Entry {
+			pos: scope_size.get(),
+			published_at: Default::default(),
+			payload: ScopeEntryPayload::User(payload),
+		};
 
-		Ok(todo!())
+		append_leaf(tx, scope_size.get(), &entry).await?;
+		tx.insert_entry(&entry).await?;
+
+		Ok(entry)
 	})
 	.await
 }

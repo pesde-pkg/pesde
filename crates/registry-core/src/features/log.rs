@@ -10,5 +10,5 @@ pub trait GlobalReadRepository {
 
 #[async_trait]
 pub trait GlobalWriteRepository: GlobalReadRepository {
-	async fn insert_entry(&mut self, entry: GlobalEntry) -> anyhow::Result<()>;
+	async fn insert_entry(&mut self, entry: &GlobalEntry) -> anyhow::Result<()>;
 }

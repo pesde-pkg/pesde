@@ -21,7 +21,6 @@ use crate::bounded::Bounded;
 use crate::hash::Blake3Hash;
 use crate::hash::Hash;
 use crate::hash::Hasher as _;
-use crate::names::LocalName;
 use crate::ser_display_deser_fromstr;
 use crate::signature::PublicKey;
 use crate::signature::Signature;
