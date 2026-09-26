@@ -1,3 +1,4 @@
+use anyhow::Context as _;
 use async_trait::async_trait;
 use merkle_bplustree::{
 	HasherOutput, TreeConfig,
@@ -11,7 +12,7 @@ use crate::db::StoreError;
 
 #[async_trait]
 pub trait TreeReadRepository<C: TreeConfig>: Send + Sync {
-	async fn get_node(&self, hash: &CurrentHash) -> anyhow::Result<TreeNode<C>>;
+	async fn get_node(&self, hash: &CurrentHash) -> anyhow::Result<Option<TreeNode<C>>>;
 }
 
 impl<C: TreeConfig> ReadNodeStorage<C> for &dyn TreeReadRepository<C>
@@ -27,6 +28,7 @@ where
 		(*self as &dyn TreeReadRepository<C>)
 			.get_node(hash)
 			.await
+			.and_then(|n| n.context("node was expected but wasn't received"))
 			.map_err(StoreError)
 	}
 }

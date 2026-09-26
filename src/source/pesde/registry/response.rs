@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::source::pesde::registry::*;
 use serde::{Deserialize, Serialize};
 
@@ -35,10 +37,39 @@ pub struct LogEntryResponse<P: EntryPayload> {
 pub struct ScopeStateResponse {
 	/// The owner of the scope
 	pub owner: PublicKey,
-	/// The root of the `scope_members_root` tree
-	pub scope_members_root: CurrentHash,
-	/// The root of the `versions_root` tree
-	pub versions_root: CurrentHash,
-	/// The root of the `deprecations_root` tree
-	pub deprecations_root: CurrentHash,
+	/// [ScopeMembersTree]
+	pub scope_members_root: ScopeMembersTree,
+	/// [PackageVersionsTree]
+	pub package_versions_root: PackageVersionsTree,
+	/// [PackageDeprecationsTree]
+	pub package_deprecations_root: PackageDeprecationsTree,
+}
+
+/// The response of the tree entry endpoint
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(
+	tag = "kind",
+	bound(
+		serialize = "T::Key: Serialize, T::Value: Serialize",
+		deserialize = "T::Key: serde::Deserialize<'de>, T::Value: serde::Deserialize<'de>"
+	)
+)]
+pub enum TreeEntryEndpointResponse<T: TreeConfig>
+where
+	T::Key: Debug,
+	T::Value: Debug,
+	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
+{
+	/// The entry exists
+	Included {
+		/// Proof that the entry exists
+		proof: merkle_bplustree::proof::inclusion::InclusionProof<T>,
+		/// The entry's value
+		value: T::Value,
+	},
+	/// The entry doesn't exist
+	Excluded {
+		/// Proof that the entry doesn't exist
+		proof: merkle_bplustree::proof::exclusion::ExclusionProof<T>,
+	},
 }

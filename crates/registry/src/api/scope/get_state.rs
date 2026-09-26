@@ -22,15 +22,12 @@ pub(super) async fn http_v2(
 	path: web::Path<ScopeId>,
 	query: web::Query<StateQuery>,
 ) -> Result<impl Responder, Error> {
-	let Some(head) = handler(
+	let head = handler(
 		app_state.db.as_ref(),
 		&path.into_inner(),
 		query.into_inner(),
 	)
-	.await?
-	else {
-		return Ok(HttpResponse::NotFound().finish());
-	};
+	.await?;
 
 	Ok(HttpResponse::Ok().json(head))
 }
@@ -39,8 +36,9 @@ async fn handler(
 	db: &dyn Backend,
 	scope_id: &ScopeId,
 	query: StateQuery,
-) -> Result<Option<ScopeStateResponse>, Error> {
+) -> Result<ScopeStateResponse, Error> {
 	db.scope_state(scope_id, query.at_size)
 		.await
 		.map_err(Into::into)
+		.and_then(|s| s.ok_or(Error::ScopeNotFound))
 }

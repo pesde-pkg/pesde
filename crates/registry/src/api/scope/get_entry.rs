@@ -18,10 +18,7 @@ pub(super) async fn http_v2(
 	query: web::Query<LogEntryQuery>,
 ) -> Result<impl Responder, Error> {
 	let (scope_id, pos) = path.into_inner();
-	let Some(entry) = handler(app_state.db.as_ref(), &scope_id, pos, query.into_inner()).await?
-	else {
-		return Ok(HttpResponse::NotFound().finish());
-	};
+	let entry = handler(app_state.db.as_ref(), &scope_id, pos, query.into_inner()).await?;
 
 	Ok(HttpResponse::Ok().json(entry))
 }
@@ -31,7 +28,7 @@ async fn handler(
 	scope_id: &ScopeId,
 	pos: u64,
 	query: LogEntryQuery,
-) -> Result<Option<LogEntryResponse<ScopeEntryPayload>>, Error> {
+) -> Result<LogEntryResponse<ScopeEntryPayload>, Error> {
 	log_entry(
 		pos,
 		|pos| db.scope_log_entry(scope_id, pos).map_err(Into::into),
@@ -45,4 +42,5 @@ async fn handler(
 		query,
 	)
 	.await
+	.and_then(|e| e.ok_or(Error::ScopeNotFound))
 }
