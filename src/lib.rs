@@ -8,7 +8,6 @@ use crate::manifest::Manifest;
 use crate::signature::PublicKey;
 use crate::source::PackageSource as _;
 use crate::source::PackageSources;
-use crate::source::SourceState;
 use fs_err::tokio as fs;
 use relative_path::RelativePath;
 use relative_path::RelativePathBuf;
@@ -380,7 +379,7 @@ pub async fn matching_globs<'a>(
 
 /// A struct containing sources already having been refreshed and their states
 #[derive(Debug, Clone, Default)]
-pub struct RefreshedSources(Arc<tokio::sync::Mutex<HashMap<PackageSources, SourceState>>>);
+pub struct RefreshedSources(Arc<tokio::sync::Mutex<HashSet<PackageSources>>>);
 
 impl RefreshedSources {
 	/// Create a new empty `RefreshedSources`
@@ -395,17 +394,15 @@ impl RefreshedSources {
 		&self,
 		source: &PackageSources,
 		project: &Project,
-		old_state: Option<&SourceState>,
-	) -> Result<SourceState, source::errors::RefreshError> {
+	) -> Result<(), source::errors::RefreshError> {
 		let mut refreshed_sources = self.0.lock().await;
-
-		if let Some(state) = refreshed_sources.get(source) {
-			return Ok(state.clone());
+		if refreshed_sources.contains(source) {
+			return Ok(());
 		}
 
-		let new_state = source.refresh(project, old_state).await?;
-		refreshed_sources.insert(source.clone(), new_state.clone());
-		Ok(new_state)
+		source.refresh(project).await?;
+		refreshed_sources.insert(source.clone());
+		Ok(())
 	}
 }
 

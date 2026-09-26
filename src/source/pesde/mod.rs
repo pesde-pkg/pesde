@@ -9,8 +9,6 @@ use std::sync::Arc;
 use backend::PesdePackageBackends;
 use backend::PesdePackageSourceBackend as _;
 use futures::TryStreamExt as _;
-use merkleberg::PeaksMMRIVERIter;
-use merkleberg::mmriver::ConsistencyProof;
 
 use crate::Project;
 use crate::RefreshedSources;
@@ -26,31 +24,17 @@ use crate::source::PackageRefs;
 use crate::source::PackageSource;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
-use crate::source::SourceState;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
 use crate::source::pesde::backend::ApiPesdePackageSourceBackend;
-use crate::source::pesde::registry::CurrentMerkleHasher;
-use crate::source::pesde::registry::MmrAccumulator;
 use crate::util::ToEscaped as _;
 use fs_err::tokio as fs;
-use serde::Deserialize;
-use serde::Serialize;
 use tracing::instrument;
 
 pub mod backend;
 pub mod pkg_ref;
 pub mod registry;
 pub mod specifier;
-
-/// State for a pesde package source (MMR data)
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct PesdeSourceState {
-	/// The MMR size for this source (number of entries in the log)
-	pub mmr_size: u64,
-	/// The MMR accumulator for this source
-	pub accumulator: MmrAccumulator,
-}
 
 /// The pesde package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -102,76 +86,14 @@ impl PackageSource for PesdePackageSource {
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh(
-		&self,
-		project: &Project,
-		old_state: Option<&SourceState>,
-	) -> Result<SourceState, Self::RefreshError> {
-		let old_state = old_state
-			.map(|old_state| {
-				let SourceState::Pesde(old_state) = old_state else {
-					unreachable!("invalid source state type for pesde package source");
-				};
-
-				old_state
-			})
-			.filter(|old_state| old_state.mmr_size > 0);
-
-		let new_state = self.repo.refresh(project, old_state).await?;
-		let new_state = match (old_state, new_state) {
-			(Some(_), None) => return Err(errors::RefreshErrorKind::NoNewState.into()),
-			(None, None) => PesdeSourceState {
-				mmr_size: 0,
-				accumulator: MmrAccumulator {
-					peaks: Arc::from([]),
-				},
-			},
-			(None, Some(remote_state)) => {
-				// TOFU
-
-				PesdeSourceState {
-					mmr_size: remote_state.mmr_size,
-					accumulator: remote_state.accumulator,
-				}
-			}
-			(Some(old_state), Some(remote_state)) => {
-				// TODO: handle algorithm change
-
-				if remote_state.mmr_size < old_state.mmr_size
-					|| PeaksMMRIVERIter::new(remote_state.mmr_size - 1).count()
-						!= remote_state.accumulator.peaks.len()
-				{
-					return Err(errors::RefreshErrorKind::ConsistencyProofFailed.into());
-				}
-
-				let proof = ConsistencyProof::<CurrentMerkleHasher>::new(
-					old_state.mmr_size,
-					remote_state.mmr_size,
-					remote_state.consistency_proof,
-				);
-
-				if !proof.verify(
-					&old_state.accumulator.peaks,
-					&remote_state.accumulator.peaks,
-				)? {
-					return Err(errors::RefreshErrorKind::ConsistencyProofFailed.into());
-				}
-
-				PesdeSourceState {
-					mmr_size: proof.mmr_size_to(),
-					accumulator: remote_state.accumulator,
-				}
-			}
-		};
-
-		Ok(SourceState::Pesde(new_state))
+	async fn refresh(&self, _project: &Project) -> Result<(), Self::RefreshError> {
+		Ok(())
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
 		_subproject: &Subproject,
-		_source_state: &SourceState,
 		_specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
@@ -182,15 +104,11 @@ impl PackageSource for PesdePackageSource {
 	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
-		source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
 		let PackageRefs::Pesde(pkg_ref) = package.id.pkg_ref() else {
 			unreachable!("invalid package ref type for pesde package source");
-		};
-		let SourceState::Pesde(source_state) = source_state else {
-			unreachable!("invalid source state type for pesde package source");
 		};
 
 		let index_file = project
@@ -221,13 +139,7 @@ impl PackageSource for PesdePackageSource {
 
 		let entries_stream = self
 			.repo
-			.download_entries(
-				project,
-				source_state,
-				&pkg_ref.name,
-				package.id.version(),
-				reporter,
-			)
+			.download_entries(project, &pkg_ref.name, package.id.version(), reporter)
 			.await?;
 		tokio::pin!(entries_stream);
 

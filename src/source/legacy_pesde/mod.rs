@@ -18,7 +18,6 @@ use backend::VersionId;
 use futures::TryStreamExt as _;
 use pkg_ref::LegacyPesdePackageRef;
 use serde::Deserialize;
-use serde::Serialize;
 use specifier::LegacyPesdeDependencySpecifier;
 
 use crate::Project;
@@ -38,7 +37,6 @@ use crate::source::PackageSources;
 use crate::source::Realm;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
-use crate::source::SourceState;
 use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
@@ -56,11 +54,6 @@ pub mod pkg_ref;
 pub mod specifier;
 /// Targets
 pub mod target;
-
-/// State for legacy pesde package source
-/// State for legacy pesde package source
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LegacyPesdeSourceState(());
 
 /// The legacy pesde package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -112,20 +105,14 @@ impl PackageSource for LegacyPesdePackageSource {
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh(
-		&self,
-		project: &Project,
-		_old_state: Option<&SourceState>,
-	) -> Result<SourceState, Self::RefreshError> {
-		self.repo.refresh(project).await?;
-		Ok(SourceState::LegacyPesde(LegacyPesdeSourceState(())))
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+		self.repo.refresh(project).await
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
-		_source_state: &SourceState,
 		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
@@ -225,7 +212,6 @@ impl PackageSource for LegacyPesdePackageSource {
 	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
-		_source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {

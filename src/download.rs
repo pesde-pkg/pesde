@@ -44,7 +44,6 @@ impl Project {
 				let refreshed_sources = refreshed_sources.clone();
 				let semaphore = semaphore.clone();
 				let package = lockfile.graph.resolved_package(package_id).unwrap();
-				let old_state = lockfile.source_states.get(package_id.source()).cloned();
 
 				async move {
 					let _permit = semaphore.acquire().await;
@@ -58,28 +57,17 @@ impl Project {
 					}
 
 					let source = package.id.source();
-					let source_state = refreshed_sources
-						.refresh(source, &project, old_state.as_ref())
-						.await?;
+					refreshed_sources.refresh(source, &project).await?;
 
 					tracing::debug!("downloading");
 
 					let fs = match progress_reporter {
 						Some(progress_reporter) => {
 							source
-								.download(
-									&project,
-									&source_state,
-									&package,
-									progress_reporter.into(),
-								)
+								.download(&project, &package, progress_reporter.into())
 								.await
 						}
-						None => {
-							source
-								.download(&project, &source_state, &package, ().into())
-								.await
-						}
+						None => source.download(&project, &package, ().into()).await,
 					}?;
 
 					tracing::debug!("downloaded");

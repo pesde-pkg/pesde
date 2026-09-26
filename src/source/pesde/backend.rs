@@ -4,8 +4,6 @@ use crate::Url;
 use crate::names::PackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
-use crate::source::pesde::PesdeSourceState;
-use crate::source::pesde::registry::*;
 use async_stream::try_stream;
 use futures::Stream;
 use futures::TryStreamExt as _;
@@ -13,8 +11,6 @@ use relative_path::RelativePathBuf;
 use reqwest::RequestBuilder;
 use reqwest::header::AUTHORIZATION;
 use semver::Version;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -23,23 +19,13 @@ use std::sync::Arc;
 
 /// A source of pesde packages
 pub trait PesdePackageSourceBackend: Debug + Display + Send + Sync {
-	/// The error type for refreshing this backend
-	type RefreshError: std::error::Error + Send + Sync + 'static;
 	/// The error type for downloading entries
 	type DownloadError: std::error::Error + Send + Sync + 'static;
-
-	/// Refreshes the backend and fetches state
-	fn refresh(
-		&self,
-		project: &Project,
-		old_state: Option<&PesdeSourceState>,
-	) -> impl Future<Output = Result<Option<LogHeadResponse>, Self::RefreshError>> + Send;
 
 	/// Downloads entries for a package version
 	fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
-		state: &PesdeSourceState,
 		package: &PackageName,
 		version: &Version,
 		reporter: Arc<R>,
@@ -101,45 +87,11 @@ impl ApiPesdePackageSourceBackend {
 }
 
 impl PesdePackageSourceBackend for ApiPesdePackageSourceBackend {
-	type RefreshError = errors::ApiRefreshError;
 	type DownloadError = errors::ApiDownloadError;
-
-	async fn refresh(
-		&self,
-		project: &Project,
-		old_state: Option<&PesdeSourceState>,
-	) -> Result<Option<LogHeadResponse>, Self::RefreshError> {
-		let response = self
-			.authed_request(
-				project,
-				project.reqwest().get({
-					let query = if let Some(old_state) = old_state {
-						format_args!("?size_from={}", old_state.mmr_size)
-					} else {
-						format_args!("")
-					};
-
-					format!("{}/v2/log/head{query}", self.api_url_str())
-				}),
-			)
-			.send()
-			.await?;
-
-		match response.status() {
-			reqwest::StatusCode::OK => Ok(Some(response.json().await?)),
-			// no packages have yet been published
-			reqwest::StatusCode::NO_CONTENT => Ok(None),
-			_ => response
-				.error_for_status()
-				.map(|_| None)
-				.map_err(Into::into),
-		}
-	}
 
 	async fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
 		_project: &Project,
-		_state: &PesdeSourceState,
 		_package: &PackageName,
 		_version: &Version,
 		_reporter: Arc<R>,
@@ -293,23 +245,11 @@ impl FromStr for PesdePackageBackends {
 }
 
 impl PesdePackageSourceBackend for PesdePackageBackends {
-	type RefreshError = errors::RefreshError;
 	type DownloadError = errors::DownloadError;
-
-	async fn refresh(
-		&self,
-		project: &Project,
-		old_state: Option<&PesdeSourceState>,
-	) -> Result<Option<LogHeadResponse>, Self::RefreshError> {
-		match self {
-			Self::Api(repo) => repo.refresh(project, old_state).await.map_err(Into::into),
-		}
-	}
 
 	async fn download_entries<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
-		state: &PesdeSourceState,
 		package: &PackageName,
 		version: &Version,
 		reporter: Arc<R>,
@@ -319,7 +259,7 @@ impl PesdePackageSourceBackend for PesdePackageBackends {
 	> {
 		Ok(match self {
 			Self::Api(repo) => repo
-				.download_entries(project, state, package, version, reporter)
+				.download_entries(project, package, version, reporter)
 				.await?
 				.map_err(Into::into),
 		})

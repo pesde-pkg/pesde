@@ -81,14 +81,12 @@ pub trait PackageSource: Debug {
 	fn refresh(
 		&self,
 		project: &Project,
-		old_state: Option<&SourceState>,
-	) -> impl Future<Output = Result<SourceState, Self::RefreshError>> + Send;
+	) -> impl Future<Output = Result<(), Self::RefreshError>> + Send;
 
 	/// Resolves a specifier to a reference
 	fn resolve(
 		&self,
 		subproject: &Subproject,
-		source_state: &SourceState,
 		specifier: &DependencySpecifiers,
 		refreshed_sources: &RefreshedSources,
 	) -> impl Future<Output = Result<ResolveResult, Self::ResolveError>> + Send;
@@ -97,7 +95,6 @@ pub trait PackageSource: Debug {
 	fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
-		source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> impl Future<Output = Result<PackageFs, Self::DownloadError>> + Send;
@@ -259,17 +256,6 @@ impl FromStr for PackageSources {
 macro_rules! impls {
 	($($source:ident),+) => {
 		paste::paste! {
-			/// All possible source states
-			#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-			#[serde(tag = "source", rename_all = "snake_case")]
-			#[must_use]
-			pub enum SourceState {
-				$(
-					#[doc = concat!("State for ", stringify!([< $source:snake >]), " package source")]
-					$source([< $source:snake >]::[<$source SourceState>])
-				),+
-			}
-
 			/// All possible dependency specifiers
 			#[derive(Debug, Serialize, Clone, PartialEq, Eq, Hash)]
 			#[serde(untagged)]
@@ -406,12 +392,11 @@ macro_rules! impls {
 				async fn refresh(
 					&self,
 					project: &Project,
-					old_state: Option<&SourceState>,
-				) -> Result<SourceState, Self::RefreshError> {
+				) -> Result<(), Self::RefreshError> {
 					match self {
 						$(
 							PackageSources::$source(source) => source
-								.refresh(project, old_state)
+								.refresh(project)
 								.await
 								.map_err(errors::RefreshErrorKind::$source)
 						),+
@@ -422,16 +407,16 @@ macro_rules! impls {
 				async fn resolve(
 					&self,
 					subproject: &Subproject,
-					source_state: &SourceState,
 					specifier: &DependencySpecifiers,
 					refreshed_sources: &RefreshedSources,
 				) -> Result<ResolveResult, Self::ResolveError> {
 					match self {
 						$(
-							PackageSources::$source(source) => {
-								source.resolve(subproject, source_state, specifier, refreshed_sources).await.map_err(errors::ResolveErrorKind::$source)
-							}
-						)+
+							PackageSources::$source(source) => source
+								.resolve(subproject, specifier, refreshed_sources)
+								.await
+								.map_err(errors::ResolveErrorKind::$source)
+						),+
 					}
 					.map_err(Into::into)
 				}
@@ -439,16 +424,16 @@ macro_rules! impls {
 				async fn download<R: DownloadProgressReporter + 'static>(
 					&self,
 					project: &Project,
-					source_state: &SourceState,
 					package: &ResolvedPackage,
 					reporter: Arc<R>,
 				) -> Result<PackageFs, Self::DownloadError> {
 					match self {
 						$(
-							PackageSources::$source(source) => {
-								source.download(project, source_state, package, reporter).await.map_err(errors::DownloadErrorKind::$source)
-							}
-						)+
+							PackageSources::$source(source) => source
+								.download(project, package, reporter)
+								.await
+								.map_err(errors::DownloadErrorKind::$source)
+						),+
 					}
 					.map_err(Into::into)
 				}

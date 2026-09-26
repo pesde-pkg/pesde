@@ -14,7 +14,6 @@ use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
-use crate::source::SourceState;
 use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
@@ -28,8 +27,6 @@ use crate::util::ToEscaped as _;
 use crate::version_matches;
 use fs_err::tokio as fs;
 use futures::TryStreamExt as _;
-use serde::Deserialize;
-use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::path::Path;
@@ -42,10 +39,6 @@ pub(crate) mod compat_util;
 pub(crate) mod manifest;
 pub mod pkg_ref;
 pub mod specifier;
-
-/// State for Wally package source
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WallySourceState(());
 
 /// The Wally package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -97,20 +90,14 @@ impl PackageSource for WallyPackageSource {
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh(
-		&self,
-		project: &Project,
-		_old_state: Option<&SourceState>,
-	) -> Result<SourceState, Self::RefreshError> {
-		self.repo.refresh(project).await?;
-		Ok(SourceState::Wally(WallySourceState(())))
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+		self.repo.refresh(project).await
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
-		_source_state: &SourceState,
 		specifier: &DependencySpecifiers,
 		refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
@@ -136,7 +123,6 @@ impl PackageSource for WallyPackageSource {
 					.refresh(
 						&PackageSources::Wally(WallyPackageSource::new(fallback_repo.clone())),
 						subproject.project(),
-						None,
 					)
 					.await
 					.map_err(super::errors::RefreshError::into_inner)
@@ -210,7 +196,6 @@ impl PackageSource for WallyPackageSource {
 	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
-		_source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {

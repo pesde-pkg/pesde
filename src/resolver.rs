@@ -288,8 +288,7 @@ async fn prepare_queue(
 #[instrument(skip_all, level = "debug")]
 async fn resolve_version(
 	subproject: Subproject,
-	lockfile: &mut Lockfile,
-	previous_lockfile: Option<&Lockfile>,
+	lockfile: &Lockfile,
 	refreshed_sources: &RefreshedSources,
 	pass_indices: bool,
 	specifier: &DependencySpecifiers,
@@ -309,29 +308,13 @@ async fn resolve_version(
 		}
 		let source = specifier_to_source(manifest.as_deref(), specifier)?;
 
-		let current_state = lockfile.source_states.entry(source.clone());
-		let current_state =
-			if let std::collections::btree_map::Entry::Occupied(entry) = &current_state {
-				entry.get()
-			} else {
-				let new_state = refreshed_sources
-					.refresh(
-						&source,
-						subproject.project(),
-						previous_lockfile.and_then(|l| l.source_states.get(&source)),
-					)
-					.await?;
-
-				current_state.or_insert(new_state)
-			};
-
 		let ResolveResult {
 			source,
 			pkg_ref,
 			structure_kind,
 			mut versions,
 		} = source
-			.resolve(&subproject, current_state, specifier, refreshed_sources)
+			.resolve(&subproject, specifier, refreshed_sources)
 			.await?;
 
 		let Some((package_id, dependencies)) = lockfile
@@ -386,9 +369,6 @@ impl Project {
 	) -> Result<(Lockfile, bool), errors::DependencyGraphError> {
 		let mut lockfile = Lockfile {
 			graph: Default::default(),
-			source_states: previous_lockfile
-				.map(|l| l.source_states.clone())
-				.unwrap_or_default(),
 		};
 
 		let mut queue = prepare_queue(self, &mut lockfile, previous_lockfile).await?;
@@ -406,8 +386,7 @@ impl Project {
 
 				let (package_id, structure_kind, dependencies) = resolve_version(
 					entry.subproject.clone(),
-					&mut lockfile,
-					previous_lockfile,
+					&lockfile,
 					refreshed_sources,
 					!is_published_package && depth == 0,
 					&entry.specifier,

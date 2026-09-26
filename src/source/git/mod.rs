@@ -21,7 +21,6 @@ use crate::source::PackageSource;
 use crate::source::PackageSources;
 use crate::source::ResolveResult;
 use crate::source::ResolvedPackage;
-use crate::source::SourceState;
 use crate::source::StructureKind;
 use crate::source::fs::PackageFs;
 use crate::source::fs::store_in_cas;
@@ -39,8 +38,6 @@ use fs_err::tokio as fs;
 use relative_path::RelativePath;
 use semver::BuildMetadata;
 use semver::Version;
-use serde::Deserialize;
-use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::path::Path;
@@ -52,11 +49,6 @@ use tracing::instrument;
 pub mod backend;
 pub mod pkg_ref;
 pub mod specifier;
-
-/// State for Git package source
-/// State for Git package source
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GitSourceState(());
 
 /// The Git package source
 #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
@@ -108,20 +100,14 @@ impl PackageSource for GitPackageSource {
 	type GetExportsError = errors::GetExportsError;
 
 	#[instrument(skip_all, level = "debug")]
-	async fn refresh(
-		&self,
-		project: &Project,
-		_old_state: Option<&SourceState>,
-	) -> Result<SourceState, Self::RefreshError> {
-		self.repo.refresh(project).await?;
-		Ok(SourceState::Git(GitSourceState(())))
+	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
+		self.repo.refresh(project).await
 	}
 
 	#[instrument(skip_all, level = "debug")]
 	async fn resolve(
 		&self,
 		subproject: &Subproject,
-		_source_state: &SourceState,
 		specifier: &DependencySpecifiers,
 		_refreshed_sources: &RefreshedSources,
 	) -> Result<ResolveResult, Self::ResolveError> {
@@ -212,7 +198,6 @@ impl PackageSource for GitPackageSource {
 	async fn download<R: DownloadProgressReporter + 'static>(
 		&self,
 		project: &Project,
-		_source_state: &SourceState,
 		package: &ResolvedPackage,
 		reporter: Arc<R>,
 	) -> Result<PackageFs, Self::DownloadError> {
