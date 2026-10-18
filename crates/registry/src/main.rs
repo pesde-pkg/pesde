@@ -25,8 +25,9 @@ mod api;
 mod shared;
 mod util;
 
+pub type Db = web::Data<dyn Backend>;
+
 pub struct AppState {
-	db: Box<dyn Backend>,
 	blob_storage: BlobStorage,
 	access_token_hash: Option<TokenHash>,
 	read_requires_auth: bool,
@@ -66,9 +67,9 @@ async fn main() -> std::io::Result<()> {
 		.unwrap_or(4 * 1024 * 1024);
 
 	let db = shared::db::connect(&Env::new("DATABASE_URL").get().await).await;
+	let db = web::Data::from(db);
 
 	let app_state = web::Data::new(AppState {
-		db,
 		blob_storage: match Env::new("PACKAGE_ARCHIVES_ROOT").try_parse().await {
 			Some(root) => BlobStorage::FS(root),
 			None => BlobStorage::S3 {
@@ -108,6 +109,7 @@ async fn main() -> std::io::Result<()> {
 	HttpServer::new(move || {
 		App::new()
 			.app_data(app_state.clone())
+			.app_data(db.clone())
 			.wrap(NormalizePath::new(TrailingSlash::Trim))
 			.wrap(Cors::permissive())
 			.wrap(TracingLogger::default())

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use merkleberg::MMRIVER;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
@@ -8,17 +10,17 @@ use serde::Serialize;
 #[cfg(not(any(feature = "mysql")))]
 compile_error!("no db backends enabled");
 
-pub async fn connect(url: &str) -> Box<dyn Backend> {
+pub async fn connect(url: &str) -> Arc<dyn Backend> {
 	let scheme = url
 		.split_once(':')
 		.map_or("", |(scheme, _)| scheme)
 		.to_ascii_lowercase();
 	let scheme = scheme.as_str();
 
-	#[cfg(feature = "mysql")]
-	if pesde_registry_backend_mysql::URL_SCHEMES.contains(&scheme) {
-		return Box::new(pesde_registry_backend_mysql::MySqlBackend::connect(url).await);
-	}
+	// #[cfg(feature = "mysql")]
+	// if pesde_registry_backend_mysql::URL_SCHEMES.contains(&scheme) {
+	// 	return Arc::new(pesde_registry_backend_mysql::MySqlBackend::connect(url).await);
+	// }
 
 	panic!("unsupported database protocol `{scheme}`")
 }

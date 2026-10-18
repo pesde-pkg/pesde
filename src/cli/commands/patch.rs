@@ -35,10 +35,6 @@ impl PatchCommand {
 		};
 
 		let source = self.package.source();
-		let source_state = lockfile
-			.source_states
-			.get(source)
-			.ok_or_else(|| anyhow::anyhow!("source state not found for {source}"))?;
 
 		let directory = project
 			.data_dir()
@@ -48,7 +44,7 @@ impl PatchCommand {
 		fs::create_dir_all(&directory).await?;
 
 		source
-			.download(&project, source_state, &package, ().into())
+			.download(&project, &package, ().into())
 			.await?
 			.write_to(&directory, project.cas_dir(), false)
 			.await

@@ -7,7 +7,6 @@ use pesde::source::ResolveResult;
 
 use crate::cli::AnyPackageIdentifier;
 use crate::cli::dep_type_to_key;
-use crate::cli::install::get_lockfile;
 use pesde::DEFAULT_URL_KEY;
 use pesde::RefreshedSources;
 use pesde::Subproject;
@@ -75,19 +74,8 @@ impl AddCommand {
 
 		let refreshed_sources = RefreshedSources::new();
 
-		let lockfile = get_lockfile(subproject.project(), &refreshed_sources).await?;
-
-		let source_state = refreshed_sources
-			.refresh(
-				&source,
-				subproject.project(),
-				lockfile.source_states.get(&source),
-			)
-			.await
-			.context("failed to refresh package source")?;
-
 		let ResolveResult { mut versions, .. } = source
-			.resolve(&subproject, &source_state, &specifier, &refreshed_sources)
+			.resolve(&subproject, &specifier, &refreshed_sources)
 			.await
 			.context("failed to resolve package")?;
 

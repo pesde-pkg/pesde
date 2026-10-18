@@ -8,7 +8,7 @@ use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 use serde::Deserialize;
 
-use crate::AppState;
+use crate::Db;
 use crate::api::scope::error::Error;
 
 #[derive(Debug, Deserialize)]
@@ -18,16 +18,11 @@ struct StateQuery {
 
 #[get("/scope/{scope_id}/state")]
 pub(super) async fn http_v2(
-	app_state: web::Data<AppState>,
+	db: Db,
 	path: web::Path<ScopeId>,
 	query: web::Query<StateQuery>,
 ) -> Result<impl Responder, Error> {
-	let head = handler(
-		app_state.db.as_ref(),
-		&path.into_inner(),
-		query.into_inner(),
-	)
-	.await?;
+	let head = handler(db.as_ref(), &path.into_inner(), query.into_inner()).await?;
 
 	Ok(HttpResponse::Ok().json(head))
 }

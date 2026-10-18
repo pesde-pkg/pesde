@@ -10,25 +10,26 @@ use merkle_bplustree::proof::GetWithProof;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::features::tree::TreeReadRepository;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
-use crate::AppState;
+use crate::Db;
 use crate::api::tree::error::Error;
 use crate::shared::tree::StoredTree;
 
 super::tree_handler!("/entry/{key}", http_v2 => http_v2_impl);
 
 async fn http_v2_impl<T: StoredTree>(
-	app_state: web::Data<AppState>,
+	db: Db,
 	path: web::Path<(CurrentHash, T::Key)>,
 ) -> Result<impl Responder, Error>
 where
-	T::Key: Debug + Serialize,
-	T::Value: Debug + Serialize,
+	T::Key: Debug + Serialize + DeserializeOwned,
+	T::Value: Debug + Serialize + DeserializeOwned,
 	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
 	T::Shaper: Default,
 {
 	let (root, key) = path.into_inner();
-	let entry = handler(T::read_repo(app_state.db.as_ref()), &root, &key).await?;
+	let entry = handler(T::read_repo(&**db), &root, &key).await?;
 
 	Ok(HttpResponse::Ok().json(entry))
 }
@@ -39,8 +40,8 @@ async fn handler<T: TreeConfig>(
 	key: &T::Key,
 ) -> Result<TreeEntryEndpointResponse<T>, Error>
 where
-	T::Key: Debug + Serialize,
-	T::Value: Debug + Serialize,
+	T::Key: Debug + Serialize + DeserializeOwned,
+	T::Value: Debug + Serialize + DeserializeOwned,
 	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
 	T::Shaper: Default,
 {

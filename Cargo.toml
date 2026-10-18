@@ -137,8 +137,9 @@ windows = { version = "0.62.2", features = [
 junction = { version = "1.4.2" }
 
 [workspace]
-resolver = "2"
-members = ["crates/*"]
+resolver = "3"
+#members = ["crates/*"]
+members = ["crates/registry", "crates/registry-core"]
 
 [workspace.dependencies]
 serde = { version = "1.0.229", features = ["derive", "rc"] }
@@ -293,7 +294,6 @@ implicit_clone = "warn"
 if_then_some_else_none = "warn"
 if_not_else = "warn"
 get_unwrap = "warn"
-from_iter_instead_of_collect = "warn"
 format_push_string = "warn"
 format_collect = "warn"
 fn_to_numeric_cast_any = "deny"

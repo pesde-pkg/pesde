@@ -73,3 +73,32 @@ where
 		proof: merkle_bplustree::proof::exclusion::ExclusionProof<T>,
 	},
 }
+
+/// The response of the tree entries endpoint
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(
+	tag = "kind",
+	bound(
+		serialize = "T::Key: Serialize, T::Value: Serialize",
+		deserialize = "T::Key: serde::Deserialize<'de>, T::Value: serde::Deserialize<'de>"
+	)
+)]
+pub enum TreeEntriesEndpointResponse<T: TreeConfig>
+where
+	T::Key: Debug,
+	T::Value: Debug,
+	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
+{
+	/// An entry within the requested range
+	Entry {
+		/// The key of the entry
+		key: T::Key,
+		/// The value of the entry
+		value: T::Value,
+	},
+	/// The proof of the requested range, meaning the end has been reached
+	Proof {
+		/// The proof of the range
+		proof: merkle_bplustree::proof::range::RangeProof<T>,
+	},
+}

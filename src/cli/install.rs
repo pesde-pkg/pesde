@@ -131,8 +131,8 @@ pub async fn install(options: &InstallOptions, project: &Project) -> anyhow::Res
 					let refreshed_sources = refreshed_sources.clone();
 
 					Some(async move {
-						let _ = refreshed_sources
-							.refresh(&PackageSources::LegacyPesde(source.clone()), &project, None)
+						refreshed_sources
+							.refresh(&PackageSources::LegacyPesde(source.clone()), &project)
 							.await
 							.context("failed to refresh source")?;
 

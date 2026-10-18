@@ -64,8 +64,8 @@ impl LoginCommand {
 		println!("logging in into {index_url}");
 
 		let source = LegacyPesdePackageSource::from_url(index_url);
-		let _ = source
-			.refresh(subproject.project(), None)
+		source
+			.refresh(subproject.project())
 			.await
 			.context("failed to refresh source")?;
 

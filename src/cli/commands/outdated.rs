@@ -79,21 +79,10 @@ impl OutdatedCommand {
 				}
 			}
 
-			let old_state = lockfile.source_states.get(id.source()).cloned();
-
 			async move {
-				let Some(old_state) = old_state else {
-					anyhow::bail!("source state not found for {}", id.source());
-				};
-
-				let source_state = refreshed_sources
-					.refresh(id.source(), subproject.project(), Some(&old_state))
-					.await
-					.context("failed to refresh source")?;
-
 				let new_version = id
 					.source()
-					.resolve(&subproject, &source_state, &spec, &refreshed_sources)
+					.resolve(&subproject, &spec, &refreshed_sources)
 					.await
 					.context("failed to resolve package versions")?
 					.versions

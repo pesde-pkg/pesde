@@ -15,7 +15,7 @@ pub trait TreeReadRepository<C: TreeConfig>: Send + Sync {
 	async fn get_node(&self, hash: &CurrentHash) -> anyhow::Result<Option<TreeNode<C>>>;
 }
 
-impl<C: TreeConfig> ReadNodeStorage<C> for &dyn TreeReadRepository<C>
+impl<C: TreeConfig> ReadNodeStorage<C> for dyn TreeReadRepository<C> + '_
 where
 	C::Hasher: Hasher<C::Key, C::Value, Output = CurrentHash>,
 {
@@ -25,8 +25,7 @@ where
 		&self,
 		hash: &merkle_bplustree::HasherOutput<C>,
 	) -> Result<TreeNode<C>, Self::Error> {
-		(*self as &dyn TreeReadRepository<C>)
-			.get_node(hash)
+		self.get_node(hash)
 			.await
 			.and_then(|n| n.context("node was expected but wasn't received"))
 			.map_err(StoreError)
@@ -41,7 +40,7 @@ pub trait TreeWriteRepository<C: TreeConfig>: TreeReadRepository<C> {
 	) -> anyhow::Result<()>;
 }
 
-impl<C: TreeConfig> ReadNodeStorage<C> for &mut dyn TreeWriteRepository<C>
+impl<C: TreeConfig> ReadNodeStorage<C> for dyn TreeWriteRepository<C> + '_
 where
 	C::Hasher: Hasher<C::Key, C::Value, Output = CurrentHash>,
 {
@@ -51,11 +50,11 @@ where
 		&self,
 		hash: &merkle_bplustree::HasherOutput<C>,
 	) -> Result<TreeNode<C>, Self::Error> {
-		ReadNodeStorage::get_node(&(*self as &dyn TreeReadRepository<C>), hash).await
+		ReadNodeStorage::get_node(self as &dyn TreeReadRepository<C>, hash).await
 	}
 }
 
-impl<C: TreeConfig> WriteNodeStorage<C> for &mut dyn TreeWriteRepository<C>
+impl<C: TreeConfig> WriteNodeStorage<C> for dyn TreeWriteRepository<C> + '_
 where
 	C::Hasher: Hasher<C::Key, C::Value, Output = CurrentHash>,
 {
@@ -63,9 +62,6 @@ where
 		&mut self,
 		nodes: impl Iterator<Item = (merkle_bplustree::HasherOutput<C>, TreeNode<C>)> + Send,
 	) -> Result<(), Self::Error> {
-		(*self as &mut dyn TreeWriteRepository<C>)
-			.store_nodes(nodes.collect())
-			.await
-			.map_err(StoreError)
+		self.store_nodes(nodes.collect()).await.map_err(StoreError)
 	}
 }

@@ -9,7 +9,7 @@ use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::ExistingScopeLockResult;
 use pesde_registry_core::db::PermissionWidth;
 
-use crate::AppState;
+use crate::Db;
 use crate::api::scope::error::Error;
 use crate::api::scope::run_tree;
 use crate::shared::db::append_leaf;
@@ -17,10 +17,10 @@ use crate::shared::db::run_tx;
 
 #[post("/scope/log/entry")]
 pub(super) async fn http_v2(
-	app_state: web::Data<AppState>,
+	db: Db,
 	body: web::Json<PublishScopeUserEntryBody>,
 ) -> Result<impl Responder, Error> {
-	let entry = handler(app_state.db.as_ref(), body.into_inner()).await?;
+	let entry = handler(db.as_ref(), body.into_inner()).await?;
 	Ok(HttpResponse::Ok().json(entry))
 }
 

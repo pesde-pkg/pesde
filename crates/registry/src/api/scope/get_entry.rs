@@ -6,19 +6,19 @@ use futures::TryFutureExt as _;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 
-use crate::AppState;
+use crate::Db;
 use crate::api::scope::error::Error;
 use crate::shared::log::LogEntryQuery;
 use crate::shared::log::log_entry;
 
 #[get("/scope/{scope_id}/log/entry/{pos}")]
 pub(super) async fn http_v2(
-	app_state: web::Data<AppState>,
+	db: Db,
 	path: web::Path<(ScopeId, u64)>,
 	query: web::Query<LogEntryQuery>,
 ) -> Result<impl Responder, Error> {
 	let (scope_id, pos) = path.into_inner();
-	let entry = handler(app_state.db.as_ref(), &scope_id, pos, query.into_inner()).await?;
+	let entry = handler(db.as_ref(), &scope_id, pos, query.into_inner()).await?;
 
 	Ok(HttpResponse::Ok().json(entry))
 }

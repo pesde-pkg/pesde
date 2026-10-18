@@ -1,8 +1,10 @@
 mod error;
+mod get_entries;
 mod get_entry;
 
 pub(super) fn http_v2(cfg: &mut actix_web::web::ServiceConfig) {
-	cfg.configure(get_entry::http_v2);
+	cfg.configure(get_entry::http_v2)
+		.configure(get_entries::http_v2);
 }
 
 macro_rules! tree_handler {

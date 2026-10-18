@@ -8,19 +8,18 @@ use futures::TryFutureExt;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 
-use crate::AppState;
+use crate::Db;
 use crate::api::log::error::Error;
 use crate::shared::log::LogEntryQuery;
 use crate::shared::log::log_entry;
 
 #[get("/log/entry/{pos}")]
 pub(super) async fn http_v2(
-	app_state: web::Data<AppState>,
+	db: Db,
 	path: web::Path<u64>,
 	query: web::Query<LogEntryQuery>,
 ) -> Result<impl Responder, Error> {
-	let Some(entry) = handler(app_state.db.as_ref(), path.into_inner(), query.into_inner()).await?
-	else {
+	let Some(entry) = handler(db.as_ref(), path.into_inner(), query.into_inner()).await? else {
 		return Ok(HttpResponse::NotFound().finish());
 	};
 

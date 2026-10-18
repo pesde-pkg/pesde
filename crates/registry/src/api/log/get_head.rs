@@ -7,17 +7,17 @@ use actix_web::web;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 
-use crate::AppState;
+use crate::Db;
 use crate::api::log::error::Error;
 use crate::shared::log::LogHeadQuery;
 use crate::shared::log::log_head;
 
 #[get("/log/head")]
 pub(super) async fn http_v2(
-	app_state: web::Data<AppState>,
+	db: Db,
 	query: web::Query<LogHeadQuery>,
 ) -> Result<impl Responder, Error> {
-	let Some(head) = handler(app_state.db.as_ref(), query.into_inner()).await? else {
+	let Some(head) = handler(db.as_ref(), query.into_inner()).await? else {
 		return Ok(HttpResponse::NoContent().finish());
 	};
 

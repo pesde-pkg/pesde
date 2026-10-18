@@ -63,18 +63,13 @@ impl ExecuteCommand {
 					.context("failed to parse package identifier")?;
 
 				let refreshed_sources = RefreshedSources::new();
-				let source_state = refreshed_sources
-					.refresh(&source, subproject.project(), None)
-					.await
-					.context("failed to refresh source")?;
-
 				let ResolveResult {
 					source,
 					pkg_ref,
 					structure_kind,
 					mut versions,
 				} = source
-					.resolve(&subproject, &source_state, &specifier, &refreshed_sources)
+					.resolve(&subproject, &specifier, &refreshed_sources)
 					.await
 					.context("failed to resolve package")?;
 
@@ -91,14 +86,10 @@ impl ExecuteCommand {
 					structure_kind,
 				};
 
-				let source_state = if source == *package.id.source() {
-					source_state
-				} else {
-					refreshed_sources
-						.refresh(package.id.source(), subproject.project(), None)
-						.await
-						.context("failed to refresh source")?
-				};
+				refreshed_sources
+					.refresh(package.id.source(), subproject.project())
+					.await
+					.context("failed to refresh source")?;
 
 				multi_progress.suspend(|| {
 					eprintln!(
@@ -125,7 +116,7 @@ impl ExecuteCommand {
 				let fs = package
 					.id
 					.source()
-					.download(subproject.project(), &source_state, &package, ().into())
+					.download(subproject.project(), &package, ().into())
 					.await
 					.context("failed to download package")?;
 
