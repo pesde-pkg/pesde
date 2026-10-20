@@ -1,4 +1,4 @@
-use std::num::NonZero;
+use std::{collections::BTreeSet, num::NonZero};
 
 use async_trait::async_trait;
 use pesde::{hash::Hash, source::pesde::registry::*};
@@ -26,6 +26,12 @@ pub trait ScopeWriteRepository: ScopeReadRepository {
 		&mut self,
 		hash: &Hash,
 		plaintext: &str,
+	) -> anyhow::Result<()>;
+
+	async fn set_grant_plaintext(
+		&mut self,
+		grant: &BTreeSet<LocalNameId>,
+		plaintext: &[Box<str>],
 	) -> anyhow::Result<()>;
 
 	async fn insert_entry(&mut self, entry: &ScopeEntry) -> anyhow::Result<()>;

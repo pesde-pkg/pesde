@@ -177,6 +177,9 @@ pub struct PublishScopeUserEntryBody {
 	/// The deprecation reason; must be non-empty if deprecating and empty (not present) otherwise
 	#[serde(default, skip_serializing_if = "str::is_empty")]
 	pub deprecation_reason: Box<str>,
+	/// The grant names in plain text; must be exactly equal to the grant names if adding a grant
+	#[serde(default, skip_serializing_if = "slice::is_empty")]
+	pub grant_names: Box<[Box<str>]>,
 }
 
 /// The state of a published package version.

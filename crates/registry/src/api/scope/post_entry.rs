@@ -28,6 +28,7 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 	let PublishScopeUserEntryBody {
 		payload,
 		deprecation_reason,
+		grant_names,
 	} = body;
 	let UnvalidatedSigned { sig: _, body: op } = payload.inner();
 	let UserScopeOpHeader {
@@ -37,20 +38,6 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 		},
 		signer,
 	} = op.header();
-
-	if let UserScopeOp::SetDeprecation(SetDeprecationUserScopeOpBody {
-		reason_hash: Some(reason_hash),
-		..
-	}) = op
-	{
-		if deprecation_reason.is_empty()
-			|| Hash::digest(reason_hash.algorithm(), deprecation_reason.as_bytes()) != *reason_hash
-		{
-			return Err(Error::InvalidReasonHash);
-		}
-	} else if !deprecation_reason.is_empty() {
-		return Err(Error::DeprecationReasonPresent);
-	}
 
 	let permissions = match op {
 		UserScopeOp::AddMember(AddMemberUserScopeOpBody {
@@ -125,6 +112,34 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 		UserScopeOp::SetYanked(op) => PermissionWidth::Package(&op.pkg),
 		UserScopeOp::SetDeprecation(op) => PermissionWidth::Package(&op.pkg),
 	};
+
+	if let UserScopeOp::SetDeprecation(SetDeprecationUserScopeOpBody {
+		reason_hash: Some(reason_hash),
+		..
+	}) = op
+	{
+		if deprecation_reason.is_empty()
+			|| Hash::digest(reason_hash.algorithm(), deprecation_reason.as_bytes()) != *reason_hash
+		{
+			return Err(Error::InvalidReasonHash);
+		}
+	} else if !deprecation_reason.is_empty() {
+		return Err(Error::DeprecationReasonPresent);
+	}
+
+	if let Some(grant) = grant(op) {
+		if grant.0.len() != grant_names.len() {
+			return Err(Error::InvalidGrantNames);
+		}
+
+		for (id, name) in grant.0.iter().zip(&mut grant_names) {
+			if *id.hash() != CurrentHash::digest(name.as_bytes()) {
+				return Err(Error::InvalidGrantNameHash(std::mem::take(name)));
+			}
+		}
+	} else if !grant_names.is_empty() {
+		return Err(Error::GrantNamesPresent);
+	}
 
 	let (tx, scope_size) = match db
 		.begin_write_existing(scope_id, signer, permissions)
@@ -312,6 +327,10 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 			}
 		};
 
+		if let Some(grant) = grant(op) {
+			tx.set_grant_plaintext(&grant.0, &grant_names).await?;
+		}
+
 		let entry = Entry {
 			pos: scope_size.get(),
 			published_at: Default::default(),
@@ -324,4 +343,12 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 		Ok(entry)
 	})
 	.await
+}
+
+fn grant(op: &UserScopeOp) -> Option<&ScopeGrant> {
+	match op {
+		UserScopeOp::AddMember(AddMemberUserScopeOpBody { grant, .. })
+		| UserScopeOp::UpdateMemberGrant(UpdateMemberGrantUserScopeOpBody { grant, .. }) => Some(grant),
+		_ => None,
+	}
 }

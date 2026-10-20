@@ -32,6 +32,15 @@ pub(super) enum Error {
 	#[error("`deprecation_reason` was set when it wasn't expected")]
 	DeprecationReasonPresent,
 
+	#[error("`grant_names` didn't match with grant")]
+	InvalidGrantNames,
+
+	#[error("grant name `{0}` had an invalid hash")]
+	InvalidGrantNameHash(Box<str>),
+
+	#[error("`grant_names` was set when it wasn't expected")]
+	GrantNamesPresent,
+
 	#[error("cannot treat scope owner as a member")]
 	OwnerAsMember,
 
@@ -74,6 +83,9 @@ impl ResponseError for Error {
 			| Error::VersionAdminYanked => Category::Conflict,
 			Error::InvalidReasonHash
 			| Error::DeprecationReasonPresent
+			| Error::InvalidGrantNameHash(_)
+			| Error::InvalidGrantNames
+			| Error::GrantNamesPresent
 			| Error::OwnerAsMember
 			| Error::KeyChangeNoChange
 			| Error::GrantNoChange

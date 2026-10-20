@@ -204,6 +204,12 @@ impl LocalNameId {
 		hasher.update(name.as_str().as_bytes());
 		Self(hasher.finalize())
 	}
+
+	/// The underlying hash
+	#[must_use]
+	pub fn hash(&self) -> &CurrentHash {
+		&self.0
+	}
 }
 
 impl Display for LocalNameId {
