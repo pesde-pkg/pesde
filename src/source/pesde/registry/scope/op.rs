@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::ops::Deref;
 
 use super::*;
@@ -26,27 +27,22 @@ macro_rules! ops {
 	) => {
 		paste! {
 			$(
-				$(#[$meta])*
-				#[derive(Debug, Clone, Serialize)]
-				pub struct [< $variant $container OpBody >] {
-					/// The tag of this operation
-					pub kind: OpTag<Self>,
-					/// The fields in common between all scope operations of this type
-					#[serde(flatten)]
-					pub header: $headerty,
-					$(
-						$(#[$consentmeta])*
-						pub $consentfield: Consent<Self>,
-					)?
-					$(
-						$(#[$fieldmeta])*
-						pub $field: $fieldty
-					),*
-				}
+				ops!(
+					@struct
+					[$($(#[$consentmeta])* $consentfield)?]
+					[$(#[$meta])*]
+					[< $variant $container OpBody >], $headerty,
+					{
+						$(
+							$(#[$fieldmeta])*
+							$field: $fieldty
+						),*
+					}
+				);
 
 				impl [< $variant $container OpBody >] {
-					#[allow(dead_code)]
-					fn header(&self) -> &$headerty {
+					/// Returns the fields in common between all scope operations of this type
+					pub fn header(&self) -> &$headerty {
 						&self.header
 					}
 				}
@@ -70,7 +66,6 @@ macro_rules! ops {
 					{
 						#[derive(Deserialize)]
 						struct Raw {
-							kind: OpTag<[< $variant $container OpBody >]>,
 							#[serde(flatten)]
 							header: $headerty,
 							$(
@@ -85,9 +80,8 @@ macro_rules! ops {
 
 						let raw = Raw::deserialize(deserializer)?;
 						Ok(Self {
-							kind: raw.kind,
 							$(
-								$consentfield: Consent::new(raw.header.scope_id.clone(), raw.$consentfield)
+								$consentfield: Consent::new(&raw.header.scope_id, raw.$consentfield)
 									.map_err(serde::de::Error::custom)?,
 							)?
 							header: raw.header,
@@ -101,7 +95,7 @@ macro_rules! ops {
 
 			$(#[$containermeta])*
 			#[derive(Debug, Clone, Serialize, Deserialize)]
-			#[serde(untagged)]
+			#[serde(tag = "kind", rename_all = "snake_case")]
 			pub enum [< $container Op >] {
 				$(
 					$(#[$meta])*
@@ -118,13 +112,94 @@ macro_rules! ops {
 				}
 			}
 
+			impl Canonical for [< $container Op >] {
+				fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+					match self {
+						$(Self::$variant(op) => op.write_canonical_to(writer)),+
+					}
+				}
+			}
+
 			ops!(signed $signed, [< $container Op >]);
+		}
+	};
+	(
+		@struct
+		[]
+		[$(#[$meta:meta])*]
+		$name:ident, $headerty:ty,
+		{
+			$(
+				$(#[$fieldmeta:meta])*
+				$field:ident: $fieldty:ty
+			),*
+		}
+	) => {
+		$(#[$meta])*
+		#[derive(Debug, Clone, Serialize)]
+		pub struct $name {
+			/// The fields in common between all scope operations of this type
+			#[serde(flatten)]
+			pub header: $headerty,
+			$(
+				$(#[$fieldmeta])*
+				pub $field: $fieldty
+			),*
+		}
+	};
+	(
+		@struct
+		[$(#[$consentmeta:meta])* $consentfield:ident]
+		[$(#[$meta:meta])*]
+		$name:ident, $headerty:ty,
+		{
+			$(
+				$(#[$fieldmeta:meta])*
+				$field:ident: $fieldty:ty
+			),*
+		}
+	) => {
+		$(#[$meta])*
+		#[derive(Debug, Clone, Serialize)]
+		pub struct $name {
+			#[serde(flatten)]
+			header: $headerty,
+			$(#[$consentmeta])*
+			$consentfield: Consent<Self>,
+			$(
+				$(#[$fieldmeta])*
+				pub $field: $fieldty
+			),*
+		}
+
+		impl $name {
+			/// Creates this [Self]. Errors if the consent isn't valid.
+			pub fn new(
+				header: $headerty,
+				$consentfield: UnvalidatedSigned<UnvalidatedConsent>,
+				$($field: $fieldty),*
+			) -> Result<Self, BadSignature> {
+				Ok(Self {
+					$consentfield: Consent::new(&header.scope_id, $consentfield)?,
+					header,
+					$($field),*
+				})
+			}
+
+			$(#[$consentmeta])*
+			pub fn $consentfield(&self) -> &Consent<Self> {
+				&self.$consentfield
+			}
 		}
 	};
 	(signed true, $ty:ty) => {
 		impl Signable for $ty {
 			fn signer(&self) -> &PublicKey {
 				&self.header().signer
+			}
+
+			fn signing_bytes(&self) -> Vec<u8> {
+				self.canonical_bytes()
 			}
 		}
 
@@ -239,6 +314,234 @@ ops!(
 	},
 );
 
+impl Canonical for AddMemberUserScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header:
+				UserScopeOpHeader {
+					common: ScopeOpHeader {
+						scope_id,
+						prev_hash,
+					},
+					signer,
+				},
+			member,
+			grant,
+			scope_members_root,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"signer" => signer.to_string(),
+			"member" => member.cbor_map(),
+			"grant" => cbor_core::Value::Array(grant.0.iter().cloned().map(|n| n.to_string().into()).collect()),
+			"scope_members_root" => scope_members_root.0.to_string(),
+		}
+		.write_to(writer)
+	}
+}
+
+impl Canonical for UpdateMemberGrantUserScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header:
+				UserScopeOpHeader {
+					common: ScopeOpHeader {
+						scope_id,
+						prev_hash,
+					},
+					signer,
+				},
+			member,
+			grant,
+			scope_members_root,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"signer" => signer.to_string(),
+			"member" => member.to_string(),
+			"grant" => cbor_core::Value::Array(grant.0.iter().cloned().map(|n| n.to_string().into()).collect()),
+			"scope_members_root" => scope_members_root.0.to_string(),
+		}
+		.write_to(writer)
+	}
+}
+
+impl Canonical for RotateKeyUserScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header:
+				UserScopeOpHeader {
+					common: ScopeOpHeader {
+						scope_id,
+						prev_hash,
+					},
+					signer,
+				},
+			new_key,
+			scope_members_root,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"signer" => signer.to_string(),
+			"new_key" => new_key.cbor_map(),
+			"scope_members_root" => scope_members_root.0.to_string(),
+		}
+		.write_to(writer)
+	}
+}
+
+impl Canonical for RemoveMemberUserScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header:
+				UserScopeOpHeader {
+					common: ScopeOpHeader {
+						scope_id,
+						prev_hash,
+					},
+					signer,
+				},
+			member,
+			scope_members_root,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"signer" => signer.to_string(),
+			"member" => member.as_ref().map_or(const { cbor_core::Value::null() }, |m| cbor_core::Value::TextString(m.to_string().into())),
+			"scope_members_root" => scope_members_root.0.to_string(),
+		}
+		.write_to(writer)
+	}
+}
+
+impl Canonical for TransferOwnershipUserScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header:
+				UserScopeOpHeader {
+					common: ScopeOpHeader {
+						scope_id,
+						prev_hash,
+					},
+					signer,
+				},
+			new_owner,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"signer" => signer.to_string(),
+			"new_owner" => new_owner.cbor_map(),
+		}
+		.write_to(writer)
+	}
+}
+
+impl Canonical for PublishVersionUserScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header:
+				UserScopeOpHeader {
+					common: ScopeOpHeader {
+						scope_id,
+						prev_hash,
+					},
+					signer,
+				},
+			pkg,
+			version,
+			archive_hash,
+			versions_root,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"signer" => signer.to_string(),
+			"pkg" => pkg.to_string(),
+			"version" => version.to_string(),
+			"archive_hash" => archive_hash.to_string(),
+			"versions_root" => versions_root.0.to_string(),
+		}
+		.write_to(writer)
+	}
+}
+
+impl Canonical for SetYankedUserScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header:
+				UserScopeOpHeader {
+					common: ScopeOpHeader {
+						scope_id,
+						prev_hash,
+					},
+					signer,
+				},
+			pkg,
+			version,
+			yanked,
+			versions_root,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"signer" => signer.to_string(),
+			"pkg" => pkg.to_string(),
+			"version" => version.to_string(),
+			"yanked" => *yanked,
+			"versions_root" => versions_root.0.to_string(),
+		}
+		.write_to(writer)
+	}
+}
+
+impl Canonical for SetDeprecationUserScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header:
+				UserScopeOpHeader {
+					common: ScopeOpHeader {
+						scope_id,
+						prev_hash,
+					},
+					signer,
+				},
+			pkg,
+			reason_hash,
+			deprecations_root,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"signer" => signer.to_string(),
+			"pkg" => pkg.to_string(),
+			"reason_hash" => reason_hash.as_ref().map_or(const { cbor_core::Value::null() }, |h| cbor_core::Value::TextString(h.to_string().into())),
+			"deprecations_root" => deprecations_root.0.to_string(),
+		}
+		.write_to(writer)
+	}
+}
+
 ops!(
 	/// An operation to the scope issued by a registry admin
 	AdminScope(ScopeOpHeader),
@@ -261,9 +564,55 @@ ops!(
 	},
 );
 
+impl Canonical for TransferOwnershipAdminScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header: ScopeOpHeader {
+				scope_id,
+				prev_hash,
+			},
+			new_owner,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"new_owner" => new_owner.to_string(),
+		}
+		.write_to(writer)
+	}
+}
+
+impl Canonical for SetYankedAdminScopeOpBody {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		let Self {
+			header: ScopeOpHeader {
+				scope_id,
+				prev_hash,
+			},
+			pkg,
+			version,
+			yanked,
+			versions_root,
+		} = self;
+
+		cbor_core::map! {
+			"tag" => Self::TAG,
+			"scope_id" => scope_id.to_string(),
+			"prev_hash" => prev_hash.to_string(),
+			"pkg" => pkg.to_string(),
+			"version" => version.to_string(),
+			"yanked" => *yanked,
+			"versions_root" => versions_root.0.to_string(),
+		}
+		.write_to(writer)
+	}
+}
+
 /// The payload of an entry in the scope's log
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "ns", rename_all = "snake_case")]
 pub enum ScopeEntryPayload {
 	/// An entry issued by a normal user
 	User(Signed<UserScopeOp>),

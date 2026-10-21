@@ -101,7 +101,7 @@ ssh-key = { version = "0.6.7", default-features = false, features = [
     "ed25519",
 ] }
 
-cbor-core = { version = "0.9.1", features = ["serde"] }
+cbor-core = { version = "0.10.1" }
 uuid = { version = "1.23.1", features = ["serde", "v7"] }
 
 # TODO: remove this when gitoxide adds support for creating & applying diffs

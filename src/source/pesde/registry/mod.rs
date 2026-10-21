@@ -2,7 +2,7 @@
 
 use std::convert::Infallible;
 use std::fmt::Display;
-use std::marker::PhantomData;
+use std::io::Write;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -32,67 +32,23 @@ pub use global::*;
 pub use response::*;
 pub use scope::*;
 
-/// Returns a canonical serialisation of the given struct for cryptographic purposes
-#[must_use]
-pub fn canonical_bytes(data: &impl Serialize) -> Vec<u8> {
-	cbor_core::Value::serialized(data)
-		.expect("failed to serialise body for signing")
-		.encode()
-}
-
 /// A tagged object
 pub trait Tagged {
 	/// The tag of this value
 	const TAG: &'static str;
 }
 
-/// A tag of an operation
-#[derive(Debug, Clone, Copy)]
-pub struct OpTag<T: Tagged>(PhantomData<T>);
+/// An object with a canonical representation
+pub trait Canonical {
+	/// Writes the canonical representation of this value to the given writer
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()>;
 
-impl<T: Tagged> Default for OpTag<T> {
-	fn default() -> Self {
-		Self(PhantomData)
-	}
-}
-
-impl<T: Tagged> Serialize for OpTag<T> {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		T::TAG.serialize(serializer)
-	}
-}
-
-impl<'de, T: Tagged> Deserialize<'de> for OpTag<T> {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: serde::Deserializer<'de>,
-	{
-		struct Visitor(&'static str);
-		impl serde::de::Visitor<'_> for Visitor {
-			type Value = ();
-
-			fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-				write!(formatter, "string {:?}", self.0)
-			}
-
-			fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-			where
-				E: serde::de::Error,
-			{
-				if v == self.0 {
-					Ok(())
-				} else {
-					Err(E::invalid_value(serde::de::Unexpected::Str(v), &self))
-				}
-			}
-		}
-
-		deserializer
-			.deserialize_str(Visitor(T::TAG))
-			.map(|_| Default::default())
+	/// The canonical representation as bytes
+	#[must_use]
+	fn canonical_bytes(&self) -> Vec<u8> {
+		let mut bytes = Vec::new();
+		self.write_canonical_to(&mut bytes).unwrap();
+		bytes
 	}
 }
 
@@ -115,6 +71,9 @@ pub struct Entry<T: EntryPayload> {
 pub trait Signable {
 	/// The key that should sign this
 	fn signer(&self) -> &PublicKey;
+
+	/// The exact bytes the signature covers
+	fn signing_bytes(&self) -> Vec<u8>;
 }
 
 /// An unvalidated record carrying a signature and a signer
@@ -137,12 +96,12 @@ pub struct BadSignature;
 #[serde(transparent)]
 pub struct Signed<T: Signable>(UnvalidatedSigned<T>);
 
-impl<T: Signable + Serialize> Signed<T> {
+impl<T: Signable> Signed<T> {
 	/// Validates the passed in [UnvalidatedSigned] and returns Some if it's valid
 	pub fn new(input: UnvalidatedSigned<T>) -> Result<Self, BadSignature> {
 		if !input
 			.sig
-			.verify(input.body.signer(), &canonical_bytes(&input.body))
+			.verify(input.body.signer(), &input.body.signing_bytes())
 		{
 			return Err(BadSignature);
 		}
@@ -161,7 +120,7 @@ impl<T: Signable + Serialize> Signed<T> {
 	}
 }
 
-impl<'de, T: Signable + Serialize + Deserialize<'de>> Deserialize<'de> for Signed<T> {
+impl<'de, T: Signable + Deserialize<'de>> Deserialize<'de> for Signed<T> {
 	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
 	where
 		D: serde::Deserializer<'de>,
@@ -250,7 +209,7 @@ impl Merge for CurrentMerkleHasher {
 	}
 }
 
-impl<K: Serialize, V: Serialize> Hasher<K, V> for CurrentMerkleHasher {
+impl<K: Canonical, V: Canonical> Hasher<K, V> for CurrentMerkleHasher {
 	type Output = CurrentHash;
 
 	fn empty_hash() -> Self::Output {
@@ -262,30 +221,21 @@ impl<K: Serialize, V: Serialize> Hasher<K, V> for CurrentMerkleHasher {
 	fn hash_key(key: &K) -> Self::Output {
 		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x11]);
-		cbor_core::Value::serialized(key)
-			.unwrap()
-			.write_to(&mut hasher)
-			.unwrap();
+		key.write_canonical_to(&mut hasher).unwrap();
 		hasher.finalize()
 	}
 
 	fn hash_value(value: &V) -> Self::Output {
 		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x12]);
-		cbor_core::Value::serialized(value)
-			.unwrap()
-			.write_to(&mut hasher)
-			.unwrap();
+		value.write_canonical_to(&mut hasher).unwrap();
 		hasher.finalize()
 	}
 
 	fn hash_slot(key: &K, child: &Self::Output) -> Self::Output {
 		let mut hasher = CurrentHash::hasher();
 		hasher.update(&[0x13]);
-		cbor_core::Value::serialized(key)
-			.unwrap()
-			.write_to(&mut hasher)
-			.unwrap();
+		key.write_canonical_to(&mut hasher).unwrap();
 		hasher.update(child.0.as_ref());
 		hasher.finalize()
 	}

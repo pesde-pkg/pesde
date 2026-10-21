@@ -40,57 +40,50 @@ pub struct UnvalidatedConsent {
 	pub consenter: PublicKey,
 }
 
-/// The contextual data along [UnvalidatedConsent] signing covers
-#[derive(Debug, Clone, Serialize)]
-pub struct ConsentWithContext {
-	#[serde(flatten)]
-	terms: UnvalidatedConsent,
-	scope_id: ScopeId,
-	tag: &'static str,
-}
-
-impl Signable for ConsentWithContext {
-	fn signer(&self) -> &PublicKey {
-		&self.terms.consenter
-	}
-}
-
-/// Wrapper for [ConsentWithContext] that can exist only with verified data
+/// Consent that is known to be signed by its consenter for the scope
 #[derive(Debug, Clone)]
-pub struct Consent<T: Tagged>(Signed<ConsentWithContext>, PhantomData<T>);
+pub struct Consent<T: Tagged>(UnvalidatedSigned<UnvalidatedConsent>, PhantomData<T>);
 
 impl<T: Tagged> Consent<T> {
 	/// Returns Ok if the [ScopeId] and [UnvalidatedConsent] matched what is expected
 	pub fn new(
-		scope_id: ScopeId,
+		scope_id: &ScopeId,
 		unvalidated: UnvalidatedSigned<UnvalidatedConsent>,
 	) -> Result<Self, BadSignature> {
-		let with_context = UnvalidatedSigned {
-			sig: unvalidated.sig,
-			body: ConsentWithContext {
-				terms: unvalidated.body,
-				scope_id,
-				tag: T::TAG,
-			},
-		};
+		let UnvalidatedConsent { nonce, consenter } = &unvalidated.body;
+		let signed_bytes = cbor_core::map! {
+			"tag" => T::TAG,
+			"scope_id" => scope_id.to_string(),
+			"nonce" => nonce.to_string(),
+			"consenter" => consenter.to_string(),
+		}
+		.encode();
 
-		Signed::new(with_context).map(|s| Self(s, PhantomData))
+		if !unvalidated.sig.verify(consenter, &signed_bytes) {
+			return Err(BadSignature);
+		}
+
+		Ok(Self(unvalidated, PhantomData))
 	}
 
-	/// Returns the underlying [UnvalidatedConsent]
+	/// Returns the underlying [UnvalidatedSigned]
 	#[must_use]
-	pub fn inner(&self) -> UnvalidatedSigned<&UnvalidatedConsent> {
-		let UnvalidatedSigned { sig, body } = self.0.inner();
-		UnvalidatedSigned::<&UnvalidatedConsent> {
-			sig: sig.clone(),
-			body: &body.terms,
-		}
+	pub fn inner(&self) -> &UnvalidatedSigned<UnvalidatedConsent> {
+		&self.0
 	}
 
 	/// Returns the consenter
 	#[must_use]
 	pub fn consenter(&self) -> &PublicKey {
-		&self.0.0.body.terms.consenter
+		&self.inner().body.consenter
+	}
+
+	fn cbor_map(&self) -> cbor_core::Value<'_> {
+		cbor_core::map! {
+			"nonce" => self.inner().body.nonce.to_string(),
+			"consenter" => self.inner().body.consenter.to_string(),
+			"sig" => self.inner().sig.to_string(),
+		}
 	}
 }
 
