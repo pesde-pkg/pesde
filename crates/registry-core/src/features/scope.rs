@@ -1,7 +1,7 @@
-use std::{collections::BTreeSet, num::NonZero};
+use std::num::NonZero;
 
 use async_trait::async_trait;
-use pesde::{hash::Hash, source::pesde::registry::*};
+use pesde::source::pesde::registry::*;
 
 #[async_trait]
 pub trait ScopeReadRepository {
@@ -22,17 +22,5 @@ pub trait ScopeReadRepository {
 
 #[async_trait]
 pub trait ScopeWriteRepository: ScopeReadRepository {
-	async fn set_deprecation_plaintext(
-		&mut self,
-		hash: &Hash,
-		plaintext: &str,
-	) -> anyhow::Result<()>;
-
-	async fn set_grant_plaintext(
-		&mut self,
-		grant: &BTreeSet<LocalNameId>,
-		plaintext: &[Box<str>],
-	) -> anyhow::Result<()>;
-
 	async fn insert_entry(&mut self, entry: &ScopeEntry) -> anyhow::Result<()>;
 }
