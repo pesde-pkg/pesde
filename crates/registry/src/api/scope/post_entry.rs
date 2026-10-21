@@ -18,18 +18,13 @@ use crate::shared::db::run_tx;
 #[post("/scope/log/entry")]
 pub(super) async fn http_v2(
 	db: Db,
-	body: web::Json<PublishScopeUserEntryBody>,
+	body: web::Json<Signed<UserScopeOp>>,
 ) -> Result<impl Responder, Error> {
 	let entry = handler(db.as_ref(), body.into_inner()).await?;
 	Ok(HttpResponse::Ok().json(entry))
 }
 
-async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<ScopeEntry, Error> {
-	let PublishScopeUserEntryBody {
-		payload,
-		deprecation_reason,
-		grant_names,
-	} = body;
+async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<ScopeEntry, Error> {
 	let UnvalidatedSigned { sig: _, body: op } = payload.inner();
 	let UserScopeOpHeader {
 		common: ScopeOpHeader {
@@ -40,54 +35,32 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 	} = op.header();
 
 	let permissions = match op {
-		UserScopeOp::AddMember(AddMemberUserScopeOpBody {
-			kind: _,
-			header: _,
-			member,
-			grant: _,
-			scope_members_root: _,
-		}) => {
+		UserScopeOp::AddMember(op) => {
 			// only the owner can append this operation, so this simple check avoids a database lookup for completely
 			// nonsensical data
-			if member.consenter() == signer {
+			if op.member().consenter() == signer {
 				return Err(Error::OwnerAsMember);
 			}
 
 			PermissionWidth::Owner
 		}
-		UserScopeOp::UpdateMemberGrant(UpdateMemberGrantUserScopeOpBody {
-			kind: _,
-			header: _,
-			member,
-			grant: _,
-			scope_members_root: _,
-		}) => {
-			if member == signer {
+		UserScopeOp::UpdateMemberGrant(op) => {
+			if op.member.0 == *signer {
 				return Err(Error::OwnerAsMember);
 			}
 
 			PermissionWidth::Owner
 		}
-		UserScopeOp::RotateKey(RotateKeyUserScopeOpBody {
-			kind: _,
-			header: _,
-			new_key,
-			scope_members_root: _,
-		}) => {
-			if new_key.consenter() == signer {
+		UserScopeOp::RotateKey(op) => {
+			if op.new_key().consenter() == signer {
 				return Err(Error::KeyChangeNoChange);
 			}
 
 			PermissionWidth::OnlySelf
 		}
-		UserScopeOp::RemoveMember(RemoveMemberUserScopeOpBody {
-			kind: _,
-			header: _,
-			member,
-			scope_members_root: _,
-		}) => match member {
+		UserScopeOp::RemoveMember(op) => match &op.member {
 			Some(k) => {
-				if k == signer {
+				if k.0 == *signer {
 					return Err(Error::OwnerAsMember);
 				}
 
@@ -95,12 +68,8 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 			}
 			None => PermissionWidth::OnlySelf,
 		},
-		UserScopeOp::TransferOwnership(TransferOwnershipUserScopeOpBody {
-			kind: _,
-			header: _,
-			new_owner,
-		}) => {
-			if signer == new_owner.consenter() {
+		UserScopeOp::TransferOwnership(op) => {
+			if signer == op.new_owner().consenter() {
 				return Err(Error::KeyChangeNoChange);
 			}
 
@@ -109,36 +78,14 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 		UserScopeOp::PublishVersion(_) => {
 			return Err(Error::PublishVersionInPostEntry);
 		}
-		UserScopeOp::SetYanked(op) => PermissionWidth::Package(&op.pkg),
+		UserScopeOp::SetYanked(op) => PermissionWidth::Package(&op.package_version.0),
 		UserScopeOp::SetDeprecation(op) => PermissionWidth::Package(&op.pkg),
 	};
 
-	if let UserScopeOp::SetDeprecation(SetDeprecationUserScopeOpBody {
-		reason_hash: Some(reason_hash),
-		..
-	}) = op
-	{
-		if deprecation_reason.is_empty()
-			|| Hash::digest(reason_hash.algorithm(), deprecation_reason.as_bytes()) != *reason_hash
-		{
-			return Err(Error::InvalidReasonHash);
-		}
-	} else if !deprecation_reason.is_empty() {
-		return Err(Error::DeprecationReasonPresent);
-	}
-
 	if let Some(grant) = grant(op) {
-		if grant.0.len() != grant_names.len() {
-			return Err(Error::InvalidGrantNames);
+		if grant.0.iter().any(|e| e.plaintext().is_none()) {
+			return Err(Error::GrantPlaintextRequired);
 		}
-
-		for (id, name) in grant.0.iter().zip(&mut grant_names) {
-			if *id.hash() != CurrentHash::digest(name.as_bytes()) {
-				return Err(Error::InvalidGrantNameHash(std::mem::take(name)));
-			}
-		}
-	} else if !grant_names.is_empty() {
-		return Err(Error::GrantNamesPresent);
 	}
 
 	let (tx, scope_size) = match db
@@ -166,7 +113,7 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 			.ok_or(Error::ScopeNotFound)?;
 
 		let prev_entry_hash =
-			Hash::digest(given_prev_hash.algorithm(), canonical_bytes(&prev_entry));
+			Hash::digest(given_prev_hash.algorithm(), &prev_entry.canonical_bytes());
 		if *given_prev_hash != prev_entry_hash {
 			return Err(Error::InvalidPrevHash);
 		}
@@ -178,17 +125,22 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 		};
 
 		match op {
-			UserScopeOp::AddMember(AddMemberUserScopeOpBody {
-				kind: _,
-				header: _,
-				member,
-				grant,
-				scope_members_root,
-			}) => {
+			UserScopeOp::AddMember(
+				op @ AddMemberUserScopeOpBody {
+					grant,
+					scope_members_root,
+					..
+				},
+			) => {
 				let state = scope_state().await?;
 				run_tree(tx, &state, scope_members_root, async |tree| {
 					match tree
-						.insert_new(member.consenter().clone(), grant.clone())
+						.insert_new(
+							ScopeMember(op.member().consenter().clone()),
+							ScopeMemberValue {
+								grant: grant.clone(),
+							},
+						)
 						.await
 					{
 						Ok(_) => Ok(()),
@@ -199,7 +151,6 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 				.await?;
 			}
 			UserScopeOp::UpdateMemberGrant(UpdateMemberGrantUserScopeOpBody {
-				kind: _,
 				header: _,
 				member,
 				grant,
@@ -207,27 +158,37 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 			}) => {
 				let state = scope_state().await?;
 				run_tree(tx, &state, scope_members_root, async |tree| {
-					match tree.insert(member.clone(), grant.clone()).await? {
-						Some(g) if g == *grant => Err(Error::GrantNoChange),
+					match tree
+						.insert(
+							member.clone(),
+							ScopeMemberValue {
+								grant: grant.clone(),
+							},
+						)
+						.await?
+					{
+						Some(v) if v.grant == *grant => Err(Error::GrantNoChange),
 						Some(_) => Ok(()),
 						None => Err(Error::KeyNotFound),
 					}
 				})
 				.await?;
 			}
-			UserScopeOp::RotateKey(RotateKeyUserScopeOpBody {
-				kind: _,
-				header: _,
-				new_key,
-				scope_members_root,
-			}) => {
+			UserScopeOp::RotateKey(
+				op @ RotateKeyUserScopeOpBody {
+					scope_members_root, ..
+				},
+			) => {
 				let state = scope_state().await?;
 				run_tree(tx, &state, scope_members_root, async |tree| {
-					let Some(grant) = tree.delete(signer).await? else {
+					let Some(value) = tree.delete(&ScopeMember(op.signer().clone())).await? else {
 						return Err(Error::Unauthorized);
 					};
 
-					match tree.insert_new(new_key.consenter().clone(), grant).await {
+					match tree
+						.insert_new(ScopeMember(op.new_key().consenter().clone()), value)
+						.await
+					{
 						Ok(_) => Ok(()),
 						Err(InsertNewError::AlreadyExists) => Err(Error::KeyAlreadyExists),
 						Err(InsertNewError::StorageError(e)) => Err(e.into()),
@@ -236,7 +197,6 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 				.await?;
 			}
 			UserScopeOp::RemoveMember(RemoveMemberUserScopeOpBody {
-				kind: _,
 				header: _,
 				member,
 				scope_members_root,
@@ -247,7 +207,7 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 				}
 
 				run_tree(tx, &state, scope_members_root, async |tree| {
-					tree.delete(member.as_ref().unwrap_or(signer))
+					tree.delete(member.as_ref().unwrap_or(&ScopeMember(signer.clone())))
 						.await?
 						.is_some()
 						.ok_or(Error::AlreadyInState)
@@ -257,18 +217,14 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 			UserScopeOp::TransferOwnership(_) => {}
 			UserScopeOp::PublishVersion(_) => unreachable!(),
 			UserScopeOp::SetYanked(SetYankedUserScopeOpBody {
-				kind: _,
 				header: _,
-				pkg,
-				version,
+				package_version,
 				yanked,
 				versions_root,
 			}) => {
 				let state = scope_state().await?;
 				run_tree(tx, &state, versions_root, async |tree| {
-					let key = (pkg.clone(), version.clone());
-
-					let Some(mut version) = tree.get(&key).await? else {
+					let Some(mut version) = tree.get(&package_version).await? else {
 						return Err(Error::VersionNotFound);
 					};
 
@@ -287,49 +243,34 @@ async fn handler(db: &dyn Backend, body: PublishScopeUserEntryBody) -> Result<Sc
 					}
 					version.yank_state = new_state;
 
-					tree.insert(key, version).await?;
+					tree.insert(package_version.clone(), version).await?;
 
 					Ok(())
 				})
 				.await?;
 			}
 			UserScopeOp::SetDeprecation(SetDeprecationUserScopeOpBody {
-				kind: _,
 				header: _,
 				pkg,
-				reason_hash,
+				state: value,
 				deprecations_root,
 			}) => {
 				let state = scope_state().await?;
-				run_tree(
-					tx,
-					&state,
-					deprecations_root,
-					async |tree| match reason_hash {
-						Some(new_state) => tree
-							.insert(pkg.clone(), new_state.clone())
-							.await?
-							.is_none_or(|o| o != *new_state)
-							.ok_or(Error::AlreadyInState),
-						None => tree
-							.delete(pkg)
-							.await?
-							.is_some()
-							.ok_or(Error::AlreadyInState),
-					},
-				)
+				run_tree(tx, &state, deprecations_root, async |tree| match value {
+					Some(new_state) => tree
+						.insert(PackageDeprecation(pkg.clone()), new_state.clone())
+						.await?
+						.is_none_or(|o| o != *new_state)
+						.ok_or(Error::AlreadyInState),
+					None => tree
+						.delete(&PackageDeprecation(pkg.clone()))
+						.await?
+						.is_some()
+						.ok_or(Error::AlreadyInState),
+				})
 				.await?;
-
-				if let Some(hash) = reason_hash {
-					tx.set_deprecation_plaintext(hash, &deprecation_reason)
-						.await?;
-				}
 			}
 		};
-
-		if let Some(grant) = grant(op) {
-			tx.set_grant_plaintext(&grant.0, &grant_names).await?;
-		}
 
 		let entry = Entry {
 			pos: scope_size.get(),

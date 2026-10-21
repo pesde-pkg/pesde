@@ -53,7 +53,7 @@ pub trait Canonical {
 }
 
 /// Things that can be an [Entry]'s payload
-pub trait EntryPayload {}
+pub trait EntryPayload: Canonical {}
 
 /// An entry in a log, at a known leaf position
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +65,17 @@ pub struct Entry<T: EntryPayload> {
 	pub published_at: Timestamp,
 	/// The payload of this entry
 	pub payload: T,
+}
+
+impl<T: EntryPayload> Canonical for Entry<T> {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		cbor_core::map! {
+			"pos" => self.pos,
+			"published_at" => self.published_at.to_string(),
+			"payload" => self.payload.canonical_bytes(),
+		}
+		.write_to(writer)
+	}
 }
 
 /// An object that can be signed & carries its own signing key
@@ -126,6 +137,16 @@ impl<'de, T: Signable + Deserialize<'de>> Deserialize<'de> for Signed<T> {
 		D: serde::Deserializer<'de>,
 	{
 		Self::new(UnvalidatedSigned::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+	}
+}
+
+impl<T: Signable + Canonical> Canonical for Signed<T> {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		cbor_core::map! {
+			"sig" => self.inner().sig.to_string(),
+			"body" => self.inner().body.canonical_bytes(),
+		}
+		.write_to(writer)
 	}
 }
 

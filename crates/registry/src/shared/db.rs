@@ -31,7 +31,7 @@ pub async fn append_leaf(
 	body: &Entry<impl EntryPayload + Serialize>,
 ) -> anyhow::Result<u64> {
 	let mut mmr = MMRIVER::<CurrentMerkleHasher, _>::new(pos, store);
-	mmr.push(&canonical_bytes(body)).await?;
+	mmr.push(&body.canonical_bytes()).await?;
 	mmr.commit().await?;
 
 	let next_pos = mmr.mmr_size();

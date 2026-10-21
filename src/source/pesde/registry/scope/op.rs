@@ -253,7 +253,7 @@ ops!(
 	/// The owner is changing a member's grant
 	UpdateMemberGrant "update_member_grant" {
 		/// The member's key
-		member: PublicKey,
+		member: ScopeMember,
 		/// The new grant
 		grant: ScopeGrant,
 		/// The root of the tree holding scope members
@@ -271,7 +271,7 @@ ops!(
 	RemoveMember "remove_member" {
 		/// The member being removed. None if the member is removing themselves (signing key is who's leaving)
 		#[serde(default, skip_serializing_if = "Option::is_none")]
-		member: Option<PublicKey>,
+		member: Option<ScopeMember>,
 		/// The root of the tree holding scope members
 		scope_members_root: ScopeMembersTree,
 	},
@@ -283,10 +283,8 @@ ops!(
 	},
 	/// A new version of a package is being published
 	PublishVersion "publish_version" {
-		/// The package being published
-		pkg: LocalNameId,
-		/// The version being published
-		version: PesdeVersionForRegistry,
+		/// The package version being published
+		package_version: PackageVersion,
 		/// The hash of the archive being published
 		archive_hash: Hash,
 		/// The root of the tree holding package versions
@@ -294,10 +292,8 @@ ops!(
 	},
 	/// A package's yank status is being updated
 	SetYanked "set_yanked" {
-		/// The package being updated
-		pkg: LocalNameId,
-		/// The version being updated
-		version: PesdeVersionForRegistry,
+		/// The package version being published
+		package_version: PackageVersion,
 		/// Whether it is yanked
 		yanked: bool,
 		/// The root of the tree holding package versions
@@ -307,8 +303,8 @@ ops!(
 	SetDeprecation "set_deprecation" {
 		/// The package being updated
 		pkg: LocalNameId,
-		/// The hash of the reason this package is deprecated
-		reason_hash: Option<Hash>,
+		/// The deprecation state
+		state: Option<PackageDeprecationValue>,
 		/// The root of the tree holding package deprecations
 		deprecations_root: PackageDeprecationsTree,
 	},
@@ -335,8 +331,8 @@ impl Canonical for AddMemberUserScopeOpBody {
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
 			"signer" => signer.to_string(),
-			"member" => member.cbor_map(),
-			"grant" => cbor_core::Value::Array(grant.0.iter().cloned().map(|n| n.to_string().into()).collect()),
+			"member" => member.as_cbor(),
+			"grant" => grant.as_cbor(),
 			"scope_members_root" => scope_members_root.0.to_string(),
 		}
 		.write_to(writer)
@@ -364,8 +360,8 @@ impl Canonical for UpdateMemberGrantUserScopeOpBody {
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
 			"signer" => signer.to_string(),
-			"member" => member.to_string(),
-			"grant" => cbor_core::Value::Array(grant.0.iter().cloned().map(|n| n.to_string().into()).collect()),
+			"member" => member.0.to_string(),
+			"grant" => grant.as_cbor(),
 			"scope_members_root" => scope_members_root.0.to_string(),
 		}
 		.write_to(writer)
@@ -392,7 +388,7 @@ impl Canonical for RotateKeyUserScopeOpBody {
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
 			"signer" => signer.to_string(),
-			"new_key" => new_key.cbor_map(),
+			"new_key" => new_key.as_cbor(),
 			"scope_members_root" => scope_members_root.0.to_string(),
 		}
 		.write_to(writer)
@@ -419,7 +415,7 @@ impl Canonical for RemoveMemberUserScopeOpBody {
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
 			"signer" => signer.to_string(),
-			"member" => member.as_ref().map_or(const { cbor_core::Value::null() }, |m| cbor_core::Value::TextString(m.to_string().into())),
+			"member" => member.as_ref().map_or(const { cbor_core::Value::null() }, |m| cbor_core::Value::TextString(m.0.to_string().into())),
 			"scope_members_root" => scope_members_root.0.to_string(),
 		}
 		.write_to(writer)
@@ -445,7 +441,7 @@ impl Canonical for TransferOwnershipUserScopeOpBody {
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
 			"signer" => signer.to_string(),
-			"new_owner" => new_owner.cbor_map(),
+			"new_owner" => new_owner.as_cbor(),
 		}
 		.write_to(writer)
 	}
@@ -462,8 +458,7 @@ impl Canonical for PublishVersionUserScopeOpBody {
 					},
 					signer,
 				},
-			pkg,
-			version,
+			package_version,
 			archive_hash,
 			versions_root,
 		} = self;
@@ -473,8 +468,8 @@ impl Canonical for PublishVersionUserScopeOpBody {
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
 			"signer" => signer.to_string(),
-			"pkg" => pkg.to_string(),
-			"version" => version.to_string(),
+			"pkg" => package_version.0.to_string(),
+			"version" => package_version.1.to_string(),
 			"archive_hash" => archive_hash.to_string(),
 			"versions_root" => versions_root.0.to_string(),
 		}
@@ -493,8 +488,7 @@ impl Canonical for SetYankedUserScopeOpBody {
 					},
 					signer,
 				},
-			pkg,
-			version,
+			package_version,
 			yanked,
 			versions_root,
 		} = self;
@@ -504,8 +498,8 @@ impl Canonical for SetYankedUserScopeOpBody {
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
 			"signer" => signer.to_string(),
-			"pkg" => pkg.to_string(),
-			"version" => version.to_string(),
+			"pkg" => package_version.0.to_string(),
+			"version" => package_version.1.to_string(),
 			"yanked" => *yanked,
 			"versions_root" => versions_root.0.to_string(),
 		}
@@ -525,7 +519,7 @@ impl Canonical for SetDeprecationUserScopeOpBody {
 					signer,
 				},
 			pkg,
-			reason_hash,
+			state,
 			deprecations_root,
 		} = self;
 
@@ -535,7 +529,7 @@ impl Canonical for SetDeprecationUserScopeOpBody {
 			"prev_hash" => prev_hash.to_string(),
 			"signer" => signer.to_string(),
 			"pkg" => pkg.to_string(),
-			"reason_hash" => reason_hash.as_ref().map_or(const { cbor_core::Value::null() }, |h| cbor_core::Value::TextString(h.to_string().into())),
+			"reason_hash" => state.as_ref().map_or(const { cbor_core::Value::null() }, |s| cbor_core::Value::TextString(s.reason.hash().to_string().into())),
 			"deprecations_root" => deprecations_root.0.to_string(),
 		}
 		.write_to(writer)
@@ -620,6 +614,15 @@ pub enum ScopeEntryPayload {
 	Admin(AdminScopeOp),
 }
 impl EntryPayload for ScopeEntryPayload {}
+
+impl Canonical for ScopeEntryPayload {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		match self {
+			Self::User(p) => p.write_canonical_to(writer),
+			Self::Admin(p) => p.write_canonical_to(writer),
+		}
+	}
+}
 
 /// An entry in the scope's chain
 pub type ScopeEntry = Entry<ScopeEntryPayload>;

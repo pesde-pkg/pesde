@@ -55,5 +55,13 @@ pub enum GlobalEntryPayload {
 }
 impl EntryPayload for GlobalEntryPayload {}
 
+impl Canonical for GlobalEntryPayload {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		match self {
+			Self::ScopeGenesis(p) => p.write_canonical_to(writer),
+		}
+	}
+}
+
 /// An entry in the registry's global log
 pub type GlobalEntry = Entry<GlobalEntryPayload>;
