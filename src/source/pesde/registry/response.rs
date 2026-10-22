@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use crate::source::pesde::registry::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// A MMR accumulator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +49,7 @@ pub struct ScopeStateResponse {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(
 	tag = "kind",
+	rename_all = "snake_case",
 	bound(
 		serialize = "T::Key: Serialize, T::Value: Serialize",
 		deserialize = "T::Key: serde::Deserialize<'de>, T::Value: serde::Deserialize<'de>"
@@ -78,6 +79,7 @@ where
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(
 	tag = "kind",
+	rename_all = "snake_case",
 	bound(
 		serialize = "T::Key: Serialize, T::Value: Serialize",
 		deserialize = "T::Key: serde::Deserialize<'de>, T::Value: serde::Deserialize<'de>"
@@ -101,4 +103,46 @@ where
 		/// The proof of the range
 		proof: merkle_bplustree::proof::range::RangeProof<T>,
 	},
+}
+
+/// A tree transition proof
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(
+	tag = "kind",
+	rename_all = "snake_case",
+	bound(
+		serialize = "T::Key: Serialize, T::Value: Serialize",
+		deserialize = "T::Key: serde::Deserialize<'de>, T::Value: serde::Deserialize<'de>"
+	)
+)]
+pub enum TreeTransitionProof<T: TreeConfig>
+where
+	T::Key: Debug,
+	T::Value: Debug,
+	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
+{
+	/// A value was set
+	Modify(merkle_bplustree::proof::modify::ModifyProof<T>),
+	/// A value was removed
+	Delete(merkle_bplustree::proof::delete::DeleteProof<T>),
+	/// A value was not removed because the key did not exist
+	DeleteNotApplied(merkle_bplustree::proof::exclusion::ExclusionProof<T>),
+}
+
+/// The result of a tree transition, returned from that endpoint
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(bound(
+	serialize = "T::Key: Serialize, T::Value: Serialize",
+	deserialize = "T::Key: serde::Deserialize<'de>, T::Value: serde::Deserialize<'de>"
+))]
+pub struct TreeTransitionResult<T: TreeConfig + Serialize + DeserializeOwned>
+where
+	T::Key: Debug,
+	T::Value: Debug,
+	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
+{
+	/// The new tree root
+	pub root: T,
+	/// The proof of the transition
+	pub proof: TreeTransitionProof<T>,
 }

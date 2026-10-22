@@ -37,7 +37,8 @@ pub async fn authenticate(
 ) -> Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
 	let state = req.app_data::<web::Data<AppState>>().unwrap();
 
-	let required = if req.method().is_safe() {
+	// TODO: remove explicit QUERY check once it's an official method (so is_safe handles it)
+	let required = if req.method().is_safe() || req.method().as_str() == "QUERY" {
 		state.read_requires_auth
 	} else {
 		true

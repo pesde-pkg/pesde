@@ -16,7 +16,7 @@ use crate::Db;
 use crate::api::tree::error::Error;
 use crate::shared::tree::StoredTree;
 
-super::tree_handler!("/entry/{key}", http_v2 => http_v2_impl);
+super::tree_handler!((actix_web::http::Method::GET) "/entry/{key}", http_v2 => http_v2_impl);
 
 async fn http_v2_impl<T: StoredTree>(
 	db: Db,

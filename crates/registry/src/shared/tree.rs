@@ -13,6 +13,7 @@ pub trait StoredTree: TreeConfig {
 	fn into_read_repo(db: Arc<dyn Backend>) -> Arc<dyn TreeReadRepository<Self>>;
 	fn write_repo(tx: &mut dyn ScopeWriteTransaction) -> &mut dyn TreeWriteRepository<Self>;
 	fn hash(&self) -> &CurrentHash;
+	fn from_hash(hash: CurrentHash) -> Self;
 }
 impl StoredTree for ScopeMembersTree {
 	fn root_from_state(state: &ScopeStateResponse) -> &CurrentHash {
@@ -29,6 +30,9 @@ impl StoredTree for ScopeMembersTree {
 	}
 	fn hash(&self) -> &CurrentHash {
 		&self.0
+	}
+	fn from_hash(hash: CurrentHash) -> Self {
+		Self(hash)
 	}
 }
 impl StoredTree for PackageVersionsTree {
@@ -47,6 +51,9 @@ impl StoredTree for PackageVersionsTree {
 	fn hash(&self) -> &CurrentHash {
 		&self.0
 	}
+	fn from_hash(hash: CurrentHash) -> Self {
+		Self(hash)
+	}
 }
 impl StoredTree for PackageDeprecationsTree {
 	fn root_from_state(state: &ScopeStateResponse) -> &CurrentHash {
@@ -63,5 +70,8 @@ impl StoredTree for PackageDeprecationsTree {
 	}
 	fn hash(&self) -> &CurrentHash {
 		&self.0
+	}
+	fn from_hash(hash: CurrentHash) -> Self {
+		Self(hash)
 	}
 }

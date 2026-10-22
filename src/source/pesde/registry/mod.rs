@@ -198,6 +198,35 @@ impl Display for LocalNameId {
 	}
 }
 
+/// A tree operation, used by the tree transition endpoint
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(
+	tag = "kind",
+	bound(
+		serialize = "T::Key: Serialize, T::Value: Serialize",
+		deserialize = "T::Key: serde::Deserialize<'de>, T::Value: serde::Deserialize<'de>"
+	)
+)]
+pub enum TreeOperation<T: TreeConfig>
+where
+	T::Key: std::fmt::Debug,
+	T::Value: std::fmt::Debug,
+	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
+{
+	/// An entry is to be modified
+	Modify {
+		/// The entry key
+		key: T::Key,
+		/// The entry value
+		value: T::Value,
+	},
+	/// An entry is to be removed
+	Remove {
+		/// The entry key
+		key: T::Key,
+	},
+}
+
 /// The current hash used by the registry
 pub type CurrentHash = Blake3Hash;
 

@@ -35,7 +35,7 @@ merkle-bplustree = { workspace = true }
 
 pin-project-lite = "0.2.17"
 
-actix-web = "4.13.0"
+actix-web = "4.17.0"
 actix-web-lab = { version = "0.29.5", default-features = false }
 actix-cors = "0.7.1"
 actix-multipart = "0.7.2"

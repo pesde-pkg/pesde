@@ -21,7 +21,7 @@ use crate::Db;
 use crate::api::tree::error::Error;
 use crate::shared::tree::StoredTree;
 
-super::tree_handler!("/entries", http_v2 => http_v2_impl);
+super::tree_handler!((actix_web::http::Method::GET) "/entries", http_v2 => http_v2_impl);
 
 async fn http_v2_impl<T: StoredTree>(
 	db: Db,
