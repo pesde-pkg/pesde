@@ -21,7 +21,6 @@ use crate::source::StructureKind;
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
 use crate::source::legacy_pesde::LegacyPesdePackageSource;
-use crate::source::pesde::PesdePackageSource;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
@@ -36,29 +35,29 @@ fn specifier_to_source(
 	specifier: &DependencySpecifiers,
 ) -> Result<PackageSources, errors::DependencyGraphError> {
 	let source = match &specifier {
-		DependencySpecifiers::Pesde(specifier) => {
-			let url = if let Some(manifest) = manifest {
-				manifest
-					.pesde_registries
-					.get(&specifier.registry)
-					.ok_or_else(|| {
-						errors::DependencyGraphErrorKind::RegistryNotFound(
-							specifier.registry.clone(),
-						)
-					})?
-					.clone()
-					.into_inner()
-			} else {
-				specifier
-					.registry
-					.as_str()
-					.parse()
-					// specifiers in indices store the index url in this field
-					.unwrap()
-			};
+		// DependencySpecifiers::Pesde(specifier) => {
+		// 	let url = if let Some(manifest) = manifest {
+		// 		manifest
+		// 			.pesde_registries
+		// 			.get(&specifier.registry)
+		// 			.ok_or_else(|| {
+		// 				errors::DependencyGraphErrorKind::RegistryNotFound(
+		// 					specifier.registry.clone(),
+		// 				)
+		// 			})?
+		// 			.clone()
+		// 			.into_inner()
+		// 	} else {
+		// 		specifier
+		// 			.registry
+		// 			.as_str()
+		// 			.parse()
+		// 			// specifiers in indices store the index url in this field
+		// 			.unwrap()
+		// 	};
 
-			PackageSources::Pesde(PesdePackageSource::from_url(url))
-		}
+		// 	PackageSources::Pesde(PesdePackageSource::from_url(url))
+		// }
 		#[expect(deprecated)]
 		DependencySpecifiers::LegacyPesde(specifier) => {
 			let index_url = if let Some(manifest) = manifest {

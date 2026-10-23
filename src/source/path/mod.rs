@@ -125,18 +125,18 @@ impl PackageSource for PathPackageSource {
 			.into_iter()
 			.map(|(alias, (mut spec, ty))| {
 				match &mut spec {
-					DependencySpecifiers::Pesde(spec) => {
-						spec.registry = manifest
-							.pesde_registries
-							.get(&spec.registry)
-							.ok_or_else(|| {
-								errors::ResolveErrorKind::RegistryNotFound(
-									spec.registry.clone(),
-									path.clone(),
-								)
-							})?
-							.to_string();
-					}
+					// DependencySpecifiers::Pesde(spec) => {
+					// 	spec.registry = manifest
+					// 		.pesde_registries
+					// 		.get(&spec.registry)
+					// 		.ok_or_else(|| {
+					// 			errors::ResolveErrorKind::RegistryNotFound(
+					// 				spec.registry.clone(),
+					// 				path.clone(),
+					// 			)
+					// 		})?
+					// 		.to_string();
+					// }
 					DependencySpecifiers::LegacyPesde(spec) => {
 						spec.index = manifest
 							.pesde_indices

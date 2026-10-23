@@ -351,18 +351,18 @@ fn transform_pesde_dependencies(
 		.into_iter()
 		.map(|(alias, (mut spec, ty))| {
 			match &mut spec {
-				DependencySpecifiers::Pesde(specifier) => {
-					specifier.registry = manifest
-						.pesde_registries
-						.get(&specifier.registry)
-						.ok_or_else(|| {
-							errors::ResolveErrorKind::PesdeRegistryNotFound(
-								specifier.registry.clone(),
-								repo_url.clone(),
-							)
-						})?
-						.to_string();
-				}
+				// DependencySpecifiers::Pesde(specifier) => {
+				// 	specifier.registry = manifest
+				// 		.pesde_registries
+				// 		.get(&specifier.registry)
+				// 		.ok_or_else(|| {
+				// 			errors::ResolveErrorKind::PesdeRegistryNotFound(
+				// 				specifier.registry.clone(),
+				// 				repo_url.clone(),
+				// 			)
+				// 		})?
+				// 		.to_string();
+				// }
 				DependencySpecifiers::LegacyPesde(specifier) => {
 					specifier.index = manifest
 						.pesde_indices

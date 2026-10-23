@@ -24,11 +24,13 @@ impl PackageId {
 	}
 
 	/// Accesses the package source
+	#[must_use]
 	pub fn source(&self) -> &PackageSources {
 		&self.0.0
 	}
 
 	/// Accesses the package ref
+	#[must_use]
 	pub fn pkg_ref(&self) -> &PackageRefs {
 		&self.0.1
 	}
@@ -43,7 +45,7 @@ impl PackageId {
 impl Display for PackageId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let pkg_ref: &dyn Display = match self.pkg_ref() {
-			PackageRefs::Pesde(pkg_ref) => pkg_ref,
+			// PackageRefs::Pesde(pkg_ref) => pkg_ref,
 			PackageRefs::LegacyPesde(pkg_ref) => pkg_ref,
 			PackageRefs::Wally(pkg_ref) => pkg_ref,
 			PackageRefs::Git(pkg_ref) => pkg_ref,
@@ -101,7 +103,7 @@ impl FromStr for PackageId {
 		let version = version.parse()?;
 
 		let source = match tag {
-			"pesde" => PackageSources::Pesde(source.parse().map_err(PackageSourcesFromStr::from)?),
+			// "pesde" => PackageSources::Pesde(source.parse().map_err(PackageSourcesFromStr::from)?),
 			"legacy_pesde" => {
 				PackageSources::LegacyPesde(source.parse().map_err(PackageSourcesFromStr::from)?)
 			}
@@ -112,9 +114,9 @@ impl FromStr for PackageId {
 
 		// match on source instead of tag for exhaustiveness
 		let pkg_ref = match &source {
-			PackageSources::Pesde(_) => {
-				PackageRefs::Pesde(pkg_ref.parse().map_err(PackageRefParseError::from)?)
-			}
+			// PackageSources::Pesde(_) => {
+			// 	PackageRefs::Pesde(pkg_ref.parse().map_err(PackageRefParseError::from)?)
+			// }
 			PackageSources::LegacyPesde(_) => {
 				PackageRefs::LegacyPesde(pkg_ref.parse().map_err(PackageRefParseError::from)?)
 			}

@@ -124,16 +124,16 @@ impl AddCommand {
 			.or_insert(toml_edit::Item::Table(toml_edit::Table::new()))[alias.as_str()];
 
 		match specifier {
-			DependencySpecifiers::Pesde(spec) => {
-				field["name"] = toml_edit::value(spec.name.to_string());
-				field["version"] = toml_edit::value(format!("^{version}"));
+			// DependencySpecifiers::Pesde(spec) => {
+			// 	field["name"] = toml_edit::value(spec.name.to_string());
+			// 	field["version"] = toml_edit::value(format!("^{version}"));
 
-				if spec.registry != DEFAULT_URL_KEY {
-					field["registry"] = toml_edit::value(spec.registry);
-				}
+			// 	if spec.registry != DEFAULT_URL_KEY {
+			// 		field["registry"] = toml_edit::value(spec.registry);
+			// 	}
 
-				println!("added {}@{version} to {dependency_key}", spec.name);
-			}
+			// 	println!("added {}@{version} to {dependency_key}", spec.name);
+			// }
 			#[expect(deprecated)]
 			DependencySpecifiers::LegacyPesde(spec) => {
 				field["name"] = toml_edit::value(spec.name.to_string());

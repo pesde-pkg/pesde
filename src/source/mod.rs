@@ -227,7 +227,7 @@ impl RealmExt for Option<Realm> {
 impl Display for PackageSources {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Pesde(source) => write!(f, "pesde:{source}"),
+			// Self::Pesde(source) => write!(f, "pesde:{source}"),
 			Self::LegacyPesde(source) => write!(f, "legacy_pesde:{source}"),
 			Self::Wally(source) => write!(f, "wally:{source}"),
 			Self::Git(source) => write!(f, "git:{source}"),
@@ -243,7 +243,7 @@ impl FromStr for PackageSources {
 		let (tag, source) = s.split_once(':').unwrap_or((s, ""));
 
 		Ok(match tag {
-			"pesde" => Self::Pesde(source.parse()?),
+			// "pesde" => Self::Pesde(source.parse()?),
 			"legacy_pesde" => Self::LegacyPesde(source.parse()?),
 			"wally" => Self::Wally(source.parse()?),
 			"git" => Self::Git(source.parse()?),
@@ -514,9 +514,9 @@ macro_rules! impls {
 					#[error("unknown source")]
 					Unknown,
 
-					/// Parsing pesde source failed
-					#[error("error parsing pesde source")]
-					PesdeParse(#[from] crate::source::pesde::backend::errors::ParseBackendError),
+					// /// Parsing pesde source failed
+					// #[error("error parsing pesde source")]
+					// PesdeParse(#[from] crate::source::pesde::backend::errors::ParseBackendError),
 
 					/// Parsing legacy pesde source failed
 					#[error("error parsing legacy pesde source")]
@@ -583,7 +583,7 @@ macro_rules! impls {
 	}
 }
 
-impls!(Pesde, LegacyPesde, Wally, Git, Path);
+impls!(/*Pesde, */ LegacyPesde, Wally, Git, Path);
 
 impl DependencySpecifiers {
 	/// Returns whether this dependency specifier is for a local dependency
