@@ -174,7 +174,7 @@ jiff = { version = "0.2.23", default-features = false, features = [
     "serde",
     "std",
 ] }
-merkle-bplustree = { path = "../merkle-bplustree" }
+merkle-bplustree = { version = "0.1.0" }
 uuid = { version = "1.23.1", features = ["serde"] }
 
 [profile.dev.package.full_moon]
