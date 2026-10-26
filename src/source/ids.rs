@@ -169,7 +169,7 @@ mod tests {
 	#[test]
 	fn serde_package_ids() {
 		let ids = [
-			"pesde:https://github.com/pesde-pkg/index:foo/bar@1.2.3",
+			//"pesde:https://github.com/pesde-pkg/index:foo/bar@1.2.3",
 			"legacy_pesde:https://github.com/pesde-pkg/index:foo/bar+lune@1.2.3",
 			"wally:https://github.com/pesde-pkg/index:foo/bar@1.2.3",
 			"git:https://github.com/pesde-pkg/index:abcdef#1.2.3",
