@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use merkle_bplustree::TreeConfig;
 use pesde::source::pesde::registry::*;
-use pesde_registry_core::{
-	db::{Backend, ScopeWriteTransaction},
-	features::scope::{ScopeTreeReadRepository, ScopeTreeWriteRepository},
-};
+use pesde_registry_core::db::Backend;
+use pesde_registry_core::db::ScopeWriteTransaction;
+use pesde_registry_core::features::scope::ScopeTreeReadRepository;
+use pesde_registry_core::features::scope::ScopeTreeWriteRepository;
 
 pub trait ScopeTree: TreeConfig {
 	fn root_from_state(state: &ScopeStateResponse) -> &CurrentHash;

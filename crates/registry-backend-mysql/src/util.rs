@@ -1,6 +1,8 @@
 use anyhow::Context as _;
 use jiff::Timestamp;
-use sqlx::{MySqlConnection, QueryBuilder, query_builder::Separated};
+use sqlx::MySqlConnection;
+use sqlx::QueryBuilder;
+use sqlx::query_builder::Separated;
 
 macro_rules! insert_chunked {
 	($conn:expr, $table:literal, $columns:expr, $rows:expr, $bind:expr $(,)?) => {

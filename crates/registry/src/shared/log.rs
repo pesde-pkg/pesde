@@ -1,6 +1,7 @@
 use std::num::NonZero;
 
-use merkleberg::{MMRIVER, MMRStoreReadOps};
+use merkleberg::MMRIVER;
+use merkleberg::MMRStoreReadOps;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::StoreError;
 use serde::Deserialize;

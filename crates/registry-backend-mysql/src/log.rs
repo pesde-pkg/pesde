@@ -2,14 +2,24 @@ use anyhow::Context as _;
 use async_trait::async_trait;
 use futures::TryStreamExt as _;
 use pesde::hash::Blake3Hash;
-use pesde::signature::{KeyKind, PublicKey, Signature, SignatureKind};
+use pesde::signature::KeyKind;
+use pesde::signature::PublicKey;
+use pesde::signature::Signature;
+use pesde::signature::SignatureKind;
 use pesde::source::pesde::registry::*;
-use pesde_registry_core::features::global::{GlobalReadRepository, GlobalWriteRepository};
+use pesde_registry_core::features::global::GlobalReadRepository;
+use pesde_registry_core::features::global::GlobalWriteRepository;
 use sqlx::QueryBuilder;
-use sqlx::{prelude::Type, query, types::Text};
+use sqlx::prelude::Type;
+use sqlx::query;
+use sqlx::types::Text;
 
-use crate::util::{chrono_to_jiff, insert_chunked, jiff_to_chrono};
-use crate::{AsExecutor, MySqlBackend, MySqlTransaction};
+use crate::AsExecutor;
+use crate::MySqlBackend;
+use crate::MySqlTransaction;
+use crate::util::chrono_to_jiff;
+use crate::util::insert_chunked;
+use crate::util::jiff_to_chrono;
 
 #[derive(Debug, Clone, Copy, Type)]
 #[sqlx(rename_all = "snake_case")]

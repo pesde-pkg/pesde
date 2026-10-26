@@ -1,7 +1,9 @@
 use std::fmt::Debug;
 
 use crate::source::pesde::registry::*;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::Deserialize;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// A MMR accumulator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

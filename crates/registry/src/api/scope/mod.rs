@@ -1,9 +1,11 @@
-use merkle_bplustree::{MerkleBPlusTree, hasher::Hasher};
-use pesde::source::pesde::registry::{CurrentHash, ScopeId, ScopeStateResponse};
-use pesde_registry_core::{
-	db::ScopeWriteTransaction,
-	features::scope::{ScopeTreeWriteRepository, Scoped},
-};
+use merkle_bplustree::MerkleBPlusTree;
+use merkle_bplustree::hasher::Hasher;
+use pesde::source::pesde::registry::CurrentHash;
+use pesde::source::pesde::registry::ScopeId;
+use pesde::source::pesde::registry::ScopeStateResponse;
+use pesde_registry_core::db::ScopeWriteTransaction;
+use pesde_registry_core::features::scope::ScopeTreeWriteRepository;
+use pesde_registry_core::features::scope::Scoped;
 
 use crate::shared::tree::ScopeTree;
 

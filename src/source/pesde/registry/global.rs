@@ -1,6 +1,9 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{hash::Hash, signature::PublicKey, source::pesde::registry::*};
+use crate::hash::Hash;
+use crate::signature::PublicKey;
+use crate::source::pesde::registry::*;
 
 /// The payload anchoring a scope's creation
 #[derive(Debug, Clone, Serialize, Deserialize)]

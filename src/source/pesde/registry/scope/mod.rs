@@ -1,13 +1,14 @@
-use std::{borrow::Borrow, marker::PhantomData};
+use std::borrow::Borrow;
+use std::marker::PhantomData;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
-use crate::{
-	bounded::{BoundedBTreeSet, errors::ParseBoundedError},
-	hash::errors::HashDecodeError,
-	names::LocalName,
-	source::pesde::registry::*,
-};
+use crate::bounded::BoundedBTreeSet;
+use crate::bounded::errors::ParseBoundedError;
+use crate::hash::errors::HashDecodeError;
+use crate::names::LocalName;
+use crate::source::pesde::registry::*;
 
 mod op;
 pub use op::*;

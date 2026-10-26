@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use merkleberg::{MMRStoreReadOps, MMRStoreWriteOps};
+use merkleberg::MMRStoreReadOps;
+use merkleberg::MMRStoreWriteOps;
 use pesde::source::pesde::registry::*;
 
 use crate::db::StoreError;

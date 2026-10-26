@@ -3,7 +3,8 @@ use std::ops::Deref;
 
 use super::*;
 use paste::paste;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 macro_rules! ops {
 	(
