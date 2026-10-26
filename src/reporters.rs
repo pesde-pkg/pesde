@@ -7,7 +7,7 @@
 //! All reporter traits are implemented for `()`. These implementations do
 //! nothing, and can be used to ignore progress reporting.
 
-#![allow(unused_variables)]
+#![expect(unused_variables)]
 
 use async_stream::stream;
 use futures::StreamExt as _;

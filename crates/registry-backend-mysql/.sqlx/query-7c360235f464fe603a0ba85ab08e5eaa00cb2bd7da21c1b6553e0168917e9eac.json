@@ -1,0 +1,65 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT package.local_name_blake3, deprecation_reason.hash, deprecation_reason.plaintext\nFROM deprecations_leaf_node_entry\nINNER JOIN package ON package.scope=deprecations_leaf_node_entry.scope AND package.pos=deprecations_leaf_node_entry.package_pos\nINNER JOIN deprecation_reason ON deprecation_reason.id=deprecations_leaf_node_entry.reason_id\nWHERE deprecations_leaf_node_entry.node_blake3 = ?\nORDER BY deprecations_leaf_node_entry.idx",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_name_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "local_name_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "hash",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | UNIQUE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 512
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.deprecation_reason",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "plaintext",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.deprecation_reason",
+            "name": "plaintext"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7c360235f464fe603a0ba85ab08e5eaa00cb2bd7da21c1b6553e0168917e9eac"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\nINSERT INTO signed_set_yanked_scope_log_entry (scope, pos, version_pos, yanked)\nSELECT ?, ?, package_version.pos, ?\nFROM package_version\nINNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos\nWHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.version = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "88e3728aece3f7c5d5b27210efe484cd49b6ae72d349de84074daaf3fab4089e"
+}

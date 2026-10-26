@@ -82,7 +82,7 @@ pub struct CliReporter<W = Stdout> {
 }
 
 impl<W> CliReporter<W> {
-	#[allow(unknown_lints, clippy::literal_string_with_formatting_args)]
+	#[expect(clippy::literal_string_with_formatting_args)]
 	pub fn with_writer(
 		writer: W,
 		multi_progress: MultiProgress,

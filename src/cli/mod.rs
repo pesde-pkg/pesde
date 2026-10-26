@@ -1,14 +1,9 @@
-use crate::cli::config::read_config;
 use crate::cli::style::ERROR_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_STYLE;
 use anyhow::Context as _;
-use pesde::DEFAULT_INDEX_NAME;
-use pesde::GixUrl;
-use pesde::Subproject;
-use pesde::errors::ManifestReadErrorKind;
+use pesde::Url;
 use pesde::manifest::DependencyType;
-#[expect(deprecated)]
 use pesde::names::PackageName;
 use pesde::names::WallyPackageName;
 use pesde::source::DependencySpecifiers;
@@ -16,15 +11,15 @@ use pesde::source::PackageSources;
 use pesde::source::Realm;
 use pesde::source::git::GitPackageSource;
 use pesde::source::git::specifier::GitDependencySpecifier;
+#[expect(deprecated)]
+use pesde::source::legacy_pesde::LegacyPesdePackageSource;
+#[expect(deprecated)]
+use pesde::source::legacy_pesde::specifier::LegacyPesdeDependencySpecifier;
+#[expect(deprecated)]
+use pesde::source::legacy_pesde::target::TargetKind;
 use pesde::source::path::PathPackageSource;
 use pesde::source::path::RelativeOrAbsolutePath;
 use pesde::source::path::specifier::PathDependencySpecifier;
-#[expect(deprecated)]
-use pesde::source::pesde::PesdePackageSource;
-#[expect(deprecated)]
-use pesde::source::pesde::specifier::PesdeDependencySpecifier;
-#[expect(deprecated)]
-use pesde::source::pesde::target::TargetKind;
 use pesde::source::wally::WallyPackageSource;
 use pesde::source::wally::specifier::WallyDependencySpecifier;
 use semver::VersionReq;
@@ -79,10 +74,9 @@ where
 
 #[derive(Debug, Clone)]
 enum AnyPackageIdentifier {
-	#[expect(deprecated)]
 	PesdePackageName(VersionedPackageName<PackageName>),
 	WallyPackageName(VersionedPackageName<WallyPackageName>),
-	Git((GixUrl, String)),
+	Git((Url, String)),
 	Path(RelativeOrAbsolutePath),
 }
 
@@ -90,14 +84,15 @@ impl AnyPackageIdentifier {
 	async fn source_and_specifier(
 		&self,
 		realm: Option<Realm>,
-		get_index: impl AsyncFnOnce(bool) -> anyhow::Result<(String, GixUrl)>,
+		get_index: impl AsyncFnOnce(bool) -> anyhow::Result<(String, Url)>,
 	) -> anyhow::Result<(PackageSources, DependencySpecifiers)> {
 		Ok(match self {
 			#[expect(deprecated)]
 			AnyPackageIdentifier::PesdePackageName(VersionedPackageName(name, version)) => {
 				let (index_name, index_url) = get_index(true).await?;
-				let source = PackageSources::Pesde(PesdePackageSource::from_url(index_url));
-				let specifier = DependencySpecifiers::Pesde(PesdeDependencySpecifier {
+				let source =
+					PackageSources::LegacyPesde(LegacyPesdePackageSource::from_url(index_url));
+				let specifier = DependencySpecifiers::LegacyPesde(LegacyPesdeDependencySpecifier {
 					name: name.clone(),
 					version: version.clone().unwrap_or(VersionReq::STAR),
 					index: index_name,
@@ -200,38 +195,6 @@ pub fn display_err(result: anyhow::Result<()>, prefix: &str) {
 	}
 }
 
-pub async fn get_index(subproject: &Subproject, index: Option<&str>) -> anyhow::Result<GixUrl> {
-	let manifest = match subproject.deser_manifest().await {
-		Ok(manifest) => Some(manifest),
-		Err(e) => match e.into_inner() {
-			ManifestReadErrorKind::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-			e => return Err(e.into()),
-		},
-	};
-
-	let index_url = match index {
-		Some(index) => index.parse().ok(),
-		None => match manifest {
-			Some(_) => None,
-			None => Some(read_config().await?.default_index),
-		},
-	};
-
-	if let Some(url) = index_url {
-		return Ok(url);
-	}
-
-	let index_name = index.unwrap_or(DEFAULT_INDEX_NAME);
-
-	manifest
-		.unwrap()
-		.indices
-		.pesde
-		.get(index_name)
-		.with_context(|| format!("index {index_name} not found in manifest"))
-		.cloned()
-}
-
 pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
 	match dep_type {
 		DependencyType::Standard => "dependencies",
@@ -240,4 +203,4 @@ pub fn dep_type_to_key(dep_type: DependencyType) -> &'static str {
 	}
 }
 
-pub static GITHUB_URL: LazyLock<GixUrl> = LazyLock::new(|| "https://github.com".parse().unwrap());
+pub static GITHUB_URL: LazyLock<Url> = LazyLock::new(|| "https://github.com".parse().unwrap());

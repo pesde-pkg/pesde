@@ -10,7 +10,7 @@ use pesde::source::ids::PackageId;
 use std::path::PathBuf;
 use std::str::FromStr as _;
 
-use crate::cli::install::get_graph;
+use crate::cli::install::get_lockfile;
 
 #[derive(Debug, Args)]
 pub struct PatchCommitCommand {
@@ -22,7 +22,7 @@ pub struct PatchCommitCommand {
 impl PatchCommitCommand {
 	pub async fn run(self, project: Project) -> anyhow::Result<()> {
 		let refreshed_sources = RefreshedSources::new();
-		let graph = get_graph(&project, &refreshed_sources).await?;
+		let lockfile = get_lockfile(&project, &refreshed_sources).await?;
 
 		let id = self
 			.directory
@@ -38,7 +38,11 @@ impl PatchCommitCommand {
 		let id = std::str::from_utf8(&id).context("failed to parse package id as UTF-8")?;
 		let id = PackageId::from_str(id).context("failed to parse package id")?;
 
-		graph.nodes.get(&id).context("package not found in graph")?;
+		lockfile
+			.graph
+			.nodes
+			.get(&id)
+			.context("package not found in graph")?;
 
 		let mut manifest = toml_edit::DocumentMut::from_str(
 			&project

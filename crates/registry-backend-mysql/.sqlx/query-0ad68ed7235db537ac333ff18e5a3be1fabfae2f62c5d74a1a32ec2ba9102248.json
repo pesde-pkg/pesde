@@ -1,0 +1,99 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT\n\tsigned_rotate_key_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,\n\tsigned_rotate_key_scope_log_entry.consent,\n\tsigned_rotate_key_scope_log_entry.nonce AS `nonce: Uuid`,\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM signed_rotate_key_scope_log_entry\nINNER JOIN public_key ON public_key.id=signed_rotate_key_scope_log_entry.new_key\nWHERE signed_rotate_key_scope_log_entry.scope = ? AND signed_rotate_key_scope_log_entry.pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "consent_algorithm: Text<SignatureKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 72
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.signed_rotate_key_scope_log_entry",
+            "name": "consent_algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "consent",
+        "type_info": {
+          "type": "Blob",
+          "flags": "NOT_NULL | BLOB | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 65535
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.signed_rotate_key_scope_log_entry",
+            "name": "consent"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "nonce: Uuid",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | UNIQUE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 16
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.signed_rotate_key_scope_log_entry",
+            "name": "nonce"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "kind: Text<KeyKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "data",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 4096
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "data"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0ad68ed7235db537ac333ff18e5a3be1fabfae2f62c5d74a1a32ec2ba9102248"
+}

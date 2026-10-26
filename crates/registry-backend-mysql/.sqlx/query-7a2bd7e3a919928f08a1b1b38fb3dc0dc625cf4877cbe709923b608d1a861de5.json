@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT kind AS `kind: TreeKind` FROM scope_members_node WHERE blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind: TreeKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.scope_members_node",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7a2bd7e3a919928f08a1b1b38fb3dc0dc625cf4877cbe709923b608d1a861de5"
+}

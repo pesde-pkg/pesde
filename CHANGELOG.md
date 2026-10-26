@@ -7,20 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-- Add support for decentralised packages ([RFC](https://github.com/pesde-pkg/pesde/issues/59)) by @daimond113
-- Add toggle for generating global binary linkers by @daimond113
 - Add checksums to packages by @daimond113
+- Add new registry design with improved verifiability by @daimond113
 
 ### Changed
-- Switch to croshet by @daimond113
-- Workspaces are now integrated more deeply - they're no longer treated as a simple "run on" wrapper by @daimond113
+- Use croshet for running scripts by @daimond113
+- Integrate workspaces more deeply by @daimond113
+    - Now, they actively participate in things such as package resolution
+    instead of being a "run on" wrapper.
 - Patches now apply to an entire workspace and must be specified in the root by @daimond113
 - Always recheck peer dependencies, even if reusing lockfile by @daimond113
 - String requires are now always used, even for Wally packages by @daimond113
     - This is possible because luau-lsp started using the sourcemap for string
     requires
-- In line with string requires, the `place` key of the manifest has been renamed
-to `absolute_paths` and is now used for building string requires by @daimond113
+    - In line with string requires, the `place` key of the manifest has been renamed
+    to `absolute_paths` and is now used for building string requires
 - The CAS has been restructured and now has support for versioning by @daimond113
     - Users are advised to manually delete their CASes before updating
 - The `init` alias has been reserved to avoid confusions with Luau's require

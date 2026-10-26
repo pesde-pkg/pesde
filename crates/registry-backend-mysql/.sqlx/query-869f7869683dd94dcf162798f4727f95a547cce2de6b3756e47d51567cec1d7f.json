@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE global_log SET size = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "869f7869683dd94dcf162798f4727f95a547cce2de6b3756e47d51567cec1d7f"
+}

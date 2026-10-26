@@ -1,0 +1,48 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data AS `data`\nFROM signed_remove_member_scope_log_entry\nLEFT JOIN public_key ON public_key.id=signed_remove_member_scope_log_entry.member\nWHERE signed_remove_member_scope_log_entry.scope = ? AND signed_remove_member_scope_log_entry.pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind: Text<KeyKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "data",
+        "type_info": {
+          "type": "VarString",
+          "flags": "BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 4096
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "data"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "1e634c850ce0fca850e9a443e52f9e5bf5901e7f92809886299d1922115ce93d"
+}

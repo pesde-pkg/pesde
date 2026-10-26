@@ -2,20 +2,22 @@
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fmt::Display;
 
-use crate::GixUrl;
+use crate::Url;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
 
-/// The field that discriminates Git dependencies from other dependencies
-pub const DISCRIMINATOR_FIELD: &str = "repo";
+pub(crate) fn matches(keys: &HashSet<&str>) -> bool {
+	keys.contains(&"repo")
+}
 
 /// The specifier for a Git dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct GitDependencySpecifier {
 	/// The repository of the package
-	pub repo: GixUrl,
+	pub repo: Url,
 	/// The revision of the package, can be a branch, tag or commit hash
 	pub rev: String,
 	/// The path of the package in the repository
@@ -41,7 +43,7 @@ impl Display for GitDependencySpecifier {
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct IndexGitDependencySpecifier {
 	/// The repository of the package
-	pub repo: GixUrl,
+	pub repo: Url,
 	/// The version specifier of the package
 	pub rev: String,
 	/// The path of the package in the repository

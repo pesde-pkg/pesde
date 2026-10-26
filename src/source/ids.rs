@@ -52,7 +52,8 @@ impl PackageId {
 impl Display for PackageId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let pkg_ref: &dyn Display = match self.pkg_ref() {
-			PackageRefs::Pesde(pkg_ref) => pkg_ref,
+			// PackageRefs::Pesde(pkg_ref) => pkg_ref,
+			PackageRefs::LegacyPesde(pkg_ref) => pkg_ref,
 			PackageRefs::Wally(pkg_ref) => pkg_ref,
 			PackageRefs::Git(pkg_ref) => pkg_ref,
 			PackageRefs::Path(pkg_ref) => pkg_ref,
@@ -109,17 +110,32 @@ impl FromStr for PackageId {
 		let version = version.parse()?;
 
 		let source = match tag {
-			"pesde" => PackageSources::Pesde(source.parse().map_err(PackageSourcesFromStr::from)?),
+			// "pesde" => PackageSources::Pesde(source.parse().map_err(PackageSourcesFromStr::from)?),
+			"legacy_pesde" => {
+				PackageSources::LegacyPesde(source.parse().map_err(PackageSourcesFromStr::from)?)
+			}
 			"wally" => PackageSources::Wally(source.parse().map_err(PackageSourcesFromStr::from)?),
 			"git" => PackageSources::Git(source.parse().map_err(PackageSourcesFromStr::from)?),
 			_ => return Err(errors::PackageIdParseErrorKind::InvalidFormat.into()),
 		};
 
-		let pkg_ref = match tag {
-			"pesde" => PackageRefs::Pesde(pkg_ref.parse().map_err(PackageRefParseError::from)?),
-			"wally" => PackageRefs::Wally(pkg_ref.parse().map_err(PackageRefParseError::from)?),
-			"git" => PackageRefs::Git(pkg_ref.parse().map_err(PackageRefParseError::from)?),
-			_ => return Err(errors::PackageIdParseErrorKind::InvalidFormat.into()),
+		// match on source instead of tag for exhaustiveness
+		let pkg_ref = match &source {
+			// PackageSources::Pesde(_) => {
+			// 	PackageRefs::Pesde(pkg_ref.parse().map_err(PackageRefParseError::from)?)
+			// }
+			PackageSources::LegacyPesde(_) => {
+				PackageRefs::LegacyPesde(pkg_ref.parse().map_err(PackageRefParseError::from)?)
+			}
+			PackageSources::Wally(_) => {
+				PackageRefs::Wally(pkg_ref.parse().map_err(PackageRefParseError::from)?)
+			}
+			PackageSources::Git(_) => {
+				PackageRefs::Git(pkg_ref.parse().map_err(PackageRefParseError::from)?)
+			}
+			PackageSources::Path(_) => {
+				return Err(errors::PackageIdParseErrorKind::InvalidFormat.into());
+			}
 		};
 
 		Ok(PackageId::new(source, pkg_ref, version))
@@ -160,7 +176,8 @@ mod tests {
 	#[test]
 	fn serde_package_ids() {
 		let ids = [
-			"pesde:https://github.com/pesde-pkg/index:foo/bar+lune@1.2.3",
+			//"pesde:https://github.com/pesde-pkg/index:foo/bar@1.2.3",
+			"legacy_pesde:https://github.com/pesde-pkg/index:foo/bar+lune@1.2.3",
 			"wally:https://github.com/pesde-pkg/index:foo/bar@1.2.3",
 			"git:https://github.com/pesde-pkg/index:abcdef#1.2.3",
 			"path:/dev/null",

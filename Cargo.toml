@@ -31,14 +31,13 @@ bin = [
     "dep:open",
     "dep:windows-registry",
     "dep:windows",
-    "dep:base64",
     "gix/worktree-mutation",
     "fs-err/expose_original_error",
     "tokio/rt",
     "tokio/rt-multi-thread",
-    "tokio/macros",
 ]
 patches = ["dep:git2"]
+sqlx = ["dep:sqlx"]
 
 [[bin]]
 name = "pesde"
@@ -49,40 +48,42 @@ required-features = ["bin"]
 workspace = true
 
 [dependencies]
-serde = { version = "1.0.228", features = ["derive", "rc"] }
-serde_json = "1.0.149"
-toml = "1.0.7"
+serde = { workspace = true }
+serde_json = { workspace = true }
+semver = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+url = { workspace = true }
+fs-err = { workspace = true }
+merkleberg = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+toml = { workspace = true }
+astral-tokio-tar = { workspace = true }
+async-compression = { workspace = true, features = ["gzip"] }
+async-stream = { workspace = true }
+tempfile = { workspace = true }
+async-trait = { workspace = true }
+blake3 = { workspace = true }
+sqlx = { workspace = true, optional = true }
+itertools = { workspace = true }
+jiff = { workspace = true }
+merkle-bplustree = { workspace = true }
+uuid = { workspace = true }
+
 gix = { version = "0.80.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
     "revparse-regex",
     "credentials",
     "parallel",
 ] }
-semver = { version = "1.0.27", features = ["serde"] }
-reqwest = { version = "0.13.2", features = ["stream", "json"] }
-async-tar = { version = "0.6.0", default-features = false, features = [
-    "runtime-tokio",
-    "xattr",
-] }
-async-compression = { version = "0.4.41", features = ["tokio", "gzip"] }
 pathdiff = "0.2.3"
 relative-path = { version = "2.0.1", features = ["serde"] }
-tracing = { version = "0.1.44", features = ["attributes"] }
-thiserror = "2.0.18"
 thiserror-ext = "0.3.0"
-tokio = { version = "1.50.0", features = ["process", "macros"] }
-tokio-util = "0.7.18"
-async-stream = "0.3.6"
-futures = "0.3.32"
 full_moon = { version = "2.1.1", features = ["luau"] }
-url = { version = "2.5.8", features = ["serde"] }
-jiff = { version = "0.2.23", default-features = false, features = [
-    "serde",
-    "std",
-] }
-tempfile = "3.27.0"
 wax = { version = "0.7.0", default-features = false }
-fs-err = { version = "3.3.0", features = ["tokio"] }
 urlencoding = "2.1.3"
 async_zip = { version = "0.0.18", features = [
     "tokio",
@@ -91,18 +92,23 @@ async_zip = { version = "0.0.18", features = [
     "tokio-fs",
 ] }
 croshet = "0.1.0"
-itertools = "0.14.0"
 paste = "1.0.15"
-async-trait = "0.1.89"
 
-digest = "0.10.7"
-sha2 = "0.10.9"
-hex = "0.4.3"
+fast32 = "1.0.3"
+base64 = "0.22.1"
+signature = "2.2.0"
+ssh-key = { version = "0.6.7", default-features = false, features = [
+    "std",
+    "ed25519",
+] }
+
+cbor-core = { version = "0.10.1" }
 
 # TODO: remove this when gitoxide adds support for creating & applying diffs
 git2 = { version = "0.20.4", optional = true }
 
-anyhow = { version = "1.0.102", optional = true }
+anyhow = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 open = { version = "5.3.3", optional = true }
 keyring = { version = "3.6.3", features = [
     "crypto-rust",
@@ -114,15 +120,11 @@ console = { version = "0.16.3", optional = true }
 toml_edit = { version = "0.25.5", optional = true }
 clap = { version = "4.6.0", features = ["derive"], optional = true }
 dirs = { version = "6.0.0", optional = true }
-tracing-subscriber = { version = "0.3.23", features = [
-    "env-filter",
-], optional = true }
 indicatif = { version = "0.18.4", optional = true }
 inquire = { version = "0.9.4", default-features = false, features = [
     "console",
     "one-liners",
 ], optional = true }
-base64 = { version = "0.22.1", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-registry = { version = "0.6.1", optional = true }
@@ -135,7 +137,45 @@ windows = { version = "0.62.2", features = [
 junction = { version = "1.4.2" }
 
 [workspace]
-resolver = "2"
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.dependencies]
+serde = { version = "1.0.229", features = ["derive", "rc"] }
+serde_json = "1.0.149"
+semver = { version = "1.0.28", features = ["serde"] }
+thiserror = "2.0.18"
+anyhow = "1.0.102"
+futures = { version = "0.3.32", features = ["alloc"] }
+tokio = { version = "1.50.0", features = ["macros"] }
+tokio-util = { version = "0.7.18", features = ["io"] }
+fs-err = { version = "3.3.0", features = ["tokio"] }
+url = { version = "2.5.8", features = ["serde"] }
+tracing = { version = "0.1.44", features = ["attributes"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+merkleberg = { version = "0.2.1", default-features = false, features = ["std"] }
+reqwest = { version = "0.13.2", features = ["stream"] }
+toml = "1.0.7"
+astral-tokio-tar = { version = "0.6.2", default-features = false }
+async-compression = { version = "0.4.41", features = ["tokio", "zstd"] }
+async-stream = "0.3.6"
+async-trait = "0.1.92"
+tempfile = "3.27.0"
+blake3 = "1.8.5"
+sqlx = { version = "0.9.0", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "macros",
+    "migrate",
+    "uuid",
+] }
+itertools = "0.14.0"
+jiff = { version = "0.2.23", default-features = false, features = [
+    "serde",
+    "std",
+] }
+merkle-bplustree = { version = "0.1.0" }
+uuid = { version = "1.23.1", features = ["serde"] }
 
 [profile.dev.package.full_moon]
 opt-level = 3
@@ -160,7 +200,7 @@ unused_peekable = "warn"
 unused_async = "warn"
 unreadable_literal = "warn"
 unnested_or_patterns = "warn"
-unneeded_field_pattern = "warn"
+# unneeded_field_pattern = "warn"
 unnecessary_wraps = "warn"
 unnecessary_semicolon = "warn"
 unnecessary_self_imports = "warn"
@@ -254,7 +294,6 @@ implicit_clone = "warn"
 if_then_some_else_none = "warn"
 if_not_else = "warn"
 get_unwrap = "warn"
-from_iter_instead_of_collect = "warn"
 format_push_string = "warn"
 format_collect = "warn"
 fn_to_numeric_cast_any = "deny"

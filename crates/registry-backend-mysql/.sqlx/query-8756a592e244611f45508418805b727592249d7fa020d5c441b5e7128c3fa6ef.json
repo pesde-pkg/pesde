@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\nINSERT INTO versions_leaf_node_entry (node_blake3, idx, scope, version_pos, yank_state)\nSELECT ?, ?, package_version.scope, package_version.pos, ?\nFROM package_version\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=package_version.scope\nINNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos\nWHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ? AND package_version.version = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "8756a592e244611f45508418805b727592249d7fa020d5c441b5e7128c3fa6ef"
+}

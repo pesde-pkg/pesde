@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO deprecations_internal_node_child (node_blake3, idx, child_blake3) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "65134181543be3ffaf076f12f66a27dfe27b76618f42cc5340f27690c3a69fe7"
+}

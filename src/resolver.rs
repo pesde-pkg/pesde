@@ -3,13 +3,13 @@ use crate::Importer;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
-use crate::graph::DependencyGraph;
 use crate::graph::DependencyGraphImporter;
 use crate::graph::DependencyGraphNode;
 use crate::graph::DependencyGraphNodeDependency;
+use crate::lockfile::Lockfile;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
-use crate::manifest::ManifestIndices;
+use crate::manifest::Manifest;
 use crate::manifest::OverrideSpecifier;
 use crate::matching_globs;
 use crate::source::DependencySpecifier as _;
@@ -20,7 +20,7 @@ use crate::source::ResolveResult;
 use crate::source::StructureKind;
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
-use crate::source::pesde::PesdePackageSource;
+use crate::source::legacy_pesde::LegacyPesdePackageSource;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
@@ -31,20 +31,44 @@ use tracing::Instrument as _;
 use tracing::instrument;
 
 fn specifier_to_source(
-	indices: Option<&ManifestIndices>,
+	manifest: Option<&Manifest>,
 	specifier: &DependencySpecifiers,
 ) -> Result<PackageSources, errors::DependencyGraphError> {
 	let source = match &specifier {
+		// DependencySpecifiers::Pesde(specifier) => {
+		// 	let url = if let Some(manifest) = manifest {
+		// 		manifest
+		// 			.pesde_registries
+		// 			.get(&specifier.registry)
+		// 			.ok_or_else(|| {
+		// 				errors::DependencyGraphErrorKind::RegistryNotFound(
+		// 					specifier.registry.clone(),
+		// 				)
+		// 			})?
+		// 			.clone()
+		// 			.into_inner()
+		// 	} else {
+		// 		specifier
+		// 			.registry
+		// 			.as_str()
+		// 			.parse()
+		// 			// specifiers in indices store the index url in this field
+		// 			.unwrap()
+		// 	};
+
+		// 	PackageSources::Pesde(PesdePackageSource::from_url(url))
+		// }
 		#[expect(deprecated)]
-		DependencySpecifiers::Pesde(specifier) => {
-			let index_url = if let Some(indices) = indices {
-				indices
-					.pesde
+		DependencySpecifiers::LegacyPesde(specifier) => {
+			let index_url = if let Some(manifest) = manifest {
+				manifest
+					.pesde_indices
 					.get(&specifier.index)
 					.ok_or_else(|| {
 						errors::DependencyGraphErrorKind::IndexNotFound(specifier.index.clone())
 					})?
 					.clone()
+					.into_inner()
 			} else {
 				specifier
 					.index
@@ -54,12 +78,12 @@ fn specifier_to_source(
 					.unwrap()
 			};
 
-			PackageSources::Pesde(PesdePackageSource::from_url(index_url))
+			PackageSources::LegacyPesde(LegacyPesdePackageSource::from_url(index_url))
 		}
 		DependencySpecifiers::Wally(specifier) => {
-			let index_url = if let Some(indices) = indices {
-				indices
-					.wally
+			let index_url = if let Some(manifest) = manifest {
+				manifest
+					.wally_indices
 					.get(&specifier.index)
 					.ok_or_else(|| {
 						errors::DependencyGraphErrorKind::WallyIndexNotFound(
@@ -67,6 +91,7 @@ fn specifier_to_source(
 						)
 					})?
 					.clone()
+					.into_inner()
 			} else {
 				specifier
 					.index
@@ -102,14 +127,14 @@ struct ResolveEntry {
 #[instrument(skip_all, level = "debug")]
 async fn prepare_queue(
 	project: &Project,
-	graph: &mut DependencyGraph,
-	previous_graph: Option<&DependencyGraph>,
+	lockfile: &mut Lockfile,
+	previous_lockfile: Option<&Lockfile>,
 ) -> Result<VecDeque<ResolveEntry>, errors::DependencyGraphError> {
 	let root_subproject = project.clone().subproject(Importer::root());
 	let root_manifest = root_subproject.deser_manifest().await?;
 	let root_dependencies = root_manifest.all_dependencies()?;
 
-	graph.overrides = root_manifest
+	lockfile.graph.overrides = root_manifest
 		.workspace
 		.overrides
 		.iter()
@@ -151,7 +176,9 @@ async fn prepare_queue(
 		.collect::<JoinSet<Result<_, errors::DependencyGraphError>>>();
 
 	// overrides can affect the graph at any level, so it's much easier and safer to ignore the previous graph if there are differences in overrides
-	let previous_graph = previous_graph.filter(|previous| previous.overrides == graph.overrides);
+	let previous_graph = previous_lockfile
+		.filter(|previous| previous.graph.overrides == lockfile.graph.overrides)
+		.map(|lockfile| &lockfile.graph);
 
 	let mut queue = VecDeque::<ResolveEntry>::new();
 
@@ -159,7 +186,8 @@ async fn prepare_queue(
 		let (subproject, manifest) = res.unwrap()?;
 		let all_current_dependencies = manifest.all_dependencies()?;
 
-		let importer_entry = graph
+		let importer_entry = lockfile
+			.graph
 			.importers
 			.entry(subproject.importer().clone())
 			.or_insert_with(|| DependencyGraphImporter {
@@ -203,7 +231,8 @@ async fn prepare_queue(
 					.dependencies
 					.insert(alias, (package_id.clone(), specifier.clone(), *source_ty));
 
-				graph
+				lockfile
+					.graph
 					.nodes
 					.insert(package_id.clone(), previous_graph.nodes[package_id].clone());
 
@@ -213,11 +242,12 @@ async fn prepare_queue(
 					let _inner_guard = inner_span.enter();
 
 					tracing::debug!("resolved sub-dependency {dep_id}");
-					if graph.nodes.contains_key(dep_id) {
-						tracing::debug!("sub-dependency {dep_id} already resolved in new graph",);
+					if lockfile.graph.nodes.contains_key(dep_id) {
+						tracing::debug!("sub-dependency {dep_id} already resolved in new graph");
 						continue;
 					}
-					graph
+					lockfile
+						.graph
 						.nodes
 						.insert(dep_id.clone(), previous_graph.nodes[dep_id].clone());
 
@@ -254,31 +284,28 @@ async fn prepare_queue(
 	Ok(queue)
 }
 
-type ResolveVersionData = (
-	PackageId,
-	StructureKind,
-	BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
-);
-
 #[instrument(skip_all, level = "debug")]
 async fn resolve_version(
 	subproject: Subproject,
-	graph: &DependencyGraph,
+	lockfile: &Lockfile,
 	refreshed_sources: &RefreshedSources,
 	pass_indices: bool,
 	specifier: &DependencySpecifiers,
-) -> Result<ResolveVersionData, errors::DependencyGraphError> {
+) -> Result<
+	(
+		PackageId,
+		StructureKind,
+		BTreeMap<Alias, (DependencySpecifiers, DependencyType)>,
+	),
+	errors::DependencyGraphError,
+> {
 	let mut manifest = None;
 
 	let mut inner = async |specifier: &DependencySpecifiers, pass_indices: bool| {
 		if pass_indices && manifest.is_none() {
 			manifest = Some(subproject.deser_manifest().await?);
 		}
-		let source = specifier_to_source(manifest.as_ref().map(|m| &m.indices), specifier)?;
-
-		refreshed_sources
-			.refresh(&source, subproject.project())
-			.await?;
+		let source = specifier_to_source(manifest.as_deref(), specifier)?;
 
 		let ResolveResult {
 			source,
@@ -289,7 +316,8 @@ async fn resolve_version(
 			.resolve(&subproject, specifier, refreshed_sources)
 			.await?;
 
-		let Some((package_id, dependencies)) = graph
+		let Some((package_id, dependencies)) = lockfile
+			.graph
 			.nodes
 			.keys()
 			.rfind(|package_id| {
@@ -318,36 +346,34 @@ async fn resolve_version(
 	};
 
 	let (id, structure_kind, deps) = inner(specifier, pass_indices).await?;
-	if let Some(specifier) = graph.overrides.get(&id) {
+	if let Some(specifier) = lockfile.graph.overrides.get(&id) {
 		return inner(specifier, true).await;
 	}
 	Ok((id, structure_kind, deps))
 }
 
 impl Project {
-	/// Create a dependency graph from the project's manifest
+	/// Solves the project's dependency requirements and creates a new [Lockfile]
 	#[instrument(
-		skip(self, previous_graph, refreshed_sources),
+		skip(self, previous_lockfile, refreshed_sources),
 		ret(level = "trace"),
 		level = "debug"
 	)]
-	pub async fn dependency_graph(
+	pub async fn solve(
 		&self,
-		previous_graph: Option<&DependencyGraph>,
+		previous_lockfile: Option<&Lockfile>,
 		refreshed_sources: &RefreshedSources,
 		// used by `x` command - if true, specifier indices are expected to be URLs
 		is_published_package: bool,
-	) -> Result<(DependencyGraph, bool), errors::DependencyGraphError> {
-		let mut graph = DependencyGraph {
-			importers: Default::default(),
-			overrides: Default::default(),
-			nodes: Default::default(),
+	) -> Result<(Lockfile, bool), errors::DependencyGraphError> {
+		let mut lockfile = Lockfile {
+			graph: Default::default(),
 		};
 
-		let mut queue = prepare_queue(self, &mut graph, previous_graph).await?;
+		let mut queue = prepare_queue(self, &mut lockfile, previous_lockfile).await?;
 		if queue.is_empty() {
 			tracing::debug!("dependency graph is up to date");
-			return Ok((graph, false));
+			return Ok((lockfile, false));
 		}
 
 		while let Some(entry) = queue.pop_front() {
@@ -359,7 +385,7 @@ impl Project {
 
 				let (package_id, structure_kind, dependencies) = resolve_version(
 					entry.subproject.clone(),
-					&graph,
+					&lockfile,
 					refreshed_sources,
 					!is_published_package && depth == 0,
 					&entry.specifier,
@@ -367,7 +393,8 @@ impl Project {
 				.await?;
 
 				if depth == 0 {
-					graph
+					lockfile
+						.graph
 						.importers
 						.get_mut(entry.subproject.importer())
 						.unwrap()
@@ -379,7 +406,8 @@ impl Project {
 				}
 
 				if let Some(dependant_id) = entry.dependant {
-					graph
+					lockfile
+						.graph
 						.nodes
 						.get_mut(&dependant_id)
 						.expect("dependant package not found in graph")
@@ -394,13 +422,13 @@ impl Project {
 						);
 				}
 
-				if graph.nodes.contains_key(&package_id) {
+				if lockfile.graph.nodes.contains_key(&package_id) {
 					tracing::debug!("{package_id} already resolved");
 
 					return Ok(());
 				}
 
-				graph.nodes.insert(
+				lockfile.graph.nodes.insert(
 					package_id.clone(),
 					DependencyGraphNode {
 						dependencies: Default::default(),
@@ -441,7 +469,7 @@ impl Project {
 			.await?;
 		}
 
-		Ok((graph, true))
+		Ok((lockfile, true))
 	}
 }
 
@@ -452,7 +480,7 @@ pub mod errors {
 	use crate::source::DependencySpecifiers;
 	use thiserror::Error;
 
-	/// Errors that can occur when creating a dependency graph
+	/// Errors that can occur when solving dependencies
 	#[derive(Debug, Error, thiserror_ext::Box)]
 	#[thiserror_ext(newtype(name = DependencyGraphError))]
 	#[non_exhaustive]
@@ -468,6 +496,10 @@ pub mod errors {
 		/// An error occurred while reading all dependencies from the manifest
 		#[error("error getting all project dependencies")]
 		AllDependencies(#[from] crate::manifest::errors::AllDependenciesError),
+
+		/// A registry was not found in the manifest
+		#[error("registry `{0}` not found in manifest")]
+		RegistryNotFound(String),
 
 		/// An index was not found in the manifest
 		#[error("index named `{0}` not found in manifest")]

@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT size FROM global_log",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "size",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log",
+            "name": "size"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "39327a4d5facb6f79a1c8e4aaabe7eb77962feba2e20a336c057b012376f309e"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO scope_members_node (blake3, kind) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "2f00c53c1b9e98187d972264b709124ec294f878f3c52d413147d2ad035d3b19"
+}

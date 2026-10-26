@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO admin_transfer_ownership_scope_log_entry (scope, pos, new_owner) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "9fd78d8f442f6c2850bbca048baaa92300d4ac17843dab1d1a61cc6bd1fcb18b"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO signed_add_member_scope_log_entry (scope, pos, member, grant_blake3, consent_algorithm, consent, nonce) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "1b2b61d00848c7f73dfdbe3aa95321a03b7c7ea3bf1e1742bf8c09bf9b7de3bd"
+}

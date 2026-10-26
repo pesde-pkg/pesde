@@ -1,0 +1,94 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT\n\tglobal_log_scope_genesis_entry.pos AS `scope_pos`,\n\tCOALESCE(scope_log_entry.owner, global_log_scope_genesis_entry.owner_id) AS `owner`,\n\tscope_log_entry.scope_members_root_blake3 AS `scope_members_root_blake3?`,\n\tscope_log_entry.versions_root_blake3 AS `versions_root_blake3?`,\n\tscope_log_entry.deprecations_root_blake3 AS `deprecations_root_blake3?`\nFROM global_log_scope_genesis_entry\nLEFT JOIN scope_log_entry ON scope_log_entry.scope=global_log_scope_genesis_entry.pos\nWHERE global_log_scope_genesis_entry.name_blake3 = ?\nORDER BY scope_log_entry.pos DESC\nLIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "scope_pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | MULTIPLE_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_scope_genesis_entry",
+            "name": "pos"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "owner",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | UNSIGNED | BINARY",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "scope_members_root_blake3?",
+        "type_info": {
+          "type": "String",
+          "flags": "MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.scope_log_entry",
+            "name": "scope_members_root_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "versions_root_blake3?",
+        "type_info": {
+          "type": "String",
+          "flags": "MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.scope_log_entry",
+            "name": "versions_root_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "deprecations_root_blake3?",
+        "type_info": {
+          "type": "String",
+          "flags": "MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.scope_log_entry",
+            "name": "deprecations_root_blake3"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "25fe4adf6e0c59ab0dcc617ce184c9421aefd5ccbec0b208f0efe70123c534ec"
+}

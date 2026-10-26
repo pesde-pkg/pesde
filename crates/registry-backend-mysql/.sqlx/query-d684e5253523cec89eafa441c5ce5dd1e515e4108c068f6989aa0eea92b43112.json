@@ -1,0 +1,48 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT op_kind AS `op_kind: OpKind`, published_at FROM global_log_entry WHERE pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "op_kind: OpKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 52
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_entry",
+            "name": "op_kind"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "published_at",
+        "type_info": {
+          "type": "Datetime",
+          "flags": "NOT_NULL | BINARY",
+          "collation": 63,
+          "max_size": 26
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_entry",
+            "name": "published_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "d684e5253523cec89eafa441c5ce5dd1e515e4108c068f6989aa0eea92b43112"
+}

@@ -1,28 +1,45 @@
-use crate::cli::style::INFO_STYLE;
-use crate::cli::style::SUCCESS_STYLE;
 use clap::Args;
 use inquire::validator::Validation;
+use pesde::DEFAULT_URL_KEY;
 use pesde::Subproject;
+use pesde::Url;
 use pesde::errors::ManifestReadErrorKind;
+use pesde::names::PackageName;
+use std::str::FromStr as _;
+
+use crate::cli::config::read_config;
+use crate::cli::style::INFO_STYLE;
+use crate::cli::style::SUCCESS_STYLE;
 
 #[derive(Debug, Args)]
 pub struct InitCommand;
 
 impl InitCommand {
 	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
-		match subproject
-			.read_manifest()
-			.await
-			.map_err(pesde::errors::ManifestReadError::into_inner)
-		{
+		match subproject.read_manifest().await {
 			Ok(_) => {
 				anyhow::bail!("project already initialized");
 			}
-			Err(ManifestReadErrorKind::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {}
+			Err(e)
+				if let ManifestReadErrorKind::Io(e) = e.inner()
+					&& e.kind() == std::io::ErrorKind::NotFound => {}
 			Err(e) => return Err(e.into()),
 		}
 
 		let mut manifest = toml_edit::DocumentMut::new();
+
+		manifest["name"] = toml_edit::value(
+			inquire::Text::new("what is the name of the project?")
+				.with_validator(|name: &str| {
+					Ok(match PackageName::from_str(name) {
+						Ok(_) => Validation::Valid,
+						Err(e) => Validation::Invalid(e.to_string().into()),
+					})
+				})
+				.prompt()
+				.unwrap(),
+		);
+		manifest["version"] = toml_edit::value("0.1.0");
 
 		let description = inquire::Text::new("what is the description of the project?")
 			.with_help_message("a short description of the project. leave empty for none")
@@ -54,7 +71,7 @@ impl InitCommand {
 					return Ok(Validation::Valid);
 				}
 
-				Ok(match url::Url::parse(repo) {
+				Ok(match Url::from_str(repo) {
 					Ok(_) => Validation::Valid,
 					Err(e) => Validation::Invalid(e.to_string().into()),
 				})
@@ -74,6 +91,9 @@ impl InitCommand {
 		if !license.is_empty() {
 			manifest["license"] = toml_edit::value(license);
 		}
+
+		manifest["registries"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+			[DEFAULT_URL_KEY] = toml_edit::value(read_config().await?.default_registry.to_string());
 
 		subproject.write_manifest(manifest.to_string()).await?;
 

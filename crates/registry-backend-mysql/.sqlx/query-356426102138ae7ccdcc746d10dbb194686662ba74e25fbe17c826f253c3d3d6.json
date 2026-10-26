@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO signed_scope_log_entry (scope, pos, op_kind, signer, sig_algorithm, sig) VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "356426102138ae7ccdcc746d10dbb194686662ba74e25fbe17c826f253c3d3d6"
+}

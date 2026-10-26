@@ -1,15 +1,20 @@
 //! pesde dependency specifier
-use super::target::TargetKind;
+use crate::Url;
+use crate::bounded::Bounded;
+use crate::manifest::MAX_URL_LEN;
+use crate::manifest::MAX_VERSION_REQ_LEN;
 use crate::names::PackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
 use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fmt::Display;
 
-/// The field that discriminates pesde dependencies from other dependencies
-pub const DISCRIMINATOR_FIELD: &str = "name";
+pub(crate) fn matches(keys: &HashSet<&str>) -> bool {
+	keys.contains(&"name") && !keys.contains(&"target")
+}
 
 /// The specifier for a pesde dependency
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
@@ -18,37 +23,33 @@ pub struct PesdeDependencySpecifier {
 	pub name: PackageName,
 	/// The version requirement for the package
 	pub version: VersionReq,
-	/// The index to use for the package
-	#[serde(default = "crate::default_index_name")]
-	pub index: String,
-	/// The target to use for the package
-	pub target: TargetKind,
+	/// The registry to use for the package
+	#[serde(default = "crate::default_url_key")]
+	pub registry: String,
+	/// The realm to use for the package
+	pub realm: Option<Realm>,
 }
 impl DependencySpecifier for PesdeDependencySpecifier {
 	fn realm(&self) -> Option<Realm> {
-		match self.target {
-			TargetKind::Roblox => Some(Realm::Shared),
-			TargetKind::RobloxServer => Some(Realm::Server),
-			TargetKind::Lune | TargetKind::Luau => None,
-		}
+		self.realm
 	}
 }
 
 impl Display for PesdeDependencySpecifier {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}@{} {}", self.name, self.version, self.target)
+		write!(f, "{}@{}", self.name, self.version)
 	}
 }
 
-/// The specifier for a pesde dependency in the index
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct IndexPesdeDependencySpecifier {
+/// The specifier of a pesde dependency from a pesde registry
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct RegistryPesdeDependencySpecifier {
 	/// The name of the package
 	pub name: PackageName,
 	/// The version requirement for the package
-	pub version: VersionReq,
-	/// The index to use for the package
-	pub index: String,
-	/// The target to use for the package
-	pub target: Option<TargetKind>,
+	pub version: Bounded<VersionReq, MAX_VERSION_REQ_LEN>,
+	/// The registry to use for the package. None if this package comes from the same registry
+	pub registry: Option<Bounded<Url, MAX_URL_LEN>>,
+	/// The realm to use for the package
+	pub realm: Option<Realm>,
 }

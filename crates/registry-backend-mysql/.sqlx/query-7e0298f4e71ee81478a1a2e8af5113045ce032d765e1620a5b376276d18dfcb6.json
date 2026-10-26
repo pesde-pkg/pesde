@@ -1,0 +1,48 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT public_key.algorithm AS `kind: Text<KeyKind>`, public_key.data\nFROM admin_transfer_ownership_scope_log_entry\nINNER JOIN public_key ON public_key.id=admin_transfer_ownership_scope_log_entry.new_owner\nWHERE admin_transfer_ownership_scope_log_entry.scope = ? AND admin_transfer_ownership_scope_log_entry.pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind: Text<KeyKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "data",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 4096
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "data"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "7e0298f4e71ee81478a1a2e8af5113045ce032d765e1620a5b376276d18dfcb6"
+}

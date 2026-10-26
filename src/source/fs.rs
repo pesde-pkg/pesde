@@ -1,6 +1,7 @@
 //! Packages' filesystems
 use crate::hash::Hash;
 use crate::hash::HashAlgorithm;
+use crate::hash::Hasher as _;
 use crate::source::ADDITIONAL_FORBIDDEN_FILES;
 use crate::source::IGNORED_DIRS;
 use crate::source::IGNORED_FILES;
@@ -48,7 +49,7 @@ async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
 		permissions.set_readonly(true);
 	} else {
 		#[cfg(windows)]
-		#[allow(clippy::permissions_set_readonly_false)]
+		#[expect(clippy::permissions_set_readonly_false)]
 		{
 			permissions.set_readonly(false);
 		}
@@ -64,12 +65,23 @@ async fn set_readonly(path: &Path, readonly: bool) -> std::io::Result<()> {
 }
 
 fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
-	let hex = hex::encode(hash.hash());
-	let (prefix, rest) = hex.split_at(hash.algorithm().optimal_prefix_length());
-	cas_dir
-		.join(hash.algorithm().to_string())
-		.join(prefix)
-		.join(rest)
+	let encoded = hash.encoded();
+
+	let mut path = cas_dir.join(hash.algorithm().to_string());
+	let mut hash_str = encoded.as_str();
+
+	let parts: &'static [usize] = match hash {
+		Hash::Blake3(_) => &[2],
+	};
+
+	for length in parts {
+		let (prefix, rest) = hash_str.split_at(*length);
+		path.push(prefix);
+		hash_str = rest;
+	}
+	path.push(hash_str);
+
+	path
 }
 
 pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
@@ -81,8 +93,7 @@ pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
 	let tmp_dir = cas_dir.join(".tmp");
 	fs::create_dir_all(&tmp_dir).await?;
 
-	let hash_algorithm = HashAlgorithm::default();
-	let mut hasher = hash_algorithm.hasher();
+	let mut hasher = HashAlgorithm::default().hasher();
 
 	let temp_path = spawn_blocking(move || Builder::new().make_in(&tmp_dir, |_| Ok(())))
 		.await
@@ -92,10 +103,10 @@ pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
 
 	loop {
 		let bytes = contents.fill_buf().await?;
-		if bytes.is_empty() {
+		let bytes_amt = bytes.len();
+		if bytes_amt == 0 {
 			break;
 		}
-		let bytes_amt = bytes.len();
 
 		hasher.update(bytes);
 		file_writer.write_all(bytes).await?;
@@ -103,7 +114,7 @@ pub(crate) async fn store_in_cas<R: AsyncBufRead + Unpin>(
 		contents.consume(bytes_amt);
 	}
 
-	let hash = Hash::new(hash_algorithm, hasher.finalize());
+	let hash = hasher.finalize();
 
 	let cas_path = cas_path(&hash, cas_dir);
 	fs::create_dir_all(cas_path.parent().unwrap()).await?;

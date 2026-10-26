@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO member_grant (blake3) VALUES (?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "ed34452edb6963243c5c0e7342c427131e65a9628c0d1d66f01f0594147132d6"
+}

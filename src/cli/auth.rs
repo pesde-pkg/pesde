@@ -2,14 +2,14 @@ use crate::cli::config::read_config;
 use crate::cli::config::write_config;
 use anyhow::Context as _;
 use keyring::Entry;
-use pesde::GixUrl;
+use pesde::Url;
 use reqwest::header::AUTHORIZATION;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
 
-pub type Tokens = BTreeMap<GixUrl, String>;
+pub type Tokens = BTreeMap<Url, String>;
 
 #[instrument(level = "trace")]
 pub async fn get_tokens() -> anyhow::Result<Tokens> {
@@ -69,7 +69,7 @@ pub async fn set_tokens(tokens: Tokens) -> anyhow::Result<()> {
 	write_config(&config).await
 }
 
-pub async fn set_token(repo: &GixUrl, token: Option<String>) -> anyhow::Result<()> {
+pub async fn set_token(repo: &Url, token: Option<String>) -> anyhow::Result<()> {
 	let mut tokens = get_tokens().await?;
 	if let Some(token) = token {
 		tokens.insert(repo.clone(), token);

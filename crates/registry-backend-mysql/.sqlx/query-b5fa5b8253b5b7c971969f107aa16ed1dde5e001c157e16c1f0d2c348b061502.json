@@ -1,0 +1,65 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT package.local_name_blake3, deprecation_reason.hash, deprecation_reason.plaintext AS `plaintext: Box<str>`\nFROM signed_set_deprecation_scope_log_entry\nINNER JOIN package ON package.scope=signed_set_deprecation_scope_log_entry.scope AND package.pos=signed_set_deprecation_scope_log_entry.package_pos\nLEFT JOIN deprecation_reason ON deprecation_reason.id=signed_set_deprecation_scope_log_entry.reason_id\nWHERE signed_set_deprecation_scope_log_entry.scope = ? AND signed_set_deprecation_scope_log_entry.pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_name_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "local_name_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "hash",
+        "type_info": {
+          "type": "VarString",
+          "flags": "UNIQUE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 512
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.deprecation_reason",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "plaintext: Box<str>",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.deprecation_reason",
+            "name": "plaintext"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "b5fa5b8253b5b7c971969f107aa16ed1dde5e001c157e16c1f0d2c348b061502"
+}

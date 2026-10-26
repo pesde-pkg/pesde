@@ -1,0 +1,56 @@
+//! Legacy pesde dependency specifier
+use super::target::TargetKind;
+use crate::names::PackageName;
+use crate::source::DependencySpecifier;
+use crate::source::Realm;
+use semver::VersionReq;
+use serde::Deserialize;
+use serde::Serialize;
+use std::collections::HashSet;
+use std::fmt::Display;
+
+pub(crate) fn matches(keys: &HashSet<&str>) -> bool {
+	keys.contains(&"target")
+}
+
+/// The specifier for a legacy pesde dependency
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct LegacyPesdeDependencySpecifier {
+	/// The name of the package
+	pub name: PackageName,
+	/// The version requirement for the package
+	pub version: VersionReq,
+	/// The index to use for the package
+	#[serde(default = "crate::default_url_key")]
+	pub index: String,
+	/// The target to use for the package
+	pub target: TargetKind,
+}
+impl DependencySpecifier for LegacyPesdeDependencySpecifier {
+	fn realm(&self) -> Option<Realm> {
+		match self.target {
+			TargetKind::Roblox => Some(Realm::Shared),
+			TargetKind::RobloxServer => Some(Realm::Server),
+			TargetKind::Lune | TargetKind::Luau => None,
+		}
+	}
+}
+
+impl Display for LegacyPesdeDependencySpecifier {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}@{} {}", self.name, self.version, self.target)
+	}
+}
+
+/// The specifier for a legacy pesde dependency in the index
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct IndexLegacyPesdeDependencySpecifier {
+	/// The name of the package
+	pub name: PackageName,
+	/// The version requirement for the package
+	pub version: VersionReq,
+	/// The index to use for the package
+	pub index: String,
+	/// The target to use for the package
+	pub target: Option<TargetKind>,
+}

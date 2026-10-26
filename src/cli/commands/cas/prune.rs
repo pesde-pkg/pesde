@@ -37,13 +37,12 @@ async fn read_dir_stream(
 	})
 }
 
-#[allow(unreachable_code)]
 async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 	#[cfg(unix)]
 	{
 		use std::os::unix::fs::MetadataExt as _;
 		let metadata = fs::metadata(path).await?;
-		return Ok(metadata.nlink());
+		Ok(metadata.nlink())
 	}
 	// life if rust stabilized the nightly feature from 2019
 	#[cfg(windows)]
@@ -59,7 +58,7 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 		use windows::core::PWSTR;
 
 		let path = path.to_path_buf();
-		return tokio::task::spawn_blocking(move || unsafe {
+		tokio::task::spawn_blocking(move || unsafe {
 			let handle = CreateFileW(
 				PWSTR(
 					path.as_os_str()
@@ -85,17 +84,16 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 			Ok(info.nNumberOfLinks as u64)
 		})
 		.await
-		.unwrap();
+		.unwrap()
 	}
 	#[cfg(not(any(unix, windows)))]
 	{
 		compile_error!("unsupported platform");
 	}
-	anyhow::bail!("unsupported platform")
 }
 
 // CAS structure:
-// /<hash algorithm>/<first part of hash>/<rest of hash>
+// /<hash algorithm>/<part of hash>/.../<rest of hash>
 // /index/pesde/hash/name/version/target
 // /index/wally/hash/name/version
 // /index/git/hash
@@ -150,6 +148,72 @@ async fn discover_cas_packages(cas_dir: &Path) -> anyhow::Result<HashMap<PathBuf
 }
 
 async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<Hash>> {
+	fn traverse(
+		dir: PathBuf,
+		algorithm: HashAlgorithm,
+		accumulated: Arc<str>,
+	) -> BoxFuture<'static, anyhow::Result<HashSet<Hash>>> {
+		async move {
+			let stream = match read_dir_stream(&dir).await {
+				Ok(s) => s,
+				Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Default::default()),
+				Err(e) => return Err(e).context("failed to read hash directory"),
+			};
+
+			let mut tasks = stream
+				.map(|entry| {
+					let accumulated = accumulated.clone();
+					async move {
+						let entry = entry.context("failed to read dir entry")?;
+						let name = entry.file_name();
+						let component = name
+							.to_str()
+							.context("non-UTF-8 hash component")?
+							.to_owned();
+						let accumulated: Arc<str> = format!("{accumulated}{component}").into();
+						let path = entry.path();
+
+						let file_type =
+							entry.file_type().await.context("failed to get file type")?;
+
+						if file_type.is_dir() {
+							return traverse(path, algorithm, accumulated).await;
+						}
+
+						let nlinks = get_nlinks(&path)
+							.await
+							.context("failed to count file usage")?;
+						if nlinks > 1 {
+							return Ok(HashSet::new());
+						}
+
+						let hash = Hash::from_encoded(algorithm, &accumulated)
+							.context("failed to decode hash from path")?;
+
+						fs::remove_file(&path)
+							.await
+							.context("failed to remove unused file")?;
+
+						if let Some(parent) = path.parent() {
+							remove_empty_dir(parent).await?;
+						}
+
+						Ok(HashSet::from([hash]))
+					}
+				})
+				.collect::<JoinSet<Result<HashSet<Hash>, anyhow::Error>>>()
+				.await;
+
+			let mut removed_hashes = HashSet::new();
+			while let Some(result) = tasks.join_next().await {
+				removed_hashes.extend(result.unwrap()?);
+			}
+
+			Ok(removed_hashes)
+		}
+		.boxed()
+	}
+
 	let mut res = HashSet::new();
 
 	let tasks = match read_dir_stream(cas_dir).await {
@@ -172,68 +236,8 @@ async fn remove_hashes(cas_dir: &Path) -> anyhow::Result<HashSet<Hash>> {
 				return Ok(None);
 			};
 
-			let mut tasks = read_dir_stream(&algorithm_entry.path())
-				.await
-				.context("failed to read hash directory")?
-				.map(|prefix_entry| async move {
-					let prefix_entry = prefix_entry.context("failed to read prefix dir entry")?;
-					let prefix = prefix_entry.file_name();
-					let prefix: Arc<str> = prefix.to_str().context("non-UTF-8 hash prefix")?.into();
-
-					let mut tasks = read_dir_stream(&prefix_entry.path())
-						.await
-						.context("failed to read prefix directory")?
-						.map(|rest_entry| (rest_entry, prefix.clone()))
-						.map(|(rest_entry, prefix)| async move {
-							let rest_entry = rest_entry.context("failed to read rest dir entry")?;
-							let rest = rest_entry.file_name();
-							let rest = rest.to_str().context("non-UTF-8 hash rest")?;
-							let path = rest_entry.path();
-
-							let nlinks = get_nlinks(&path)
-								.await
-								.context("failed to count file usage")?;
-							if nlinks > 1 {
-								return Ok(None);
-							}
-
-							let hash = Hash::new(
-								algorithm,
-								hex::decode(format!("{prefix}{rest}"))
-									.context("failed to decode hash from path")?,
-							);
-
-							fs::remove_file(&path)
-								.await
-								.context("failed to remove unused file")?;
-
-							if let Some(parent) = path.parent() {
-								remove_empty_dir(parent).await?;
-							}
-
-							Ok(Some(hash))
-						})
-						.collect::<JoinSet<Result<_, anyhow::Error>>>()
-						.await;
-
-					let mut removed_hashes = HashSet::new();
-					while let Some(removed_hash) = tasks.join_next().await {
-						let Some(hash) = removed_hash.unwrap()? else {
-							continue;
-						};
-
-						removed_hashes.insert(hash);
-					}
-
-					Ok(removed_hashes)
-				})
-				.collect::<JoinSet<Result<_, anyhow::Error>>>()
-				.await;
-
-			let mut removed_hashes = HashSet::new();
-			while let Some(hashes) = tasks.join_next().await {
-				removed_hashes.extend(hashes.unwrap()?);
-			}
+			let removed_hashes =
+				traverse(algorithm_entry.path(), algorithm, Default::default()).await?;
 
 			Ok(Some(removed_hashes))
 		})

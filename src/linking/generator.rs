@@ -168,7 +168,7 @@ pub fn get_lib_require_path(
 	tracing::debug!("diffed lib path: {}", path.display());
 	let path = match structure_kind {
 		StructureKind::Wally(_) => path,
-		StructureKind::PesdeV1(_) | StructureKind::PesdeV2 => lib_file.to_path(path),
+		StructureKind::LegacyPesde(_) | StructureKind::Pesde => lib_file.to_path(path),
 	};
 
 	let Some(realm) = realm.filter(|_| !dirs.destination.starts_with(&dirs.root_container)) else {
@@ -180,7 +180,7 @@ pub fn get_lib_require_path(
 	};
 	let path = match structure_kind {
 		StructureKind::Wally(_) => Cow::Borrowed(dirs.container.as_path()),
-		StructureKind::PesdeV1(_) | StructureKind::PesdeV2 => {
+		StructureKind::LegacyPesde(_) | StructureKind::Pesde => {
 			Cow::Owned(lib_file.to_path(&dirs.container))
 		}
 	};

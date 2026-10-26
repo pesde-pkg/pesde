@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT kind AS `kind: TreeKind` FROM versions_node WHERE blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind: TreeKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.versions_node",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4a770d40922ed9f3b9aba9a99179008d6034d5c27dc71ac9091d151ccd73048b"
+}

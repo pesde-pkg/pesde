@@ -74,9 +74,8 @@ pub fn create_patch<P: AsRef<Path>>(dir: P) -> Result<Vec<u8>, git2::Error> {
 			DiffLineType::Context | DiffLineType::Addition | DiffLineType::Deletion
 		) {
 			let origin = line.origin();
-			let mut buffer = vec![0; origin.len_utf8()];
-			origin.encode_utf8(&mut buffer);
-			patch.extend(buffer);
+			// safe since origin is an ASCII character
+			patch.push(origin.try_into().unwrap());
 		}
 
 		patch.extend(line.content());
@@ -148,7 +147,7 @@ where
 	}
 
 	spawn_blocking(move || {
-		#[allow(clippy::disallowed_methods)]
+		#[expect(clippy::disallowed_methods)]
 		let repo = if dot_git.exists() {
 			let repo = Repository::open(&container_dir)?;
 			reset_repo(&repo)?;

@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT blake3 FROM global_log_node WHERE pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_node",
+            "name": "blake3"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "da7b97af1c8dcd117f83c61b0db154ec90ca45f765cb4ba115f04c70533a87f7"
+}

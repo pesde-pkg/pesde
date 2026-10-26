@@ -1,22 +1,17 @@
-use crate::cli::get_index;
-use clap::Args;
+use crate::cli::config::read_config;
+use anyhow::Context as _;
 use clap::Subcommand;
+use pesde::DEFAULT_URL_KEY;
 use pesde::Subproject;
+use pesde::Url;
+use pesde::bounded::Bounded;
+use pesde::errors::ManifestReadErrorKind;
 
+mod identity;
 mod login;
 mod logout;
 mod token;
 mod whoami;
-
-#[derive(Debug, Args)]
-pub struct AuthSubcommand {
-	/// The index to use. Defaults to `default`, or the configured default index if current directory doesn't have a manifest
-	#[arg(short, long)]
-	pub index: Option<String>,
-
-	#[clap(subcommand)]
-	pub command: AuthCommands,
-}
 
 #[derive(Debug, Subcommand)]
 pub enum AuthCommands {
@@ -29,19 +24,55 @@ pub enum AuthCommands {
 	WhoAmI(whoami::WhoAmICommand),
 	/// Prints the token for an index
 	Token(token::TokenCommand),
+	/// Manages the identity for a registry
+	Identity(identity::IdentityCommand),
 }
 
-impl AuthSubcommand {
+impl AuthCommands {
 	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
-		let index_url = get_index(&subproject, self.index.as_deref()).await?;
-
-		match self.command {
-			AuthCommands::Login(login) => login.run(index_url, subproject).await,
-			AuthCommands::Logout(logout) => logout.run(index_url).await,
-			AuthCommands::WhoAmI(whoami) => {
-				whoami.run(index_url, subproject.project().reqwest()).await
-			}
-			AuthCommands::Token(token) => token.run(index_url).await,
+		match self {
+			AuthCommands::Login(login) => login.run(subproject).await,
+			AuthCommands::Logout(logout) => logout.run(subproject).await,
+			AuthCommands::WhoAmI(whoami) => whoami.run(subproject).await,
+			AuthCommands::Token(token) => token.run(subproject).await,
+			AuthCommands::Identity(identity) => identity.run(subproject).await,
 		}
 	}
+}
+
+pub(super) async fn get_index(subproject: &Subproject, index: Option<&str>) -> anyhow::Result<Url> {
+	let manifest = match subproject.deser_manifest().await {
+		Ok(manifest) => Some(manifest),
+		Err(e) => match e.into_inner() {
+			ManifestReadErrorKind::Io(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+			e => return Err(e.into()),
+		},
+	};
+
+	let index_url = match index {
+		Some(index) => index.parse().ok(),
+		None => match manifest {
+			Some(_) => None,
+			None => Some(read_config().await?.default_index),
+		},
+	};
+
+	if let Some(url) = index_url {
+		return Ok(url);
+	}
+
+	let index_name = index.unwrap_or(DEFAULT_URL_KEY);
+
+	let Some(manifest) = manifest else {
+		anyhow::bail!(
+			"`{index_name}` is not a valid URL and no manifest was found to resolve it as an index name"
+		);
+	};
+
+	manifest
+		.pesde_indices
+		.get(index_name)
+		.with_context(|| format!("index {index_name} not found in manifest"))
+		.cloned()
+		.map(Bounded::into_inner)
 }

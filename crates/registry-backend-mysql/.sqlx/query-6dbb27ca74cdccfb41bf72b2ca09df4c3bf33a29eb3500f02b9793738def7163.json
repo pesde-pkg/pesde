@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO versions_node (blake3, kind) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6dbb27ca74cdccfb41bf72b2ca09df4c3bf33a29eb3500f02b9793738def7163"
+}

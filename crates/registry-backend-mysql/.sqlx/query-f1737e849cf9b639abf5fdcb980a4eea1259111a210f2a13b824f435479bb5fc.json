@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO scope_members_internal_node_child (node_blake3, idx, child_blake3) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "f1737e849cf9b639abf5fdcb980a4eea1259111a210f2a13b824f435479bb5fc"
+}

@@ -1,457 +1,273 @@
 //! pesde package source
-#![deprecated = "pesde has dropped registries. See https://github.com/pesde-pkg/pesde/issues/59"]
-#![expect(deprecated)]
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::fmt::Display;
-use std::path::Path;
-use std::str::FromStr;
-use std::sync::Arc;
+// use std::collections::BTreeMap;
+// use std::fmt::Debug;
+// use std::fmt::Display;
+// use std::path::Path;
+// use std::str::FromStr;
+// use std::sync::Arc;
 
-use backend::GitPesdePackageSourceBackend;
-use backend::IndexDependencySpecifiers;
-use backend::IndexFile;
-use backend::PesdePackageBackends;
-use backend::PesdePackageSourceBackend as _;
-use backend::VersionId;
-use futures::StreamExt as _;
-use pkg_ref::PesdePackageRef;
-use serde::Deserialize;
-use specifier::PesdeDependencySpecifier;
+// use backend::PesdePackageBackends;
+// use backend::PesdePackageSourceBackend as _;
+// use futures::TryStreamExt as _;
 
-use crate::GixUrl;
-use crate::Project;
-use crate::RefreshedSources;
-use crate::Subproject;
-use crate::manifest::Manifest;
-use crate::reporters::DownloadProgressReporter;
-use crate::ser_display_deser_fromstr;
-use crate::source::DependencySpecifiers;
-use crate::source::IGNORED_DIRS;
-use crate::source::IGNORED_FILES;
-use crate::source::PackageExports;
-use crate::source::PackageRefs;
-use crate::source::PackageSource;
-use crate::source::PackageSources;
-use crate::source::Realm;
-use crate::source::ResolveResult;
-use crate::source::ResolvedPackage;
-use crate::source::StructureKind;
-use crate::source::fs::PackageFs;
-use crate::source::fs::store_in_cas;
-use crate::source::git::specifier::GitDependencySpecifier;
-use crate::source::pesde::target::Target;
-use crate::source::wally::specifier::WallyDependencySpecifier;
-use crate::util::ToEscaped as _;
-use crate::version_matches;
-use fs_err::tokio as fs;
-use semver::Version;
-use tracing::instrument;
+// use crate::Project;
+// use crate::RefreshedSources;
+// use crate::Subproject;
+// use crate::Url;
+// use crate::reporters::DownloadProgressReporter;
+// use crate::ser_display_deser_fromstr;
+// use crate::source::DependencySpecifiers;
+// use crate::source::IGNORED_DIRS;
+// use crate::source::IGNORED_FILES;
+// use crate::source::PackageExports;
+// use crate::source::PackageRefs;
+// use crate::source::PackageSource;
+// use crate::source::ResolveResult;
+// use crate::source::ResolvedPackage;
+// use crate::source::fs::PackageFs;
+// use crate::source::fs::store_in_cas;
+// use crate::source::pesde::backend::ApiPesdePackageSourceBackend;
+// use crate::util::ToEscaped as _;
+// use fs_err::tokio as fs;
+// use tracing::instrument;
 
-pub mod backend;
-pub mod pkg_ref;
-pub mod specifier;
-/// Targets
-pub mod target;
+// pub mod backend;
+// pub mod pkg_ref;
+pub mod registry;
+// pub mod specifier;
 
-/// The pesde package source
-#[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
-pub struct PesdePackageSource {
-	repo: PesdePackageBackends,
-}
-ser_display_deser_fromstr!(PesdePackageSource);
+// /// The pesde package source
+// #[derive(Debug, Hash, PartialEq, Eq, Clone, PartialOrd, Ord)]
+// pub struct PesdePackageSource {
+// 	repo: PesdePackageBackends,
+// }
+// ser_display_deser_fromstr!(PesdePackageSource);
 
-impl Display for PesdePackageSource {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.repo)
-	}
-}
+// impl Display for PesdePackageSource {
+// 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+// 		write!(f, "{}", self.repo)
+// 	}
+// }
 
-impl FromStr for PesdePackageSource {
-	type Err = crate::source::pesde::backend::errors::ParseBackendError;
+// impl FromStr for PesdePackageSource {
+// 	type Err = crate::source::pesde::backend::errors::ParseBackendError;
 
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		s.parse().map(Self::new)
-	}
-}
+// 	fn from_str(s: &str) -> Result<Self, Self::Err> {
+// 		s.parse().map(Self::new)
+// 	}
+// }
 
-impl PesdePackageSource {
-	/// Creates a new pesde package source
-	#[must_use]
-	pub fn new(repo: PesdePackageBackends) -> Self {
-		Self { repo }
-	}
+// impl PesdePackageSource {
+// 	/// Creates a new pesde package source
+// 	#[must_use]
+// 	pub fn new(repo: PesdePackageBackends) -> Self {
+// 		Self { repo }
+// 	}
 
-	/// Creates a pesde package source from a URL
-	#[must_use]
-	pub fn from_url(repo_url: GixUrl) -> Self {
-		Self::new(PesdePackageBackends::Git(
-			GitPesdePackageSourceBackend::new(repo_url),
-		))
-	}
+// 	/// Creates a pesde package source from a URL
+// 	#[must_use]
+// 	pub fn from_url(api_url: Url) -> Self {
+// 		Self::new(PesdePackageBackends::Api(
+// 			ApiPesdePackageSourceBackend::new(api_url),
+// 		))
+// 	}
 
-	/// Gets the repository backend
-	#[must_use]
-	pub fn repo(&self) -> &PesdePackageBackends {
-		&self.repo
-	}
-}
+// 	/// Gets the repository backend
+// 	#[must_use]
+// 	pub fn repo(&self) -> &PesdePackageBackends {
+// 		&self.repo
+// 	}
+// }
 
-impl PackageSource for PesdePackageSource {
-	type RefreshError = errors::RefreshError;
-	type ResolveError = errors::ResolveError;
-	type DownloadError = errors::DownloadError;
-	type GetExportsError = errors::GetExportsError;
+// impl PackageSource for PesdePackageSource {
+// 	type RefreshError = errors::RefreshError;
+// 	type ResolveError = errors::ResolveError;
+// 	type DownloadError = errors::DownloadError;
+// 	type GetExportsError = errors::GetExportsError;
 
-	#[instrument(skip_all, level = "debug")]
-	async fn refresh(&self, project: &Project) -> Result<(), Self::RefreshError> {
-		self.repo.refresh(project).await
-	}
+// 	#[instrument(skip_all, level = "debug")]
+// 	async fn refresh(&self, _project: &Project) -> Result<(), Self::RefreshError> {
+// 		Ok(())
+// 	}
 
-	#[instrument(skip_all, level = "debug")]
-	async fn resolve(
-		&self,
-		subproject: &Subproject,
-		specifier: &DependencySpecifiers,
-		_refreshed_sources: &RefreshedSources,
-	) -> Result<ResolveResult, Self::ResolveError> {
-		let DependencySpecifiers::Pesde(specifier) = specifier else {
-			unreachable!("invalid specifier type for pesde package source");
-		};
+// 	#[instrument(skip_all, level = "debug")]
+// 	async fn resolve(
+// 		&self,
+// 		_subproject: &Subproject,
+// 		_specifier: &DependencySpecifiers,
+// 		_refreshed_sources: &RefreshedSources,
+// 	) -> Result<ResolveResult, Self::ResolveError> {
+// 		todo!()
+// 	}
 
-		let Some(IndexFile { entries, .. }) = self
-			.repo
-			.read_index_file(subproject.project(), specifier.name.clone())
-			.await?
-		else {
-			return Err(errors::ResolveErrorKind::NotFound(specifier.name.clone()).into());
-		};
+// 	#[instrument(skip_all, level = "debug")]
+// 	async fn download<R: DownloadProgressReporter + 'static>(
+// 		&self,
+// 		project: &Project,
+// 		package: &ResolvedPackage,
+// 		reporter: Arc<R>,
+// 	) -> Result<PackageFs, Self::DownloadError> {
+// 		let PackageRefs::Pesde(pkg_ref) = package.id.pkg_ref() else {
+// 			unreachable!("invalid package ref type for pesde package source");
+// 		};
 
-		tracing::debug!("{} has {} possible entries", specifier.name, entries.len());
+// 		let index_file = project
+// 			.cas_dir()
+// 			.join("index")
+// 			.join("pesde")
+// 			.join(self.repo.to_string().escaped())
+// 			.join(pkg_ref.name.scope().to_string().escaped())
+// 			.join(pkg_ref.name.local_name().to_string().escaped())
+// 			.join(package.id.version().to_string());
 
-		let mut suggestions = BTreeSet::new();
+// 		match fs::read_to_string(&index_file).await {
+// 			Ok(s) => {
+// 				tracing::debug!(
+// 					"using cached index file for package {}@{}",
+// 					pkg_ref.name,
+// 					package.id.version()
+// 				);
 
-		let versions = entries
-			.into_iter()
-			.filter(|(_, entry)| !entry.yanked)
-			.filter(|(v_id, _)| version_matches(&specifier.version, v_id.version()))
-			.inspect(|(v_id, _)| {
-				suggestions.insert(v_id.target());
-			})
-			.filter(|(v_id, _)| specifier.target == v_id.target())
-			.map(|(v_id, entry)| {
-				(
-					v_id.into_version(),
-					entry
-						.dependencies
-						.into_iter()
-						.map(|(alias, (specifiers, dep_type))| {
-							(
-								alias,
-								(
-									match specifiers {
-										IndexDependencySpecifiers::Pesde(s) => {
-											DependencySpecifiers::Pesde(PesdeDependencySpecifier {
-												name: s.name,
-												version: s.version,
-												index: s.index,
-												target: s.target.unwrap_or(entry.target.kind()),
-											})
-										}
-										IndexDependencySpecifiers::Wally(s) => {
-											DependencySpecifiers::Wally(WallyDependencySpecifier {
-												name: s.name,
-												version: s.version,
-												index: s.index,
-												// TODO: query WallyPackageSource for realm based on the package's canonical value (WallyPackage.realm)
-												realm: Realm::Shared,
-											})
-										}
-										IndexDependencySpecifiers::Git(s) => {
-											DependencySpecifiers::Git(GitDependencySpecifier {
-												repo: s.repo,
-												rev: s.rev,
-												path: s.path,
-												// no easy way to get this data, probably not worth it since this compat code is temporary
-												realm: None,
-											})
-										}
-									},
-									dep_type,
-								),
-							)
-						})
-						.collect(),
-				)
-			})
-			.collect::<BTreeMap<_, _>>();
+// 				reporter.report_done();
 
-		if versions.is_empty() {
-			return Err(errors::ResolveErrorKind::NoMatchingVersion(
-				specifier.clone(),
-				specifier.target,
-				suggestions,
-			)
-			.into());
-		}
+// 				return Ok(serde_json::from_str(&s)
+// 					.map_err(errors::DownloadErrorKind::DeserializeIndex)?);
+// 			}
+// 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+// 			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
+// 		}
 
-		Ok(ResolveResult {
-			source: PackageSources::Pesde(self.clone()),
-			pkg_ref: PackageRefs::Pesde(PesdePackageRef {
-				name: specifier.name.clone(),
-				target: specifier.target,
-			}),
-			structure_kind: StructureKind::PesdeV1(specifier.target),
-			versions,
-		})
-	}
+// 		let entries_stream = self
+// 			.repo
+// 			.download_entries(project, &pkg_ref.name, package.id.version(), reporter)
+// 			.await?;
+// 		tokio::pin!(entries_stream);
 
-	#[instrument(skip_all, level = "debug")]
-	async fn download<R: DownloadProgressReporter + 'static>(
-		&self,
-		project: &Project,
-		package: &ResolvedPackage,
-		reporter: Arc<R>,
-	) -> Result<PackageFs, Self::DownloadError> {
-		let PackageRefs::Pesde(pkg_ref) = package.id.pkg_ref() else {
-			unreachable!("invalid package ref type for pesde package source");
-		};
+// 		let mut entries = BTreeMap::new();
 
-		let index_file = project
-			.cas_dir()
-			.join("index")
-			.join("pesde")
-			.join(self.repo.to_string().escaped())
-			.join(pkg_ref.name.scope().to_string().escaped())
-			.join(pkg_ref.name.name().to_string().escaped())
-			.join(package.id.version().to_string())
-			.join(pkg_ref.target.to_string());
+// 		while let Some((path, contents)) = entries_stream.try_next().await? {
+// 			let Some(name) = path.file_name() else {
+// 				continue;
+// 			};
 
-		match fs::read_to_string(&index_file).await {
-			Ok(s) => {
-				tracing::debug!(
-					"using cached index file for package {}@{} {}",
-					pkg_ref.name,
-					package.id.version(),
-					pkg_ref.target
-				);
+// 			let Some(contents) = contents else {
+// 				if IGNORED_DIRS.contains(&name) {
+// 					continue;
+// 				}
+// 				entries.insert(path, None);
+// 				continue;
+// 			};
 
-				reporter.report_done();
+// 			if IGNORED_FILES.contains(&name) {
+// 				continue;
+// 			}
 
-				return Ok(serde_json::from_str(&s)
-					.map_err(errors::DownloadErrorKind::DeserializeIndex)?);
-			}
-			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-			Err(e) => return Err(errors::DownloadErrorKind::ReadIndex(e).into()),
-		}
+// 			let (_, hash) = store_in_cas(project.cas_dir(), &*contents)
+// 				.await
+// 				.map_err(errors::DownloadErrorKind::WriteIndex)?;
+// 			entries.insert(path, Some(hash));
+// 		}
 
-		let version_id = VersionId::new(package.id.version().clone(), pkg_ref.target);
-		let entries_stream =
-			self.repo
-				.download_entries(project, &pkg_ref.name, &version_id, reporter);
-		tokio::pin!(entries_stream);
+// 		let fs = PackageFs::Cached(entries);
 
-		let mut entries = BTreeMap::new();
+// 		if let Some(parent) = index_file.parent() {
+// 			fs::create_dir_all(parent)
+// 				.await
+// 				.map_err(errors::DownloadErrorKind::WriteIndex)?;
+// 		}
 
-		while let Some(entry_result) = entries_stream.next().await {
-			let (path, contents) = entry_result?;
-			let Some(name) = path.file_name() else {
-				continue;
-			};
+// 		fs::write(
+// 			&index_file,
+// 			serde_json::to_string(&fs).map_err(errors::DownloadErrorKind::SerializeIndex)?,
+// 		)
+// 		.await
+// 		.map_err(errors::DownloadErrorKind::WriteIndex)?;
 
-			let Some(contents) = contents else {
-				if IGNORED_DIRS.contains(&name) {
-					continue;
-				}
-				entries.insert(path, None);
-				continue;
-			};
+// 		Ok(fs)
+// 	}
 
-			if IGNORED_FILES.contains(&name) {
-				continue;
-			}
+// 	#[instrument(skip_all, level = "debug")]
+// 	async fn get_exports(
+// 		&self,
+// 		_project: &Project,
+// 		_package: &ResolvedPackage,
+// 		_path: &Path,
+// 	) -> Result<PackageExports, Self::GetExportsError> {
+// 		todo!()
+// 	}
+// }
 
-			let (_, hash) = store_in_cas(project.cas_dir(), &*contents)
-				.await
-				.map_err(errors::DownloadErrorKind::WriteIndex)?;
-			entries.insert(path, Some(hash));
-		}
+// /// Errors that can occur when interacting with the pesde package source
+// pub mod errors {
+// 	use thiserror::Error;
 
-		let fs = PackageFs::Cached(entries);
+// 	use crate::names::PackageName;
 
-		if let Some(parent) = index_file.parent() {
-			fs::create_dir_all(parent)
-				.await
-				.map_err(errors::DownloadErrorKind::WriteIndex)?;
-		}
+// 	/// Errors that can occur when refreshing the pesde package source
+// 	#[derive(Debug, Error, thiserror_ext::Box)]
+// 	#[thiserror_ext(newtype(name = RefreshError))]
+// 	#[non_exhaustive]
+// 	pub enum RefreshErrorKind {
+// 		/// Error from backend
+// 		#[error("error refreshing")]
+// 		Backend(#[from] super::backend::errors::RefreshError),
 
-		fs::write(
-			&index_file,
-			serde_json::to_string(&fs).map_err(errors::DownloadErrorKind::SerializeIndex)?,
-		)
-		.await
-		.map_err(errors::DownloadErrorKind::WriteIndex)?;
+// 		/// The backend has not returned a new state despite there being a previous state
+// 		#[error("backend did not return a new state despite there being a previous state")]
+// 		NoNewState,
 
-		Ok(fs)
-	}
+// 		/// The consistency proof from the backend did not verify against the previous state
+// 		#[error("consistency proof did not verify against previous state")]
+// 		ConsistencyProofFailed,
 
-	#[instrument(skip_all, level = "debug")]
-	async fn get_exports(
-		&self,
-		project: &Project,
-		package: &ResolvedPackage,
-		_path: &Path,
-	) -> Result<PackageExports, Self::GetExportsError> {
-		let PackageRefs::Pesde(pkg_ref) = package.id.pkg_ref() else {
-			unreachable!("invalid package ref type for pesde package source");
-		};
+// 		/// Error interacting with Merkleberg
+// 		#[error("error verifying consistency proof")]
+// 		Merkleberg(#[from] merkleberg::Error),
+// 	}
 
-		let Some(IndexFile { mut entries, .. }) = self
-			.repo
-			.read_index_file(project, pkg_ref.name.clone())
-			.await?
-		else {
-			return Err(errors::GetExportsErrorKind::NotFound(pkg_ref.name.clone()).into());
-		};
+// 	/// Errors that can occur when resolving a package from a pesde package source
+// 	#[derive(Debug, Error, thiserror_ext::Box)]
+// 	#[thiserror_ext(newtype(name = ResolveError))]
+// 	#[non_exhaustive]
+// 	pub enum ResolveErrorKind {
+// 		/// Package not found in index
+// 		#[error("package `{0}` not found")]
+// 		NotFound(PackageName),
+// 	}
 
-		let entry = entries
-			.remove(&VersionId::new(
-				package.id.version().clone(),
-				pkg_ref.target,
-			))
-			.ok_or_else(|| errors::GetExportsErrorKind::NotFound(pkg_ref.name.clone()))?;
+// 	/// Errors that can occur when downloading a package from a pesde package source
+// 	#[derive(Debug, Error, thiserror_ext::Box)]
+// 	#[thiserror_ext(newtype(name = DownloadError))]
+// 	#[non_exhaustive]
+// 	pub enum DownloadErrorKind {
+// 		/// Error from backend
+// 		#[error("error from backend")]
+// 		Backend(#[from] crate::source::pesde::backend::errors::DownloadError),
 
-		Ok(entry.target.into_exports())
-	}
-}
+// 		/// Error reading index file
+// 		#[error("error reading index file")]
+// 		ReadIndex(#[source] std::io::Error),
 
-/// A pesde v1 (<0.8) manifest
-#[derive(Debug, Deserialize)]
-pub struct PesdeV1Manifest {
-	/// The version
-	pub version: Version,
-	/// The target
-	pub target: Target,
-	/// The pesde v2-compatible fields
-	#[serde(flatten)]
-	pub manifest: Manifest,
-	/// Any extra fields
-	#[serde(flatten)]
-	pub user_defined_fields: HashMap<String, toml::Value>,
-}
+// 		/// Error writing index file
+// 		#[error("error writing index file")]
+// 		WriteIndex(#[source] std::io::Error),
 
-/// A manifest for either version of pesde
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum PesdeVersionedManifest {
-	/// [Manifest]
-	V2(Manifest),
-	/// [PesdeV1Manifest]
-	V1(PesdeV1Manifest),
-}
+// 		/// Error serializing index file
+// 		#[error("error serializing index file")]
+// 		SerializeIndex(#[source] serde_json::Error),
 
-impl PesdeVersionedManifest {
-	/// Returns the manifest
-	#[must_use]
-	pub fn as_manifest(&self) -> &Manifest {
-		match self {
-			Self::V1(m) => &m.manifest,
-			Self::V2(m) => m,
-		}
-	}
+// 		/// Error deserializing index file
+// 		#[error("error deserializing index file")]
+// 		DeserializeIndex(#[source] serde_json::Error),
+// 	}
 
-	/// Returns the manifest
-	#[must_use]
-	pub fn into_manifest(self) -> Manifest {
-		match self {
-			Self::V1(m) => m.manifest,
-			Self::V2(m) => m,
-		}
-	}
-
-	/// Returns the exports for this manifest
-	#[must_use]
-	pub fn as_exports(&self) -> PackageExports {
-		match self {
-			Self::V1(m) => m.target.clone().into_exports(),
-			Self::V2(m) => m.as_exports(),
-		}
-	}
-}
-
-/// Errors that can occur when interacting with the pesde package source
-pub mod errors {
-	use std::collections::BTreeSet;
-
-	use itertools::Itertools as _;
-	use thiserror::Error;
-
-	use super::backend::errors::ReadIndexFileError;
-	use super::target::TargetKind;
-	use crate::names::PackageName;
-	use crate::source::pesde::specifier::PesdeDependencySpecifier;
-
-	pub use super::backend::errors::RefreshError;
-	pub use super::backend::errors::VersionIdParseError;
-
-	/// Errors that can occur when resolving a package from a pesde package source
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = ResolveError))]
-	#[non_exhaustive]
-	pub enum ResolveErrorKind {
-		/// Package not found in index
-		#[error("package `{0}` not found")]
-		NotFound(PackageName),
-
-		// custom error to provide the user with target suggestions
-		/// No matching version was found for a specifier
-		#[error("no matching version found for {0} {1}. available targets: {suggestions}", suggestions = .2.iter().format(", "))]
-		NoMatchingVersion(PesdeDependencySpecifier, TargetKind, BTreeSet<TargetKind>),
-
-		/// Error reading index file
-		#[error("error reading index file")]
-		ReadIndex(#[from] ReadIndexFileError),
-	}
-
-	/// Errors that can occur when downloading a package from a pesde package source
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = DownloadError))]
-	#[non_exhaustive]
-	pub enum DownloadErrorKind {
-		/// Error from backend
-		#[error("error from backend")]
-		Backend(#[from] crate::source::pesde::backend::errors::DownloadError),
-
-		/// Error reading index file
-		#[error("error reading index file")]
-		ReadIndex(#[source] std::io::Error),
-
-		/// Error writing index file
-		#[error("error writing index file")]
-		WriteIndex(#[source] std::io::Error),
-
-		/// Error serializing index file
-		#[error("error serializing index file")]
-		SerializeIndex(#[source] serde_json::Error),
-
-		/// Error deserializing index file
-		#[error("error deserializing index file")]
-		DeserializeIndex(#[source] serde_json::Error),
-	}
-
-	/// Errors that can occur when getting the target for a package from a pesde package source
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = GetExportsError))]
-	#[non_exhaustive]
-	pub enum GetExportsErrorKind {
-		/// Error reading index file
-		#[error("error reading index file")]
-		ReadIndex(#[from] ReadIndexFileError),
-
-		/// Package not found in index
-		#[error("package `{0}` not found in index")]
-		NotFound(PackageName),
-	}
-}
+// 	/// Errors that can occur when getting the target for a package from a pesde package source
+// 	#[derive(Debug, Error, thiserror_ext::Box)]
+// 	#[thiserror_ext(newtype(name = GetExportsError))]
+// 	#[non_exhaustive]
+// 	pub enum GetExportsErrorKind {
+// 		/// Package not found in index
+// 		#[error("package `{0}` not found in index")]
+// 		NotFound(PackageName),
+// 	}
+// }

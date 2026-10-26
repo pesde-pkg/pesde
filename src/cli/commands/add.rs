@@ -7,7 +7,7 @@ use pesde::source::ResolveResult;
 
 use crate::cli::AnyPackageIdentifier;
 use crate::cli::dep_type_to_key;
-use pesde::DEFAULT_INDEX_NAME;
+use pesde::DEFAULT_URL_KEY;
 use pesde::RefreshedSources;
 use pesde::Subproject;
 use pesde::manifest::Alias;
@@ -54,29 +54,25 @@ impl AddCommand {
 					.context("failed to read manifest")?;
 
 				let indices = if pesde {
-					&manifest.indices.pesde
+					&manifest.pesde_indices
 				} else {
-					&manifest.indices.wally
+					&manifest.wally_indices
 				};
 
-				let name = self.index.as_deref().unwrap_or(DEFAULT_INDEX_NAME);
+				let name = self.index.as_deref().unwrap_or(DEFAULT_URL_KEY);
 				Ok((
 					name.to_string(),
 					indices
 						.get(name)
 						.with_context(|| format!("index `{name}` not found"))?
-						.clone(),
+						.clone()
+						.into_inner(),
 				))
 			})
 			.await
 			.context("failed to parse package identifier")?;
 
 		let refreshed_sources = RefreshedSources::new();
-
-		refreshed_sources
-			.refresh(&source, subproject.project())
-			.await
-			.context("failed to refresh package source")?;
 
 		let ResolveResult { mut versions, .. } = source
 			.resolve(&subproject, &specifier, &refreshed_sources)
@@ -105,21 +101,17 @@ impl AddCommand {
 		let alias = match self.alias {
 			Some(alias) => alias,
 			None => match &self.package {
-				AnyPackageIdentifier::PesdePackageName(versioned) => versioned.0.name().to_string(),
-				AnyPackageIdentifier::WallyPackageName(versioned) => versioned.0.name().to_string(),
-				AnyPackageIdentifier::Git((url, _)) => url
-					.as_url()
-					.path
-					.to_string()
-					.split('/')
-					.next_back()
-					.map_or_else(|| url.as_url().path.to_string(), ToString::to_string),
+				AnyPackageIdentifier::PesdePackageName(versioned) => {
+					versioned.0.local_name().as_str()
+				}
+				AnyPackageIdentifier::WallyPackageName(versioned) => versioned.0.local_name(),
+				AnyPackageIdentifier::Git((url, _)) => {
+					url.path().split('/').next_back().unwrap_or(url.path())
+				}
 				AnyPackageIdentifier::Path(path) => match path {
-					RelativeOrAbsolutePath::Relative(path) => {
-						path.file_name().map(ToString::to_string)
-					}
+					RelativeOrAbsolutePath::Relative(path) => path.file_name(),
 					RelativeOrAbsolutePath::Absolute(path) => {
-						path.file_name().map(|s| s.to_string_lossy().to_string())
+						path.file_name().and_then(|s| s.to_str())
 					}
 				}
 				.expect("path has no file name"),
@@ -132,14 +124,24 @@ impl AddCommand {
 			.or_insert(toml_edit::Item::Table(toml_edit::Table::new()))[alias.as_str()];
 
 		match specifier {
+			// DependencySpecifiers::Pesde(spec) => {
+			// 	field["name"] = toml_edit::value(spec.name.to_string());
+			// 	field["version"] = toml_edit::value(format!("^{version}"));
+
+			// 	if spec.registry != DEFAULT_URL_KEY {
+			// 		field["registry"] = toml_edit::value(spec.registry);
+			// 	}
+
+			// 	println!("added {}@{version} to {dependency_key}", spec.name);
+			// }
 			#[expect(deprecated)]
-			DependencySpecifiers::Pesde(spec) => {
+			DependencySpecifiers::LegacyPesde(spec) => {
 				field["name"] = toml_edit::value(spec.name.to_string());
 				field["version"] = toml_edit::value(format!("^{version}"));
 
 				field["target"] = toml_edit::value(spec.target.to_string());
 
-				if spec.index != DEFAULT_INDEX_NAME {
+				if spec.index != DEFAULT_URL_KEY {
 					field["index"] = toml_edit::value(spec.index);
 				}
 
@@ -154,7 +156,7 @@ impl AddCommand {
 				field["wally"] = toml_edit::value(name_str);
 				field["version"] = toml_edit::value(format!("^{version}"));
 
-				if spec.index != DEFAULT_INDEX_NAME {
+				if spec.index != DEFAULT_URL_KEY {
 					field["index"] = toml_edit::value(spec.index);
 				}
 

@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT child_blake3\nFROM versions_internal_node_child\nWHERE node_blake3 = ?\nORDER BY idx",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "child_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.versions_internal_node_child",
+            "name": "child_blake3"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d820e3de1ee9105d372341b1ba6adb908ce398443e82376047f6655228d9ba6e"
+}

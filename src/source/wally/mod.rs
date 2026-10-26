@@ -1,8 +1,8 @@
 //! Wally package source
-use crate::GixUrl;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
+use crate::Url;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
@@ -26,7 +26,7 @@ use crate::source::wally::pkg_ref::WallyPackageRef;
 use crate::util::ToEscaped as _;
 use crate::version_matches;
 use fs_err::tokio as fs;
-use futures::StreamExt as _;
+use futures::TryStreamExt as _;
 use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::path::Path;
@@ -70,7 +70,7 @@ impl WallyPackageSource {
 
 	/// Creates a Wally package source from a URL
 	#[must_use]
-	pub fn from_url(repo_url: GixUrl) -> Self {
+	pub fn from_url(repo_url: Url) -> Self {
 		Self::new(WallyPackageBackends::Git(
 			GitWallyPackageSourceBackend::new(repo_url),
 		))
@@ -127,7 +127,7 @@ impl PackageSource for WallyPackageSource {
 					.await
 					.map_err(super::errors::RefreshError::into_inner)
 				{
-					Ok(()) => {}
+					Ok(_) => {}
 					Err(super::errors::RefreshErrorKind::Wally(e)) => {
 						return Err(errors::ResolveErrorKind::Refresh(e).into());
 					}
@@ -187,7 +187,7 @@ impl PackageSource for WallyPackageSource {
 			pkg_ref: PackageRefs::Wally(WallyPackageRef {
 				name: specifier.name.clone(),
 			}),
-			structure_kind: StructureKind::Wally(specifier.name.name().into()),
+			structure_kind: StructureKind::Wally(specifier.name.local_name().into()),
 			versions,
 		})
 	}
@@ -209,7 +209,7 @@ impl PackageSource for WallyPackageSource {
 			.join("wally")
 			.join(self.repo.to_string().escaped())
 			.join(pkg_ref.name.scope().to_string().escaped())
-			.join(pkg_ref.name.name().to_string().escaped())
+			.join(pkg_ref.name.local_name().to_string().escaped())
 			.join(package.id.version().to_string());
 
 		match fs::read_to_string(&index_file).await {
@@ -236,8 +236,7 @@ impl PackageSource for WallyPackageSource {
 
 		let mut entries = BTreeMap::new();
 
-		while let Some(entry_result) = entries_stream.next().await {
-			let (path, contents) = entry_result?;
+		while let Some((path, contents)) = entries_stream.try_next().await? {
 			let Some(name) = path.file_name() else {
 				continue;
 			};
@@ -326,8 +325,8 @@ pub mod errors {
 		#[error("error reading index file")]
 		ReadIndex(#[from] crate::source::wally::backend::errors::ReadIndexFileError),
 
-		/// Error refreshing
-		#[error("error refreshing")]
+		/// Error refreshing source
+		#[error("error refreshing source")]
 		Refresh(#[from] crate::source::wally::backend::errors::RefreshError),
 	}
 

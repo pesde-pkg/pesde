@@ -1,12 +1,15 @@
 //! Manifest
-use crate::GixUrl;
+use crate::Url;
+use crate::bounded::Bounded;
+use crate::bounded::BoundedString;
+use crate::bounded::BoundedVec;
+use crate::names::PackageName;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::PackageExports;
 use crate::source::Realm;
-#[cfg(feature = "patches")]
 use crate::source::ids::PackageId;
-#[cfg(feature = "patches")]
+use crate::source::pesde::registry::PesdeVersionForRegistry;
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -18,16 +21,16 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tracing::instrument;
 
-/// Indices specified in a manifest
-#[derive(Deserialize, Debug, Clone)]
-pub struct ManifestIndices {
-	/// The indices to use for the package
-	#[serde(default, rename = "indices")]
-	pub pesde: BTreeMap<String, GixUrl>,
-	/// The indices to use for the package's Wally dependencies
-	#[serde(default, rename = "wally_indices")]
-	pub wally: BTreeMap<String, GixUrl>,
-}
+/// Maximum length, in characters, of a package's description (and license)
+pub const MAX_DESCRIPTION_LEN: usize = 255;
+/// Maximum number of authors a package may declare
+pub const MAX_AUTHORS: usize = 255;
+/// Maximum length, in characters, of a single author entry
+pub const MAX_AUTHOR_LEN: usize = 255;
+/// Maximum length, in characters, of a serialised version requirement
+pub const MAX_VERSION_REQ_LEN: usize = 255;
+/// Maximum length, in characters, of a serialised URL
+pub const MAX_URL_LEN: usize = 2048;
 
 /// A specifier for an override
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
@@ -56,21 +59,37 @@ pub struct ManifestWorkspace {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
+	/// The name of the package
+	pub name: PackageName,
+	/// The version of the package
+	pub version: PesdeVersionForRegistry,
 	/// The description of the package
 	#[serde(default)]
-	pub description: Option<String>,
+	pub description: BoundedString<MAX_DESCRIPTION_LEN>,
+	/// The license of the package
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub license: BoundedString<MAX_DESCRIPTION_LEN>,
 	/// The authors of the package
 	#[serde(default)]
-	pub authors: Vec<String>,
+	pub authors: BoundedVec<BoundedString<MAX_AUTHOR_LEN>, MAX_AUTHORS>,
 	/// The repository of the package
 	#[serde(default)]
-	pub repository: Option<url::Url>,
+	pub repository: Option<Bounded<Url, MAX_URL_LEN>>,
+	/// Whether the package is private
+	#[serde(default)]
+	pub private: bool,
 	/// The scripts of the package
 	#[serde(default)]
 	pub scripts: BTreeMap<String, String>,
-	/// The indices this package uses
-	#[serde(flatten)]
-	pub indices: ManifestIndices,
+	/// The registries to use for the package
+	#[serde(default, rename = "registries")]
+	pub pesde_registries: BTreeMap<String, Bounded<Url, MAX_URL_LEN>>,
+	/// The indices to use for the package
+	#[serde(default, rename = "indices")]
+	pub pesde_indices: BTreeMap<String, Bounded<Url, MAX_URL_LEN>>,
+	/// The indices to use for the package's Wally dependencies
+	#[serde(default, rename = "wally_indices")]
+	pub wally_indices: BTreeMap<String, Bounded<Url, MAX_URL_LEN>>,
 	/// The files to include in the package
 	#[serde(default)]
 	pub includes: Vec<String>,

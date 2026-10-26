@@ -5,6 +5,7 @@
 
 use crate::lockfile::Lockfile;
 use crate::manifest::Manifest;
+use crate::signature::PublicKey;
 use crate::source::PackageSource as _;
 use crate::source::PackageSources;
 use fs_err::tokio as fs;
@@ -19,8 +20,6 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
-use std::hash::Hash as _;
-use std::hash::Hasher as _;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -32,6 +31,7 @@ use tokio::sync::RwLock;
 use tracing::instrument;
 use wax::Program as _;
 
+pub mod bounded;
 pub mod download;
 pub mod download_and_link;
 pub mod graph;
@@ -45,6 +45,7 @@ pub mod patches;
 pub mod reporters;
 pub mod resolver;
 pub mod scripts;
+pub mod signature;
 pub mod source;
 pub(crate) mod util;
 
@@ -52,19 +53,20 @@ pub(crate) mod util;
 pub const MANIFEST_FILE_NAME: &str = "pesde.toml";
 /// The name of the lockfile
 pub const LOCKFILE_FILE_NAME: &str = "pesde.lock";
-/// The name of the default index
-pub const DEFAULT_INDEX_NAME: &str = "default";
+/// The key of the default URL in manifests (indices and registries)
+pub const DEFAULT_URL_KEY: &str = "default";
 /// The name of the packages container
 pub const PACKAGES_CONTAINER_NAME: &str = ".pesde";
 pub(crate) const LINK_LIB_NO_FILE_FOUND: &str = "____pesde_no_export_file_found";
 
-pub(crate) fn default_index_name() -> String {
-	DEFAULT_INDEX_NAME.into()
+pub(crate) fn default_url_key() -> String {
+	DEFAULT_URL_KEY.into()
 }
 
 #[derive(Debug, Default)]
 struct AuthConfigShared {
-	tokens: HashMap<GixUrl, String>,
+	tokens: HashMap<Url, String>,
+	identities: HashMap<Url, PublicKey>,
 }
 
 /// Struct containing the authentication configuration
@@ -83,7 +85,7 @@ impl AuthConfig {
 	/// Set the tokens
 	/// Panics if the `AuthConfig` is shared
 	#[must_use]
-	pub fn with_tokens<I: IntoIterator<Item = (GixUrl, impl Into<String>)>>(
+	pub fn with_tokens<I: IntoIterator<Item = (Url, impl Into<String>)>>(
 		mut self,
 		tokens: I,
 	) -> Self {
@@ -92,9 +94,20 @@ impl AuthConfig {
 		self
 	}
 
+	/// Set the identities
+	/// Panics if the `AuthConfig` is shared
+	#[must_use]
+	pub fn with_identities<I: IntoIterator<Item = (Url, PublicKey)>>(
+		mut self,
+		identities: I,
+	) -> Self {
+		Arc::get_mut(&mut self.shared).unwrap().identities = identities.into_iter().collect();
+		self
+	}
+
 	/// Get the tokens
 	#[must_use]
-	pub fn tokens(&self) -> &HashMap<GixUrl, String> {
+	pub fn tokens(&self) -> &HashMap<Url, String> {
 		&self.shared.tokens
 	}
 }
@@ -364,9 +377,9 @@ pub async fn matching_globs<'a>(
 	Ok(paths)
 }
 
-/// A struct containing sources already having been refreshed
+/// A struct containing sources already having been refreshed and their states
 #[derive(Debug, Clone, Default)]
-pub struct RefreshedSources(Arc<tokio::sync::Mutex<HashSet<u64>>>);
+pub struct RefreshedSources(Arc<tokio::sync::Mutex<HashSet<PackageSources>>>);
 
 impl RefreshedSources {
 	/// Create a new empty `RefreshedSources`
@@ -382,17 +395,14 @@ impl RefreshedSources {
 		source: &PackageSources,
 		project: &Project,
 	) -> Result<(), source::errors::RefreshError> {
-		let mut hasher = std::hash::DefaultHasher::new();
-		source.hash(&mut hasher);
-		let hash = hasher.finish();
-
 		let mut refreshed_sources = self.0.lock().await;
-
-		if refreshed_sources.insert(hash) {
-			source.refresh(project).await
-		} else {
-			Ok(())
+		if refreshed_sources.contains(source) {
+			return Ok(());
 		}
+
+		source.refresh(project).await?;
+		refreshed_sources.insert(source.clone());
+		Ok(())
 	}
 }
 
@@ -495,36 +505,67 @@ pub fn version_matches(req: &VersionReq, version: &Version) -> bool {
 	*req == VersionReq::STAR || req.matches(version)
 }
 
-/// A thin wrapper around `gix::Url` to serde in a human-readable way as well as providing cheap cloning
+/// A thin wrapper around `url::Url` to provide cheap cloning and normalisation
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GixUrl(Arc<gix::Url>);
-ser_display_deser_fromstr!(GixUrl);
+pub struct Url(Arc<(url::Url, String)>);
+ser_display_deser_fromstr!(Url);
 
-impl GixUrl {
-	/// Creates a new [GixUrl] from a [gix::Url]
+impl Url {
+	/// Returns the underlying [url::Url]
 	#[must_use]
-	pub fn new(url: impl Into<Arc<gix::Url>>) -> Self {
-		Self(url.into())
+	pub fn as_url(&self) -> &url::Url {
+		&self.0.0
 	}
 
-	/// Returns the underlying [gix::Url]
+	/// Returns the decoded path of the URL
 	#[must_use]
-	pub fn as_url(&self) -> &gix::Url {
-		&self.0
+	pub fn path(&self) -> &str {
+		&self.0.1
+	}
+
+	/// Returns the URL as a [`gix::Url`]
+	pub fn as_gix_url(&self) -> gix::Url {
+		let url = self.as_url();
+		let scheme = url.scheme().into();
+
+		gix::Url {
+			host: url.host().map(|host| {
+				let url::Host::Ipv6(ipv6) = host else {
+					return host.to_string();
+				};
+
+				if scheme == gix::url::Scheme::Ssh {
+					ipv6.to_string()
+				} else {
+					format!("[{ipv6}]")
+				}
+			}),
+			scheme,
+			user: Some(url.username())
+				.filter(|s| !s.is_empty())
+				.map(Into::into),
+			password: url.password().map(Into::into),
+			serialize_alternative_form: false,
+			port: url.port(),
+			path: self.path().into(),
+		}
 	}
 }
 
-impl FromStr for GixUrl {
-	type Err = errors::GixUrlError;
+impl FromStr for Url {
+	type Err = errors::ParseUrlError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		s.try_into().map(|url| GixUrl::new(Arc::new(url)))
+		let url = s.parse::<url::Url>()?;
+		let path = urlencoding::decode(url.path())?.into_owned();
+
+		Ok(Url((url, path).into()))
 	}
 }
 
-impl Display for GixUrl {
+impl Display for Url {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.as_url().to_bstring())
+		write!(f, "{}", self.as_url())
 	}
 }
 
@@ -603,6 +644,17 @@ pub mod errors {
 		Globbing(#[from] MatchingGlobsError),
 	}
 
-	/// Errors that can occur when parsing a `gix::Url`
-	pub type GixUrlError = gix::url::parse::Error;
+	/// Errors that can occur when parsing a [`super::Url`]
+	#[derive(Debug, Error, thiserror_ext::Box)]
+	#[thiserror_ext(newtype(name = ParseUrlError))]
+	#[non_exhaustive]
+	pub enum ParseUrlErrorKind {
+		/// An error occurred while parsing the URL
+		#[error("error parsing URL")]
+		Parse(#[from] url::ParseError),
+
+		/// The path was ill-formed
+		#[error("ill-formed URL path")]
+		IllFormedPath(#[from] std::string::FromUtf8Error),
+	}
 }

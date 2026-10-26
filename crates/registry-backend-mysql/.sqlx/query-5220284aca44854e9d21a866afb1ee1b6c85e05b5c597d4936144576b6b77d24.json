@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT pos FROM package WHERE scope = ? AND local_name_blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "pos"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5220284aca44854e9d21a866afb1ee1b6c85e05b5c597d4936144576b6b77d24"
+}

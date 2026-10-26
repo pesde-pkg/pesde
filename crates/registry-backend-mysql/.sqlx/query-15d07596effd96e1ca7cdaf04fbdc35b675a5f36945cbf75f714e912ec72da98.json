@@ -1,0 +1,48 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT package.local_name_blake3, package_version.version\nFROM versions_internal_node_key\nINNER JOIN package_version ON package_version.scope=versions_internal_node_key.scope AND package_version.pos=versions_internal_node_key.version_pos\nINNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos\nWHERE versions_internal_node_key.node_blake3 = ?\nORDER BY versions_internal_node_key.idx",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_name_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "local_name_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package_version",
+            "name": "version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "15d07596effd96e1ca7cdaf04fbdc35b675a5f36945cbf75f714e912ec72da98"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO package (scope, pos, local_name_blake3) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "40415569df846e6c6b5fd02a1dbdc6578a412fb1732d3603a3f82ad89a7859d7"
+}

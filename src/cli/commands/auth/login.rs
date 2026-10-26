@@ -1,26 +1,29 @@
 #![expect(deprecated)]
-use anyhow::Context as _;
-use clap::Args;
-use console::style;
-use pesde::source::pesde::backend::PesdePackageSourceBackend as _;
-use reqwest::header::ACCEPT;
-use serde::Deserialize;
-use std::thread::spawn;
-use tokio::time::sleep;
-use url::Url;
-
 use crate::cli::GITHUB_URL;
 use crate::cli::auth::get_token_login;
 use crate::cli::auth::get_tokens;
 use crate::cli::auth::set_token;
+use crate::cli::commands::auth::get_index;
 use crate::cli::style::URL_STYLE;
-use pesde::GixUrl;
+use anyhow::Context as _;
+use clap::Args;
+use console::style;
 use pesde::Subproject;
+use pesde::Url;
 use pesde::source::PackageSource as _;
-use pesde::source::pesde::PesdePackageSource;
+use pesde::source::legacy_pesde::LegacyPesdePackageSource;
+use pesde::source::legacy_pesde::backend::LegacyPesdePackageSourceBackend as _;
+use reqwest::header::ACCEPT;
+use serde::Deserialize;
+use std::thread::spawn;
+use tokio::time::sleep;
 
 #[derive(Debug, Args)]
 pub struct LoginCommand {
+	/// The index to use. Defaults to `default`, or the configured default index if current directory doesn't have a manifest
+	#[arg(short, long)]
+	index: Option<String>,
+
 	/// The token to use for authentication, skipping login
 	#[arg(short, long)]
 	token: Option<String>,
@@ -30,7 +33,7 @@ pub struct LoginCommand {
 struct DeviceCodeResponse {
 	device_code: String,
 	user_code: String,
-	verification_uri: Url,
+	verification_uri: url::Url,
 	expires_in: u64,
 	interval: u64,
 }
@@ -55,16 +58,16 @@ enum AccessTokenResponse {
 impl LoginCommand {
 	pub async fn authenticate_device_flow(
 		&self,
-		index_url: GixUrl,
+		index_url: Url,
 		subproject: &Subproject,
 	) -> anyhow::Result<String> {
 		println!("logging in into {index_url}");
 
-		let source = PesdePackageSource::from_url(index_url);
+		let source = LegacyPesdePackageSource::from_url(index_url);
 		source
 			.refresh(subproject.project())
 			.await
-			.context("failed to refresh index")?;
+			.context("failed to refresh source")?;
 
 		let config = source
 			.repo()
@@ -78,7 +81,7 @@ impl LoginCommand {
 		let response = subproject
 			.project()
 			.reqwest()
-			.post(Url::parse_with_params(
+			.post(url::Url::parse_with_params(
 				"https://github.com/login/device/code",
 				&[("client_id", &client_id)],
 			)?)
@@ -124,7 +127,7 @@ impl LoginCommand {
 			let response = subproject
 				.project()
 				.reqwest()
-				.post(Url::parse_with_params(
+				.post(url::Url::parse_with_params(
 					"https://github.com/login/oauth/access_token",
 					[
 						("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
@@ -166,7 +169,9 @@ impl LoginCommand {
 		anyhow::bail!("code expired, please re-run the login command");
 	}
 
-	pub async fn run(self, index_url: GixUrl, subproject: Subproject) -> anyhow::Result<()> {
+	pub async fn run(self, subproject: Subproject) -> anyhow::Result<()> {
+		let index_url = get_index(&subproject, self.index.as_deref()).await?;
+
 		let token_given = self.token.is_some();
 		let token = match self.token {
 			Some(token) => token,

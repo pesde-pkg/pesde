@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT scope.log_size AS `log_size: NonZero<u64>`\nFROM scope\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope.genesis_pos\nWHERE global_log_scope_genesis_entry.name_blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "log_size: NonZero<u64>",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.scope",
+            "name": "log_size"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ad05442b82625babc4f63fcd44ef6696f5ff9b0fd8801be542f182aca0c44335"
+}

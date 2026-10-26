@@ -1,8 +1,10 @@
 *
 !src
-!registry
-registry/.env
-registry/data
+!crates
 !Cargo.lock
 !Cargo.toml
 !rust-toolchain.toml
+
+**/.env
+**/*.db
+**/*.sqlite

@@ -1,0 +1,82 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT public_key.algorithm AS `algorithm: Text<KeyKind>`, public_key.data, plaintext_name.blake3, plaintext_name.plaintext\nFROM scope_members_leaf_node_entry AS `entry`\nINNER JOIN public_key ON public_key.id=entry.member\nLEFT JOIN member_grant_package ON member_grant_package.grant_blake3=entry.grant_blake3\nLEFT JOIN plaintext_name ON plaintext_name.blake3=member_grant_package.local_name_blake3\nWHERE entry.node_blake3 = ?\nORDER BY entry.idx",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "algorithm: Text<KeyKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "data",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 4096
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "data"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "PRIMARY_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.plaintext_name",
+            "name": "blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "plaintext",
+        "type_info": {
+          "type": "VarString",
+          "flags": "BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 128
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.plaintext_name",
+            "name": "plaintext"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "1dc0fe9161c4b621e9fc7c25998036f933e83d1b06506f7e076a954eea701d93"
+}

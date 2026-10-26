@@ -1,9 +1,9 @@
 //! Git package source
-use crate::GixUrl;
 use crate::MANIFEST_FILE_NAME;
 use crate::Project;
 use crate::RefreshedSources;
 use crate::Subproject;
+use crate::Url;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
 use crate::manifest::Alias;
@@ -28,8 +28,8 @@ use crate::source::git::backend::GitPackageBackends;
 use crate::source::git::backend::GitPackageSourceBackend as _;
 use crate::source::git::backend::GixPackageSourceBackend;
 use crate::source::git::pkg_ref::GitPackageRef;
+use crate::source::legacy_pesde::PesdeVersionedManifest;
 use crate::source::path::RelativeOrAbsolutePath;
-use crate::source::pesde::PesdeVersionedManifest;
 use crate::source::wally::compat_util::WALLY_MANIFEST_FILE_NAME;
 use crate::source::wally::compat_util::get_exports;
 use crate::source::wally::manifest::WallyManifest;
@@ -80,7 +80,7 @@ impl GitPackageSource {
 
 	/// Creates a Git package source from a URL
 	#[must_use]
-	pub fn from_url(repo_url: GixUrl) -> Self {
+	pub fn from_url(repo_url: Url) -> Self {
 		Self::new(GitPackageBackends::Git(GixPackageSourceBackend::new(
 			repo_url,
 		)))
@@ -148,8 +148,8 @@ impl PackageSource for GitPackageSource {
 					.map_err(errors::ResolveErrorKind::DeserManifest)?;
 
 			let structure_kind = match &manifest {
-				PesdeVersionedManifest::V1(m) => StructureKind::PesdeV1(m.target.kind()),
-				PesdeVersionedManifest::V2(_) => StructureKind::PesdeV2,
+				PesdeVersionedManifest::Legacy(m) => StructureKind::LegacyPesde(m.target.kind()),
+				PesdeVersionedManifest::Modern(_) => StructureKind::Pesde,
 			};
 
 			let dependencies = transform_pesde_dependencies(
@@ -189,7 +189,7 @@ impl PackageSource for GitPackageSource {
 		Ok(ResolveResult {
 			source: PackageSources::Git(self.clone()),
 			pkg_ref: PackageRefs::Git(GitPackageRef { tree_id }),
-			structure_kind: StructureKind::Wally(package.name.name().into()),
+			structure_kind: StructureKind::Wally(package.name.local_name().into()),
 			versions: BTreeMap::from([(tree_version, dependencies)]),
 		})
 	}
@@ -338,7 +338,7 @@ impl PackageSource for GitPackageSource {
 
 fn transform_pesde_dependencies(
 	manifest: &Manifest,
-	repo_url: &GixUrl,
+	repo_url: &Url,
 	path: &RelativePath,
 ) -> Result<BTreeMap<Alias, (DependencySpecifiers, DependencyType)>, errors::ResolveError> {
 	let dependencies = manifest
@@ -351,10 +351,21 @@ fn transform_pesde_dependencies(
 		.into_iter()
 		.map(|(alias, (mut spec, ty))| {
 			match &mut spec {
-				DependencySpecifiers::Pesde(specifier) => {
+				// DependencySpecifiers::Pesde(specifier) => {
+				// 	specifier.registry = manifest
+				// 		.pesde_registries
+				// 		.get(&specifier.registry)
+				// 		.ok_or_else(|| {
+				// 			errors::ResolveErrorKind::PesdeRegistryNotFound(
+				// 				specifier.registry.clone(),
+				// 				repo_url.clone(),
+				// 			)
+				// 		})?
+				// 		.to_string();
+				// }
+				DependencySpecifiers::LegacyPesde(specifier) => {
 					specifier.index = manifest
-						.indices
-						.pesde
+						.pesde_indices
 						.get(&specifier.index)
 						.ok_or_else(|| {
 							errors::ResolveErrorKind::PesdeIndexNotFound(
@@ -366,8 +377,7 @@ fn transform_pesde_dependencies(
 				}
 				DependencySpecifiers::Wally(specifier) => {
 					specifier.index = manifest
-						.indices
-						.wally
+						.wally_indices
 						.get(&specifier.index)
 						.ok_or_else(|| {
 							errors::ResolveErrorKind::WallyIndexNotFound(
@@ -400,12 +410,13 @@ fn transform_pesde_dependencies(
 
 /// Errors that can occur when interacting with the Git package source
 pub mod errors {
-	use crate::GixUrl;
+	use crate::Url;
 	use crate::manifest::errors::AllDependenciesError;
 	use relative_path::RelativePathBuf;
 	use thiserror::Error;
 
-	pub use crate::source::git::backend::errors::RefreshError;
+	/// Errors that can occur when refreshing the Git package source
+	pub type RefreshError = crate::source::git::backend::errors::RefreshError;
 
 	/// Errors that can occur when downloading a package from a Git package source
 	#[derive(Debug, Error, thiserror_ext::Box)]
@@ -468,19 +479,23 @@ pub mod errors {
 
 		/// No manifest was found in the backend
 		#[error("no manifest found in backend {0}")]
-		NoManifest(GixUrl),
+		NoManifest(Url),
 
-		/// A pesde index was not found in the backend
-		#[error("pesde index {0} not found in backend {1}")]
-		PesdeIndexNotFound(String, GixUrl),
+		/// A pesde registry specified in the manifest was not found
+		#[error("pesde registry {0} not found in {1}")]
+		PesdeRegistryNotFound(String, Url),
 
-		/// A Wally index was not found in the backend
-		#[error("wally index {0} not found in backend {1}")]
-		WallyIndexNotFound(String, GixUrl),
+		/// A pesde index specified in the manifest was not found
+		#[error("pesde index {0} not found in {1}")]
+		PesdeIndexNotFound(String, Url),
 
-		/// The package depends on a path package that escapes the backend
-		#[error("path dependency in backend {0} is not allowed")]
-		Path(GixUrl),
+		/// A Wally index specified in the manifest was not found
+		#[error("wally index {0} not found in {1}")]
+		WallyIndexNotFound(String, Url),
+
+		/// The package depends on a path package that escapes the subproject
+		#[error("path dependency in {0} is not allowed")]
+		Path(Url),
 	}
 
 	/// Errors that can occur when getting exports from a Git package source

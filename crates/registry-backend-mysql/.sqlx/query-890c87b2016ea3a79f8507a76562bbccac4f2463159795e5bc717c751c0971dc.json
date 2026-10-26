@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO scope_members_leaf_node_entry (node_blake3, idx, member, grant_blake3) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "890c87b2016ea3a79f8507a76562bbccac4f2463159795e5bc717c751c0971dc"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT EXISTS(SELECT 1 FROM global_log_scope_genesis_entry WHERE name_blake3 = ?) AS `exists: bool`",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists: bool",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | BINARY",
+          "collation": 63,
+          "max_size": 1
+        },
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f0f0f16b739753bb79f4d7b1e1d1321653c81d9c4a612f838ce379cb68f0d856"
+}
