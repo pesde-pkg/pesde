@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO signed_update_member_grant_scope_log_entry (scope, pos, member, grant_blake3) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "060e5f941fadcff716149b351722557ba3ceb364afe71ec443a2c06d9231a757"
+}

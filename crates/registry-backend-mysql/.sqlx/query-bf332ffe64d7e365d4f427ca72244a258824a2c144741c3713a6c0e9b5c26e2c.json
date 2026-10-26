@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT kind AS `kind: TreeKind` FROM deprecations_node WHERE blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "kind: TreeKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.deprecations_node",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bf332ffe64d7e365d4f427ca72244a258824a2c144741c3713a6c0e9b5c26e2c"
+}

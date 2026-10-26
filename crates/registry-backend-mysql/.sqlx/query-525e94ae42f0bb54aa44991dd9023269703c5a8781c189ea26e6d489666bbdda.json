@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO public_key (id, algorithm, data, blake3) VALUES (NULL, ?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "525e94ae42f0bb54aa44991dd9023269703c5a8781c189ea26e6d489666bbdda"
+}

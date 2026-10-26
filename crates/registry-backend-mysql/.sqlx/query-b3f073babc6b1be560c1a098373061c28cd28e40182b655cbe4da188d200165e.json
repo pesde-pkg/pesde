@@ -1,0 +1,48 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT member_grant_package.local_name_blake3, plaintext_name.plaintext\nFROM member_grant_package\nINNER JOIN plaintext_name ON plaintext_name.blake3=member_grant_package.local_name_blake3\nWHERE member_grant_package.grant_blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_name_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | PRIMARY_KEY | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.member_grant_package",
+            "name": "local_name_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "plaintext",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 128
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.plaintext_name",
+            "name": "plaintext"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "b3f073babc6b1be560c1a098373061c28cd28e40182b655cbe4da188d200165e"
+}

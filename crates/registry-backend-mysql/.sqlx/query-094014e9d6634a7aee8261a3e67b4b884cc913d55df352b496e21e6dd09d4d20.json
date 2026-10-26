@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO signed_transfer_ownership_scope_log_entry (scope, pos, consent_algorithm, consent, nonce) VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "094014e9d6634a7aee8261a3e67b4b884cc913d55df352b496e21e6dd09d4d20"
+}

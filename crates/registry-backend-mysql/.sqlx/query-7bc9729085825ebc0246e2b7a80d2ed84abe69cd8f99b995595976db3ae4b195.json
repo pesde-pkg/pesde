@@ -1,0 +1,116 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT\n\tsigned_add_member_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,\n\tsigned_add_member_scope_log_entry.consent,\n\tsigned_add_member_scope_log_entry.nonce AS `nonce: Uuid`,\n\tsigned_add_member_scope_log_entry.grant_blake3,\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM signed_add_member_scope_log_entry\nINNER JOIN public_key ON public_key.id=signed_add_member_scope_log_entry.member\nWHERE signed_add_member_scope_log_entry.scope = ? AND signed_add_member_scope_log_entry.pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "consent_algorithm: Text<SignatureKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 72
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.signed_add_member_scope_log_entry",
+            "name": "consent_algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "consent",
+        "type_info": {
+          "type": "Blob",
+          "flags": "NOT_NULL | BLOB | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 65535
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.signed_add_member_scope_log_entry",
+            "name": "consent"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "nonce: Uuid",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | UNIQUE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 16
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.signed_add_member_scope_log_entry",
+            "name": "nonce"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "grant_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.signed_add_member_scope_log_entry",
+            "name": "grant_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "kind: Text<KeyKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "data",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 4096
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "data"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7bc9729085825ebc0246e2b7a80d2ed84abe69cd8f99b995595976db3ae4b195"
+}

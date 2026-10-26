@@ -1,0 +1,82 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT package.local_name_blake3, package_version.version, package_version.archive_hash, versions_leaf_node_entry.yank_state AS `yank_state: VersionYankState`\nFROM versions_leaf_node_entry\nINNER JOIN package_version ON package_version.scope=versions_leaf_node_entry.scope AND package_version.pos=versions_leaf_node_entry.version_pos\nINNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos\nWHERE versions_leaf_node_entry.node_blake3 = ?\nORDER BY versions_leaf_node_entry.idx",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_name_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "local_name_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package_version",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "archive_hash",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 512
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package_version",
+            "name": "archive_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "yank_state: VersionYankState",
+        "type_info": {
+          "type": "String",
+          "flags": "ENUM",
+          "collation": 224,
+          "max_size": 48
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.versions_leaf_node_entry",
+            "name": "yank_state"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "b8267f874ed05bece8158ed950561fc35250835e11837f8599447a4d929c0880"
+}

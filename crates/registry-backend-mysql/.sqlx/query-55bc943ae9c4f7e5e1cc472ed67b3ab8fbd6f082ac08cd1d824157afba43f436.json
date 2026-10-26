@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\nUPDATE scope\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope.genesis_pos\nSET scope.log_size = ?\nWHERE global_log_scope_genesis_entry.name_blake3 = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "55bc943ae9c4f7e5e1cc472ed67b3ab8fbd6f082ac08cd1d824157afba43f436"
+}

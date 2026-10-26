@@ -1,0 +1,62 @@
+{
+  "db_name": "MySQL",
+  "query": "\nWITH RECURSIVE\nhead AS (\n\tSELECT scope_log_entry.owner, scope_log_entry.scope_members_root_blake3\n\tFROM global_log_scope_genesis_entry\n\tINNER JOIN scope_log_entry ON scope_log_entry.scope=global_log_scope_genesis_entry.pos\n\tWHERE global_log_scope_genesis_entry.name_blake3 = ?\n\tORDER BY scope_log_entry.pos DESC\n\tLIMIT 1\n),\ncaller AS (\n\tSELECT public_key.id\n\tFROM public_key\n\tWHERE public_key.algorithm = ? AND public_key.data = ?\n),\nmembers_tree (blake3) AS (\n\tSELECT head.scope_members_root_blake3\n\tFROM head\n\t\n\tUNION\n\t\n\tSELECT scope_members_internal_node_child.child_blake3\n\tFROM members_tree\n\tINNER JOIN scope_members_internal_node_child ON scope_members_internal_node_child.node_blake3=members_tree.blake3\n)\nSELECT\n\tEXISTS(SELECT 1 FROM global_log_scope_genesis_entry WHERE global_log_scope_genesis_entry.name_blake3 = ?) AS `scope_exists: bool`,\n\tEXISTS(SELECT 1 FROM head INNER JOIN caller ON caller.id = head.owner) AS `is_owner: bool`,\n\tEXISTS(\n\t\tSELECT 1\n\t\tFROM members_tree\n\t\tINNER JOIN scope_members_leaf_node_entry ON scope_members_leaf_node_entry.node_blake3=members_tree.blake3\n\t\tINNER JOIN caller ON caller.id = scope_members_leaf_node_entry.member\n\t) AS `is_member: bool`,\n\tEXISTS(\n\t\tSELECT 1\n\t\tFROM members_tree\n\t\tINNER JOIN scope_members_leaf_node_entry ON scope_members_leaf_node_entry.node_blake3=members_tree.blake3\n\t\tINNER JOIN caller ON caller.id = scope_members_leaf_node_entry.member\n\t\tINNER JOIN member_grant_package ON member_grant_package.grant_blake3=scope_members_leaf_node_entry.grant_blake3\n\t\tWHERE member_grant_package.local_name_blake3 = ?\n\t) AS `has_package: bool`",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "scope_exists: bool",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | BINARY",
+          "collation": 63,
+          "max_size": 1
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "is_owner: bool",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | BINARY",
+          "collation": 63,
+          "max_size": 1
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "is_member: bool",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | BINARY",
+          "collation": 63,
+          "max_size": 1
+        },
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "has_package: bool",
+        "type_info": {
+          "type": "Long",
+          "flags": "NOT_NULL | BINARY",
+          "collation": 63,
+          "max_size": 1
+        },
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fb5f1014e0c07fb3c370eab4a51c4c36b07c434ec52caeb17557e9ba23ea7aa7"
+}

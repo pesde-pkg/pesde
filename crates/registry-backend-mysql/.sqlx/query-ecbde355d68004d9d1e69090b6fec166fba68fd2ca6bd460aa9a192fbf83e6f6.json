@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO versions_internal_node_child (node_blake3, idx, child_blake3) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "ecbde355d68004d9d1e69090b6fec166fba68fd2ca6bd460aa9a192fbf83e6f6"
+}

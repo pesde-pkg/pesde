@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT op_kind AS `op_kind: AdminOpKind`\nFROM admin_scope_log_entry\nWHERE scope = ? AND pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "op_kind: AdminOpKind",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 72
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.admin_scope_log_entry",
+            "name": "op_kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "de98c091f607cc982029ad35ec559c704451888109be954de4041c9477f93c80"
+}

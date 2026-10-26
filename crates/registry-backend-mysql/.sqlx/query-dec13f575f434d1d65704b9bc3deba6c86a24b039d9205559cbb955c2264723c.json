@@ -1,0 +1,65 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT package.local_name_blake3, package_version.version, admin_set_yanked_scope_log_entry.yanked AS `yanked: bool`\nFROM admin_set_yanked_scope_log_entry\nINNER JOIN package_version ON package_version.scope=admin_set_yanked_scope_log_entry.scope AND package_version.pos=admin_set_yanked_scope_log_entry.version_pos\nINNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos\nWHERE admin_set_yanked_scope_log_entry.scope = ? AND admin_set_yanked_scope_log_entry.pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_name_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "local_name_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package_version",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "yanked: bool",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 1
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.admin_set_yanked_scope_log_entry",
+            "name": "yanked"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "dec13f575f434d1d65704b9bc3deba6c86a24b039d9205559cbb955c2264723c"
+}

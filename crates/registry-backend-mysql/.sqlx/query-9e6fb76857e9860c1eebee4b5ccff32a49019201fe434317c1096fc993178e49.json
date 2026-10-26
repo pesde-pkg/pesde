@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO deprecations_node (blake3, kind) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "9e6fb76857e9860c1eebee4b5ccff32a49019201fe434317c1096fc993178e49"
+}

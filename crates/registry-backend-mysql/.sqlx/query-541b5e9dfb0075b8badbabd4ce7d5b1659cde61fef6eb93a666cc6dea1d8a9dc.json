@@ -1,0 +1,48 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT public_key.algorithm AS `algorithm: Text<KeyKind>`, public_key.data\nFROM scope_members_internal_node_key AS `key`\nINNER JOIN public_key ON public_key.id=key.member\nWHERE key.node_blake3 = ?\nORDER BY key.idx",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "algorithm: Text<KeyKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "data",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 4096
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "data"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "541b5e9dfb0075b8badbabd4ce7d5b1659cde61fef6eb93a666cc6dea1d8a9dc"
+}

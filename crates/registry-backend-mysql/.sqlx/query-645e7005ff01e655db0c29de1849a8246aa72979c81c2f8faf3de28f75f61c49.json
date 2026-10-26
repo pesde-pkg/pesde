@@ -1,0 +1,116 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT\n    global_log_scope_genesis_entry.sig_algorithm AS `sig_algorithm: Text<SignatureKind>`,\n    global_log_scope_genesis_entry.sig,\n    global_log_scope_genesis_entry.first_entry_hash,\n    global_log_scope_genesis_entry.name_blake3,\n    public_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM global_log_scope_genesis_entry\nINNER JOIN public_key ON public_key.id=global_log_scope_genesis_entry.owner_id\nWHERE global_log_scope_genesis_entry.pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sig_algorithm: Text<SignatureKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 72
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_scope_genesis_entry",
+            "name": "sig_algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "sig",
+        "type_info": {
+          "type": "Blob",
+          "flags": "NOT_NULL | BLOB | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 65535
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_scope_genesis_entry",
+            "name": "sig"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "first_entry_hash",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 512
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_scope_genesis_entry",
+            "name": "first_entry_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | UNIQUE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_scope_genesis_entry",
+            "name": "name_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "kind: Text<KeyKind>",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 28
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "data",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 4096
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "data"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "645e7005ff01e655db0c29de1849a8246aa72979c81c2f8faf3de28f75f61c49"
+}

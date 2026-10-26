@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO global_log_scope_genesis_entry (pos, sig_algorithm, sig, name_blake3, owner_id, first_entry_hash) VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "a408eace7b81d2de91dbf07373b9308b2f623e60efaade2257aa50600ef3264f"
+}
