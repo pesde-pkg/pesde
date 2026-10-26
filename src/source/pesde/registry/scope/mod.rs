@@ -168,7 +168,7 @@ impl TreeConfig for PackageVersionsTree {
 	type Key = PackageVersion;
 	type Value = PackageVersionValue;
 	type Hasher = CurrentMerkleHasher;
-	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 63>;
+	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 15>;
 }
 
 /// An opinionated subset of (Cargo) SemVer.

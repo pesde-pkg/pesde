@@ -8,6 +8,7 @@ publish = false
 workspace = true
 
 [features]
+default = ["mysql"]
 mysql = ["dep:pesde-registry-backend-mysql"]
 
 [dependencies]
@@ -43,7 +44,6 @@ tracing-actix-web = "0.7.21"
 dotenvy = "0.15.7"
 rusty-s3 = "0.9.1"
 constant_time_eq = "0.5.0"
-tantivy = "0.26.1"
 
 pesde = { path = "../..", default-features = false }
 pesde-registry-core = { path = "../registry-core" }
