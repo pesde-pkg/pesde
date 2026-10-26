@@ -23,6 +23,7 @@ pub enum BlobStorage {
 	S3 {
 		bucket: Bucket,
 		credentials: Credentials,
+		#[expect(dead_code)]
 		reqwest: reqwest::Client,
 	},
 }
@@ -72,6 +73,7 @@ impl BlobStorage {
 		self.get_object(PackageArchive { hash }).await
 	}
 
+	#[expect(dead_code)]
 	pub async fn put_package_archive<R: AsyncBufRead + Unpin + Send + 'static>(
 		&self,
 		hash: &Hash,

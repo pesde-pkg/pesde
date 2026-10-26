@@ -10,8 +10,6 @@ use crate::ser_display_deser_fromstr;
 
 /// A key kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
-#[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
 #[non_exhaustive]
 pub enum KeyKind {
 	/// An Ed25519 key

@@ -4,9 +4,10 @@ use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
-use futures::TryFutureExt;
+use futures::TryFutureExt as _;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
+use pesde_registry_core::features::global::Global;
 
 use crate::Db;
 use crate::api::log::error::Error;
@@ -42,7 +43,7 @@ async fn handler(
 					current: 0,
 				});
 			};
-			Ok((size, db.global_mmr_read_store()))
+			Ok((size, Global(db)))
 		},
 		query,
 	)

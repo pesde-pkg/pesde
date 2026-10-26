@@ -13,12 +13,13 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
 jiff = { workspace = true }
-merkleberg = { workspace = true }
 semver = { workspace = true }
-sqlx = { workspace = true, features = ["mysql"] }
+sqlx = { workspace = true, features = ["mysql", "chrono"] }
+merkle-bplustree = { workspace = true }
+uuid = { workspace = true }
 
-iter-chunks = "0.3.0"
 const-str = "1.1.0"
+arrayvec = { version = "0.7.8" }
 
 pesde = { path = "../..", default-features = false, features = ["sqlx"] }
 pesde-registry-core = { path = "../registry-core" }

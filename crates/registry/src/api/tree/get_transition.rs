@@ -14,17 +14,18 @@ use merkle_bplustree::storage::ReadNodeStorage;
 use merkle_bplustree::storage::WriteNodeStorage;
 use pesde::bounded::BoundedVec;
 use pesde::source::pesde::registry::*;
-use pesde_registry_core::features::tree::TreeReadRepository;
+use pesde_registry_core::features::scope::Nodes;
+use pesde_registry_core::features::scope::ScopeTreeReadRepository;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::Db;
 use crate::api::tree::error::Error;
-use crate::shared::tree::StoredTree;
+use crate::shared::tree::ScopeTree;
 
 super::tree_handler!((actix_web::http::Method::from_bytes(b"QUERY").unwrap()) "/transition", http_v2 => http_v2_impl);
 
-async fn http_v2_impl<T: StoredTree + Serialize + DeserializeOwned>(
+async fn http_v2_impl<T: ScopeTree + Serialize + DeserializeOwned>(
 	db: Db,
 	path: web::Path<CurrentHash>,
 	body: web::Json<BoundedVec<TreeOperation<T>, 4>>,
@@ -41,8 +42,8 @@ where
 	Ok(HttpResponse::Ok().json(results))
 }
 
-async fn handler<T: StoredTree + Serialize + DeserializeOwned>(
-	db: &dyn TreeReadRepository<T>,
+async fn handler<T: ScopeTree + Serialize + DeserializeOwned>(
+	db: &dyn ScopeTreeReadRepository<T>,
 	root: &CurrentHash,
 	operations: Vec<TreeOperation<T>>,
 ) -> Result<Vec<TreeTransitionResult<T>>, Error>
@@ -52,7 +53,7 @@ where
 	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
 	T::Shaper: Default,
 {
-	let node = db.get_node(root).await?.ok_or(Error::RootNotFound)?;
+	let node = db.scope_tree_node(root).await?.ok_or(Error::RootNotFound)?;
 
 	struct InMemoryWithFallbackStorage<C: TreeConfig, S: ReadNodeStorage<C>> {
 		local: HashMap<HasherOutput<C>, TreeNode<C>>,
@@ -87,7 +88,7 @@ where
 		node,
 		InMemoryWithFallbackStorage {
 			local: Default::default(),
-			fallback: db,
+			fallback: Nodes(db),
 		},
 		Default::default(),
 	);

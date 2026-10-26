@@ -1,3 +1,2 @@
-pub mod log;
+pub mod global;
 pub mod scope;
-pub mod tree;

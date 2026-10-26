@@ -151,17 +151,29 @@ impl<T: Signable + Canonical> Canonical for Signed<T> {
 }
 
 /// The scope id; hash of the scope name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeId(CurrentHash);
+ser_display_deser_fromstr!(ScopeId);
 
 impl ScopeId {
+	/// Creates a new [Self] from a hash
+	#[must_use]
+	pub fn new(hash: CurrentHash) -> Self {
+		Self(hash)
+	}
+
 	/// Creates a new [Self] from a [Scope](crate::names::Scope)
 	#[must_use]
 	pub fn from(name: &crate::names::Scope) -> Self {
 		let mut hasher = CurrentHash::hasher();
 		hasher.update(name.as_str().as_bytes());
-		Self(hasher.finalize())
+		Self::new(hasher.finalize())
+	}
+
+	/// The underlying hash
+	#[must_use]
+	pub fn hash(&self) -> &CurrentHash {
+		&self.0
 	}
 }
 
@@ -171,18 +183,32 @@ impl Display for ScopeId {
 	}
 }
 
+impl FromStr for ScopeId {
+	type Err = <CurrentHash as FromStr>::Err;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		s.parse().map(Self)
+	}
+}
+
 /// The local name id; hash of the package local name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
-#[serde(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LocalNameId(CurrentHash);
+ser_display_deser_fromstr!(LocalNameId);
 
 impl LocalNameId {
+	/// Creates a new [Self] from a hash
+	#[must_use]
+	pub fn new(hash: CurrentHash) -> Self {
+		Self(hash)
+	}
+
 	/// Creates a new [Self] from a [LocalName](crate::names::LocalName)
 	#[must_use]
 	pub fn from(name: &crate::names::LocalName) -> Self {
 		let mut hasher = CurrentHash::hasher();
 		hasher.update(name.as_str().as_bytes());
-		Self(hasher.finalize())
+		Self::new(hasher.finalize())
 	}
 
 	/// The underlying hash
@@ -195,6 +221,14 @@ impl LocalNameId {
 impl Display for LocalNameId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		self.0.fmt(f)
+	}
+}
+
+impl FromStr for LocalNameId {
+	type Err = <CurrentHash as FromStr>::Err;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		s.parse().map(Self)
 	}
 }
 

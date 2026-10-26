@@ -4,6 +4,8 @@ use actix_web::get;
 use actix_web::web;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
+use pesde_registry_core::features::scope::ScopeReadRepository;
+use pesde_registry_core::features::scope::Scoped;
 
 use crate::Db;
 use crate::api::scope::error::Error;
@@ -31,5 +33,10 @@ async fn handler(
 		.await?
 		.ok_or(Error::ScopeNotFound)?;
 
-	log_head(current_size, &*db.scope_mmr_read_store(scope_id), query).await
+	log_head(
+		current_size,
+		Scoped(scope_id, db as &dyn ScopeReadRepository),
+		query,
+	)
+	.await
 }

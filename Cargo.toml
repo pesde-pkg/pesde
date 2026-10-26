@@ -71,6 +71,7 @@ sqlx = { workspace = true, optional = true }
 itertools = { workspace = true }
 jiff = { workspace = true }
 merkle-bplustree = { workspace = true }
+uuid = { workspace = true }
 
 gix = { version = "0.80.0", default-features = false, features = [
     "blocking-http-transport-reqwest-rust-tls",
@@ -102,7 +103,6 @@ ssh-key = { version = "0.6.7", default-features = false, features = [
 ] }
 
 cbor-core = { version = "0.10.1" }
-uuid = { version = "1.23.1", features = ["serde", "v7"] }
 
 # TODO: remove this when gitoxide adds support for creating & applying diffs
 git2 = { version = "0.20.4", optional = true }
@@ -138,8 +138,7 @@ junction = { version = "1.4.2" }
 
 [workspace]
 resolver = "3"
-#members = ["crates/*"]
-members = ["crates/registry", "crates/registry-core"]
+members = ["crates/*"]
 
 [workspace.dependencies]
 serde = { version = "1.0.229", features = ["derive", "rc"] }
@@ -176,6 +175,7 @@ jiff = { version = "0.2.23", default-features = false, features = [
     "std",
 ] }
 merkle-bplustree = { path = "../merkle-bplustree" }
+uuid = { version = "1.23.1", features = ["serde"] }
 
 [profile.dev.package.full_moon]
 opt-level = 3

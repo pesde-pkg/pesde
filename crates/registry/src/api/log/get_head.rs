@@ -6,6 +6,7 @@ use actix_web::get;
 use actix_web::web;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
+use pesde_registry_core::features::global::Global;
 
 use crate::Db;
 use crate::api::log::error::Error;
@@ -28,9 +29,7 @@ async fn handler(db: &dyn Backend, query: LogHeadQuery) -> Result<Option<LogHead
 	let current_size = db.global_log_size().await?;
 
 	if let Some(current_size) = NonZero::new(current_size) {
-		log_head(current_size, &*db.global_mmr_read_store(), query)
-			.await
-			.map(Some)
+		log_head(current_size, Global(db), query).await.map(Some)
 	} else {
 		Ok(None)
 	}

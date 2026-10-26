@@ -4,6 +4,7 @@ use actix_web::ResponseError;
 use crate::shared::error::Category;
 use crate::shared::error::http_response;
 
+#[expect(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub(super) enum Error {
 	#[error(transparent)]

@@ -5,6 +5,7 @@ use actix_web::web;
 use futures::TryFutureExt as _;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
+use pesde_registry_core::features::scope::Scoped;
 
 use crate::Db;
 use crate::api::scope::error::Error;
@@ -18,26 +19,29 @@ pub(super) async fn http_v2(
 	query: web::Query<LogEntryQuery>,
 ) -> Result<impl Responder, Error> {
 	let (scope_id, pos) = path.into_inner();
-	let entry = handler(db.as_ref(), &scope_id, pos, query.into_inner()).await?;
+	let entry = handler(db.as_ref(), scope_id, pos, query.into_inner()).await?;
 
 	Ok(HttpResponse::Ok().json(entry))
 }
 
 async fn handler(
 	db: &dyn Backend,
-	scope_id: &ScopeId,
+	scope_id: ScopeId,
 	pos: u64,
 	query: LogEntryQuery,
 ) -> Result<LogEntryResponse<ScopeEntryPayload>, Error> {
 	log_entry(
 		pos,
-		|pos| db.scope_log_entry(scope_id, pos).map_err(Into::into),
+		|pos| {
+			db.scope_log_entry(scope_id.clone(), pos)
+				.map_err(Into::into)
+		},
 		async || {
 			let size = db
-				.scope_log_size(scope_id)
+				.scope_log_size(&scope_id)
 				.await?
 				.ok_or(Error::ScopeNotFound)?;
-			Ok((size, db.scope_mmr_read_store(scope_id)))
+			Ok((size, Scoped(&scope_id, db)))
 		},
 		query,
 	)

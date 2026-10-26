@@ -7,23 +7,24 @@ use actix_web::Responder;
 use actix_web::web;
 use actix_web_lab::respond::NdJson;
 use futures::Stream;
-use futures::TryStreamExt;
+use futures::TryStreamExt as _;
 use merkle_bplustree::MerkleBPlusTree;
 use merkle_bplustree::TreeConfig;
 use merkle_bplustree::hasher::Hasher;
 use merkle_bplustree::proof::range::GetRangeProof;
 use pesde::source::pesde::registry::*;
-use pesde_registry_core::features::tree::TreeReadRepository;
+use pesde_registry_core::features::scope::Nodes;
+use pesde_registry_core::features::scope::ScopeTreeReadRepository;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::Db;
 use crate::api::tree::error::Error;
-use crate::shared::tree::StoredTree;
+use crate::shared::tree::ScopeTree;
 
 super::tree_handler!((actix_web::http::Method::GET) "/entries", http_v2 => http_v2_impl);
 
-async fn http_v2_impl<T: StoredTree>(
+async fn http_v2_impl<T: ScopeTree>(
 	db: Db,
 	path: web::Path<CurrentHash>,
 ) -> Result<impl Responder, Error>
@@ -40,7 +41,7 @@ where
 }
 
 async fn handler<T: TreeConfig>(
-	db: Arc<dyn TreeReadRepository<T>>,
+	db: Arc<dyn ScopeTreeReadRepository<T>>,
 	root: &CurrentHash,
 ) -> Result<impl Stream<Item = Result<TreeEntriesEndpointResponse<T>, Error>> + use<T>, Error>
 where
@@ -49,8 +50,8 @@ where
 	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
 	T::Shaper: Default,
 {
-	let node = db.get_node(root).await?.ok_or(Error::RootNotFound)?;
-	let tree = MerkleBPlusTree::from_root(node, db, Default::default());
+	let node = db.scope_tree_node(root).await?.ok_or(Error::RootNotFound)?;
+	let tree = MerkleBPlusTree::from_root(node, Nodes(db), Default::default());
 	Ok(EntriesStream {
 		stream: Some(tree.into_proven_range(..)),
 		phantom: PhantomData,

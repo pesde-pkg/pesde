@@ -8,6 +8,7 @@ use pesde::source::pesde::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::ExistingScopeLockResult;
 use pesde_registry_core::db::PermissionWidth;
+use pesde_registry_core::features::scope::Scoped;
 
 use crate::Db;
 use crate::api::scope::error::Error;
@@ -82,10 +83,10 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 		UserScopeOp::SetDeprecation(op) => PermissionWidth::Package(&op.pkg),
 	};
 
-	if let Some(grant) = grant(op) {
-		if grant.0.iter().any(|e| e.plaintext().is_none()) {
-			return Err(Error::GrantPlaintextRequired);
-		}
+	if let Some(grant) = grant(op)
+		&& grant.0.iter().any(|e| e.plaintext().is_none())
+	{
+		return Err(Error::GrantPlaintextRequired);
 	}
 
 	let (tx, scope_size) = match db
@@ -108,21 +109,17 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 		} = op.header();
 
 		let prev_entry = tx
-			.scope_log_entry(scope_id, scope_size.get())
+			.scope_log_entry(scope_id.clone(), scope_size.get())
 			.await?
 			.ok_or(Error::ScopeNotFound)?;
 
 		let prev_entry_hash =
-			Hash::digest(given_prev_hash.algorithm(), &prev_entry.canonical_bytes());
+			Hash::digest(given_prev_hash.algorithm(), prev_entry.canonical_bytes());
 		if *given_prev_hash != prev_entry_hash {
 			return Err(Error::InvalidPrevHash);
 		}
 
-		let scope_state = async || {
-			tx.scope_state(scope_id, scope_size)
-				.await?
-				.ok_or(Error::ScopeNotFound)
-		};
+		let scope_state = async || tx.scope_state(scope_id).await?.ok_or(Error::ScopeNotFound);
 
 		match op {
 			UserScopeOp::AddMember(
@@ -133,8 +130,12 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				},
 			) => {
 				let state = scope_state().await?;
-				run_tree(tx, &state, scope_members_root, async |tree| {
-					match tree
+				run_tree(
+					scope_id,
+					tx,
+					&state,
+					scope_members_root,
+					async |tree| match tree
 						.insert_new(
 							ScopeMember(op.member().consenter().clone()),
 							ScopeMemberValue {
@@ -146,8 +147,8 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 						Ok(_) => Ok(()),
 						Err(InsertNewError::AlreadyExists) => Err(Error::KeyAlreadyExists),
 						Err(InsertNewError::StorageError(e)) => Err(e.into()),
-					}
-				})
+					},
+				)
 				.await?;
 			}
 			UserScopeOp::UpdateMemberGrant(UpdateMemberGrantUserScopeOpBody {
@@ -157,8 +158,12 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				scope_members_root,
 			}) => {
 				let state = scope_state().await?;
-				run_tree(tx, &state, scope_members_root, async |tree| {
-					match tree
+				run_tree(
+					scope_id,
+					tx,
+					&state,
+					scope_members_root,
+					async |tree| match tree
 						.insert(
 							member.clone(),
 							ScopeMemberValue {
@@ -170,8 +175,8 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 						Some(v) if v.grant == *grant => Err(Error::GrantNoChange),
 						Some(_) => Ok(()),
 						None => Err(Error::KeyNotFound),
-					}
-				})
+					},
+				)
 				.await?;
 			}
 			UserScopeOp::RotateKey(
@@ -180,7 +185,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				},
 			) => {
 				let state = scope_state().await?;
-				run_tree(tx, &state, scope_members_root, async |tree| {
+				run_tree(scope_id, tx, &state, scope_members_root, async |tree| {
 					let Some(value) = tree.delete(&ScopeMember(op.signer().clone())).await? else {
 						return Err(Error::Unauthorized);
 					};
@@ -206,7 +211,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 					return Err(Error::OwnerAsMember);
 				}
 
-				run_tree(tx, &state, scope_members_root, async |tree| {
+				run_tree(scope_id, tx, &state, scope_members_root, async |tree| {
 					tree.delete(member.as_ref().unwrap_or(&ScopeMember(signer.clone())))
 						.await?
 						.is_some()
@@ -223,8 +228,8 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				versions_root,
 			}) => {
 				let state = scope_state().await?;
-				run_tree(tx, &state, versions_root, async |tree| {
-					let Some(mut version) = tree.get(&package_version).await? else {
+				run_tree(scope_id, tx, &state, versions_root, async |tree| {
+					let Some(mut version) = tree.get(package_version).await? else {
 						return Err(Error::VersionNotFound);
 					};
 
@@ -232,11 +237,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 						return Err(Error::VersionAdminYanked);
 					}
 
-					let new_state = if *yanked {
-						Some(VersionYankState::Yanked)
-					} else {
-						None
-					};
+					let new_state = (*yanked).then_some(VersionYankState::Yanked);
 
 					if version.yank_state == new_state {
 						return Err(Error::AlreadyInState);
@@ -256,30 +257,41 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 				deprecations_root,
 			}) => {
 				let state = scope_state().await?;
-				run_tree(tx, &state, deprecations_root, async |tree| match value {
-					Some(new_state) => tree
-						.insert(PackageDeprecation(pkg.clone()), new_state.clone())
-						.await?
-						.is_none_or(|o| o != *new_state)
-						.ok_or(Error::AlreadyInState),
-					None => tree
-						.delete(&PackageDeprecation(pkg.clone()))
-						.await?
-						.is_some()
-						.ok_or(Error::AlreadyInState),
-				})
+				run_tree(
+					scope_id,
+					tx,
+					&state,
+					deprecations_root,
+					async |tree| match value {
+						Some(new_state) => tree
+							.insert(PackageDeprecation(pkg.clone()), new_state.clone())
+							.await?
+							.is_none_or(|o| o != *new_state)
+							.ok_or(Error::AlreadyInState),
+						None => tree
+							.delete(&PackageDeprecation(pkg.clone()))
+							.await?
+							.is_some()
+							.ok_or(Error::AlreadyInState),
+					},
+				)
 				.await?;
 			}
-		};
+		}
 
 		let entry = Entry {
 			pos: scope_size.get(),
 			published_at: Default::default(),
 			payload: ScopeEntryPayload::User(payload),
 		};
+		let scope_id = match &entry.payload {
+			ScopeEntryPayload::User(e) => &e.inner().body.header().scope_id,
+			ScopeEntryPayload::Admin(e) => &e.header().scope_id,
+		};
 
-		append_leaf(tx, scope_size.get(), &entry).await?;
-		tx.insert_entry(&entry).await?;
+		let new_size = append_leaf(Scoped(scope_id, &mut *tx), scope_size.get(), &entry).await?;
+		tx.set_scope_log_size(scope_id, new_size).await?;
+		tx.insert_scope_entry(&entry).await?;
 
 		Ok(entry)
 	})

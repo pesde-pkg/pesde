@@ -1,303 +1,256 @@
 use anyhow::Context as _;
 use async_trait::async_trait;
 use futures::TryStreamExt as _;
-use jiff::Timestamp;
-use pesde::names::Scope;
-use pesde::signature::KeyKind;
-use pesde::signature::PublicKey;
-use pesde::signature::Signature;
+use pesde::hash::Blake3Hash;
+use pesde::signature::{KeyKind, PublicKey, Signature, SignatureKind};
 use pesde::source::pesde::registry::*;
-use pesde_registry_core::features::log::Repository;
-use sqlx::MySqlPool;
+use pesde_registry_core::features::global::{GlobalReadRepository, GlobalWriteRepository};
+use sqlx::QueryBuilder;
+use sqlx::{prelude::Type, query, types::Text};
 
-use crate::EntryKind;
-use crate::MySqlBackend;
-use crate::ScopeEntryKind;
-use crate::build_public_key;
-use crate::build_publish_body;
+use crate::util::{chrono_to_jiff, insert_chunked, jiff_to_chrono};
+use crate::{AsExecutor, MySqlBackend, MySqlTransaction};
 
-#[async_trait]
-impl Repository for MySqlBackend {
-	async fn entry(&self, pos: u64) -> anyhow::Result<Option<Entry<EntryPayload>>> {
-		let Some(rec) = sqlx::query!(
-			r#"
-			SELECT kind AS `kind: EntryKind`, UNIX_TIMESTAMP(LogEntry.published_at) AS `published_at!`
-			FROM LogEntry
-			WHERE pos = ?
-			"#,
-			pos,
-		)
-		.fetch_optional(&self.pool)
-		.await?
-		else {
-			return Ok(None);
-		};
-		let published_at = Timestamp::from_second(rec.published_at)?;
-
-		match rec.kind {
-			EntryKind::Scope => {
-				let Some(env) = sqlx::query!(
-					r#"
-                    SELECT ScopeLogEntry.sig, Scope.scope, ScopeLogEntry.author_identity AS `author_identity: IdentityId`, ScopeLogEntry.kind AS `kind: ScopeEntryKind`
-                    FROM ScopeLogEntry
-                    INNER JOIN Scope ON Scope.genesis_pos=ScopeLogEntry.scope_pos
-                    WHERE ScopeLogEntry.pos = ?
-                    "#,
-					pos,
-				)
-				.fetch_optional(&self.pool)
-				.await?
-				else {
-					return Ok(None);
-				};
-
-				let sig = env.sig.parse()?;
-				let scope = env.scope.parse()?;
-				let author_identity = env.author_identity;
-
-				let scope_entry = match env.kind {
-					ScopeEntryKind::Publish => {
-						let publish = sqlx::query!(
-							r#"
-                            SELECT Package.name, PublishScopeLogEntry.version, PublishScopeLogEntry.archive_hash, PublishScopeLogEntry.description, PublishScopeLogEntry.license, PublishScopeLogEntry.repository
-                            FROM PublishScopeLogEntry
-                            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
-                            WHERE PublishScopeLogEntry.pos = ?
-                            "#,
-							pos,
-						)
-						.fetch_one(&self.pool)
-						.await?;
-
-						ScopeEntryPayload::Publish(SignedEntry::new(
-							sig,
-							ScopeEntryBody {
-								scope,
-								author_identity,
-								payload: build_publish_body(
-									&self.pool,
-									pos,
-									&publish.name,
-									&publish.version,
-									&publish.archive_hash,
-									publish.description,
-									publish.license,
-									&publish.repository,
-								)
-								.await?,
-							},
-						))
-					}
-					ScopeEntryKind::Yank => {
-						let row = sqlx::query!(
-							r#"
-                            SELECT Package.name, PublishScopeLogEntry.version, YankScopeLogEntry.action AS `action: YankRetraction`
-                            FROM YankScopeLogEntry
-                            INNER JOIN PublishScopeLogEntry ON PublishScopeLogEntry.pos=YankScopeLogEntry.publish_pos
-                            INNER JOIN Package ON Package.genesis_pos=PublishScopeLogEntry.package_pos
-                            WHERE YankScopeLogEntry.pos = ?
-                            "#,
-							pos,
-						)
-						.fetch_one(&self.pool)
-						.await?;
-
-						ScopeEntryPayload::Yank(SignedEntry::new(
-							sig,
-							ScopeEntryBody {
-								scope,
-								author_identity,
-								payload: YankBody {
-									name: row.name.parse()?,
-									version: row.version.parse()?,
-									action: row.action,
-								},
-							},
-						))
-					}
-					ScopeEntryKind::Deprecate => {
-						let row = sqlx::query!(
-							r#"
-                            SELECT Package.name, DeprecateScopeLogEntry.reason
-                            FROM DeprecateScopeLogEntry
-                            INNER JOIN Package ON Package.genesis_pos=DeprecateScopeLogEntry.package_pos
-                            WHERE DeprecateScopeLogEntry.pos = ?
-                            "#,
-							pos,
-						)
-						.fetch_one(&self.pool)
-						.await?;
-
-						ScopeEntryPayload::Deprecate(SignedEntry::new(
-							sig,
-							ScopeEntryBody {
-								scope,
-								author_identity,
-								payload: DeprecateBody {
-									name: row.name.parse()?,
-									reason: row.reason.parse()?,
-								},
-							},
-						))
-					}
-					ScopeEntryKind::ManifestUpdate => {
-						let (_, manifest) = read_scope_manifest(&self.pool, pos).await?;
-
-						ScopeEntryPayload::ManifestUpdate(SignedEntry::new(
-							sig,
-							ScopeEntryBody {
-								scope,
-								author_identity,
-								payload: ScopeManifestUpdateBody { manifest },
-							},
-						))
-					}
-				};
-
-				Ok(Some(Entry {
-					pos,
-					published_at,
-					payload: EntryPayload::Scope(scope_entry),
-				}))
-			}
-			EntryKind::RegisterIdentity => {
-				let Some((sig, _, identity_id, public_key)) =
-					read_key_entry(&self.pool, pos).await?
-				else {
-					return Ok(None);
-				};
-
-				Ok(Some(Entry {
-					pos,
-					published_at,
-					payload: EntryPayload::Identity(IdentityEntry::Register(SignedEntry::new(
-						sig,
-						RegisterIdentityBody {
-							identity_id,
-							public_key,
-						},
-					))),
-				}))
-			}
-			EntryKind::IdentityRotation => {
-				let Some((new_sig, old_sig, identity_id, new_public_key)) =
-					read_key_entry(&self.pool, pos).await?
-				else {
-					return Ok(None);
-				};
-
-				Ok(Some(Entry {
-					pos,
-					published_at,
-					payload: EntryPayload::Identity(IdentityEntry::Rotation(
-						IdentityRotationEntry::new(
-							old_sig
-								.context("rotation entry is missing its authorising signature")?,
-							new_sig,
-							IdentityRotationBody {
-								identity_id,
-								new_public_key,
-							},
-						),
-					)),
-				}))
-			}
-			EntryKind::AdminScopeTransfer => {
-				let (scope, manifest) = read_scope_manifest(&self.pool, pos).await?;
-				Ok(Some(Entry {
-					pos,
-					published_at,
-					payload: EntryPayload::AdminScopeTransfer(AdminScopeTransfer {
-						scope,
-						manifest,
-					}),
-				}))
-			}
-		}
-	}
+#[derive(Debug, Clone, Copy, Type)]
+#[sqlx(rename_all = "snake_case")]
+enum OpKind {
+	ScopeGenesis,
 }
 
-async fn read_key_entry(
-	pool: &MySqlPool,
+async fn global_log_size(mut tx: impl AsExecutor) -> anyhow::Result<u64> {
+	let record = query!("SELECT size FROM global_log")
+		.fetch_one(tx.as_executor())
+		.await?;
+
+	Ok(record.size)
+}
+
+async fn global_log_entry(
+	mut tx: impl AsExecutor,
 	pos: u64,
-) -> anyhow::Result<Option<(Signature, Option<Signature>, IdentityId, PublicKey)>> {
-	let Some(row) = sqlx::query!(
-		r#"
-		SELECT sig, authorising_sig, identity_id AS `identity_id: IdentityId`, algorithm AS `algorithm: KeyKind`, public_key
-		FROM IdentityKeyEntry
-		WHERE pos = ?
-		"#,
-		pos,
+) -> anyhow::Result<Option<GlobalEntry>> {
+	let result = query!(
+		"SELECT op_kind AS `op_kind: OpKind`, published_at FROM global_log_entry WHERE pos = ?",
+		pos
 	)
-	.fetch_optional(pool)
-	.await?
-	else {
+	.fetch_optional(tx.as_executor())
+	.await?;
+
+	let Some(record) = result else {
 		return Ok(None);
 	};
 
-	Ok(Some((
-		row.sig.parse()?,
-		row.authorising_sig.as_deref().map(str::parse).transpose()?,
-		row.identity_id,
-		build_public_key(row.algorithm, row.public_key)?,
-	)))
+	let payload = match record.op_kind {
+		OpKind::ScopeGenesis => GlobalEntryPayload::ScopeGenesis({
+			let r = query!(
+				r"
+SELECT
+    global_log_scope_genesis_entry.sig_algorithm AS `sig_algorithm: Text<SignatureKind>`,
+    global_log_scope_genesis_entry.sig,
+    global_log_scope_genesis_entry.first_entry_hash,
+    global_log_scope_genesis_entry.name_blake3,
+    public_key.algorithm AS `kind: Text<KeyKind>`,
+	public_key.data
+FROM global_log_scope_genesis_entry
+INNER JOIN public_key ON public_key.id=global_log_scope_genesis_entry.owner_id
+WHERE global_log_scope_genesis_entry.pos = ?",
+				pos,
+			)
+			.fetch_one(tx.as_executor())
+			.await?;
+
+			Signed::new(UnvalidatedSigned {
+				sig: Signature::new(r.sig_algorithm.0, r.sig).context("corrupt signature")?,
+				body: ScopeGenesisPayload {
+					first_entry_hash: r.first_entry_hash.parse()?,
+					owner: PublicKey::new(r.kind.0, r.data).context("corrupt owner key")?,
+					scope_id: ScopeId::new(
+						Blake3Hash::new(r.name_blake3).context("corrupt genesis")?,
+					),
+				},
+			})?
+		}),
+	};
+
+	Ok(Some(Entry {
+		pos,
+		published_at: chrono_to_jiff(record.published_at)?,
+		payload,
+	}))
 }
 
-async fn read_scope_manifest(pool: &MySqlPool, pos: u64) -> anyhow::Result<(Scope, ScopeManifest)> {
-	let mut members = sqlx::query!(
-		r#"
-		SELECT Scope.scope, ScopeManifest.owner AS `owner: IdentityId`, ScopeManifestMember.identity_id AS `identity_id: IdentityId`, ScopeManifestMember.package
-		FROM ScopeManifest
-		INNER JOIN Scope ON Scope.genesis_pos=ScopeManifest.scope_pos
-		LEFT JOIN ScopeManifestMember ON ScopeManifestMember.pos=ScopeManifest.pos
-		WHERE ScopeManifest.pos = ?
-		"#,
-		pos,
-	)
-	.fetch(pool);
+async fn global_log_node(mut tx: impl AsExecutor, pos: u64) -> anyhow::Result<Option<CurrentHash>> {
+	let result = query!("SELECT blake3 FROM global_log_node WHERE pos = ?", pos)
+		.fetch_optional(tx.as_executor())
+		.await?;
 
-	let mut result = None;
-	while let Some(row) = members.try_next().await? {
-		let manifest = if let Some((_, manifest)) = &mut result {
-			manifest
-		} else {
-			let (_, manifest) = result.insert((
-				row.scope.parse()?,
-				ScopeManifest {
-					owner: row.owner,
-					members: Default::default(),
-				},
-			));
+	let Some(record) = result else {
+		return Ok(None);
+	};
 
-			manifest
-		};
+	Ok(Some(
+		Blake3Hash::new(record.blake3).context("corrupt node blake3")?,
+	))
+}
 
-		if let Some(identity_id) = row.identity_id {
-			use std::collections::btree_map::Entry;
+async fn global_log_nodes(
+	mut tx: impl AsExecutor,
+	positions: Vec<u64>,
+) -> anyhow::Result<Vec<Option<CurrentHash>>> {
+	let mut nodes = Vec::new();
+	nodes.reserve_exact(positions.len());
 
-			let entry = manifest.members.entry(identity_id);
-			let package = row.package.unwrap();
+	let mut query = QueryBuilder::new("SELECT blake3 FROM global_log_node WHERE pos IN (");
+	let mut separated = query.separated(',');
 
-			if package.is_empty() {
-				match entry {
-					Entry::Vacant(entry) => entry.insert(ScopeMember::AllPackages),
-					Entry::Occupied(_) => {
-						anyhow::bail!("wildcard member with other packages")
-					}
-				};
-			} else {
-				let member = entry.or_insert_with(|| ScopeMember::Packages(Default::default()));
-				match member {
-					ScopeMember::AllPackages => {
-						anyhow::bail!("per-package member with all packages")
-					}
-					ScopeMember::Packages(packages) => {
-						packages.insert(package.parse()?);
-					}
-				}
-			}
-		}
+	for pos in &positions {
+		separated.push_bind(pos);
 	}
 
-	result.context("no matching scope manifest found")
+	query.push(") ORDER BY FIELD(pos, ");
+
+	let mut separated = query.separated(',');
+
+	for pos in &positions {
+		separated.push_bind(pos);
+	}
+
+	query.push(')');
+
+	let mut query = query
+		.build_query_as::<(Box<[u8]>,)>()
+		.fetch(tx.as_executor());
+	while let Some((bytes,)) = query.try_next().await? {
+		nodes.push(Some(Blake3Hash::new(bytes)?));
+	}
+
+	Ok(nodes)
+}
+
+#[async_trait]
+impl GlobalReadRepository for MySqlBackend {
+	async fn global_log_size(&self) -> anyhow::Result<u64> {
+		global_log_size(&self.pool).await
+	}
+
+	async fn global_log_entry(&self, pos: u64) -> anyhow::Result<Option<GlobalEntry>> {
+		global_log_entry(&self.pool, pos).await
+	}
+
+	async fn global_log_node(&self, pos: u64) -> anyhow::Result<Option<CurrentHash>> {
+		global_log_node(&self.pool, pos).await
+	}
+
+	async fn global_log_nodes(
+		&self,
+		positions: Vec<u64>,
+	) -> anyhow::Result<Vec<Option<CurrentHash>>> {
+		global_log_nodes(&self.pool, positions).await
+	}
+}
+
+#[async_trait]
+impl GlobalReadRepository for MySqlTransaction {
+	async fn global_log_size(&self) -> anyhow::Result<u64> {
+		let mut tx = self.tx.lock().await;
+		global_log_size(&mut *tx).await
+	}
+
+	async fn global_log_entry(&self, pos: u64) -> anyhow::Result<Option<GlobalEntry>> {
+		let mut tx = self.tx.lock().await;
+		global_log_entry(&mut *tx, pos).await
+	}
+
+	async fn global_log_node(&self, pos: u64) -> anyhow::Result<Option<CurrentHash>> {
+		let mut tx = self.tx.lock().await;
+		global_log_node(&mut *tx, pos).await
+	}
+
+	async fn global_log_nodes(
+		&self,
+		positions: Vec<u64>,
+	) -> anyhow::Result<Vec<Option<CurrentHash>>> {
+		let mut tx = self.tx.lock().await;
+		global_log_nodes(&mut *tx, positions).await
+	}
+}
+
+#[async_trait]
+impl GlobalWriteRepository for MySqlTransaction {
+	async fn append_global_log_nodes(
+		&mut self,
+		pos: u64,
+		elems: Vec<CurrentHash>,
+	) -> anyhow::Result<()> {
+		insert_chunked!(
+			&mut **self.tx.get_mut(),
+			"global_log_node",
+			["pos", "blake3"],
+			elems.iter().zip(pos..),
+			|mut b, (hash, pos)| {
+				b.push_bind(pos).push_bind(hash.0.as_slice());
+			}
+		)
+		.await?;
+
+		Ok(())
+	}
+
+	async fn set_global_log_size(&mut self, size: u64) -> anyhow::Result<()> {
+		query!("UPDATE global_log SET size = ?", size)
+			.execute(&mut **self.tx.get_mut())
+			.await?;
+
+		Ok(())
+	}
+
+	async fn insert_global_entry(&mut self, entry: &GlobalEntry) -> anyhow::Result<()> {
+		let tx = self.tx.get_mut();
+		let Entry {
+			pos,
+			published_at,
+			payload,
+		} = entry;
+
+		let published_at = jiff_to_chrono(*published_at)?;
+
+		match payload {
+			GlobalEntryPayload::ScopeGenesis(payload) => {
+				query!(
+					"INSERT INTO global_log_entry (pos, op_kind, published_at) VALUES (?, ?, ?)",
+					pos,
+					OpKind::ScopeGenesis,
+					published_at
+				)
+				.execute(&mut **tx)
+				.await?;
+
+				let UnvalidatedSigned {
+					sig,
+					body:
+						ScopeGenesisPayload {
+							scope_id,
+							owner,
+							first_entry_hash,
+						},
+				} = payload.inner();
+
+				let owner_id = Self::insert_public_key(tx, owner).await?;
+
+				query!(
+					"INSERT INTO global_log_scope_genesis_entry (pos, sig_algorithm, sig, name_blake3, owner_id, first_entry_hash) VALUES (?, ?, ?, ?, ?, ?)",
+					pos,
+					Text(sig.kind()),
+					sig.data(),
+					scope_id.hash().0.as_slice(),
+					owner_id,
+					first_entry_hash.to_string(),
+				)
+				.execute(&mut **tx)
+				.await?;
+			}
+		}
+
+		Ok(())
+	}
 }

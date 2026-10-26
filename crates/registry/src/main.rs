@@ -31,6 +31,7 @@ pub struct AppState {
 	blob_storage: BlobStorage,
 	access_token_hash: Option<TokenHash>,
 	read_requires_auth: bool,
+	#[expect(dead_code)]
 	max_archive_size: usize,
 }
 
@@ -66,7 +67,9 @@ async fn main() -> std::io::Result<()> {
 		.await
 		.unwrap_or(4 * 1024 * 1024);
 
-	let db = shared::db::connect(&Env::new("DATABASE_URL").get().await).await;
+	let db = shared::db::connect(&Env::new("DATABASE_URL").get().await)
+		.await
+		.map_err(std::io::Error::other)?;
 	let db = web::Data::from(db);
 
 	let app_state = web::Data::new(AppState {

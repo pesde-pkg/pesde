@@ -4,28 +4,28 @@ use merkle_bplustree::TreeConfig;
 use pesde::source::pesde::registry::*;
 use pesde_registry_core::{
 	db::{Backend, ScopeWriteTransaction},
-	features::tree::{TreeReadRepository, TreeWriteRepository},
+	features::scope::{ScopeTreeReadRepository, ScopeTreeWriteRepository},
 };
 
-pub trait StoredTree: TreeConfig {
+pub trait ScopeTree: TreeConfig {
 	fn root_from_state(state: &ScopeStateResponse) -> &CurrentHash;
-	fn read_repo(db: &dyn Backend) -> &dyn TreeReadRepository<Self>;
-	fn into_read_repo(db: Arc<dyn Backend>) -> Arc<dyn TreeReadRepository<Self>>;
-	fn write_repo(tx: &mut dyn ScopeWriteTransaction) -> &mut dyn TreeWriteRepository<Self>;
+	fn read_repo(db: &dyn Backend) -> &dyn ScopeTreeReadRepository<Self>;
+	fn into_read_repo(db: Arc<dyn Backend>) -> Arc<dyn ScopeTreeReadRepository<Self>>;
+	fn write_repo(tx: &mut dyn ScopeWriteTransaction) -> &mut dyn ScopeTreeWriteRepository<Self>;
 	fn hash(&self) -> &CurrentHash;
 	fn from_hash(hash: CurrentHash) -> Self;
 }
-impl StoredTree for ScopeMembersTree {
+impl ScopeTree for ScopeMembersTree {
 	fn root_from_state(state: &ScopeStateResponse) -> &CurrentHash {
 		&state.scope_members_root.0
 	}
-	fn read_repo(db: &dyn Backend) -> &dyn TreeReadRepository<Self> {
+	fn read_repo(db: &dyn Backend) -> &dyn ScopeTreeReadRepository<Self> {
 		db
 	}
-	fn into_read_repo(db: Arc<dyn Backend>) -> Arc<dyn TreeReadRepository<Self>> {
+	fn into_read_repo(db: Arc<dyn Backend>) -> Arc<dyn ScopeTreeReadRepository<Self>> {
 		db
 	}
-	fn write_repo(tx: &mut dyn ScopeWriteTransaction) -> &mut dyn TreeWriteRepository<Self> {
+	fn write_repo(tx: &mut dyn ScopeWriteTransaction) -> &mut dyn ScopeTreeWriteRepository<Self> {
 		tx
 	}
 	fn hash(&self) -> &CurrentHash {
@@ -35,17 +35,17 @@ impl StoredTree for ScopeMembersTree {
 		Self(hash)
 	}
 }
-impl StoredTree for PackageVersionsTree {
+impl ScopeTree for PackageVersionsTree {
 	fn root_from_state(state: &ScopeStateResponse) -> &CurrentHash {
 		&state.package_versions_root.0
 	}
-	fn read_repo(db: &dyn Backend) -> &dyn TreeReadRepository<Self> {
+	fn read_repo(db: &dyn Backend) -> &dyn ScopeTreeReadRepository<Self> {
 		db
 	}
-	fn into_read_repo(db: Arc<dyn Backend>) -> Arc<dyn TreeReadRepository<Self>> {
+	fn into_read_repo(db: Arc<dyn Backend>) -> Arc<dyn ScopeTreeReadRepository<Self>> {
 		db
 	}
-	fn write_repo(tx: &mut dyn ScopeWriteTransaction) -> &mut dyn TreeWriteRepository<Self> {
+	fn write_repo(tx: &mut dyn ScopeWriteTransaction) -> &mut dyn ScopeTreeWriteRepository<Self> {
 		tx
 	}
 	fn hash(&self) -> &CurrentHash {
@@ -55,17 +55,17 @@ impl StoredTree for PackageVersionsTree {
 		Self(hash)
 	}
 }
-impl StoredTree for PackageDeprecationsTree {
+impl ScopeTree for PackageDeprecationsTree {
 	fn root_from_state(state: &ScopeStateResponse) -> &CurrentHash {
 		&state.package_deprecations_root.0
 	}
-	fn read_repo(db: &dyn Backend) -> &dyn TreeReadRepository<Self> {
+	fn read_repo(db: &dyn Backend) -> &dyn ScopeTreeReadRepository<Self> {
 		db
 	}
-	fn into_read_repo(db: Arc<dyn Backend>) -> Arc<dyn TreeReadRepository<Self>> {
+	fn into_read_repo(db: Arc<dyn Backend>) -> Arc<dyn ScopeTreeReadRepository<Self>> {
 		db
 	}
-	fn write_repo(tx: &mut dyn ScopeWriteTransaction) -> &mut dyn TreeWriteRepository<Self> {
+	fn write_repo(tx: &mut dyn ScopeWriteTransaction) -> &mut dyn ScopeTreeWriteRepository<Self> {
 		tx
 	}
 	fn hash(&self) -> &CurrentHash {

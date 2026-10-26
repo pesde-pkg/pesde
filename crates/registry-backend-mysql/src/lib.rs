@@ -1,470 +1,239 @@
-use std::any::Any;
-use std::collections::BTreeMap;
+use std::num::NonZero;
+use std::sync::Arc;
 
-use anyhow::Context as _;
 use async_trait::async_trait;
-use futures::TryStreamExt as _;
 use futures::lock::Mutex;
-use iter_chunks::IterChunks as _;
-use merkleberg::MMRIVER;
-use pesde::bounded::BoundedBTreeMap;
-use pesde::bounded::BoundedString;
-use pesde::bounded::BoundedVec;
-use pesde::hash::RawHash;
-use pesde::manifest::DependencyType;
-use pesde::names::Scope;
-use pesde::signature::KeyKind;
-use pesde::signature::PublicKey;
-use pesde::source::Realm;
-use pesde::source::pesde::registry::*;
-use pesde::source::pesde::specifier::RegistryPesdeDependencySpecifier;
-use pesde::source::wally::specifier::RegistryWallyDependencySpecifier;
-use sqlx::Database as _;
-use sqlx::Executor as _;
-use sqlx::MySql;
-use sqlx::MySqlConnection;
-use sqlx::MySqlExecutor;
-use sqlx::MySqlPool;
-use sqlx::MySqlTransaction;
-use sqlx::QueryBuilder;
-use sqlx::mysql::MySqlPoolOptions;
-use sqlx::query_builder::Separated;
-use sqlx::types::Type;
+use pesde::{
+	hash::{Blake3Hash, Hasher as _},
+	signature::PublicKey,
+	source::pesde::registry::*,
+};
+use pesde_registry_core::db::{
+	Backend, CreatingScopeLockResult, ExistingScopeLockResult, GlobalWriteTransaction,
+	PermissionWidth, ScopeWriteTransaction,
+};
+use sqlx::{
+	Database as _, MySql, MySqlExecutor, MySqlPool, mysql::MySqlPoolOptions, query, types::Text,
+};
 
-use pesde_registry_core::db::Backend;
-use pesde_registry_core::db::MmrReadStore;
-use pesde_registry_core::db::MmrWriteStore;
-use pesde_registry_core::db::ScopeAccess;
-use pesde_registry_core::db::ScopeControl;
-use pesde_registry_core::db::StoreError;
+use crate::util::insert_chunked;
 
-mod identity;
 mod log;
-mod package;
 mod scope;
-mod search;
+mod util;
 
 pub const URL_SCHEMES: &[&str] = MySql::URL_SCHEMES;
 
-macro_rules! insert_chunked {
-	($conn:expr, $table:literal, $columns:expr, $rows:expr, $bind:expr $(,)?) => {
-		$crate::insert_chunked_impl(
-			$conn,
-			const_str::concat!(
-				"INSERT INTO ",
-				$table,
-				" (",
-				const_str::join!(&$columns, ", "),
-				") "
-			),
-			const { $columns.len() },
-			$rows,
-			$bind,
-		)
-	};
-}
-use insert_chunked;
+pub async fn connect(url: &str) -> anyhow::Result<Arc<dyn Backend>> {
+	let pool = MySqlPoolOptions::new().connect(url).await?;
 
-async fn insert_chunked_impl<T>(
-	conn: &mut MySqlConnection,
-	prefix: &'static str,
-	columns: usize,
-	rows: impl IntoIterator<Item = T>,
-	mut bind: impl FnMut(Separated<'_, sqlx::MySql, &'static str>, T),
-) -> sqlx::Result<()> {
-	#[expect(clippy::integer_division)]
-	let mut chunks = rows.into_iter().chunks(u16::MAX as usize / columns);
-	while let Some(chunk) = chunks.next() {
-		let mut query = QueryBuilder::new(prefix);
-		query.push_values(chunk, &mut bind);
-		query.build().execute(&mut *conn).await?;
-	}
-	Ok(())
+	sqlx::migrate!().run(&pool).await?;
+
+	Ok(Arc::new(MySqlBackend { pool }))
 }
 
-pub struct MySqlBackend {
+struct MySqlBackend {
 	pool: MySqlPool,
 }
 
-impl MySqlBackend {
-	pub async fn connect(url: &str) -> Self {
-		let pool = MySqlPoolOptions::new()
-			.after_connect(|conn, _| {
-				Box::pin(async move {
-					// a way to ensure that there isn't a race condition in scope write access by avoiding read snapshots in transactions
-					// snapshots are not useful for this app anyway; it is append only
-					conn.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
-						.await?;
-					Ok(())
-				})
-			})
-			.connect(url)
-			.await
-			.expect("failed to connect to mysql database");
-
-		sqlx::migrate!()
-			.run(&pool)
-			.await
-			.expect("failed to migrate mysql database");
-
-		Self { pool }
-	}
+struct MySqlTransaction {
+	tx: Mutex<sqlx::MySqlTransaction<'static>>,
 }
 
 #[async_trait]
 impl Backend for MySqlBackend {
-	async fn current_size(&self) -> anyhow::Result<u64> {
-		Ok(sqlx::query!("SELECT size FROM Tree")
-			.fetch_one(&self.pool)
-			.await?
-			.size)
-	}
-
-	async fn read_mmr_at(
+	async fn begin_write_existing(
 		&self,
-		size: u64,
-	) -> anyhow::Result<MMRIVER<CurrentMerkleHasher, Box<dyn MmrReadStore>>> {
-		Ok(MMRIVER::new(
-			size,
-			Box::new(MySqlReadStore {
-				pool: self.pool.clone(),
-			}),
-		))
-	}
-
-	async fn begin_write(&self) -> anyhow::Result<Box<dyn MmrWriteStore>> {
-		let tx = self.pool.begin().await?;
-		Ok(Box::new(MySqlWriteStore { tx: Mutex::new(tx) }))
-	}
-
-	async fn current_identity_key(
-		&self,
-		store: &mut Box<dyn MmrWriteStore>,
-		id: &IdentityId,
-	) -> anyhow::Result<Option<PublicKey>> {
-		let Some(row) = sqlx::query!(
-			r#"
-			SELECT algorithm AS `algorithm: KeyKind`, public_key
-			FROM IdentityKeyEntry
-			WHERE identity_id = ?
-			ORDER BY pos DESC
-			LIMIT 1
-			"#,
-			id,
-		)
-		.fetch_optional(&mut **as_tx(store))
-		.await?
-		else {
-			return Ok(None);
-		};
-
-		build_public_key(row.algorithm, row.public_key).map(Some)
-	}
-
-	async fn lock_tree(&self, store: &mut Box<dyn MmrWriteStore>) -> anyhow::Result<u64> {
-		Ok(sqlx::query!("SELECT size FROM Tree FOR UPDATE")
-			.fetch_one(&mut **as_tx(store))
-			.await?
-			.size)
-	}
-
-	async fn scope_write_access(
-		&self,
-		store: &mut Box<dyn MmrWriteStore>,
-		scope: &Scope,
-		identity: &IdentityId,
-		control: ScopeControl<'_>,
-	) -> anyhow::Result<Option<ScopeAccess>> {
-		// we need to be careful to avoid locking the table until we're almost certain
-		// otherwise, bad actors could lock the app by simply spamming the API with invalid data
-
-		let (package, owner_only, allow_absent) = match control {
-			ScopeControl::Write(package) => (package.as_str(), false, false),
-			ScopeControl::PublishOrCreate(package) => (package.as_str(), false, true),
-			ScopeControl::Owner => ("", true, false),
-		};
-
-		let check = async |store: &mut Box<dyn MmrWriteStore>| {
-			let row = sqlx::query!(
-				r#"
-				SELECT
-				(
-					EXISTS (
-						SELECT 1 FROM Scope
-						INNER JOIN ScopeManifest ON ScopeManifest.scope_pos=Scope.genesis_pos
-						LEFT JOIN ScopeManifestMember ON ScopeManifestMember.pos=ScopeManifest.pos
-						WHERE ScopeManifest.pos = (SELECT pos FROM ScopeManifest sm WHERE sm.scope_pos = Scope.genesis_pos ORDER BY pos DESC LIMIT 1)
-						  AND Scope.scope = ? 
-						  AND (ScopeManifest.owner = ?
-						   OR (NOT ? AND ScopeManifestMember.identity_id = ? AND ScopeManifestMember.package IN ('', ?)))
-					)
-					OR
-					(? AND NOT EXISTS (SELECT 1 FROM Scope WHERE Scope.scope = ?))
-				) AS `authorized: bool`,
-				EXISTS (
-					SELECT 1 FROM Scope
-					WHERE Scope.scope = ?
-				) AS `scope_exists: bool`
-				"#,
-				scope.as_str(),
-				identity,
-				owner_only,
-				identity,
-				package,
-				allow_absent,
-				scope.as_str(),
-				scope.as_str(),
+		scope_id: &ScopeId,
+		user: &PublicKey,
+		permission_width: PermissionWidth<'_>,
+	) -> anyhow::Result<ExistingScopeLockResult> {
+		// query before locking to avoid letting arbitrary requests lock the log
+		// this is not exploitable by race condition as this is rechecked after locking
+		async fn check(
+			scope_id: &ScopeId,
+			user: &PublicKey,
+			permission_width: PermissionWidth<'_>,
+			mut tx: impl AsExecutor,
+		) -> anyhow::Result<Option<ExistingScopeLockResult>> {
+			todo!();
+			let record = query!(
+				"SELECT EXISTS(SELECT 1 FROM global_log_scope_genesis_entry WHERE name_blake3 = ?) AS `exists: bool`",
+				scope_id.hash().0.as_slice()
 			)
-			.fetch_one(&mut **as_tx(store))
+			.fetch_one(tx.as_executor())
 			.await?;
 
-			Ok::<_, anyhow::Error>(
-				row.authorized
-					.unwrap_or_default()
-					.then_some(row.scope_exists),
-			)
-		};
+			if !record.exists {
+				return Ok(Some(ExistingScopeLockResult::DoesntExist));
+			}
 
-		if check(store).await?.is_none() {
-			return Ok(None);
+			Ok(None)
 		}
 
-		let pos = self.lock_tree(store).await?;
+		if let Some(ret) = check(scope_id, user, permission_width, &self.pool).await? {
+			return Ok(ret);
+		}
 
-		Ok(check(store)
-			.await?
-			.map(|scope_exists| ScopeAccess { pos, scope_exists }))
-	}
-}
-
-struct MySqlReadStore {
-	pool: MySqlPool,
-}
-
-#[async_trait]
-impl MmrReadStore for MySqlReadStore {
-	async fn get_node(&self, pos: u64) -> Result<Option<RawHash>, StoreError> {
-		get_hash(&self.pool, pos)
-			.await
-			.map_err(|e| StoreError(e.into()))
-	}
-}
-
-struct MySqlWriteStore {
-	tx: Mutex<MySqlTransaction<'static>>,
-}
-
-#[async_trait]
-impl MmrWriteStore for MySqlWriteStore {
-	async fn get_node(&self, pos: u64) -> Result<Option<RawHash>, StoreError> {
-		get_hash(&mut **self.tx.lock().await, pos)
-			.await
-			.map_err(|e| StoreError(e.into()))
-	}
-
-	async fn append_nodes(&mut self, pos: u64, elems: Vec<RawHash>) -> Result<(), StoreError> {
-		insert_chunked!(
-			self.tx.get_mut(),
-			"TreeNode",
-			["pos", "blake3"],
-			(pos..).zip(elems),
-			|mut b, (i, elem)| {
-				b.push_bind(i).push_bind(elem);
-			},
+		let mut tx = self.pool.begin().await?;
+		let scope_log = query!(
+			r"
+SELECT scope.log_size AS `log_size: NonZero<u64>`
+FROM scope
+INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope.genesis_pos
+WHERE global_log_scope_genesis_entry.name_blake3 = ?
+FOR UPDATE",
+			scope_id.hash().0.as_slice()
 		)
-		.await
-		.map_err(|e| StoreError(e.into()))
+		.fetch_one(&mut *tx)
+		.await?;
+
+		if let Some(ret) = check(scope_id, user, permission_width, &mut tx).await? {
+			return Ok(ret);
+		}
+
+		Ok(ExistingScopeLockResult::Ok {
+			tx: Box::new(MySqlTransaction { tx: Mutex::new(tx) }),
+			scope_size: scope_log.log_size,
+		})
 	}
 
-	async fn set_size(&mut self, size: u64) -> anyhow::Result<()> {
-		sqlx::query!("UPDATE Tree SET size = ?", size)
-			.execute(&mut **self.tx.get_mut())
+	async fn begin_write_creating(
+		&self,
+		scope_id: &ScopeId,
+	) -> anyhow::Result<CreatingScopeLockResult> {
+		// query before locking to avoid letting arbitrary requests lock the log
+		// this is not exploitable by race condition as this is rechecked after locking
+		async fn check(
+			scope_id: &ScopeId,
+			mut tx: impl AsExecutor,
+		) -> anyhow::Result<Option<CreatingScopeLockResult>> {
+			let record = query!(
+				"SELECT EXISTS(SELECT 1 FROM global_log_scope_genesis_entry WHERE name_blake3 = ?) AS `exists: bool`",
+				scope_id.hash().0.as_slice()
+			)
+			.fetch_one(tx.as_executor())
 			.await?;
-		Ok(())
-	}
 
+			if record.exists {
+				return Ok(Some(CreatingScopeLockResult::AlreadyExists));
+			}
+
+			Ok(None)
+		}
+
+		if let Some(ret) = check(scope_id, &self.pool).await? {
+			return Ok(ret);
+		}
+
+		let mut tx = self.pool.begin().await?;
+		let global_log = query!("SELECT size FROM global_log FOR UPDATE")
+			.fetch_one(&mut *tx)
+			.await?;
+
+		if let Some(ret) = check(scope_id, &mut tx).await? {
+			return Ok(ret);
+		}
+
+		Ok(CreatingScopeLockResult::Ok {
+			tx: Box::new(MySqlTransaction { tx: Mutex::new(tx) }),
+			global_size: global_log.size,
+		})
+	}
+}
+
+#[async_trait]
+impl ScopeWriteTransaction for MySqlTransaction {
 	async fn commit(self: Box<Self>) -> anyhow::Result<()> {
-		self.tx.into_inner().commit().await?;
-		Ok(())
+		self.tx.into_inner().commit().await.map_err(Into::into)
+	}
+
+	async fn rollback(self: Box<Self>) -> anyhow::Result<()> {
+		self.tx.into_inner().rollback().await.map_err(Into::into)
 	}
 }
 
-fn as_tx(store: &mut Box<dyn MmrWriteStore>) -> &mut MySqlTransaction<'static> {
-	(&mut **store as &mut dyn Any)
-		.downcast_mut::<MySqlWriteStore>()
-		.expect("write store does not belong to the mysql backend")
-		.tx
-		.get_mut()
-}
-
-async fn get_hash(executor: impl MySqlExecutor<'_>, pos: u64) -> sqlx::Result<Option<RawHash>> {
-	Ok(sqlx::query!(
-		"SELECT blake3 AS `blake3: RawHash` FROM TreeNode WHERE pos = ?",
-		pos
-	)
-	.fetch_optional(executor)
-	.await?
-	.map(|record| record.blake3))
-}
-
-#[derive(Debug, Type)]
-#[sqlx(rename_all = "snake_case")]
-enum EntryKind {
-	Scope,
-	RegisterIdentity,
-	IdentityRotation,
-	AdminScopeTransfer,
-}
-
-#[derive(sqlx::Type, Debug)]
-#[sqlx(rename_all = "snake_case")]
-enum ScopeEntryKind {
-	Publish,
-	Yank,
-	Deprecate,
-	ManifestUpdate,
-}
-
-#[derive(sqlx::Type, Debug, Clone, Copy)]
-#[sqlx(rename_all = "snake_case")]
-enum DependencyKind {
-	Pesde,
-	Wally,
-}
-
-fn build_public_key(kind: KeyKind, public_key: Vec<u8>) -> anyhow::Result<PublicKey> {
-	PublicKey::new(kind, public_key)
-		.ok_or_else(|| anyhow::anyhow!("stored public key has an invalid length"))
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn build_publish_body(
-	pool: &MySqlPool,
-	pos: u64,
-	name: &str,
-	version: &str,
-	archive_hash: &str,
-	description: String,
-	license: String,
-	repository: &str,
-) -> anyhow::Result<PublishBody> {
-	let mut authors_stream = sqlx::query!(
-		r#"
-		SELECT author
-		FROM PublishAuthor
-		WHERE pos = ?
-		ORDER BY seq
-		"#,
-		pos
-	)
-	.fetch(pool);
-
-	let mut authors = vec![];
-	while let Some(row) = authors_stream.try_next().await? {
-		authors.push(BoundedString::new(row.author)?);
+#[async_trait]
+impl GlobalWriteTransaction for MySqlTransaction {
+	fn into_scope_transaction(self: Box<Self>) -> Box<dyn ScopeWriteTransaction> {
+		self
 	}
 
-	let mut dependencies_stream = sqlx::query!(
-		r#"
-		SELECT alias, dependency_type AS `dependency_type: DependencyType`, kind AS `kind: DependencyKind`, name, version_req, registry, realm AS `realm: Realm`
-		FROM PublishDependency
-		WHERE pos = ?
-		"#,
-		pos,
-	)
-	.fetch(pool);
+	async fn rollback(self: Box<Self>) -> anyhow::Result<()> {
+		self.tx.into_inner().rollback().await.map_err(Into::into)
+	}
+}
 
-	let mut dependencies = BTreeMap::new();
-	while let Some(row) = dependencies_stream.try_next().await? {
-		let specifier = match row.kind {
-			DependencyKind::Pesde => {
-				RegistryDependencySpecifier::Pesde(RegistryPesdeDependencySpecifier {
-					name: row.name.parse()?,
-					version: row.version_req.parse()?,
-					registry: row.registry.as_deref().map(str::parse).transpose()?,
-					realm: row.realm,
-				})
-			}
-			DependencyKind::Wally => {
-				RegistryDependencySpecifier::Wally(RegistryWallyDependencySpecifier {
-					name: row.name.parse()?,
-					version: row.version_req.parse()?,
-					index: row
-						.registry
-						.context("wally dependency missing index url")?
-						.parse()?,
-					realm: row.realm.context("wally dependency missing realm")?,
-				})
-			}
-		};
-		dependencies.insert(row.alias.parse()?, (specifier, row.dependency_type));
+impl MySqlTransaction {
+	pub async fn insert_public_key(
+		tx: &mut sqlx::MySqlTransaction<'_>,
+		public_key: &PublicKey,
+	) -> anyhow::Result<u64> {
+		let blake3 = Blake3Hash::digest(public_key.data());
+
+		let result = query!(
+			"INSERT INTO public_key (id, algorithm, data, blake3) VALUES (NULL, ?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
+			Text(public_key.kind()),
+			public_key.data(),
+			blake3.0.as_slice(),
+		).execute(&mut **tx).await?;
+
+		Ok(result.last_insert_id())
 	}
 
-	Ok(PublishBody {
-		name: name.parse()?,
-		version: version.parse()?,
-		archive_hash: archive_hash.parse()?,
-		description: BoundedString::new(description)?,
-		license: BoundedString::new(license)?,
-		authors: BoundedVec::new(authors)?,
-		repository: Some(repository)
-			.filter(|r| !r.is_empty())
-			.map(str::parse)
-			.transpose()?,
-		dependencies: BoundedBTreeMap::new(dependencies)?,
-	})
-}
+	pub async fn insert_grant(
+		tx: &mut sqlx::MySqlTransaction<'_>,
+		grant: &ScopeGrant,
+	) -> anyhow::Result<Blake3Hash> {
+		let mut blake3 = Blake3Hash::hasher();
+		for entry in grant.0.iter() {
+			blake3.update(entry.pkg().hash().0.as_slice());
+		}
+		let blake3 = blake3.finalize();
 
-async fn insert_log_entry(
-	tx: &mut MySqlTransaction<'_>,
-	pos: u64,
-	kind: EntryKind,
-) -> sqlx::Result<()> {
-	sqlx::query!("INSERT INTO LogEntry (pos, kind) VALUES (?, ?)", pos, kind)
-		.execute(&mut **tx)
-		.await?;
-	Ok(())
-}
-
-async fn insert_scope_envelope<P>(
-	tx: &mut MySqlTransaction<'_>,
-	pos: u64,
-	sig: &pesde::signature::Signature,
-	body: &ScopeEntryBody<P>,
-	kind: ScopeEntryKind,
-) -> anyhow::Result<u64> {
-	let scope = body.scope.as_str();
-
-	insert_log_entry(tx, pos, EntryKind::Scope).await?;
-
-	let scope_pos = if let Some(row) =
-		sqlx::query!("SELECT genesis_pos FROM Scope WHERE scope = ?", scope)
-			.fetch_optional(&mut **tx)
-			.await?
-	{
-		row.genesis_pos
-	} else {
-		sqlx::query!(
-			"INSERT INTO Scope (genesis_pos, scope) VALUES (?, ?)",
-			pos,
-			scope
+		let result = query!(
+			"INSERT INTO member_grant (blake3) VALUES (?)",
+			blake3.0.as_slice()
 		)
 		.execute(&mut **tx)
-		.await?;
+		.await;
 
-		pos
-	};
+		match result {
+			Ok(_) => {
+				insert_chunked!(
+					&mut **tx,
+					"member_grant_package",
+					["grant_blake3", "local_name_blake3"],
+					grant.0.iter(),
+					|mut b, entry| {
+						b.push_bind(blake3.0.as_slice())
+							.push_bind(entry.pkg().hash().0.as_slice());
+					}
+				)
+				.await?;
+			}
+			Err(e)
+				if e.as_database_error()
+					.is_some_and(sqlx::error::DatabaseError::is_unique_violation) => {}
+			Err(e) => return Err(e.into()),
+		}
 
-	sqlx::query!(
-		"INSERT INTO ScopeLogEntry (pos, sig, scope_pos, author_identity, kind) VALUES (?, ?, ?, ?, ?)",
-		pos,
-		sig.to_string(),
-		scope_pos,
-		&body.author_identity,
-		kind,
-	)
-	.execute(&mut **tx)
-	.await?;
+		Ok(blake3)
+	}
+}
 
-	Ok(scope_pos)
+trait AsExecutor {
+	fn as_executor(&mut self) -> impl MySqlExecutor<'_>;
+}
+
+impl AsExecutor for &MySqlPool {
+	fn as_executor(&mut self) -> impl MySqlExecutor<'_> {
+		&**self
+	}
+}
+
+impl AsExecutor for &mut sqlx::MySqlTransaction<'_> {
+	fn as_executor(&mut self) -> impl MySqlExecutor<'_> {
+		&mut ***self
+	}
 }

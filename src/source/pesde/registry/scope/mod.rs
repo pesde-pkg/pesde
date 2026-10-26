@@ -293,6 +293,8 @@ impl Canonical for PackageVersionValue {
 /// A yank state of a version. In the case of an admin yank, only an admin is able to unyank it
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
+#[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
 pub enum VersionYankState {
 	/// The package is yanked with a normal yank and can be accessed if it has been observed
 	Yanked,

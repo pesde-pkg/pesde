@@ -1,8 +1,11 @@
 use merkle_bplustree::{MerkleBPlusTree, hasher::Hasher};
-use pesde::source::pesde::registry::{CurrentHash, ScopeStateResponse};
-use pesde_registry_core::{db::ScopeWriteTransaction, features::tree::TreeWriteRepository};
+use pesde::source::pesde::registry::{CurrentHash, ScopeId, ScopeStateResponse};
+use pesde_registry_core::{
+	db::ScopeWriteTransaction,
+	features::scope::{ScopeTreeWriteRepository, Scoped},
+};
 
-use crate::shared::tree::StoredTree;
+use crate::shared::tree::ScopeTree;
 
 mod error;
 mod get_entry;
@@ -17,12 +20,13 @@ pub(super) fn http_v2(cfg: &mut actix_web::web::ServiceConfig) {
 		.service(post_entry::http_v2);
 }
 
-async fn run_tree<T: StoredTree>(
+async fn run_tree<T: ScopeTree>(
+	scope: &ScopeId,
 	tx: &mut dyn ScopeWriteTransaction,
 	state: &ScopeStateResponse,
 	supplied_root: &T,
 	cb: impl AsyncFnOnce(
-		&mut MerkleBPlusTree<T, &mut dyn TreeWriteRepository<T>>,
+		&mut MerkleBPlusTree<T, Scoped<'_, &mut dyn ScopeTreeWriteRepository<T>>>,
 	) -> Result<(), error::Error>,
 ) -> Result<(), error::Error>
 where
@@ -31,7 +35,7 @@ where
 {
 	let mut tree = MerkleBPlusTree::from_root_hash(
 		T::root_from_state(state),
-		T::write_repo(tx),
+		Scoped(scope, T::write_repo(tx)),
 		Default::default(),
 	)
 	.await?;

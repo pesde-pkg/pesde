@@ -210,8 +210,6 @@ impl Alias {
 
 /// A dependency type
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
-#[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
 #[serde(rename_all = "snake_case")]
 pub enum DependencyType {
 	/// A standard dependency
