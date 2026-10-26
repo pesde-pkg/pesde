@@ -56,16 +56,75 @@ impl Backend for MySqlBackend {
 			permission_width: PermissionWidth<'_>,
 			mut tx: impl AsExecutor,
 		) -> anyhow::Result<Option<ExistingScopeLockResult>> {
-			todo!();
+			let package = match permission_width {
+				PermissionWidth::Package(name) => Some(name.hash().0.as_slice()),
+				PermissionWidth::OnlySelf | PermissionWidth::Owner => None,
+			};
+
 			let record = query!(
-				"SELECT EXISTS(SELECT 1 FROM global_log_scope_genesis_entry WHERE name_blake3 = ?) AS `exists: bool`",
-				scope_id.hash().0.as_slice()
+				r"
+WITH RECURSIVE
+head AS (
+	SELECT scope_log_entry.owner, scope_log_entry.scope_members_root_blake3
+	FROM global_log_scope_genesis_entry
+	INNER JOIN scope_log_entry ON scope_log_entry.scope=global_log_scope_genesis_entry.pos
+	WHERE global_log_scope_genesis_entry.name_blake3 = ?
+	ORDER BY scope_log_entry.pos DESC
+	LIMIT 1
+),
+caller AS (
+	SELECT public_key.id
+	FROM public_key
+	WHERE public_key.algorithm = ? AND public_key.data = ?
+),
+members_tree (blake3) AS (
+	SELECT head.scope_members_root_blake3
+	FROM head
+	
+	UNION
+	
+	SELECT scope_members_internal_node_child.child_blake3
+	FROM members_tree
+	INNER JOIN scope_members_internal_node_child ON scope_members_internal_node_child.node_blake3=members_tree.blake3
+)
+SELECT
+	EXISTS(SELECT 1 FROM global_log_scope_genesis_entry WHERE global_log_scope_genesis_entry.name_blake3 = ?) AS `scope_exists: bool`,
+	EXISTS(SELECT 1 FROM head INNER JOIN caller ON caller.id = head.owner) AS `is_owner: bool`,
+	EXISTS(
+		SELECT 1
+		FROM members_tree
+		INNER JOIN scope_members_leaf_node_entry ON scope_members_leaf_node_entry.node_blake3=members_tree.blake3
+		INNER JOIN caller ON caller.id = scope_members_leaf_node_entry.member
+	) AS `is_member: bool`,
+	EXISTS(
+		SELECT 1
+		FROM members_tree
+		INNER JOIN scope_members_leaf_node_entry ON scope_members_leaf_node_entry.node_blake3=members_tree.blake3
+		INNER JOIN caller ON caller.id = scope_members_leaf_node_entry.member
+		INNER JOIN member_grant_package ON member_grant_package.grant_blake3=scope_members_leaf_node_entry.grant_blake3
+		WHERE member_grant_package.local_name_blake3 = ?
+	) AS `has_package: bool`",
+				scope_id.hash().0.as_slice(),
+				Text(user.kind()),
+				user.data(),
+				scope_id.hash().0.as_slice(),
+				package,
 			)
 			.fetch_one(tx.as_executor())
 			.await?;
 
-			if !record.exists {
+			if !record.scope_exists {
 				return Ok(Some(ExistingScopeLockResult::DoesntExist));
+			}
+
+			let allowed = match permission_width {
+				PermissionWidth::OnlySelf => record.is_owner || record.is_member,
+				PermissionWidth::Package(_) => record.is_owner || record.has_package,
+				PermissionWidth::Owner => record.is_owner,
+			};
+
+			if !allowed {
+				return Ok(Some(ExistingScopeLockResult::Unauthorized));
 			}
 
 			Ok(None)
