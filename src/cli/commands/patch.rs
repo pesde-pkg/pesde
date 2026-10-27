@@ -3,7 +3,6 @@ use crate::cli::style::CLI_STYLE;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_PREFIX;
 use anyhow::Context as _;
-use base64::Engine as _;
 use clap::Args;
 use console::style;
 use fs_err::tokio as fs;
@@ -39,7 +38,7 @@ impl PatchCommand {
 		let directory = project
 			.data_dir()
 			.join("patches")
-			.join(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(self.package.to_string()))
+			.join(fast32::base64::RFC4648_URL_NOPAD.encode(self.package.to_string().as_bytes()))
 			.join(jiff::Timestamp::now().as_second().to_string());
 		fs::create_dir_all(&directory).await?;
 

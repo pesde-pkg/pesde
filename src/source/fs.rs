@@ -70,8 +70,9 @@ fn cas_path(hash: &Hash, cas_dir: &Path) -> PathBuf {
 	let mut path = cas_dir.join(hash.algorithm().to_string());
 	let mut hash_str = encoded.as_str();
 
+	#[expect(clippy::match_single_binding)]
 	let parts: &'static [usize] = match hash {
-		Hash::Blake3(_) => &[2],
+		_ => &[2],
 	};
 
 	for length in parts {

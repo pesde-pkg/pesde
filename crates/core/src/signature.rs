@@ -4,9 +4,9 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use base64::Engine as _;
+use thiserror::Error;
 
-use crate::ser_display_deser_fromstr;
+use crate::__private::ser_display_deser_fromstr;
 
 /// A key kind
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -36,12 +36,12 @@ impl Display for KeyKind {
 }
 
 impl FromStr for KeyKind {
-	type Err = errors::KeyKindParseError;
+	type Err = KeyKindParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
 			"ed25519" => Ok(Self::Ed25519),
-			_ => Err(errors::KeyKindParseErrorKind::UnknownKeyKind(s.to_string()).into()),
+			_ => Err(KeyKindParseError::UnknownKeyKind(s.into())),
 		}
 	}
 }
@@ -60,27 +60,25 @@ impl Display for PublicKey {
 			f,
 			"{}:{}",
 			self.kind,
-			base64::engine::general_purpose::STANDARD_NO_PAD.encode(&self.data)
+			fast32::base64::RFC4648_NOPAD.encode(&self.data)
 		)
 	}
 }
 
 impl FromStr for PublicKey {
-	type Err = errors::PublicKeyParseError;
+	type Err = PublicKeyParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (kind, key) = s
 			.split_once(':')
-			.ok_or(errors::PublicKeyParseErrorKind::InvalidFormat)?;
+			.ok_or(PublicKeyParseError::InvalidFormat)?;
 
 		let kind: KeyKind = kind.parse()?;
-		let mut data = vec![0; kind.size()];
-		let len = base64::engine::general_purpose::STANDARD_NO_PAD.decode_slice(key, &mut data)?;
-		if len != data.len() {
-			return Err(errors::PublicKeyParseErrorKind::InvalidFormat.into());
-		}
+		let mut data = Vec::new();
+		data.reserve_exact(kind.size());
+		fast32::base64::RFC4648_NOPAD.decode_into(key.as_bytes(), &mut data)?;
 
-		Self::new(kind, data).ok_or_else(|| errors::PublicKeyParseErrorKind::InvalidFormat.into())
+		Self::new(kind, data).ok_or(PublicKeyParseError::InvalidFormat)
 	}
 }
 
@@ -138,14 +136,12 @@ impl Display for SignatureKind {
 }
 
 impl FromStr for SignatureKind {
-	type Err = errors::SignatureKindParseError;
+	type Err = SignatureKindParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
 			"ssh_ed25519_sha512" => Ok(Self::SshEd25519Sha512),
-			_ => {
-				Err(errors::SignatureKindParseErrorKind::UnknownSignatureKind(s.to_string()).into())
-			}
+			_ => Err(SignatureKindParseError::UnknownSignatureKind(s.into())),
 		}
 	}
 }
@@ -164,28 +160,25 @@ impl Display for Signature {
 			f,
 			"{}:{}",
 			self.kind,
-			base64::engine::general_purpose::STANDARD_NO_PAD.encode(&self.data)
+			fast32::base64::RFC4648_NOPAD.encode(&self.data)
 		)
 	}
 }
 
 impl FromStr for Signature {
-	type Err = errors::SignatureParseError;
+	type Err = SignatureParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (kind, signature) = s
 			.split_once(':')
-			.ok_or(errors::SignatureParseErrorKind::InvalidFormat)?;
+			.ok_or(SignatureParseError::InvalidFormat)?;
 
 		let kind: SignatureKind = kind.parse()?;
-		let mut data = vec![0; kind.size()];
-		let len =
-			base64::engine::general_purpose::STANDARD_NO_PAD.decode_slice(signature, &mut data)?;
-		if len != data.len() {
-			return Err(errors::SignatureParseErrorKind::InvalidFormat.into());
-		}
+		let mut data = Vec::new();
+		data.reserve_exact(kind.size());
+		fast32::base64::RFC4648_NOPAD.decode_into(signature.as_bytes(), &mut data)?;
 
-		Self::new(kind, data).ok_or_else(|| errors::SignatureParseErrorKind::InvalidFormat.into())
+		Self::new(kind, data).ok_or(SignatureParseError::InvalidFormat)
 	}
 }
 
@@ -254,67 +247,58 @@ impl Signature {
 	}
 }
 
-/// Errors related to signatures and public keys
-pub mod errors {
-	use thiserror::Error;
+/// Errors which can occur when parsing a key kind
+#[derive(Debug, Error)]
+pub enum KeyKindParseError {
+	/// The key kind is in an invalid format
+	#[error("invalid key kind format")]
+	InvalidFormat,
 
-	/// Errors which can occur when parsing a key kind
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = KeyKindParseError))]
-	pub enum KeyKindParseErrorKind {
-		/// The key kind is in an invalid format
-		#[error("invalid key kind format")]
-		InvalidFormat,
+	/// The key kind is unknown
+	#[error("unknown key kind `{0}`")]
+	UnknownKeyKind(Box<str>),
+}
 
-		/// The key kind is unknown
-		#[error("unknown key kind `{0}`")]
-		UnknownKeyKind(String),
-	}
+/// Errors which can occur when parsing a public key
+#[derive(Debug, Error)]
+pub enum PublicKeyParseError {
+	/// The public key is in an invalid format
+	#[error("invalid public key format")]
+	InvalidFormat,
 
-	/// Errors which can occur when parsing a public key
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = PublicKeyParseError))]
-	pub enum PublicKeyParseErrorKind {
-		/// The public key is in an invalid format
-		#[error("invalid public key format")]
-		InvalidFormat,
+	/// The key kind is not valid
+	#[error("invalid key kind")]
+	InvalidKeyKind(#[from] KeyKindParseError),
 
-		/// The key kind is not valid
-		#[error("invalid key kind")]
-		InvalidKeyKind(#[from] KeyKindParseError),
+	/// The key data is not valid base64
+	#[error("invalid base64 in public key data")]
+	InvalidBase64(#[from] fast32::DecodeError),
+}
 
-		/// The key data is not valid base64
-		#[error("invalid base64 in public key data")]
-		InvalidBase64(#[from] base64::DecodeSliceError),
-	}
+/// Errors which can occur when parsing a signature kind
+#[derive(Debug, Error)]
+pub enum SignatureKindParseError {
+	/// The signature kind is in an invalid format
+	#[error("invalid signature kind format")]
+	InvalidFormat,
 
-	/// Errors which can occur when parsing a signature kind
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = SignatureKindParseError))]
-	pub enum SignatureKindParseErrorKind {
-		/// The signature kind is in an invalid format
-		#[error("invalid signature kind format")]
-		InvalidFormat,
+	/// The signature kind is unknown
+	#[error("unknown signature kind `{0}`")]
+	UnknownSignatureKind(Box<str>),
+}
 
-		/// The signature kind is unknown
-		#[error("unknown signature kind `{0}`")]
-		UnknownSignatureKind(String),
-	}
+/// Errors which can occur when parsing a signature
+#[derive(Debug, Error)]
+pub enum SignatureParseError {
+	/// The signature is in an invalid format
+	#[error("invalid signature format")]
+	InvalidFormat,
 
-	/// Errors which can occur when parsing a signature
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = SignatureParseError))]
-	pub enum SignatureParseErrorKind {
-		/// The signature is in an invalid format
-		#[error("invalid signature format")]
-		InvalidFormat,
+	/// The signature kind is not valid
+	#[error("invalid signature kind")]
+	InvalidSignatureKind(#[from] SignatureKindParseError),
 
-		/// The signature kind is not valid
-		#[error("invalid signature kind")]
-		InvalidSignatureKind(#[from] SignatureKindParseError),
-
-		/// The signature is not valid base64
-		#[error("invalid base64 in signature data")]
-		InvalidBase64(#[from] base64::DecodeSliceError),
-	}
+	/// The signature is not valid base64
+	#[error("invalid base64 in signature data")]
+	InvalidBase64(#[from] fast32::DecodeError),
 }

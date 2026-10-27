@@ -9,8 +9,9 @@ use std::fmt::Display;
 use std::io::Write;
 use std::str::FromStr;
 use std::sync::Arc;
+use thiserror::Error;
 
-use crate::ser_display_deser_fromstr;
+use crate::__private::ser_display_deser_fromstr;
 
 mod encoding {
 	fast32::make_base32_alpha!(
@@ -59,13 +60,13 @@ macro_rules! algos {
 			}
 
 			impl FromStr for HashAlgorithm {
-				type Err = errors::HashAlgorithmFromStrError;
+				type Err = HashAlgorithmFromStrError;
 
 				fn from_str(s: &str) -> Result<Self, Self::Err> {
 					match s {
 						$(stringify!([< $algo:snake >]) => Ok(Self::$algo),)+
 						s => Err(
-							errors::HashAlgorithmFromStrErrorKind::UnknownHashAlgorithm(s.into()).into(),
+							HashAlgorithmFromStrError::UnknownHashAlgorithm(s.into()).into(),
 						),
 					}
 				}
@@ -116,8 +117,6 @@ macro_rules! algos {
 			$(
 				#[doc = concat!("A [HashAlgorithm::", stringify!($algo), "] hash")]
 				#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-				#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
-				#[cfg_attr(feature = "sqlx", sqlx(transparent))]
 				pub struct [< $algo Hash >](pub Arc<[u8; { Self::ALGORITHM.output_size() }]>);
 				ser_display_deser_fromstr!([< $algo Hash >]);
 
@@ -126,10 +125,10 @@ macro_rules! algos {
 					pub const ALGORITHM: HashAlgorithm = HashAlgorithm::$algo;
 
 					/// Creates a new [Self] from the given hash bytes
-					pub fn new(bytes: impl Into<Arc<[u8]>>) -> Result<Self, errors::NewHashError> {
+					pub fn new(bytes: impl Into<Arc<[u8]>>) -> Result<Self, NewHashError> {
 						let bytes = bytes.into();
 						let bytes = Arc::<[u8; _]>::try_from(bytes)
-							.map_err(|bytes| errors::NewHashErrorKind::InvalidSize {
+							.map_err(|bytes| NewHashError::InvalidSize {
 								actual: bytes.len(),
 								expected: Self::ALGORITHM.output_size()
 							})?;
@@ -159,7 +158,7 @@ macro_rules! algos {
 				}
 
 				impl FromStr for [< $algo Hash >] {
-					type Err = errors::HashDecodeError;
+					type Err = HashDecodeError;
 
 					fn from_str(s: &str) -> Result<Self, Self::Err> {
 						let mut data = Vec::new();
@@ -201,14 +200,14 @@ macro_rules! algos {
 
 			impl Hash {
 				/// Creates a new [Self] from the given algorithm and bytes
-				pub fn new(algorithm: HashAlgorithm, bytes: impl Into<Arc<[u8]>>) -> Result<Self, errors::NewHashError> {
+				pub fn new(algorithm: HashAlgorithm, bytes: impl Into<Arc<[u8]>>) -> Result<Self, NewHashError> {
 					match algorithm {
 						$(HashAlgorithm::$algo => [< $algo Hash >]::new(bytes).map(Self::$algo)),+
 					}
 				}
 
 				/// Creates a new [Self] from the given algorithm and encoded bytes
-				pub fn from_encoded(algorithm: HashAlgorithm, bytes: &str) -> Result<Self, errors::HashDecodeError> {
+				pub fn from_encoded(algorithm: HashAlgorithm, bytes: &str) -> Result<Self, HashDecodeError> {
 					match algorithm {
 						$(HashAlgorithm::$algo => [< $algo Hash >]::from_str(bytes).map(Self::$algo)),+
 					}
@@ -264,12 +263,12 @@ macro_rules! algos {
 			}
 
 			impl FromStr for Hash {
-				type Err = errors::HashFromStrError;
+				type Err = HashFromStrError;
 
 				fn from_str(s: &str) -> Result<Self, Self::Err> {
 					let (algorithm, hash) = s
 						.split_once(':')
-						.ok_or(errors::HashFromStrErrorKind::InvalidHashFormat)?;
+						.ok_or(HashFromStrError::InvalidHashFormat)?;
 
 					Ok(Self::from_encoded(algorithm.parse()?, hash)?)
 				}
@@ -310,64 +309,55 @@ impl Hasher for Blake3Hasher {
 	}
 }
 
-/// Errors that can occur when interacting with hashes
-pub mod errors {
-	use thiserror::Error;
+/// Errors that can occur when parsing a hash algorithm from a string
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum HashAlgorithmFromStrError {
+	/// Unknown hash algorithm
+	#[error("unknown hash algorithm `{0}`")]
+	UnknownHashAlgorithm(Box<str>),
+}
 
-	/// Errors that can occur when parsing a hash algorithm from a string
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = HashAlgorithmFromStrError))]
-	#[non_exhaustive]
-	pub enum HashAlgorithmFromStrErrorKind {
-		/// Unknown hash algorithm
-		#[error("unknown hash algorithm `{0}`")]
-		UnknownHashAlgorithm(Box<str>),
-	}
+/// Errors that can occur when creating a [Hash]
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum NewHashError {
+	/// The hash wasn't of appropriate size
+	#[error("hash size was `{actual}` but `{expected}` was expected")]
+	InvalidSize {
+		/// The size that the hash was
+		actual: usize,
+		/// The size that was expected
+		expected: usize,
+	},
+}
 
-	/// Errors that can occur when creating a [super::Hash]
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = NewHashError))]
-	#[non_exhaustive]
-	pub enum NewHashErrorKind {
-		/// The hash wasn't of appropriate size
-		#[error("hash size was `{actual}` but `{expected}` was expected")]
-		InvalidSize {
-			/// The size that the hash was
-			actual: usize,
-			/// The size that was expected
-			expected: usize,
-		},
-	}
+/// Errors that can occur when decoding a [Hash]
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum HashDecodeError {
+	/// Error creating a [Hash]
+	#[error(transparent)]
+	NewHash(#[from] NewHashError),
 
-	/// Errors that can occur when decoding a [super::Hash]
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = HashDecodeError))]
-	#[non_exhaustive]
-	pub enum HashDecodeErrorKind {
-		/// Error creating a [super::Hash]
-		#[error(transparent)]
-		NewHash(#[from] NewHashError),
+	/// Error parsing the hash value
+	#[error("error parsing hash value")]
+	InvalidHashValue(#[from] fast32::DecodeError),
+}
 
-		/// Error parsing the hash value
-		#[error("error parsing hash value")]
-		InvalidHashValue(#[from] fast32::DecodeError),
-	}
+/// Errors that can occur when parsing a hash from a string
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum HashFromStrError {
+	/// Invalid hash format
+	#[error("invalid hash format")]
+	InvalidHashFormat,
 
-	/// Errors that can occur when parsing a hash from a string
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = HashFromStrError))]
-	#[non_exhaustive]
-	pub enum HashFromStrErrorKind {
-		/// Invalid hash format
-		#[error("invalid hash format")]
-		InvalidHashFormat,
+	/// Error parsing the hash algorithm        
+	#[error("error parsing hash algorithm")]
+	HashAlgorithmFromStr(#[from] HashAlgorithmFromStrError),
 
-		/// Error parsing the hash algorithm        
-		#[error("error parsing hash algorithm")]
-		HashAlgorithmFromStr(#[from] HashAlgorithmFromStrError),
-
-		/// Error decoding a [super::Hash]
-		#[error(transparent)]
-		HashDecode(#[from] HashDecodeError),
-	}
+	/// Error decoding a [Hash]
+	#[error(transparent)]
+	HashDecode(#[from] HashDecodeError),
 }

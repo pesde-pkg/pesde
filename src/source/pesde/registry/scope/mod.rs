@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::bounded::BoundedBTreeSet;
 use crate::bounded::errors::ParseBoundedError;
-use crate::hash::errors::HashDecodeError;
+use crate::hash::HashDecodeError;
 use crate::names::LocalName;
 use crate::source::pesde::registry::*;
 

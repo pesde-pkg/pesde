@@ -35,7 +35,6 @@ pub mod bounded;
 pub mod download;
 pub mod download_and_link;
 pub mod graph;
-pub mod hash;
 pub mod linking;
 pub mod lockfile;
 pub mod manifest;
@@ -45,9 +44,11 @@ pub mod patches;
 pub mod reporters;
 pub mod resolver;
 pub mod scripts;
-pub mod signature;
 pub mod source;
 pub(crate) mod util;
+
+pub(crate) use pesde_core::__private::ser_display_deser_fromstr;
+pub use pesde_core::*;
 
 /// The name of the manifest file
 pub const MANIFEST_FILE_NAME: &str = "pesde.toml";

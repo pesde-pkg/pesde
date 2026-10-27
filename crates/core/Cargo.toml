@@ -1,0 +1,24 @@
+[package]
+name = "pesde-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thiserror = { workspace = true }
+paste = { workspace = true }
+fast32 = { workspace = true }
+
+serde = { package = "serde_core", version = "1.0.229", default-features = false, features = [
+    "std",
+] }
+
+blake3 = { version = "1.8.7", default-features = false, features = ["std"] }
+
+signature = { version = "2.2.0", default-features = false, features = ["std"] }
+ssh-key = { version = "0.6.7", default-features = false, features = [
+    "std",
+    "ed25519",
+] }
+
+[lints]
+workspace = true
