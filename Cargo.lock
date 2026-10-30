@@ -4077,7 +4077,6 @@ dependencies = [
  "async-stream",
  "async-trait",
  "async_zip",
- "cbor-core",
  "clap",
  "console",
  "croshet",
