@@ -3,10 +3,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::lock::Mutex;
-use pesde::hash::Blake3Hash;
-use pesde::hash::Hasher as _;
-use pesde::signature::PublicKey;
-use pesde::source::pesde::registry::*;
+use pesde_core::hash::Blake3Hash;
+use pesde_core::hash::Hasher as _;
+use pesde_core::registry::*;
+use pesde_core::signature::PublicKey;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::CreatingScopeLockResult;
 use pesde_registry_core::db::ExistingScopeLockResult;

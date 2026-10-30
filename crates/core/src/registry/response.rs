@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::source::pesde::registry::*;
+use super::*;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;

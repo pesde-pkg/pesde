@@ -31,7 +31,6 @@ use tokio::sync::RwLock;
 use tracing::instrument;
 use wax::Program as _;
 
-pub mod bounded;
 pub mod download;
 pub mod download_and_link;
 pub mod graph;
@@ -47,6 +46,7 @@ pub mod scripts;
 pub mod source;
 pub(crate) mod util;
 
+pub use pesde_core;
 pub(crate) use pesde_core::__private::ser_display_deser_fromstr;
 pub use pesde_core::*;
 

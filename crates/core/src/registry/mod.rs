@@ -6,40 +6,37 @@ use std::io::Write;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use jiff::Timestamp;
 use merkle_bplustree::TreeConfig;
 use merkle_bplustree::hasher::Hasher;
 use merkleberg::Merge;
-use semver::Prerelease;
-use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
-use uuid::Uuid;
 
-use crate::bounded::Bounded;
+use crate::__private::ser_display_deser_fromstr;
 use crate::hash::Blake3Hash;
 use crate::hash::Hash;
 use crate::hash::Hasher as _;
-use crate::ser_display_deser_fromstr;
 use crate::signature::PublicKey;
 use crate::signature::Signature;
 
-mod global;
+mod ops;
+pub use ops::*;
 mod response;
-mod scope;
-pub use global::*;
 pub use response::*;
+mod version;
+pub use version::*;
+mod scope;
 pub use scope::*;
 
 /// A tagged object
-pub trait Tagged {
+pub trait Tagged: crate::sealed::Sealed {
 	/// The tag of this value
 	const TAG: &'static str;
 }
 
 /// An object with a canonical representation
-pub trait Canonical {
+pub trait Canonical: crate::sealed::Sealed {
 	/// Writes the canonical representation of this value to the given writer
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()>;
 
@@ -49,32 +46,6 @@ pub trait Canonical {
 		let mut bytes = Vec::new();
 		self.write_canonical_to(&mut bytes).unwrap();
 		bytes
-	}
-}
-
-/// Things that can be an [Entry]'s payload
-pub trait EntryPayload: Canonical {}
-
-/// An entry in a log, at a known leaf position
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Entry<T: EntryPayload> {
-	/// The leaf position of this entry
-	pub pos: u64,
-	/// The time of publishing of this entry
-	/// This value is server authoritative because of time sync issues a client provided value would pose
-	pub published_at: Timestamp,
-	/// The payload of this entry
-	pub payload: T,
-}
-
-impl<T: EntryPayload> Canonical for Entry<T> {
-	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
-		cbor_core::map! {
-			"pos" => self.pos,
-			"published_at" => self.published_at.to_string(),
-			"payload" => self.payload.canonical_bytes(),
-		}
-		.write_to(writer)
 	}
 }
 
@@ -106,6 +77,7 @@ pub struct BadSignature;
 #[derive(Debug, Clone, Serialize)]
 #[serde(transparent)]
 pub struct Signed<T: Signable>(UnvalidatedSigned<T>);
+impl<T: Signable> crate::sealed::Sealed for Signed<T> {}
 
 impl<T: Signable> Signed<T> {
 	/// Validates the passed in [UnvalidatedSigned] and returns Some if it's valid
@@ -150,85 +122,29 @@ impl<T: Signable + Canonical> Canonical for Signed<T> {
 	}
 }
 
-/// The scope id; hash of the scope name.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ScopeId(CurrentHash);
-ser_display_deser_fromstr!(ScopeId);
+/// Things that can be an [Entry]'s payload
+pub trait EntryPayload: Canonical {}
 
-impl ScopeId {
-	/// Creates a new [Self] from a hash
-	#[must_use]
-	pub fn new(hash: CurrentHash) -> Self {
-		Self(hash)
-	}
-
-	/// Creates a new [Self] from a [Scope](crate::names::Scope)
-	#[must_use]
-	pub fn from(name: &crate::names::Scope) -> Self {
-		let mut hasher = CurrentHash::hasher();
-		hasher.update(name.as_str().as_bytes());
-		Self::new(hasher.finalize())
-	}
-
-	/// The underlying hash
-	#[must_use]
-	pub fn hash(&self) -> &CurrentHash {
-		&self.0
-	}
+/// An entry in a log, at a known leaf position
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Entry<T: EntryPayload> {
+	/// The leaf position of this entry
+	pub pos: u64,
+	/// The time of publishing of this entry
+	/// This value is server authoritative because of time sync issues a client provided value would pose
+	pub published_at: jiff::Timestamp,
+	/// The payload of this entry
+	pub payload: T,
 }
-
-impl Display for ScopeId {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		self.0.fmt(f)
-	}
-}
-
-impl FromStr for ScopeId {
-	type Err = <CurrentHash as FromStr>::Err;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		s.parse().map(Self)
-	}
-}
-
-/// The local name id; hash of the package local name.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct LocalNameId(CurrentHash);
-ser_display_deser_fromstr!(LocalNameId);
-
-impl LocalNameId {
-	/// Creates a new [Self] from a hash
-	#[must_use]
-	pub fn new(hash: CurrentHash) -> Self {
-		Self(hash)
-	}
-
-	/// Creates a new [Self] from a [LocalName](crate::names::LocalName)
-	#[must_use]
-	pub fn from(name: &crate::names::LocalName) -> Self {
-		let mut hasher = CurrentHash::hasher();
-		hasher.update(name.as_str().as_bytes());
-		Self::new(hasher.finalize())
-	}
-
-	/// The underlying hash
-	#[must_use]
-	pub fn hash(&self) -> &CurrentHash {
-		&self.0
-	}
-}
-
-impl Display for LocalNameId {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		self.0.fmt(f)
-	}
-}
-
-impl FromStr for LocalNameId {
-	type Err = <CurrentHash as FromStr>::Err;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		s.parse().map(Self)
+impl<T: EntryPayload> crate::sealed::Sealed for Entry<T> {}
+impl<T: EntryPayload> Canonical for Entry<T> {
+	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
+		cbor_core::map! {
+			"pos" => self.pos,
+			"published_at" => self.published_at.to_string(),
+			"payload" => self.payload.canonical_bytes(),
+		}
+		.write_to(writer)
 	}
 }
 

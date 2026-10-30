@@ -1,5 +1,5 @@
 use anyhow::Context as _;
-use jiff::Timestamp;
+use pesde_core::jiff::Timestamp;
 use sqlx::MySqlConnection;
 use sqlx::QueryBuilder;
 use sqlx::query_builder::Separated;
@@ -50,7 +50,7 @@ pub(crate) fn chrono_to_jiff(
 }
 
 pub(crate) fn jiff_to_chrono(
-	jiff: jiff::Timestamp,
+	jiff: pesde_core::jiff::Timestamp,
 ) -> anyhow::Result<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> {
 	sqlx::types::chrono::DateTime::from_timestamp_micros(jiff.as_microsecond())
 		.context("illegal timestamp")

@@ -5,6 +5,7 @@ use crate::manifest::Alias;
 use crate::manifest::DependencyType;
 use crate::names::PackageName;
 use crate::reporters::DownloadProgressReporter;
+use crate::semver::Version;
 use crate::ser_display_deser_fromstr;
 use crate::source::git::specifier::IndexGitDependencySpecifier;
 use crate::source::git_index::read_file;
@@ -20,7 +21,6 @@ use futures::TryStreamExt as _;
 use relative_path::RelativePathBuf;
 use reqwest::header::ACCEPT;
 use reqwest::header::AUTHORIZATION;
-use semver::Version;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -134,7 +134,7 @@ pub struct IndexFileEntry {
 	/// The target for this package
 	pub target: Target,
 	/// When this package was published
-	pub published_at: jiff::Timestamp,
+	pub published_at: pesde_core::jiff::Timestamp,
 	/// The description of this package
 	#[serde(default)]
 	pub description: Option<String>,
@@ -671,7 +671,7 @@ pub mod errors {
 
 		/// An error occurred parsing the version
 		#[error("error parsing version")]
-		Version(#[from] semver::Error),
+		Version(#[from] crate::semver::Error),
 
 		/// An error occurred parsing the target
 		#[error("error parsing target")]

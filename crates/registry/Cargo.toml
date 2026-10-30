@@ -15,7 +15,6 @@ mysql = ["dep:pesde-registry-backend-mysql"]
 fs-err = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
-semver = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
@@ -23,15 +22,12 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-merkleberg = { workspace = true }
 reqwest = { workspace = true }
 toml = { workspace = true }
 astral-tokio-tar = { workspace = true }
 async-compression = { workspace = true }
 tempfile = { workspace = true }
-blake3 = { workspace = true }
 itertools = { workspace = true }
-merkle-bplustree = { workspace = true }
 
 pin-project-lite = "0.2.17"
 
@@ -45,7 +41,7 @@ dotenvy = "0.15.7"
 rusty-s3 = "0.9.1"
 constant_time_eq = "0.5.0"
 
-pesde = { path = "../..", default-features = false }
+pesde-core = { path = "../core" }
 pesde-registry-core = { path = "../registry-core" }
 
 pesde-registry-backend-mysql = { path = "../registry-backend-mysql", optional = true }

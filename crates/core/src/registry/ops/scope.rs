@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::ops::Deref;
 
-use super::*;
+use super::super::*;
 use paste::paste;
 use serde::Deserialize;
 use serde::Serialize;
@@ -40,6 +40,7 @@ macro_rules! ops {
 						),*
 					}
 				);
+				impl crate::sealed::Sealed for [< $variant $container OpBody >] {}
 
 				impl [< $variant $container OpBody >] {
 					/// Returns the fields in common between all scope operations of this type
@@ -52,7 +53,7 @@ macro_rules! ops {
 					const TAG: &'static str = $tag;
 				}
 
-				ops!(signed $signed, [< $variant $container OpBody >]);
+				ops!(@signed $signed, [< $variant $container OpBody >]);
 
 				impl From<[< $variant $container OpBody >]> for [< $container Op >] {
 					fn from(value: [< $variant $container OpBody >]) -> Self {
@@ -103,6 +104,7 @@ macro_rules! ops {
 					$variant([< $variant $container OpBody >])
 				),+
 			}
+			impl crate::sealed::Sealed for [< $container Op >] {}
 
 			impl [< $container Op >] {
 				/// Returns the fields in common between operations of this type
@@ -121,7 +123,7 @@ macro_rules! ops {
 				}
 			}
 
-			ops!(signed $signed, [< $container Op >]);
+			ops!(@signed $signed, [< $container Op >]);
 		}
 	};
 	(
@@ -193,7 +195,7 @@ macro_rules! ops {
 			}
 		}
 	};
-	(signed true, $ty:ty) => {
+	(@signed true, $ty:ty) => {
 		impl Signable for $ty {
 			fn signer(&self) -> &PublicKey {
 				&self.header().signer
@@ -206,7 +208,7 @@ macro_rules! ops {
 
 		impl EntryPayload for Signed<$ty> {}
 	};
-	(signed false, $ty:ty) => {
+	(@signed false, $ty:ty) => {
 		impl EntryPayload for $ty {}
 	};
 }
@@ -551,7 +553,7 @@ ops!(
 		/// The package being updated
 		pkg: LocalNameId,
 		/// The version being updated
-		version: PesdeVersionForRegistry,
+		version: PesdeStyleVersion,
 		/// Whether it is yanked
 		yanked: bool,
 		/// The root of the tree holding package versions
@@ -614,6 +616,7 @@ pub enum ScopeEntryPayload {
 	/// An entry issued by the registry admin
 	Admin(AdminScopeOp),
 }
+impl crate::sealed::Sealed for ScopeEntryPayload {}
 impl EntryPayload for ScopeEntryPayload {}
 
 impl Canonical for ScopeEntryPayload {

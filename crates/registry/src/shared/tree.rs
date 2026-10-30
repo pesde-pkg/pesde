@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use merkle_bplustree::TreeConfig;
-use pesde::source::pesde::registry::*;
+use pesde_core::merkle_bplustree::TreeConfig;
+use pesde_core::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::ScopeWriteTransaction;
 use pesde_registry_core::features::scope::ScopeTreeReadRepository;

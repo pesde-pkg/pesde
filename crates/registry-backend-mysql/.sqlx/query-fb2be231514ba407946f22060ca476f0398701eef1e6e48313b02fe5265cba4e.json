@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT package.local_name_blake3, package_version.version, package_version.archive_hash, versions_leaf_node_entry.yank_state AS `yank_state: VersionYankState`\nFROM versions_leaf_node_entry\nINNER JOIN package_version ON package_version.scope=versions_leaf_node_entry.scope AND package_version.pos=versions_leaf_node_entry.version_pos\nINNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos\nWHERE versions_leaf_node_entry.node_blake3 = ?\nORDER BY versions_leaf_node_entry.idx",
+  "query": "\nSELECT package.local_name_blake3, package_version.version, package_version.archive_hash, versions_leaf_node_entry.yank_state AS `yank_state: Text<VersionYankState>`\nFROM versions_leaf_node_entry\nINNER JOIN package_version ON package_version.scope=versions_leaf_node_entry.scope AND package_version.pos=versions_leaf_node_entry.version_pos\nINNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos\nWHERE versions_leaf_node_entry.node_blake3 = ?\nORDER BY versions_leaf_node_entry.idx",
   "describe": {
     "columns": [
       {
@@ -53,7 +53,7 @@
       },
       {
         "ordinal": 3,
-        "name": "yank_state: VersionYankState",
+        "name": "yank_state: Text<VersionYankState>",
         "type_info": {
           "type": "String",
           "flags": "ENUM",
@@ -78,5 +78,5 @@
       true
     ]
   },
-  "hash": "b8267f874ed05bece8158ed950561fc35250835e11837f8599447a4d929c0880"
+  "hash": "fb2be231514ba407946f22060ca476f0398701eef1e6e48313b02fe5265cba4e"
 }

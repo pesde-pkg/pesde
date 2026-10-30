@@ -26,6 +26,7 @@ use crate::Subproject;
 use crate::Url;
 use crate::manifest::Manifest;
 use crate::reporters::DownloadProgressReporter;
+use crate::semver::Version;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::IGNORED_DIRS;
@@ -46,7 +47,6 @@ use crate::source::wally::specifier::WallyDependencySpecifier;
 use crate::util::ToEscaped as _;
 use crate::version_matches;
 use fs_err::tokio as fs;
-use semver::Version;
 use tracing::instrument;
 
 pub mod backend;

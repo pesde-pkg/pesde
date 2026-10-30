@@ -26,9 +26,7 @@ pub type TokenHash = [u8; 32];
 
 #[must_use]
 pub fn hash_token(token: &str) -> TokenHash {
-	let mut hasher = blake3::Hasher::new();
-	hasher.update(token.as_bytes());
-	hasher.finalize().into()
+	*pesde_core::hash::Blake3Hash::digest(token).0
 }
 
 pub async fn authenticate(

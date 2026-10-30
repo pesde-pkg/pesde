@@ -4077,7 +4077,6 @@ dependencies = [
  "async-stream",
  "async-trait",
  "async_zip",
- "blake3",
  "cbor-core",
  "clap",
  "console",
@@ -4092,18 +4091,14 @@ dependencies = [
  "indicatif",
  "inquire",
  "itertools 0.14.0",
- "jiff",
  "junction",
  "keyring",
- "merkle-bplustree",
- "merkleberg",
  "open",
  "paste",
  "pathdiff",
  "pesde-core",
  "relative-path",
  "reqwest",
- "semver",
  "serde",
  "serde_json",
  "sqlx",
@@ -4129,9 +4124,14 @@ name = "pesde-core"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "cbor-core",
  "fast32",
+ "jiff",
+ "merkle-bplustree",
+ "merkleberg",
  "paste",
- "serde_core",
+ "semver",
+ "serde",
  "signature",
  "ssh-key",
  "thiserror 2.0.21",
@@ -4148,21 +4148,17 @@ dependencies = [
  "anyhow",
  "astral-tokio-tar",
  "async-compression",
- "blake3",
  "constant_time_eq 0.5.0",
  "dotenvy",
  "fs-err",
  "futures",
  "itertools 0.14.0",
- "merkle-bplustree",
- "merkleberg",
- "pesde",
+ "pesde-core",
  "pesde-registry-backend-mysql",
  "pesde-registry-core",
  "pin-project-lite",
  "reqwest",
  "rusty-s3",
- "semver",
  "serde",
  "serde_json",
  "tempfile",
@@ -4185,13 +4181,9 @@ dependencies = [
  "const-str",
  "futures",
  "itertools 0.14.0",
- "jiff",
- "merkle-bplustree",
- "pesde",
+ "pesde-core",
  "pesde-registry-core",
- "semver",
  "sqlx",
- "uuid",
 ]
 
 [[package]]
@@ -4201,10 +4193,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "futures",
- "merkle-bplustree",
- "merkleberg",
- "pesde",
- "semver",
+ "pesde-core",
  "thiserror 2.0.21",
 ]
 
@@ -5305,7 +5294,6 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
- "uuid",
  "webpki-roots",
 ]
 
@@ -5373,7 +5361,6 @@ dependencies = [
  "sqlx-core",
  "thiserror 2.0.21",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -5409,7 +5396,6 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.21",
  "tracing",
- "uuid",
  "whoami",
 ]
 
@@ -5436,7 +5422,6 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "url",
- "uuid",
 ]
 
 [[package]]

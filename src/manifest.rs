@@ -1,15 +1,14 @@
 //! Manifest
 use crate::Url;
-use crate::bounded::Bounded;
-use crate::bounded::BoundedString;
-use crate::bounded::BoundedVec;
+use crate::bounded::BoundedSlice;
+use crate::bounded::BoundedStr;
 use crate::names::PackageName;
+use crate::registry::PesdeStyleVersion;
 use crate::ser_display_deser_fromstr;
 use crate::source::DependencySpecifiers;
 use crate::source::PackageExports;
 use crate::source::Realm;
 use crate::source::ids::PackageId;
-use crate::source::pesde::registry::PesdeVersionForRegistry;
 use relative_path::RelativePathBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -62,16 +61,16 @@ pub struct Manifest {
 	/// The name of the package
 	pub name: PackageName,
 	/// The version of the package
-	pub version: PesdeVersionForRegistry,
+	pub version: PesdeStyleVersion,
 	/// The description of the package
 	#[serde(default)]
-	pub description: BoundedString<MAX_DESCRIPTION_LEN>,
+	pub description: BoundedStr<MAX_DESCRIPTION_LEN>,
 	/// The license of the package
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub license: BoundedString<MAX_DESCRIPTION_LEN>,
+	pub license: BoundedStr<MAX_DESCRIPTION_LEN>,
 	/// The authors of the package
 	#[serde(default)]
-	pub authors: BoundedVec<BoundedString<MAX_AUTHOR_LEN>, MAX_AUTHORS>,
+	pub authors: BoundedSlice<BoundedStr<MAX_AUTHOR_LEN>, MAX_AUTHORS>,
 	/// The repository of the package
 	#[serde(default)]
 	pub repository: Option<Bounded<Url, MAX_URL_LEN>>,

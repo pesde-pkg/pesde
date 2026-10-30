@@ -1,9 +1,16 @@
+pub mod bounded;
 pub mod hash;
+pub mod registry;
 pub mod signature;
+
+pub use jiff;
+pub use merkle_bplustree;
+pub use merkleberg;
+pub use semver;
 
 #[doc(hidden)]
 pub mod __private {
-	/// Implement `Serialize` and `Deserialize` for a type that implements `Display` and `FromStr`
+	#[doc(hidden)]
 	#[macro_export]
 	macro_rules! __do_not_use__ser_display_deser_fromstr {
 		($struct_name:ident) => {
@@ -28,4 +35,8 @@ pub mod __private {
 		};
 	}
 	pub use __do_not_use__ser_display_deser_fromstr as ser_display_deser_fromstr;
+}
+
+mod sealed {
+	pub trait Sealed {}
 }

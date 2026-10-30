@@ -1,4 +1,4 @@
-use pesde::hash::Hash;
+use pesde_core::hash::Hash;
 use reqwest::Body;
 use reqwest::header::CONTENT_TYPE;
 use rusty_s3::actions::PutObject;

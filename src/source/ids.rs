@@ -1,4 +1,5 @@
 //! Package identifiers for various contexts
+use crate::semver::Version;
 use crate::ser_display_deser_fromstr;
 use crate::source::PackageRefs;
 use crate::source::PackageSources;
@@ -7,7 +8,6 @@ use crate::source::errors::PackageSourcesFromStr;
 use crate::source::path::PathPackageSource;
 use crate::source::path::local_version;
 use crate::util::ToEscaped as _;
-use semver::Version;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -165,7 +165,7 @@ pub mod errors {
 
 		/// Parsing the version failed
 		#[error("error parsing version")]
-		Version(#[from] semver::Error),
+		Version(#[from] crate::semver::Error),
 	}
 }
 

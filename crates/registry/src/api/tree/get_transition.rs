@@ -4,16 +4,16 @@ use std::fmt::Debug;
 use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::web;
-use merkle_bplustree::HasherOutput;
-use merkle_bplustree::MerkleBPlusTree;
-use merkle_bplustree::TreeConfig;
-use merkle_bplustree::hasher::Hasher;
-use merkle_bplustree::node::TreeNode;
-use merkle_bplustree::proof::GetWithProof;
-use merkle_bplustree::storage::ReadNodeStorage;
-use merkle_bplustree::storage::WriteNodeStorage;
-use pesde::bounded::BoundedVec;
-use pesde::source::pesde::registry::*;
+use pesde_core::bounded::BoundedSlice;
+use pesde_core::merkle_bplustree::HasherOutput;
+use pesde_core::merkle_bplustree::MerkleBPlusTree;
+use pesde_core::merkle_bplustree::TreeConfig;
+use pesde_core::merkle_bplustree::hasher::Hasher;
+use pesde_core::merkle_bplustree::node::TreeNode;
+use pesde_core::merkle_bplustree::proof::GetWithProof;
+use pesde_core::merkle_bplustree::storage::ReadNodeStorage;
+use pesde_core::merkle_bplustree::storage::WriteNodeStorage;
+use pesde_core::registry::*;
 use pesde_registry_core::features::scope::Nodes;
 use pesde_registry_core::features::scope::ScopeTreeReadRepository;
 use serde::Serialize;
@@ -28,7 +28,7 @@ super::tree_handler!((actix_web::http::Method::from_bytes(b"QUERY").unwrap()) "/
 async fn http_v2_impl<T: ScopeTree + Serialize + DeserializeOwned>(
 	db: Db,
 	path: web::Path<CurrentHash>,
-	body: web::Json<BoundedVec<TreeOperation<T>, 4>>,
+	body: web::Json<BoundedSlice<TreeOperation<T>, 4>>,
 ) -> Result<impl Responder, Error>
 where
 	T::Key: Debug + Serialize + DeserializeOwned,
@@ -45,7 +45,7 @@ where
 async fn handler<T: ScopeTree + Serialize + DeserializeOwned>(
 	db: &dyn ScopeTreeReadRepository<T>,
 	root: &CurrentHash,
-	operations: Vec<TreeOperation<T>>,
+	operations: Box<[TreeOperation<T>]>,
 ) -> Result<Vec<TreeTransitionResult<T>>, Error>
 where
 	T::Key: Debug + Serialize + DeserializeOwned,

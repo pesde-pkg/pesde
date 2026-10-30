@@ -1,9 +1,9 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+use super::super::*;
 use crate::hash::Hash;
 use crate::signature::PublicKey;
-use crate::source::pesde::registry::*;
 
 /// The payload anchoring a scope's creation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub struct ScopeGenesisPayload {
 	/// The hash of the first entry in the scope's log
 	pub first_entry_hash: Hash,
 }
-
+impl crate::sealed::Sealed for ScopeGenesisPayload {}
 impl Tagged for ScopeGenesisPayload {
 	const TAG: &'static str = "scope_genesis";
 }
@@ -56,6 +56,7 @@ pub enum GlobalEntryPayload {
 	/// A scope has been created
 	ScopeGenesis(Signed<ScopeGenesisPayload>),
 }
+impl crate::sealed::Sealed for GlobalEntryPayload {}
 impl EntryPayload for GlobalEntryPayload {}
 
 impl Canonical for GlobalEntryPayload {

@@ -1,12 +1,12 @@
 use anyhow::Context as _;
 use async_trait::async_trait;
 use futures::TryStreamExt as _;
-use pesde::hash::Blake3Hash;
-use pesde::signature::KeyKind;
-use pesde::signature::PublicKey;
-use pesde::signature::Signature;
-use pesde::signature::SignatureKind;
-use pesde::source::pesde::registry::*;
+use pesde_core::hash::Blake3Hash;
+use pesde_core::registry::*;
+use pesde_core::signature::KeyKind;
+use pesde_core::signature::PublicKey;
+use pesde_core::signature::Signature;
+use pesde_core::signature::SignatureKind;
 use pesde_registry_core::features::global::GlobalReadRepository;
 use pesde_registry_core::features::global::GlobalWriteRepository;
 use sqlx::QueryBuilder;

@@ -2,7 +2,7 @@
 use std::collections::HashSet;
 use std::fmt::Display;
 
-use semver::VersionReq;
+use crate::semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
 

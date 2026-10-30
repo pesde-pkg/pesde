@@ -2,7 +2,7 @@ use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
-use pesde::hash::Hash;
+use pesde_core::hash::Hash;
 
 use crate::AppState;
 use crate::api::package::error::Error;

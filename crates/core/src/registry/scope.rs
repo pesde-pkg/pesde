@@ -1,82 +1,133 @@
 use std::borrow::Borrow;
-use std::marker::PhantomData;
+use std::ops::Deref;
 
 use serde::Deserialize;
 use serde::Serialize;
 
+use super::*;
 use crate::bounded::BoundedBTreeSet;
-use crate::bounded::errors::ParseBoundedError;
+use crate::bounded::BoundedStr;
 use crate::hash::HashDecodeError;
-use crate::names::LocalName;
-use crate::source::pesde::registry::*;
+use paste::paste;
 
-mod op;
-pub use op::*;
+macro_rules! name_part {
+	($name:ident $min:expr=>32) => {
+		paste! {
+			#[doc = concat!("A validated package ", stringify!([< $name:lower ]>), "(", stringify!($min), "-32 chars, a-z/0-9/_, no leading/trailing _, not all digits)")]
+			#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+			pub struct $name(Arc<str>);
+			ser_display_deser_fromstr!($name);
 
-/// Consent data without any validity guarantees
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UnvalidatedConsent {
-	/// A unique value to make this one-use
-	pub nonce: Uuid,
-	/// The person consenting
-	pub consenter: PublicKey,
+			impl $name {
+				pub fn as_str(&self) -> &str {
+					self
+				}
+			}
+
+			impl Display for $name {
+				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+					f.write_str(self)
+				}
+			}
+
+			impl FromStr for $name {
+				type Err = [< $name FromStrError >];
+
+				fn from_str(s: &str) -> Result<Self, Self::Err> {
+					if !($min..=32).contains(&s.len()) {
+						return Err(Self::Err::InvalidLength(s.into()));
+					}
+
+					if s.chars().all(|c| c.is_ascii_digit()) {
+						return Err(Self::Err::OnlyDigits(s.into()));
+					}
+
+					if s.starts_with('_') || s.ends_with('_') {
+						return Err(Self::Err::PrePostfixUnderscore(s.into()));
+					}
+
+					if !s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+						return Err(Self::Err::InvalidCharacters(s.into()));
+					}
+
+					Ok(Self(s.into()))
+				}
+			}
+
+			#[doc = concat!("Errors that can occur when parsing a [", stringify!($name), "] from str")]
+			#[derive(Debug, Error)]
+			pub enum [< $name FromStrError >] {
+				/// The name is outside the allowed characters: a-z, 0-9, and _
+				#[error("name `{0}` contains characters outside a-z, 0-9, and _")]
+				InvalidCharacters(Box<str>),
+
+				/// The name contains only digits
+				#[error("name `{0}` contains only digits")]
+				OnlyDigits(Box<str>),
+
+				/// The name starts or ends with an underscore
+				#[error("name `{0}` starts or ends with an underscore")]
+				PrePostfixUnderscore(Box<str>),
+
+				/// The name's scope part is not within 3-32 characters long
+				#[error("name `{0}` is not within {min}-32 characters long", min = $min)]
+				InvalidLength(Box<str>),
+			}
+
+			impl Deref for $name {
+				type Target = str;
+
+				fn deref(&self) -> &Self::Target {
+					&self.0
+				}
+			}
+
+			#[doc = concat!("The ", stringify!([< $name:lower >]), " id; hash of the ", stringify!([< $name:lower >]))]
+			#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+			pub struct [< $name Id >](CurrentHash);
+			ser_display_deser_fromstr!([< $name Id >]);
+
+			impl [< $name Id >] {
+				/// Creates a new [Self] from a hash
+				#[must_use]
+				pub fn new(hash: CurrentHash) -> Self {
+					Self(hash)
+				}
+
+				#[doc = concat!("Creates a new [Self] from a [", stringify!($name), "]")]
+				#[must_use]
+				pub fn from(name: &$name) -> Self {
+					let mut hasher = CurrentHash::hasher();
+					hasher.update(name.as_bytes());
+					Self::new(hasher.finalize())
+				}
+
+				/// The underlying hash
+				#[must_use]
+				pub fn hash(&self) -> &CurrentHash {
+					&self.0
+				}
+			}
+
+			impl Display for [< $name Id >] {
+				fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+					self.0.fmt(f)
+				}
+			}
+
+			impl FromStr for [< $name Id >] {
+				type Err = <CurrentHash as FromStr>::Err;
+
+				fn from_str(s: &str) -> Result<Self, Self::Err> {
+					s.parse().map(Self)
+				}
+			}
+		}
+	};
 }
 
-/// Consent that is known to be signed by its consenter for the scope
-#[derive(Debug, Clone)]
-pub struct Consent<T: Tagged>(UnvalidatedSigned<UnvalidatedConsent>, PhantomData<T>);
-
-impl<T: Tagged> Consent<T> {
-	/// Returns Ok if the [ScopeId] and [UnvalidatedConsent] matched what is expected
-	pub fn new(
-		scope_id: &ScopeId,
-		unvalidated: UnvalidatedSigned<UnvalidatedConsent>,
-	) -> Result<Self, BadSignature> {
-		let UnvalidatedConsent { nonce, consenter } = &unvalidated.body;
-		let signed_bytes = cbor_core::map! {
-			"tag" => T::TAG,
-			"scope_id" => scope_id.to_string(),
-			"nonce" => nonce.to_string(),
-			"consenter" => consenter.to_string(),
-		}
-		.encode();
-
-		if !unvalidated.sig.verify(consenter, &signed_bytes) {
-			return Err(BadSignature);
-		}
-
-		Ok(Self(unvalidated, PhantomData))
-	}
-
-	/// Returns the underlying [UnvalidatedSigned]
-	#[must_use]
-	pub fn inner(&self) -> &UnvalidatedSigned<UnvalidatedConsent> {
-		&self.0
-	}
-
-	/// Returns the consenter
-	#[must_use]
-	pub fn consenter(&self) -> &PublicKey {
-		&self.inner().body.consenter
-	}
-
-	fn as_cbor(&self) -> cbor_core::Value<'_> {
-		cbor_core::map! {
-			"nonce" => self.inner().body.nonce.to_string(),
-			"consenter" => self.inner().body.consenter.to_string(),
-			"sig" => self.inner().sig.to_string(),
-		}
-	}
-}
-
-impl<T: Tagged> Serialize for Consent<T> {
-	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-	where
-		S: serde::Serializer,
-	{
-		self.inner().serialize(serializer)
-	}
-}
+name_part!(Scope 3=>32);
+name_part!(LocalName 1=>32);
 
 /// The Merkle B+Tree that contains scope members along their grants
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,7 +144,7 @@ impl TreeConfig for ScopeMembersTree {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(transparent)]
 pub struct ScopeMember(pub PublicKey);
-
+impl crate::sealed::Sealed for ScopeMember {}
 impl Canonical for ScopeMember {
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
 		cbor_core::map! {
@@ -109,7 +160,7 @@ pub struct ScopeMemberValue {
 	/// The grant this scope member possesses
 	pub grant: ScopeGrant,
 }
-
+impl crate::sealed::Sealed for ScopeMemberValue {}
 impl Canonical for ScopeMemberValue {
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
 		cbor_core::map! {
@@ -139,7 +190,7 @@ impl ScopeGrant {
 		self.0.contains(package)
 	}
 
-	fn as_cbor(&self) -> cbor_core::Value<'_> {
+	pub(crate) fn as_cbor(&self) -> cbor_core::Value<'_> {
 		cbor_core::Value::Array(self.0.iter().map(|e| e.pkg.0.to_string().into()).collect())
 	}
 }
@@ -153,7 +204,7 @@ hash_with_plaintext!(
 		plaintext plaintext: Option<LocalName>,
 	},
 	ScopeGrantEntryError where |pkg: &LocalNameId, plaintext: &Option<LocalName>|
-		plaintext.as_ref().is_none_or(|plaintext| CurrentHash::digest(plaintext.as_str()) == pkg.0)
+		plaintext.as_ref().is_none_or(|plaintext| CurrentHash::digest(plaintext.as_bytes()) == pkg.0)
 			.ok_or(ScopeGrantEntryError)
 );
 /// The plaintext hash of the entry was invalid
@@ -172,77 +223,11 @@ impl TreeConfig for PackageVersionsTree {
 	type Shaper = merkle_bplustree::shape::MaxConstShaper<16, 16, 15>;
 }
 
-/// An opinionated subset of (Cargo) SemVer.
-/// Differences from [Version]:
-/// - build metadata is not allowed: it is ambiguous (can't specify it) and overall has little to no purpose
-/// - only lowercase ASCII is allowed: while without this requirement versions can be deterministically chosen, they are surprising to users: `1.2.3-hello` is not `1.2.3-Hello`
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PesdeStyleVersion {
-	/// [Version::major]
-	pub major: u64,
-	/// [Version::minor]
-	pub minor: u64,
-	/// [Version::patch]
-	pub patch: u64,
-	/// [Version::pre]
-	pre: Bounded<Prerelease, 10>,
-}
-ser_display_deser_fromstr!(PesdeStyleVersion);
-
-impl PesdeStyleVersion {
-	/// [Version::pre]
-	#[must_use]
-	pub fn pre(&self) -> &Prerelease {
-		&self.pre
-	}
-}
-
-impl Display for PesdeStyleVersion {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let pre = if self.pre.is_empty() {
-			format_args!("")
-		} else {
-			format_args!("-{}", self.pre)
-		};
-
-		write!(f, "{}.{}.{}{}", self.major, self.minor, self.patch, pre)
-	}
-}
-
-impl FromStr for PesdeStyleVersion {
-	type Err = PesdeStyleVersionFromStrError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let semver_version = Version::parse(s)?;
-		if !semver_version.build.is_empty() {
-			return Err(Self::Err::HasBuildMetadata);
-		}
-
-		if semver_version.pre.chars().any(|c| c.is_ascii_uppercase()) {
-			return Err(Self::Err::UpperPrerelease);
-		}
-
-		Ok(Self {
-			major: semver_version.major,
-			minor: semver_version.minor,
-			patch: semver_version.patch,
-			pre: Bounded::new(semver_version.pre)
-				.map_err(PesdeStyleVersionFromStrError::PrereleaseLength)?,
-		})
-	}
-}
-
-/// Maximum length, in characters, of a serialised version
-pub const MAX_VERSION_LEN: usize = 255;
-
-/// A [PesdeStyleVersion] with a maximum length
-pub type PesdeVersionForRegistry = Bounded<PesdeStyleVersion, MAX_VERSION_LEN>;
-
 /// A package version, i.e. its local id and version
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PackageVersion(pub LocalNameId, pub PesdeVersionForRegistry);
+pub struct PackageVersion(pub LocalNameId, pub PesdeStyleVersion);
 ser_display_deser_fromstr!(PackageVersion);
-
+impl crate::sealed::Sealed for PackageVersion {}
 impl Canonical for PackageVersion {
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
 		cbor_core::map! {
@@ -281,7 +266,7 @@ pub struct PackageVersionValue {
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub yank_state: Option<VersionYankState>,
 }
-
+impl crate::sealed::Sealed for PackageVersionValue {}
 impl Canonical for PackageVersionValue {
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
 		cbor_core::map! {
@@ -292,22 +277,32 @@ impl Canonical for PackageVersionValue {
 }
 
 /// A yank state of a version. In the case of an admin yank, only an admin is able to unyank it
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(feature = "sqlx", derive(sqlx::Type))]
-#[cfg_attr(feature = "sqlx", sqlx(rename_all = "snake_case"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VersionYankState {
 	/// The package is yanked with a normal yank and can be accessed if it has been observed
 	Yanked,
 	/// The package has been yanked by an admin; it is no longer accessible
 	AdminYanked,
 }
+ser_display_deser_fromstr!(VersionYankState);
 
 impl Display for VersionYankState {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Self::Yanked => f.write_str("yanked"),
 			Self::AdminYanked => f.write_str("admin_yanked"),
+		}
+	}
+}
+
+impl FromStr for VersionYankState {
+	type Err = VersionYankStateFromStrError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s {
+			"yanked" => Ok(Self::Yanked),
+			"admin_yanked" => Ok(Self::AdminYanked),
+			s => Err(VersionYankStateFromStrError::Unknown(s.into())),
 		}
 	}
 }
@@ -330,7 +325,7 @@ pub const MAX_REASON_LEN: usize = 255;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PackageDeprecation(pub LocalNameId);
-
+impl crate::sealed::Sealed for PackageDeprecation {}
 impl Canonical for PackageDeprecation {
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
 		cbor_core::map! {
@@ -346,7 +341,7 @@ pub struct PackageDeprecationValue {
 	/// The reason of the deprecation
 	pub reason: PackageDeprecationReason,
 }
-
+impl crate::sealed::Sealed for PackageDeprecationValue {}
 impl Canonical for PackageDeprecationValue {
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
 		cbor_core::map! {
@@ -362,7 +357,7 @@ hash_with_plaintext!(
 		/// The hash of the reason
 		hash hash: Hash,
 		/// The plaintext of the reason
-		plaintext plaintext: Bounded<Box<str>, MAX_REASON_LEN>,
+		plaintext plaintext: BoundedStr<MAX_REASON_LEN>,
 	},
 	PackageDeprecationReasonError where |hash: &Hash, plaintext: &str| {
 		if !plaintext.is_empty() && Hash::digest(hash.algorithm(), plaintext) != *hash {
@@ -473,27 +468,6 @@ macro_rules! hash_with_plaintext {
 }
 use hash_with_plaintext;
 
-/// Errors that can occur when parsing a [PesdeStyleVersion] from str
-#[derive(Debug, Error)]
-#[non_exhaustive]
-pub enum PesdeStyleVersionFromStrError {
-	/// The version was not valid SemVer
-	#[error("failed to parse input as semver")]
-	SemVer(#[from] semver::Error),
-
-	/// The version contained build metadata
-	#[error("pesde style versions mustn't contain build metadata")]
-	HasBuildMetadata,
-
-	/// The version's prerelease wasn't lowercase
-	#[error("pesde style versions' prereleases must be lowercase")]
-	UpperPrerelease,
-
-	/// The version's prerelease was too long
-	#[error("pesde style versions' prereleases must be shorter")]
-	PrereleaseLength(#[source] crate::bounded::errors::TooLongError),
-}
-
 /// Errors that can occur when parsing a [PackageVersion] from str
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -508,5 +482,14 @@ pub enum PackageVersionFromStr {
 
 	/// An error occurred while parsing the version
 	#[error("error parsing version")]
-	ParseVersion(#[from] ParseBoundedError<PesdeStyleVersionFromStrError>),
+	ParseVersion(#[from] PesdeStyleVersionFromStrError),
+}
+
+/// Errors that can occur when parsing a [VersionYankState] from str
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum VersionYankStateFromStrError {
+	/// The value was unknown
+	#[error("value `{0}` isn't a known yank state")]
+	Unknown(Box<str>),
 }

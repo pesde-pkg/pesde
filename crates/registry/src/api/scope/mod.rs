@@ -1,8 +1,6 @@
-use merkle_bplustree::MerkleBPlusTree;
-use merkle_bplustree::hasher::Hasher;
-use pesde::source::pesde::registry::CurrentHash;
-use pesde::source::pesde::registry::ScopeId;
-use pesde::source::pesde::registry::ScopeStateResponse;
+use pesde_core::merkle_bplustree::MerkleBPlusTree;
+use pesde_core::merkle_bplustree::hasher::Hasher;
+use pesde_core::registry::*;
 use pesde_registry_core::db::ScopeWriteTransaction;
 use pesde_registry_core::features::scope::ScopeTreeWriteRepository;
 use pesde_registry_core::features::scope::Scoped;

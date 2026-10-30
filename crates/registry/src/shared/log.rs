@@ -1,12 +1,12 @@
 use std::num::NonZero;
 
-use merkleberg::MMRIVER;
-use merkleberg::MMRStoreReadOps;
-use pesde::source::pesde::registry::*;
+use pesde_core::merkleberg::MMRIVER;
+use pesde_core::merkleberg::MMRStoreReadOps;
+use pesde_core::registry::*;
 use pesde_registry_core::db::StoreError;
 use serde::Deserialize;
 
-pub trait FromLogError: From<merkleberg::Error> + From<anyhow::Error> {}
+pub trait FromLogError: From<pesde_core::merkleberg::Error> + From<anyhow::Error> {}
 
 #[derive(Debug, Deserialize)]
 pub struct LogHeadQuery {
@@ -54,7 +54,7 @@ pub async fn log_entry<
 	query: LogEntryQuery,
 ) -> Result<Option<LogEntryResponse<P>>, E> {
 	if query.at_size.is_some_and(|s| pos >= s.get()) {
-		return Err(merkleberg::Error::GenProofForInvalidLeaves.into());
+		return Err(pesde_core::merkleberg::Error::GenProofForInvalidLeaves.into());
 	}
 
 	let entry = get_entry(pos);
@@ -64,7 +64,7 @@ pub async fn log_entry<
 				let (mmr_size, mmr_store) = get_mmr().await?;
 
 				if mmr_size < at_size {
-					return Err(merkleberg::Error::GenProofForInvalidLeaves.into());
+					return Err(pesde_core::merkleberg::Error::GenProofForInvalidLeaves.into());
 				}
 
 				let mmr = MMRIVER::<CurrentMerkleHasher, _>::new(at_size.get(), mmr_store);

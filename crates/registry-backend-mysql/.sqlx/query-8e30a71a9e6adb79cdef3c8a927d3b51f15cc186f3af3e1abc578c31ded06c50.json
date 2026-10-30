@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT\n\tsigned_transfer_ownership_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,\n\tsigned_transfer_ownership_scope_log_entry.consent,\n\tsigned_transfer_ownership_scope_log_entry.nonce AS `nonce: Uuid`,\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM signed_transfer_ownership_scope_log_entry\nINNER JOIN scope_log_entry ON scope_log_entry.scope=signed_transfer_ownership_scope_log_entry.scope AND scope_log_entry.pos=signed_transfer_ownership_scope_log_entry.pos\nINNER JOIN public_key ON public_key.id=scope_log_entry.owner\nWHERE signed_transfer_ownership_scope_log_entry.scope = ? AND signed_transfer_ownership_scope_log_entry.pos = ?",
+  "query": "\nSELECT\n\tsigned_add_member_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,\n\tsigned_add_member_scope_log_entry.consent,\n\tsigned_add_member_scope_log_entry.nonce,\n\tsigned_add_member_scope_log_entry.grant_blake3,\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM signed_add_member_scope_log_entry\nINNER JOIN public_key ON public_key.id=signed_add_member_scope_log_entry.member\nWHERE signed_add_member_scope_log_entry.scope = ? AND signed_add_member_scope_log_entry.pos = ?",
   "describe": {
     "columns": [
       {
@@ -14,7 +14,7 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.signed_transfer_ownership_scope_log_entry",
+            "table": "test-pesde-registry.signed_add_member_scope_log_entry",
             "name": "consent_algorithm"
           }
         }
@@ -30,14 +30,14 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.signed_transfer_ownership_scope_log_entry",
+            "table": "test-pesde-registry.signed_add_member_scope_log_entry",
             "name": "consent"
           }
         }
       },
       {
         "ordinal": 2,
-        "name": "nonce: Uuid",
+        "name": "nonce",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | UNIQUE_KEY | BINARY | NO_DEFAULT_VALUE",
@@ -46,13 +46,29 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.signed_transfer_ownership_scope_log_entry",
+            "table": "test-pesde-registry.signed_add_member_scope_log_entry",
             "name": "nonce"
           }
         }
       },
       {
         "ordinal": 3,
+        "name": "grant_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.signed_add_member_scope_log_entry",
+            "name": "grant_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "kind: Text<KeyKind>",
         "type_info": {
           "type": "String",
@@ -68,7 +84,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "data",
         "type_info": {
           "type": "VarString",
@@ -92,8 +108,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "ff1c6491602a5bb530b0284a0a920e8b0a973b11c0b72960167df83ee30b5645"
+  "hash": "8e30a71a9e6adb79cdef3c8a927d3b51f15cc186f3af3e1abc578c31ded06c50"
 }

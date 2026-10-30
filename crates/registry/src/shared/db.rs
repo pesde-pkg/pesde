@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use merkleberg::MMRIVER;
-use merkleberg::MMRStoreReadOps;
-use merkleberg::MMRStoreWriteOps;
-use pesde::source::pesde::registry::*;
+use pesde_core::merkleberg::MMRIVER;
+use pesde_core::merkleberg::MMRStoreReadOps;
+use pesde_core::merkleberg::MMRStoreWriteOps;
+use pesde_core::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::ScopeWriteTransaction;
 use pesde_registry_core::db::StoreError;

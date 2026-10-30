@@ -12,7 +12,7 @@ pub(super) enum Error {
 	Internal(#[from] anyhow::Error),
 
 	#[error(transparent)]
-	Merkleberg(#[from] merkleberg::Error),
+	Merkleberg(#[from] pesde_core::merkleberg::Error),
 
 	#[error("version publishing must go through its designated endpoint")]
 	PublishVersionInPostEntry,
@@ -61,7 +61,9 @@ impl ResponseError for Error {
 	fn error_response(&self) -> HttpResponse {
 		let category = match self {
 			Error::Internal(_) => Category::Internal,
-			Error::Merkleberg(merkleberg::Error::GenProofForInvalidLeaves) => Category::BadRequest,
+			Error::Merkleberg(pesde_core::merkleberg::Error::GenProofForInvalidLeaves) => {
+				Category::BadRequest
+			}
 			Error::Merkleberg(_) => Category::Internal,
 			Error::PublishVersionInPostEntry => Category::BadRequest,
 			Error::ScopeNotFound => Category::NotFound,

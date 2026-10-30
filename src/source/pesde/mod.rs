@@ -33,7 +33,6 @@
 
 // pub mod backend;
 // pub mod pkg_ref;
-pub mod registry;
 // pub mod specifier;
 
 // /// The pesde package source

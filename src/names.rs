@@ -1,135 +1,11 @@
 //! Package names
+use pesde_core::registry::{LocalName, Scope};
+
 // TODO: remove this module and put the structs in their appropriate source modules
 use crate::ser_display_deser_fromstr;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
-
-/// A validated package scope (3–32 chars, a-z/0-9/_, no leading/trailing _, not all digits)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Scope(Arc<str>);
-
-ser_display_deser_fromstr!(Scope);
-
-impl FromStr for Scope {
-	type Err = errors::PackageNameError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		if !(3..=32).contains(&s.len()) {
-			return Err(errors::PackageNameErrorKind::InvalidScopeLength(s.to_string()).into());
-		}
-		if s.chars().all(|c| c.is_ascii_digit()) {
-			return Err(
-				errors::PackageNameErrorKind::OnlyDigits(ErrorPart::Scope, s.to_string()).into(),
-			);
-		}
-		if s.starts_with('_') || s.ends_with('_') {
-			return Err(errors::PackageNameErrorKind::PrePostfixUnderscore(
-				ErrorPart::Scope,
-				s.to_string(),
-			)
-			.into());
-		}
-		if !s
-			.chars()
-			.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-		{
-			return Err(errors::PackageNameErrorKind::InvalidCharacters(
-				ErrorPart::Scope,
-				s.to_string(),
-			)
-			.into());
-		}
-		Ok(Self(s.into()))
-	}
-}
-
-impl Display for Scope {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str(&self.0)
-	}
-}
-
-impl Scope {
-	/// Returns the scope as a str
-	#[must_use]
-	pub fn as_str(&self) -> &str {
-		&self.0
-	}
-}
-
-/// A validated package name local part (1–32 chars, a-z/0-9/_, no leading/trailing _, not all digits)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct LocalName(Arc<str>);
-
-ser_display_deser_fromstr!(LocalName);
-
-impl FromStr for LocalName {
-	type Err = errors::PackageNameError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		if !(1..=32).contains(&s.len()) {
-			return Err(errors::PackageNameErrorKind::InvalidNameLength(s.to_string()).into());
-		}
-		if s.chars().all(|c| c.is_ascii_digit()) {
-			return Err(errors::PackageNameErrorKind::OnlyDigits(
-				ErrorPart::LocalName,
-				s.to_string(),
-			)
-			.into());
-		}
-		if s.starts_with('_') || s.ends_with('_') {
-			return Err(errors::PackageNameErrorKind::PrePostfixUnderscore(
-				ErrorPart::LocalName,
-				s.to_string(),
-			)
-			.into());
-		}
-		if !s
-			.chars()
-			.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-		{
-			return Err(errors::PackageNameErrorKind::InvalidCharacters(
-				ErrorPart::LocalName,
-				s.to_string(),
-			)
-			.into());
-		}
-		Ok(Self(s.into()))
-	}
-}
-
-impl Display for LocalName {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_str(&self.0)
-	}
-}
-
-impl LocalName {
-	/// Returns the name as a str
-	#[must_use]
-	pub fn as_str(&self) -> &str {
-		&self.0
-	}
-}
-
-/// Which part of a package name is invalid
-#[derive(Debug)]
-pub enum ErrorPart {
-	/// The scope of the package name is invalid
-	Scope,
-	/// The local name of the package name is invalid
-	LocalName,
-}
-
-impl Display for ErrorPart {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		match self {
-			ErrorPart::Scope => write!(f, "scope"),
-			ErrorPart::LocalName => write!(f, "local name"),
-		}
-	}
-}
 
 /// A pesde package name
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -175,6 +51,24 @@ impl PackageName {
 	#[must_use]
 	pub fn local_name(&self) -> &LocalName {
 		&self.0.1
+	}
+}
+
+/// Which part of a package name is invalid
+#[derive(Debug)]
+pub enum ErrorPart {
+	/// The scope of the package name is invalid
+	Scope,
+	/// The local name of the package name is invalid
+	LocalName,
+}
+
+impl Display for ErrorPart {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			ErrorPart::Scope => write!(f, "scope"),
+			ErrorPart::LocalName => write!(f, "local name"),
+		}
 	}
 }
 
@@ -253,25 +147,13 @@ pub mod errors {
 		#[error("package name `{0}` is not in the format `scope/local_name`")]
 		InvalidFormat(String),
 
-		/// The package name is outside the allowed characters: a-z, 0-9, and _
-		#[error("package {0} `{1}` contains characters outside a-z, 0-9, and _")]
-		InvalidCharacters(ErrorPart, String),
+		/// The scope name is invalid
+		#[error("invalid scope name")]
+		ScopeName(#[from] pesde_core::registry::ScopeFromStrError),
 
-		/// The package name contains only digits
-		#[error("package {0} `{1}` contains only digits")]
-		OnlyDigits(ErrorPart, String),
-
-		/// The package name starts or ends with an underscore
-		#[error("package {0} `{1}` starts or ends with an underscore")]
-		PrePostfixUnderscore(ErrorPart, String),
-
-		/// The package name's scope part is not within 3-32 characters long
-		#[error("package scope `{0}` is not within 3-32 characters long")]
-		InvalidScopeLength(String),
-
-		/// The package name's local name part is not within 1-32 characters long
-		#[error("package local name `{0}` is not within 1-32 characters long")]
-		InvalidNameLength(String),
+		/// The local name is invalid
+		#[error("invalid local name")]
+		LocalNameName(#[from] pesde_core::registry::LocalNameFromStrError),
 	}
 
 	/// Errors that can occur when working with Wally package names

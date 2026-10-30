@@ -2,7 +2,7 @@ use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
-use pesde::source::pesde::registry::*;
+use pesde_core::registry::*;
 use pesde_registry_core::db::Backend;
 
 use crate::Db;

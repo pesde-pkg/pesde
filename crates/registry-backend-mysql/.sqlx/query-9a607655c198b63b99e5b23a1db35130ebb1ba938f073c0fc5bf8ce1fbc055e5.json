@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT\n\tsigned_rotate_key_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,\n\tsigned_rotate_key_scope_log_entry.consent,\n\tsigned_rotate_key_scope_log_entry.nonce AS `nonce: Uuid`,\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM signed_rotate_key_scope_log_entry\nINNER JOIN public_key ON public_key.id=signed_rotate_key_scope_log_entry.new_key\nWHERE signed_rotate_key_scope_log_entry.scope = ? AND signed_rotate_key_scope_log_entry.pos = ?",
+  "query": "\nSELECT\n\tsigned_transfer_ownership_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,\n\tsigned_transfer_ownership_scope_log_entry.consent,\n\tsigned_transfer_ownership_scope_log_entry.nonce,\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM signed_transfer_ownership_scope_log_entry\nINNER JOIN scope_log_entry ON scope_log_entry.scope=signed_transfer_ownership_scope_log_entry.scope AND scope_log_entry.pos=signed_transfer_ownership_scope_log_entry.pos\nINNER JOIN public_key ON public_key.id=scope_log_entry.owner\nWHERE signed_transfer_ownership_scope_log_entry.scope = ? AND signed_transfer_ownership_scope_log_entry.pos = ?",
   "describe": {
     "columns": [
       {
@@ -14,7 +14,7 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.signed_rotate_key_scope_log_entry",
+            "table": "test-pesde-registry.signed_transfer_ownership_scope_log_entry",
             "name": "consent_algorithm"
           }
         }
@@ -30,14 +30,14 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.signed_rotate_key_scope_log_entry",
+            "table": "test-pesde-registry.signed_transfer_ownership_scope_log_entry",
             "name": "consent"
           }
         }
       },
       {
         "ordinal": 2,
-        "name": "nonce: Uuid",
+        "name": "nonce",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | UNIQUE_KEY | BINARY | NO_DEFAULT_VALUE",
@@ -46,7 +46,7 @@
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.signed_rotate_key_scope_log_entry",
+            "table": "test-pesde-registry.signed_transfer_ownership_scope_log_entry",
             "name": "nonce"
           }
         }
@@ -95,5 +95,5 @@
       false
     ]
   },
-  "hash": "0ad68ed7235db537ac333ff18e5a3be1fabfae2f62c5d74a1a32ec2ba9102248"
+  "hash": "9a607655c198b63b99e5b23a1db35130ebb1ba938f073c0fc5bf8ce1fbc055e5"
 }

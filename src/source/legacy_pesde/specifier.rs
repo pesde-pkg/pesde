@@ -3,7 +3,7 @@ use super::target::TargetKind;
 use crate::names::PackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;
-use semver::VersionReq;
+use pesde_core::semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
