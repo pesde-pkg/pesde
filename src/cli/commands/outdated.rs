@@ -12,7 +12,7 @@ use itertools::Either;
 use pesde::Importer;
 use pesde::RefreshedSources;
 use pesde::Subproject;
-use pesde::manifest::Alias;
+use pesde::user_manifest::Alias;
 use pesde::source::DependencySpecifiers;
 use pesde::source::PackageSource as _;
 use semver::Version;

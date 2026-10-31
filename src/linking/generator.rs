@@ -6,9 +6,9 @@ use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::manifest::Manifest;
 use crate::source::Realm;
 use crate::source::StructureKind;
+use crate::user_manifest::Manifest;
 use full_moon::ast::luau::ExportedTypeDeclaration;
 use full_moon::ast::luau::ExportedTypeFunction;
 use full_moon::visitors::Visitor;

@@ -3,7 +3,7 @@ use crate::cli::style::INFO_STYLE;
 use crate::cli::style::WARN_STYLE;
 use anyhow::Context as _;
 use pesde::Url;
-use pesde::manifest::DependencyType;
+use pesde::user_manifest::DependencyType;
 use pesde::names::PackageName;
 use pesde::names::WallyPackageName;
 use pesde::source::DependencySpecifiers;

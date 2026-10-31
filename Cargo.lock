@@ -4110,7 +4110,6 @@ dependencies = [
  "toml_edit",
  "tracing",
  "tracing-subscriber",
- "url",
  "urlencoding",
  "uuid",
  "wax",
@@ -4134,6 +4133,7 @@ dependencies = [
  "signature",
  "ssh-key",
  "thiserror 2.0.21",
+ "url",
 ]
 
 [[package]]
@@ -6068,7 +6068,6 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
- "serde_derive",
 ]
 
 [[package]]

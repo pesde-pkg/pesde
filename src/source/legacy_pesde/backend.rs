@@ -1,8 +1,8 @@
 //! Legacy pesde package source backend abstraction
 use crate::Project;
 use crate::Url;
-use crate::manifest::Alias;
-use crate::manifest::DependencyType;
+use crate::user_manifest::Alias;
+use crate::user_manifest::DependencyType;
 use crate::names::PackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::semver::Version;

@@ -1,7 +1,6 @@
 //! Wally package source backend abstraction
 use crate::Project;
 use crate::Url;
-use crate::names::WallyPackageName;
 use crate::reporters::DownloadProgressReporter;
 use crate::ser_display_deser_fromstr;
 use crate::source::git_index::read_file;

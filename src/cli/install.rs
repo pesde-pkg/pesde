@@ -14,7 +14,7 @@ use pesde::download_and_link::DownloadAndLinkOptions;
 use pesde::download_and_link::InstallDependenciesMode;
 use pesde::graph::DependencyGraph;
 use pesde::lockfile::Lockfile;
-use pesde::manifest::DependencyType;
+use pesde::user_manifest::DependencyType;
 use pesde::source::PackageRefs;
 use pesde::source::PackageSources;
 #[expect(deprecated)]

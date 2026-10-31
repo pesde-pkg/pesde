@@ -4,6 +4,8 @@ mod seq;
 pub use seq::*;
 mod display;
 pub use display::*;
+mod map;
+pub use map::*;
 
 /// A value exceeds its limit
 #[derive(Debug, Error)]

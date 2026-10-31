@@ -9,8 +9,6 @@ use crate::graph::DependencyGraphNodeDependency;
 use crate::lockfile::Lockfile;
 use crate::manifest::Alias;
 use crate::manifest::DependencyType;
-use crate::manifest::Manifest;
-use crate::manifest::OverrideSpecifier;
 use crate::matching_globs;
 use crate::source::DependencySpecifier as _;
 use crate::source::DependencySpecifiers;
@@ -21,6 +19,7 @@ use crate::source::StructureKind;
 use crate::source::ids::PackageId;
 #[expect(deprecated)]
 use crate::source::legacy_pesde::LegacyPesdePackageSource;
+use crate::user_manifest::OverrideSpecifier;
 use itertools::Itertools as _;
 use relative_path::RelativePathBuf;
 use std::collections::BTreeMap;
@@ -475,9 +474,8 @@ impl Project {
 
 /// Errors that can occur when resolving dependencies
 pub mod errors {
+	use super::*;
 	use crate::errors::MatchingGlobsError;
-	use crate::manifest::Alias;
-	use crate::source::DependencySpecifiers;
 	use thiserror::Error;
 
 	/// Errors that can occur when solving dependencies
@@ -495,7 +493,7 @@ pub mod errors {
 
 		/// An error occurred while reading all dependencies from the manifest
 		#[error("error getting all project dependencies")]
-		AllDependencies(#[from] crate::manifest::errors::AllDependenciesError),
+		AllDependencies(#[from] crate::user_manifest::errors::AllDependenciesError),
 
 		/// A registry was not found in the manifest
 		#[error("registry `{0}` not found in manifest")]

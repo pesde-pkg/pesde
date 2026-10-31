@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use crate::Url;
-use crate::manifest::Alias;
-use crate::manifest::DependencyType;
-use crate::manifest::errors;
+use crate::user_manifest::Alias;
+use crate::user_manifest::DependencyType;
+use crate::user_manifest::errors;
 use crate::names::WallyPackageName;
 use crate::semver::Version;
 use crate::semver::VersionReq;

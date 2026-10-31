@@ -5,7 +5,7 @@ use crate::RefreshedSources;
 use crate::Subproject;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
-use crate::manifest::Manifest;
+use crate::user_manifest::Manifest;
 use crate::reporters::DownloadProgressReporter;
 use crate::semver::BuildMetadata;
 use crate::semver::Prerelease;
@@ -243,7 +243,7 @@ pub mod errors {
 
 		/// An error occurred getting all dependencies
 		#[error("failed to get all dependencies")]
-		AllDependencies(#[from] crate::manifest::errors::AllDependenciesError),
+		AllDependencies(#[from] crate::user_manifest::errors::AllDependenciesError),
 
 		/// A registry specified in the manifest was not found
 		#[error("registry {0} not found in package {1}")]

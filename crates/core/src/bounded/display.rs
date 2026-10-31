@@ -18,7 +18,8 @@ macro_rules! bounded_impl {
 
 		impl<const N: usize> $name<N> {
 			/// Wraps a value, ensuring its length is compatible
-			pub fn new(value: $ty) -> Result<Self, BoundedSizeError> {
+			pub fn new(value: impl Into<$ty>) -> Result<Self, BoundedSizeError> {
+				let value = value.into();
 				let actual = value.to_string().chars().count();
 				if actual > N {
 					return Err(BoundedSizeError { limit: N, actual });
@@ -94,12 +95,24 @@ macro_rules! bounded_impl {
 	};
 }
 
+// Box<str> doesn't implement FromStr which is why this macro is non-trivial
 bounded_impl!(
-	#[derive(Default)]
+	#[derive(Default, PartialOrd, Ord)]
 	BoundedStr,
 	Box<str>,
 	Infallible,
 	|s: &str| Ok(s.into())
+);
+bounded_impl!(
+	fromstr
+	#[derive(PartialOrd, Ord)]
+	BoundedUrl,
+	crate::url::Url
+);
+bounded_impl!(
+	fromstr
+	BoundedVersionReq,
+	semver::VersionReq
 );
 
 #[derive(Debug, Error)]

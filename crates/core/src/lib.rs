@@ -1,12 +1,32 @@
 pub mod bounded;
 pub mod hash;
+pub mod manifest;
 pub mod registry;
 pub mod signature;
+mod url;
+pub use url::*;
 
 pub use jiff;
 pub use merkle_bplustree;
 pub use merkleberg;
 pub use semver;
+
+// this doesn't account for ones that WE reserve (context dependent);
+// this checks for OS reserved names to ensure maximum compatibility with all platforms
+pub(crate) fn is_reserved_file_name(name: &str) -> bool {
+	let normalized = name.trim_end_matches([' ', '.']);
+	let stem = normalized.split('.').next().unwrap_or(normalized);
+
+	const RESERVED: &[&str] = &[
+		"con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+		"com9", "com¹", "com²", "com³", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7",
+		"lpt8", "lpt9", "lpt¹", "lpt²", "lpt³",
+	];
+
+	RESERVED
+		.iter()
+		.any(|reserved| reserved.eq_ignore_ascii_case(stem))
+}
 
 #[doc(hidden)]
 pub mod __private {

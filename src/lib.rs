@@ -4,10 +4,10 @@
 //! It has been designed with multiple targets in mind, namely Roblox, Lune, and Luau.
 
 use crate::lockfile::Lockfile;
-use crate::manifest::Manifest;
 use crate::signature::PublicKey;
 use crate::source::PackageSource as _;
 use crate::source::PackageSources;
+use crate::user_manifest::Manifest;
 use fs_err::tokio as fs;
 use relative_path::RelativePath;
 use relative_path::RelativePathBuf;
@@ -22,7 +22,6 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 use std::path::Path;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt as _;
 use tokio::sync::Mutex;
@@ -36,14 +35,13 @@ pub mod download_and_link;
 pub mod graph;
 pub mod linking;
 pub mod lockfile;
-pub mod manifest;
-pub mod names;
 #[cfg(feature = "patches")]
 pub mod patches;
 pub mod reporters;
 pub mod resolver;
 pub mod scripts;
 pub mod source;
+pub mod user_manifest;
 pub(crate) mod util;
 
 pub use pesde_core;
@@ -506,70 +504,6 @@ pub fn version_matches(req: &VersionReq, version: &Version) -> bool {
 	*req == VersionReq::STAR || req.matches(version)
 }
 
-/// A thin wrapper around `url::Url` to provide cheap cloning and normalisation
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Url(Arc<(url::Url, String)>);
-ser_display_deser_fromstr!(Url);
-
-impl Url {
-	/// Returns the underlying [url::Url]
-	#[must_use]
-	pub fn as_url(&self) -> &url::Url {
-		&self.0.0
-	}
-
-	/// Returns the decoded path of the URL
-	#[must_use]
-	pub fn path(&self) -> &str {
-		&self.0.1
-	}
-
-	/// Returns the URL as a [`gix::Url`]
-	pub fn as_gix_url(&self) -> gix::Url {
-		let url = self.as_url();
-		let scheme = url.scheme().into();
-
-		gix::Url {
-			host: url.host().map(|host| {
-				let url::Host::Ipv6(ipv6) = host else {
-					return host.to_string();
-				};
-
-				if scheme == gix::url::Scheme::Ssh {
-					ipv6.to_string()
-				} else {
-					format!("[{ipv6}]")
-				}
-			}),
-			scheme,
-			user: Some(url.username())
-				.filter(|s| !s.is_empty())
-				.map(Into::into),
-			password: url.password().map(Into::into),
-			serialize_alternative_form: false,
-			port: url.port(),
-			path: self.path().into(),
-		}
-	}
-}
-
-impl FromStr for Url {
-	type Err = errors::ParseUrlError;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let url = s.parse::<url::Url>()?;
-		let path = urlencoding::decode(url.path())?.into_owned();
-
-		Ok(Url((url, path).into()))
-	}
-}
-
-impl Display for Url {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", self.as_url())
-	}
-}
-
 /// Errors that can occur when using the pesde library
 pub mod errors {
 	use std::path::PathBuf;
@@ -643,19 +577,5 @@ pub mod errors {
 		/// Globbing failed
 		#[error("error globbing")]
 		Globbing(#[from] MatchingGlobsError),
-	}
-
-	/// Errors that can occur when parsing a [`super::Url`]
-	#[derive(Debug, Error, thiserror_ext::Box)]
-	#[thiserror_ext(newtype(name = ParseUrlError))]
-	#[non_exhaustive]
-	pub enum ParseUrlErrorKind {
-		/// An error occurred while parsing the URL
-		#[error("error parsing URL")]
-		Parse(#[from] url::ParseError),
-
-		/// The path was ill-formed
-		#[error("ill-formed URL path")]
-		IllFormedPath(#[from] std::string::FromUtf8Error),
 	}
 }

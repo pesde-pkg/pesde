@@ -129,6 +129,51 @@ macro_rules! name_part {
 name_part!(Scope 3=>32);
 name_part!(LocalName 1=>32);
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PackageName(Arc<(Scope, LocalName)>);
+ser_display_deser_fromstr!(PackageName);
+
+impl PackageName {
+	/// Creates a new [Self] from a [Scope] and a [LocalName]
+	#[must_use]
+	pub fn new(scope: Scope, local_name: LocalName) -> Self {
+		Self(Arc::new((scope, local_name)))
+	}
+
+	/// The scope of the package
+	#[must_use]
+	pub fn scope(&self) -> &Scope {
+		&self.0.0
+	}
+
+	/// The local name of the package
+	#[must_use]
+	pub fn local_name(&self) -> &LocalName {
+		&self.0.1
+	}
+}
+
+impl Display for PackageName {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}/{}", self.scope(), self.local_name())
+	}
+}
+
+impl FromStr for PackageName {
+	type Err = PackageNameFromStrError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let (scope, local_name) = s
+			.split_once('/')
+			.ok_or_else(|| Self::Err::InvalidFormat(s.into()))?;
+
+		Ok(Self::new(
+			scope.parse().map_err(Self::Err::ScopeParse)?,
+			local_name.parse().map_err(Self::Err::LocalNameParse)?,
+		))
+	}
+}
+
 /// The Merkle B+Tree that contains scope members along their grants
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -245,7 +290,7 @@ impl Display for PackageVersion {
 }
 
 impl FromStr for PackageVersion {
-	type Err = PackageVersionFromStr;
+	type Err = PackageVersionFromStrError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let (pkg, version) = s
@@ -468,10 +513,27 @@ macro_rules! hash_with_plaintext {
 }
 use hash_with_plaintext;
 
+/// Errors that can occur when parsing a [PackageName] from str
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum PackageNameFromStrError {
+	/// The value wasn't in format `scope/local_name`
+	#[error("value `{0}` wasn't in format of `scope/local_name`")]
+	InvalidFormat(Box<str>),
+
+	/// An error occurred while parsing the scope
+	#[error("error parsing scope")]
+	ScopeParse(#[from] ScopeFromStrError),
+
+	/// An error occurred while parsing the local name
+	#[error("error parsing local name")]
+	LocalNameParse(#[from] LocalNameFromStrError),
+}
+
 /// Errors that can occur when parsing a [PackageVersion] from str
 #[derive(Debug, Error)]
 #[non_exhaustive]
-pub enum PackageVersionFromStr {
+pub enum PackageVersionFromStrError {
 	/// The value wasn't in format `name@version`
 	#[error("value `{0}` wasn't in format of `name@version`")]
 	InvalidFormat(Box<str>),

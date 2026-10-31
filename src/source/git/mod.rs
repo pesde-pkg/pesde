@@ -6,9 +6,9 @@ use crate::Subproject;
 use crate::Url;
 use crate::errors::ManifestReadError;
 use crate::errors::ManifestReadErrorKind;
-use crate::manifest::Alias;
-use crate::manifest::DependencyType;
-use crate::manifest::Manifest;
+use crate::user_manifest::Alias;
+use crate::user_manifest::DependencyType;
+use crate::user_manifest::Manifest;
 use crate::reporters::DownloadProgressReporter;
 use crate::semver::BuildMetadata;
 use crate::semver::Version;
@@ -411,7 +411,7 @@ fn transform_pesde_dependencies(
 /// Errors that can occur when interacting with the Git package source
 pub mod errors {
 	use crate::Url;
-	use crate::manifest::errors::AllDependenciesError;
+	use crate::user_manifest::errors::AllDependenciesError;
 	use relative_path::RelativePathBuf;
 	use thiserror::Error;
 

@@ -314,7 +314,7 @@ pub mod errors {
 		#[error("error parsing all dependencies for {0}")]
 		AllDependencies(
 			WallyPackageName,
-			#[source] crate::manifest::errors::AllDependenciesError,
+			#[source] crate::user_manifest::errors::AllDependenciesError,
 		),
 
 		/// Error from backend

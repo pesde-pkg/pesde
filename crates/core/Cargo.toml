@@ -33,5 +33,7 @@ jiff = { version = "0.2.23", default-features = false, features = [
     "std",
 ] }
 
+url = { version = "2.5.8", default-features = false, features = ["std"] }
+
 [lints]
 workspace = true

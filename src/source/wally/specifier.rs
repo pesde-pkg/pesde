@@ -8,8 +8,8 @@ use serde::Serialize;
 
 use crate::Url;
 use crate::bounded::Bounded;
-use crate::manifest::MAX_URL_LEN;
-use crate::manifest::MAX_VERSION_REQ_LEN;
+use crate::user_manifest::MAX_URL_LEN;
+use crate::user_manifest::MAX_VERSION_REQ_LEN;
 use crate::names::WallyPackageName;
 use crate::source::DependencySpecifier;
 use crate::source::Realm;

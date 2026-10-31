@@ -7,8 +7,8 @@ use crate::cli::dep_type_to_key;
 use crate::cli::style::INFO_STYLE;
 use crate::cli::style::SUCCESS_STYLE;
 use pesde::Subproject;
-use pesde::manifest::Alias;
-use pesde::manifest::DependencyType;
+use pesde::user_manifest::Alias;
+use pesde::user_manifest::DependencyType;
 use pesde::source::DependencySpecifiers;
 
 #[derive(Debug, Args)]

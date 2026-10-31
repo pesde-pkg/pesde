@@ -6,7 +6,7 @@ use crate::bounded::BoundedSizeError;
 
 macro_rules! bounded_seq {
 	($name:ident($seq:ty) $(where $($ty:ty: $bound:tt),+)?, $make:expr, $add:ident) => {
-		#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+		#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize)]
 		#[serde(transparent)]
 		pub struct $name<T, const N: usize>($seq) $(where $($ty: $bound),+)?;
 
@@ -26,6 +26,16 @@ macro_rules! bounded_seq {
 			#[must_use]
 			pub fn into_inner(self) -> $seq {
 				self.0
+			}
+
+			#[must_use]
+			pub fn len(&self) -> usize {
+				self.0.len()
+			}
+
+			#[must_use]
+			pub fn is_empty(&self) -> bool {
+				self.0.is_empty()
 			}
 		}
 
