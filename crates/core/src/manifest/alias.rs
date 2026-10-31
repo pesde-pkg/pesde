@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{__private::ser_display_deser_fromstr, is_reserved_file_name};
+use crate::__private::{is_reserved_file_name, ser_display_deser_fromstr};
 use std::{fmt::Display, hash::Hash, ops::Deref, str::FromStr, sync::Arc};
 
 /// An alias of a dependency

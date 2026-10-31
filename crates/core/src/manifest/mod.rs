@@ -23,12 +23,19 @@ pub const MAX_SCRIPT_NAME_LEN: usize = 255;
 pub const MAX_SCRIPT_LEN: usize = 2048;
 pub const MAX_DEPENDENCIES: usize = 255;
 
+fn true_bool() -> bool {
+	true
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManifestPackage {
 	/// The name of the package
 	pub name: PackageName,
 	/// The version of the package
 	pub version: PesdeStyleVersion,
+	/// Whether the package should be published
+	#[serde(default = "true_bool", skip_serializing_if = "Clone::clone")]
+	pub publish: bool,
 	/// The description of the package
 	#[serde(default, skip_serializing_if = "str::is_empty")]
 	pub description: BoundedStr<MAX_DESCRIPTION_LEN>,

@@ -1,5 +1,6 @@
 use crate::{
-	__private::ser_display_deser_fromstr, bounded::BoundedSizeError, is_reserved_file_name,
+	__private::{is_reserved_file_name, ser_display_deser_fromstr},
+	bounded::BoundedSizeError,
 };
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, ops::Deref, path::Path, str::FromStr};
