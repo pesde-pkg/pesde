@@ -2,7 +2,7 @@
 use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
 use crate::cli::{auth::get_tokens, display_err, style::ERROR_STYLE, ExecReplace as _, PESDE_DIR};
 use anyhow::Context as _;
-use clap::{builder::styling::AnsiColor, Parser};
+use clap::{builder::styling::AnsiColor, error::ErrorKind, Parser};
 use cli::{compatible_runtime, data_dir, get_project_engines};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
@@ -154,6 +154,19 @@ async fn run() -> anyhow::Result<()> {
 		.to_str()
 		.expect("exe name is not valid utf-8");
 	let exe_name_engine = EngineKind::from_str(exe_name);
+
+	if matches!(exe_name_engine, Ok(EngineKind::Pesde)) {
+		if let Err(err) = Cli::try_parse() {
+			if matches!(
+				err.kind(),
+				ErrorKind::DisplayHelp
+					| ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+					| ErrorKind::DisplayVersion
+			) {
+				err.exit();
+			}
+		}
+	}
 
 	let tracing_env_filter = EnvFilter::builder()
 		.with_default_directive(LevelFilter::INFO.into())
