@@ -155,16 +155,15 @@ async fn run() -> anyhow::Result<()> {
 		.expect("exe name is not valid utf-8");
 	let exe_name_engine = EngineKind::from_str(exe_name);
 
-	if matches!(exe_name_engine, Ok(EngineKind::Pesde)) {
-		if let Err(err) = Cli::try_parse() {
-			if matches!(
-				err.kind(),
-				ErrorKind::DisplayHelp
-					| ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
-					| ErrorKind::DisplayVersion
-			) {
-				err.exit();
-			}
+	let cli = matches!(exe_name_engine, Ok(EngineKind::Pesde)).then(Cli::try_parse);
+	if let Some(Err(err)) = &cli {
+		if matches!(
+			err.kind(),
+			ErrorKind::DisplayHelp
+				| ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+				| ErrorKind::DisplayVersion
+		) {
+			err.exit();
 		}
 	}
 
@@ -373,7 +372,9 @@ async fn run() -> anyhow::Result<()> {
 		" while checking for updates",
 	);
 
-	let cli = Cli::parse();
+	let cli = cli
+		.unwrap_or_else(Cli::try_parse)
+		.unwrap_or_else(|err| err.exit());
 
 	cli.subcommand.run(project, reqwest).await
 }
