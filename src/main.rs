@@ -2,7 +2,7 @@
 use crate::cli::version::{check_for_updates, current_version, get_or_download_engine};
 use crate::cli::{auth::get_tokens, display_err, style::ERROR_STYLE, ExecReplace as _, PESDE_DIR};
 use anyhow::Context as _;
-use clap::{builder::styling::AnsiColor, Parser};
+use clap::{builder::styling::AnsiColor, error::ErrorKind, Parser};
 use cli::{compatible_runtime, data_dir, get_project_engines};
 use fs_err::tokio as fs;
 use indicatif::MultiProgress;
@@ -154,6 +154,18 @@ async fn run() -> anyhow::Result<()> {
 		.to_str()
 		.expect("exe name is not valid utf-8");
 	let exe_name_engine = EngineKind::from_str(exe_name);
+
+	let cli = matches!(exe_name_engine, Ok(EngineKind::Pesde)).then(Cli::try_parse);
+	if let Some(Err(err)) = &cli {
+		if matches!(
+			err.kind(),
+			ErrorKind::DisplayHelp
+				| ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+				| ErrorKind::DisplayVersion
+		) {
+			err.exit();
+		}
+	}
 
 	let tracing_env_filter = EnvFilter::builder()
 		.with_default_directive(LevelFilter::INFO.into())
@@ -360,7 +372,9 @@ async fn run() -> anyhow::Result<()> {
 		" while checking for updates",
 	);
 
-	let cli = Cli::parse();
+	let cli = cli
+		.unwrap_or_else(Cli::try_parse)
+		.unwrap_or_else(|err| err.exit());
 
 	cli.subcommand.run(project, reqwest).await
 }
