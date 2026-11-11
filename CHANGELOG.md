@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 ### Fixed
 - Fix `--help` and `--version` failing due to an invalid manifest or config by @Companion
+- Fix `install` hanging when the dependency graph contains a cycle by @Companion
 
 ## [0.7.4] - 2026-09-09
 ### Changed
