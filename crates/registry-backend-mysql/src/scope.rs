@@ -7,20 +7,20 @@ use arrayvec::ArrayVec;
 use async_trait::async_trait;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
-use merkle_bplustree::HasherOutput;
-use merkle_bplustree::TreeConfig;
-use merkle_bplustree::node::TreeInternalNode;
-use merkle_bplustree::node::TreeLeafNode;
-use merkle_bplustree::node::TreeNode;
-use pesde::bounded::Bounded;
 use pesde::bounded::BoundedBTreeSet;
+use pesde::bounded::BoundedStr;
 use pesde::hash::Blake3Hash;
 use pesde::hash::Hash;
+use pesde::merkle_bplustree::HasherOutput;
+use pesde::merkle_bplustree::TreeConfig;
+use pesde::merkle_bplustree::node::TreeInternalNode;
+use pesde::merkle_bplustree::node::TreeLeafNode;
+use pesde::merkle_bplustree::node::TreeNode;
+use pesde::registry::*;
 use pesde::signature::KeyKind;
 use pesde::signature::PublicKey;
 use pesde::signature::Signature;
 use pesde::signature::SignatureKind;
-use pesde::source::pesde::registry::*;
 use pesde_registry_core::features::scope::ScopeReadRepository;
 use pesde_registry_core::features::scope::ScopeTreeReadRepository;
 use pesde_registry_core::features::scope::ScopeTreeWriteRepository;
@@ -29,7 +29,6 @@ use sqlx::QueryBuilder;
 use sqlx::prelude::Type;
 use sqlx::query;
 use sqlx::types::Text;
-use uuid::Uuid;
 
 use crate::AsExecutor;
 use crate::MySqlBackend;
@@ -188,7 +187,7 @@ WHERE signed_scope_log_entry.scope = ? AND signed_scope_log_entry.pos = ?",
 SELECT
 	signed_add_member_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,
 	signed_add_member_scope_log_entry.consent,
-	signed_add_member_scope_log_entry.nonce AS `nonce: Uuid`,
+	signed_add_member_scope_log_entry.nonce,
 	signed_add_member_scope_log_entry.grant_blake3,
 	public_key.algorithm AS `kind: Text<KeyKind>`,
 	public_key.data
@@ -205,7 +204,7 @@ WHERE signed_add_member_scope_log_entry.scope = ? AND signed_add_member_scope_lo
 						sig: Signature::new(r.consent_algorithm.0, r.consent)
 							.context("corrupt signature")?,
 						body: UnvalidatedConsent {
-							nonce: r.nonce,
+							nonce: r.nonce.try_into().ok().context("corrupt nonce")?,
 							consenter: PublicKey::new(r.kind.0, r.data)
 								.context("corrupt scope member")?,
 						},
@@ -251,7 +250,7 @@ WHERE signed_update_member_grant_scope_log_entry.scope = ? AND signed_update_mem
 SELECT
 	signed_rotate_key_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,
 	signed_rotate_key_scope_log_entry.consent,
-	signed_rotate_key_scope_log_entry.nonce AS `nonce: Uuid`,
+	signed_rotate_key_scope_log_entry.nonce,
 	public_key.algorithm AS `kind: Text<KeyKind>`,
 	public_key.data
 FROM signed_rotate_key_scope_log_entry
@@ -267,7 +266,7 @@ WHERE signed_rotate_key_scope_log_entry.scope = ? AND signed_rotate_key_scope_lo
 						sig: Signature::new(r.consent_algorithm.0, r.consent)
 							.context("corrupt signature")?,
 						body: UnvalidatedConsent {
-							nonce: r.nonce,
+							nonce: r.nonce.try_into().ok().context("corrupt nonce")?,
 							consenter: PublicKey::new(r.kind.0, r.data)
 								.context("corrupt new key")?,
 						},
@@ -316,7 +315,7 @@ WHERE signed_remove_member_scope_log_entry.scope = ? AND signed_remove_member_sc
 SELECT
 	signed_transfer_ownership_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,
 	signed_transfer_ownership_scope_log_entry.consent,
-	signed_transfer_ownership_scope_log_entry.nonce AS `nonce: Uuid`,
+	signed_transfer_ownership_scope_log_entry.nonce,
 	public_key.algorithm AS `kind: Text<KeyKind>`,
 	public_key.data
 FROM signed_transfer_ownership_scope_log_entry
@@ -333,7 +332,7 @@ WHERE signed_transfer_ownership_scope_log_entry.scope = ? AND signed_transfer_ow
 						sig: Signature::new(r.consent_algorithm.0, r.consent)
 							.context("corrupt signature")?,
 						body: UnvalidatedConsent {
-							nonce: r.nonce,
+							nonce: r.nonce.try_into().ok().context("corrupt nonce")?,
 							consenter: PublicKey::new(r.kind.0, r.data)
 								.context("corrupt new owner")?,
 						},
@@ -359,13 +358,13 @@ WHERE signed_publish_version_scope_log_entry.scope = ? AND signed_publish_versio
 
 					UserScopeOp::PublishVersion(PublishVersionUserScopeOpBody {
 						header,
-						package_version: PackageVersion(
-							LocalNameId::new(
+						package_version: PackageVersion {
+							pkg: LocalNameId::new(
 								CurrentHash::new(r.local_name_blake3)
 									.context("illegal local name id")?,
 							),
-							r.version.parse()?,
-						),
+							version: r.version.parse()?,
+						},
 						archive_hash: r.archive_hash.parse()?,
 						versions_root: package_versions_root,
 					})
@@ -386,13 +385,13 @@ WHERE signed_set_yanked_scope_log_entry.scope = ? AND signed_set_yanked_scope_lo
 
 					UserScopeOp::SetYanked(SetYankedUserScopeOpBody {
 						header,
-						package_version: PackageVersion(
-							LocalNameId::new(
+						package_version: PackageVersion {
+							pkg: LocalNameId::new(
 								CurrentHash::new(r.local_name_blake3)
 									.context("illegal local name id")?,
 							),
-							r.version.parse()?,
-						),
+							version: r.version.parse()?,
+						},
 						yanked: r.yanked,
 						versions_root: package_versions_root,
 					})
@@ -418,7 +417,7 @@ WHERE signed_set_deprecation_scope_log_entry.scope = ? AND signed_set_deprecatio
 							anyhow::Ok(PackageDeprecationValue {
 								reason: PackageDeprecationReason::new(
 									hash.parse()?,
-									Bounded::new(plaintext)?,
+									BoundedStr::new(plaintext)?,
 								)?,
 							})
 						})
@@ -684,7 +683,7 @@ ORDER BY entry.idx",
 			)
 			.fetch(tx.as_executor());
 
-			let mut grant = None;
+			let mut grant = None::<BTreeSet<_>>;
 
 			while let Some(r) = query.try_next().await? {
 				let key = PublicKey::new(r.algorithm.0, r.data)
@@ -757,12 +756,12 @@ ORDER BY versions_internal_node_key.idx",
 			.fetch(tx.as_executor())
 			.map(|result| {
 				let r = result?;
-				Ok::<_, anyhow::Error>(PackageVersion(
-					LocalNameId::new(
+				Ok::<_, anyhow::Error>(PackageVersion {
+					pkg: LocalNameId::new(
 						CurrentHash::new(r.local_name_blake3).context("illegal local name id")?,
 					),
-					r.version.parse()?,
-				))
+					version: r.version.parse()?,
+				})
 			})
 			.try_collect::<ArrayVec<_, _>>()
 			.await?;
@@ -793,7 +792,7 @@ ORDER BY idx",
 
 			let mut query = query!(
 				r"
-SELECT package.local_name_blake3, package_version.version, package_version.archive_hash, versions_leaf_node_entry.yank_state AS `yank_state: VersionYankState`
+SELECT package.local_name_blake3, package_version.version, package_version.archive_hash, versions_leaf_node_entry.yank_state AS `yank_state: Text<VersionYankState>`
 FROM versions_leaf_node_entry
 INNER JOIN package_version ON package_version.scope=versions_leaf_node_entry.scope AND package_version.pos=versions_leaf_node_entry.version_pos
 INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
@@ -804,15 +803,15 @@ ORDER BY versions_leaf_node_entry.idx",
 			.fetch(tx.as_executor());
 
 			while let Some(r) = query.try_next().await? {
-				keys.push(PackageVersion(
-					LocalNameId::new(
+				keys.push(PackageVersion {
+					pkg: LocalNameId::new(
 						CurrentHash::new(r.local_name_blake3).context("illegal local name id")?,
 					),
-					r.version.parse()?,
-				));
+					version: r.version.parse()?,
+				});
 				values.push(PackageVersionValue {
 					archive_hash: r.archive_hash.parse()?,
-					yank_state: r.yank_state,
+					yank_state: r.yank_state.map(|s| s.0),
 				});
 			}
 
@@ -901,7 +900,7 @@ ORDER BY deprecations_leaf_node_entry.idx",
 				)));
 
 				let reason_hash = r.hash.parse()?;
-				let plaintext = Bounded::new(r.plaintext.into())?;
+				let plaintext = BoundedStr::new(r.plaintext)?;
 
 				values.push(PackageDeprecationValue {
 					reason: PackageDeprecationReason::new(reason_hash, plaintext)?,
@@ -1110,7 +1109,7 @@ FROM global_log_scope_genesis_entry
 LEFT JOIN package ON package.scope=global_log_scope_genesis_entry.pos
 WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ?",
 			scope.hash().0.as_slice(),
-			package_version.0.hash().0.as_slice(),
+			package_version.pkg.hash().0.as_slice(),
 		)
 		.fetch_one(&mut **tx)
 		.await?;
@@ -1122,7 +1121,7 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 				"INSERT INTO package (scope, pos, local_name_blake3) VALUES (?, ?, ?)",
 				record.scope_pos,
 				pos,
-				package_version.0.hash().0.as_slice(),
+				package_version.pkg.hash().0.as_slice(),
 			)
 			.execute(&mut **tx)
 			.await?;
@@ -1135,7 +1134,7 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 			record.scope_pos,
 			pos,
 			package_pos,
-			package_version.1.to_string(),
+			package_version.version.to_string(),
 			archive_hash.to_string(),
 		)
 		.execute(&mut **tx)
@@ -1224,7 +1223,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 				static EMPTY_ROOT: std::sync::OnceLock<Blake3Hash> = std::sync::OnceLock::new();
 				root.unwrap_or_else(||
 					EMPTY_ROOT.get_or_init(|| {
-						use merkle_bplustree::hasher::Hasher;
+						use pesde::merkle_bplustree::hasher::Hasher;
 						<<$ty as TreeConfig>::Hasher as Hasher<<$ty as TreeConfig>::Key, <$ty as TreeConfig>::Value>>::hash_leaf(
 							0,
 							&<<$ty as TreeConfig>::Hasher as Hasher<<$ty as TreeConfig>::Key, <$ty as TreeConfig>::Value>>::empty_hash()
@@ -1284,7 +1283,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 							grant_blake3.0.as_slice(),
 							Text(consent.sig.kind()),
 							consent.sig.data(),
-							consent.body.nonce.as_bytes().as_slice(),
+							consent.body.nonce.as_slice(),
 						)
 						.execute(&mut **tx)
 						.await?;
@@ -1332,7 +1331,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 							new_key,
 							Text(consent.sig.kind()),
 							consent.sig.data(),
-							consent.body.nonce.as_bytes().as_slice(),
+							consent.body.nonce.as_slice(),
 						)
 						.execute(&mut **tx)
 						.await?;
@@ -1371,7 +1370,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 							pos,
 							Text(consent.sig.kind()),
 							consent.sig.data(),
-							consent.body.nonce.as_bytes().as_slice(),
+							consent.body.nonce.as_slice(),
 						)
 						.execute(&mut **tx)
 						.await?;
@@ -1392,7 +1391,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 						.await?;
 					}
 					UserScopeOp::SetYanked(b) => {
-						let PackageVersion(pkg, version) = &b.package_version;
+						let PackageVersion { pkg, version } = &b.package_version;
 
 						insert_signed!(
 							SignedOpKind::SetYanked,
@@ -1647,10 +1646,10 @@ INNER JOIN package ON package.scope=package_version.scope AND package.pos=packag
 WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ? AND package_version.version = ?",
 							hash.0.as_slice(),
 							idx as u8,
-							value.yank_state,
+							value.yank_state.map(Text),
 							scope.hash().0.as_slice(),
-							key.0.hash().0.as_slice(),
-							key.1.to_string(),
+							key.pkg.hash().0.as_slice(),
+							key.version.to_string(),
 						)
 						.execute(&mut **tx)
 						.await?;
@@ -1682,8 +1681,8 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 							hash.0.as_slice(),
 							idx as u8,
 							scope.hash().0.as_slice(),
-							key.0.hash().0.as_slice(),
-							key.1.to_string(),
+							key.pkg.hash().0.as_slice(),
+							key.version.to_string(),
 						)
 						.execute(&mut **tx)
 						.await?;

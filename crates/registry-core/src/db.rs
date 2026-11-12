@@ -1,8 +1,8 @@
 use std::num::NonZero;
 
 use async_trait::async_trait;
+use pesde::registry::*;
 use pesde::signature::PublicKey;
-use pesde::source::pesde::registry::*;
 
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]

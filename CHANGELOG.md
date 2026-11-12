@@ -33,6 +33,8 @@ module paths by @daimond113
 - Remove scripts packages by @daimond113
 - Remove workspace packages, use the FS package source instead by @daimond113
 - Remove toolchain management ([RFC](https://github.com/pesde-pkg/pesde/issues/65)) by @daimond113
+- Path dependencies have been removed due to ambiguity, utilising Git or
+workspaces is recommended instead by @daimond113
 
 ## [0.7.3] - 2026-03-18
 ### Added

@@ -2,9 +2,9 @@ use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::post;
 use actix_web::web;
-use merkle_bplustree::InsertNewError;
 use pesde::hash::Hash;
-use pesde::source::pesde::registry::*;
+use pesde::merkle_bplustree::InsertNewError;
+use pesde::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::ExistingScopeLockResult;
 use pesde_registry_core::db::PermissionWidth;
@@ -79,7 +79,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 		UserScopeOp::PublishVersion(_) => {
 			return Err(Error::PublishVersionInPostEntry);
 		}
-		UserScopeOp::SetYanked(op) => PermissionWidth::Package(&op.package_version.0),
+		UserScopeOp::SetYanked(op) => PermissionWidth::Package(&op.package_version.pkg),
 		UserScopeOp::SetDeprecation(op) => PermissionWidth::Package(&op.pkg),
 	};
 
