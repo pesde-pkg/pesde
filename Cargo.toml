@@ -14,7 +14,10 @@ tracing = { version = "0.1.44", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 reqwest = { version = "0.13.5", features = ["stream"] }
 toml = "1.2.1"
-astral-tokio-tar = { version = "0.6.2", default-features = false }
+async_zip = { version = "0.0.19", default-features = false, features = [
+    "tokio",
+    "zstd",
+] }
 async-compression = { version = "0.4.41", features = ["tokio", "zstd"] }
 async-stream = "0.3.6"
 async-trait = "0.1.92"

@@ -427,9 +427,9 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
 name = "astral-tokio-tar"
-version = "0.6.4"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b18457efd137254e016bbde5e1d88df61c4e1a5ae2223746e56123bac6af2463"
+checksum = "821ed36daf7c40d00a7b62759f9833fb279fb7c87dd989ec0a4d626dcd8d1dca"
 dependencies = [
  "futures-core",
  "libc",
@@ -438,6 +438,7 @@ dependencies = [
  "rustix",
  "tokio",
  "tokio-stream",
+ "zerocopy",
 ]
 
 [[package]]
@@ -881,7 +882,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84f840cff84d10085260e460023934d0af699e71212b09b2a41452e8bd9cda43"
 dependencies = [
  "compression-core",
- "deflate64",
  "flate2",
  "memchr",
  "zstd",
@@ -1267,12 +1267,6 @@ dependencies = [
  "once_cell",
  "parking_lot_core",
 ]
-
-[[package]]
-name = "deflate64"
-version = "0.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac6b926516df9c60bfa16e107b21086399f8285a44ca9711344b9e553c5146e2"
 
 [[package]]
 name = "defmt"
@@ -4002,8 +3996,8 @@ dependencies = [
  "actix-web",
  "actix-web-lab",
  "anyhow",
- "astral-tokio-tar",
  "async-compression",
+ "async_zip",
  "constant_time_eq 0.6.1",
  "dotenvy",
  "fs-err",

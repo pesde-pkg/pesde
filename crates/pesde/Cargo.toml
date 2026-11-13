@@ -31,6 +31,7 @@ bin = [
     "dep:tokio-util",
     "dep:tracing-subscriber",
     "dep:reqwest",
+    "dep:async_zip",
     "dep:astral-tokio-tar",
     "dep:async-compression",
     "dep:anyhow",
@@ -38,7 +39,6 @@ bin = [
     "dep:clap",
     "dep:gix",
     "dep:percent-encoding",
-    "dep:async_zip",
     "dep:rand",
     "dep:indicatif",
     "dep:console",
@@ -103,7 +103,8 @@ ouroboros = { version = "0.18.5", default-features = false, features = ["std"] }
 tokio-util = { workspace = true, features = ["compat"], optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["json"], optional = true }
-astral-tokio-tar = { workspace = true, optional = true }
+async_zip = { workspace = true, features = ["deflate"], optional = true }
+astral-tokio-tar = { version = "0.7.1", default-features = false, optional = true }
 async-compression = { workspace = true, features = [
     "tokio",
     "zstd",
@@ -137,12 +138,6 @@ gix = { version = "0.90.0", default-features = false, features = [
 ], optional = true }
 percent-encoding = { version = "2.3.2", default-features = false, features = [
     "alloc",
-], optional = true }
-async_zip = { version = "0.0.19", default-features = false, features = [
-    "tokio",
-    "deflate",
-    "deflate64",
-    "tokio-fs",
 ], optional = true }
 rand = { version = "0.10.3", default-features = false, optional = true, features = [
     "thread_rng",

@@ -86,6 +86,8 @@ impl SourceProvider for CliSourceProvider {
 					Ok(Some(hooks.stdout.into_boxed_str()).filter(|s| !s.is_empty()))
 				};
 
+				tracing::debug!("initializing source `{source_id:?}`");
+
 				anyhow::Ok(match source_id {
 					SourceId::Pesde(url) => Arc::new(registry_pesde::RegistryPesdePackageSource {
 						url: url.clone(),

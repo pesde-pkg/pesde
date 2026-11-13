@@ -256,10 +256,7 @@ impl PackageSource for IndexLegacyPesdePackageSource {
 				continue;
 			}
 
-			let size_hint = entry
-				.header()
-				.size()
-				.context("invalid size in legacy pesde package archive entry")?;
+			let size_hint = entry.effective_size();
 			let file = to.file_at(vfs_path, size_hint).await?;
 
 			while let n = entry.read(&mut buf).await?

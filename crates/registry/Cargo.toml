@@ -23,7 +23,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 reqwest = { workspace = true }
 toml = { workspace = true }
-astral-tokio-tar = { workspace = true }
+async_zip = { workspace = true }
 async-compression = { workspace = true }
 itertools = { workspace = true }
 

@@ -8,12 +8,16 @@ use clap::Args;
 use console::style;
 use futures::TryStreamExt as _;
 use indicatif::MultiProgress;
+use pesde::Importer;
 use pesde::Manifest;
 use pesde::Project;
 use pesde::bounded::BoundedBTreeMap;
 use pesde::install::InstallDependenciesMode;
 use pesde::install::InstallOptions;
+#[expect(deprecated)]
+use pesde::legacy::TargetKind;
 use pesde::link::PackageStructure;
+use pesde::link::StructureKind;
 use pesde::registry::manifest::ManifestPackage;
 use pesde::reporters::DownloadsReporter as _;
 use pesde::source::DependencySpecifier;
@@ -251,6 +255,32 @@ impl ExecuteCommand {
 					.solve(None)
 					.await
 					.context("failed to resolve package")?;
+
+				#[expect(deprecated)]
+				if matches!(structure_kind, StructureKind::LegacyPesde) {
+					// cheap and nasty linking hack
+
+					for alias in resolution.importers[&Importer::root()].dependencies.keys() {
+						// write a dumb link to all 4, no need to care about if its correct really
+						for target in [
+							TargetKind::Luau,
+							TargetKind::Lune,
+							TargetKind::Roblox,
+							TargetKind::RobloxServer,
+						] {
+							temp_project
+								.workspace()
+								.vfs()
+								.write_file(
+									&format!("{}/{alias}.luau", target.packages_dir())
+										.parse()
+										.unwrap(),
+									format!(r#"return require("@{alias}")"#).as_bytes(),
+								)
+								.await?;
+						}
+					}
+				}
 
 				temp_project
 					.install(
