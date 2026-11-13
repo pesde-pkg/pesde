@@ -559,6 +559,11 @@ pub fn check_peers_satisfied(graph: &DependencyGraph) {
 				}
 			}
 
+			if path.iter().any(|(id, _)| *id == dep_id) {
+				// prevent an infinite loop with recursive dependencies
+				continue;
+			}
+
 			queue.extend(graph[dep_id].dependencies.iter().map(
 				|(inner_dep_alias, (inner_dep_id, inner_dep_ty))| {
 					(
