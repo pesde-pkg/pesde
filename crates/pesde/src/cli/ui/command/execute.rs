@@ -1,6 +1,5 @@
 use std::ffi::OsString;
 use std::io::Stderr;
-use std::num::NonZero;
 use std::sync::Arc;
 
 use anyhow::Context as _;
@@ -48,10 +47,6 @@ pub struct ExecuteCommand {
 
 	/// The package to run
 	package: CliDependencySpecifier,
-
-	/// The maximum number of concurrent network requests
-	#[arg(short, long, default_value = "16")]
-	network_concurrency: NonZero<usize>,
 
 	/// Arguments to pass to the script
 	#[arg(allow_hyphen_values = true)]
@@ -245,6 +240,7 @@ impl ExecuteCommand {
 						Arc::new(CliSourceProvider::new(
 							workspace.clone(),
 							reqwest,
+							ctx.network_concurrency(),
 							cli_config.auth_scripts.clone(),
 						))
 					},
@@ -287,8 +283,7 @@ impl ExecuteCommand {
 						&resolution,
 						InstallOptions::<CliReporter<Stderr>>::new()
 							.reporter(reporter)
-							.install_dependencies_mode(InstallDependenciesMode::Prod)
-							.network_concurrency(self.network_concurrency),
+							.install_dependencies_mode(InstallDependenciesMode::Prod),
 					)
 					.await
 					.context("failed to install package")?;

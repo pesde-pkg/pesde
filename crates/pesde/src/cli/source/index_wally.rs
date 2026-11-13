@@ -39,6 +39,7 @@ use tokio::task::spawn_blocking;
 use crate::cli::dirs::cache_dir;
 use crate::cli::reporters::response_to_async_buf_read;
 use crate::cli::rootless_url;
+use crate::cli::source::NetworkAccess;
 use crate::cli::source::git_index::read_file;
 use crate::cli::source::git_index::refresh_git_repo;
 use crate::cli::source::git_index::root_tree;
@@ -47,8 +48,7 @@ use crate::cli::url_component_encode;
 pub struct IndexWallyPackageSource {
 	path: Box<Path>,
 	config: WallyIndexConfig,
-	reqwest: reqwest::Client,
-	authorization: Option<Box<str>>,
+	network: NetworkAccess,
 }
 
 static WALLY_VERSION_HEADER: LazyLock<Box<str>> = LazyLock::new(|| {
@@ -59,11 +59,7 @@ static WALLY_VERSION_HEADER: LazyLock<Box<str>> = LazyLock::new(|| {
 });
 
 impl IndexWallyPackageSource {
-	pub async fn new(
-		url: Url,
-		reqwest: reqwest::Client,
-		authorization: Option<Box<str>>,
-	) -> anyhow::Result<Self> {
+	pub async fn new(url: Url, network: NetworkAccess) -> anyhow::Result<Self> {
 		let path = cache_dir()?
 			.join("git_repos")
 			.join("wally")
@@ -81,8 +77,7 @@ impl IndexWallyPackageSource {
 				Some(s) => Ok(Self {
 					path,
 					config: serde_json::from_slice(&s)?,
-					reqwest,
-					authorization,
+					network,
 				}),
 				None => {
 					anyhow::bail!("config.json not found in wally index git repository `{url}`")
@@ -188,7 +183,9 @@ impl PackageSource for IndexWallyPackageSource {
 			.into());
 		};
 
+		let _permit = self.network.network_concurrency.acquire().await;
 		let mut request = self
+			.network
 			.reqwest
 			.get(format!(
 				"{}/v1/package-contents/{}/{}/{}",
@@ -199,7 +196,7 @@ impl PackageSource for IndexWallyPackageSource {
 			))
 			.header("Wally-Version", &**WALLY_VERSION_HEADER);
 
-		if let Some(authorization) = &self.authorization {
+		if let Some(authorization) = &self.network.authorization {
 			request = request.header(AUTHORIZATION, authorization.as_ref());
 		}
 

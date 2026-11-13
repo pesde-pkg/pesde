@@ -3,7 +3,6 @@ use crate::cli::install::install;
 use crate::cli::ui::CommandContext;
 use clap::Args;
 use pesde::install::InstallDependenciesMode;
-use std::num::NonZero;
 
 /// Installs all dependencies for the subproject
 #[derive(Debug, Args, Copy, Clone)]
@@ -20,10 +19,6 @@ pub struct InstallCommand {
 	/// Whether to only install dev dependencies
 	#[arg(long)]
 	dev: bool,
-
-	/// The maximum number of concurrent network requests
-	#[arg(short, long, default_value = "16")]
-	network_concurrency: NonZero<usize>,
 
 	/// Whether to re-install all dependencies even if they are already installed
 	#[arg(short, long)]
@@ -43,7 +38,6 @@ impl InstallCommand {
 			locked: self.locked,
 			install_dependencies_mode,
 			write: true,
-			network_concurrency: self.network_concurrency,
 			use_lockfile: true,
 			force: self.force,
 		};

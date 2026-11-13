@@ -46,6 +46,7 @@ use tokio::task::spawn_blocking;
 use crate::cli::dirs::cache_dir;
 use crate::cli::reporters::response_to_async_buf_read;
 use crate::cli::rootless_url;
+use crate::cli::source::NetworkAccess;
 use crate::cli::source::git_index::read_file;
 use crate::cli::source::git_index::refresh_git_repo;
 use crate::cli::source::git_index::root_tree;
@@ -56,16 +57,11 @@ const IGNORED_FILES: &[&str] = &["foreman.toml", "aftman.toml", "rokit.toml", ".
 pub struct IndexLegacyPesdePackageSource {
 	path: Box<Path>,
 	config: IndexConfig,
-	reqwest: reqwest::Client,
-	authorization: Option<Box<str>>,
+	network: NetworkAccess,
 }
 
 impl IndexLegacyPesdePackageSource {
-	pub async fn new(
-		url: Url,
-		reqwest: reqwest::Client,
-		authorization: Option<Box<str>>,
-	) -> anyhow::Result<Self> {
+	pub async fn new(url: Url, network: NetworkAccess) -> anyhow::Result<Self> {
 		let path = cache_dir()?
 			.join("git_repos")
 			.join("pesde")
@@ -84,8 +80,7 @@ impl IndexLegacyPesdePackageSource {
 					path,
 					config: toml::from_slice(&s)
 						.context("failed to parse config.toml of legacy pesde index")?,
-					reqwest,
-					authorization,
+					network,
 				}),
 				None => {
 					anyhow::bail!(
@@ -201,12 +196,14 @@ impl PackageSource for IndexLegacyPesdePackageSource {
 
 		let url = self.config.download_url(name, version, *target);
 
+		let _permit = self.network.network_concurrency.acquire().await;
 		let mut request = self
+			.network
 			.reqwest
 			.get(&url)
 			.header(ACCEPT, "application/octet-stream");
 
-		if let Some(authorization) = &self.authorization {
+		if let Some(authorization) = &self.network.authorization {
 			request = request.header(AUTHORIZATION, &**authorization);
 		}
 

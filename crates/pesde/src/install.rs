@@ -13,11 +13,9 @@ use crate::reporters::DownloadsReporter;
 use crate::reporters::PatchesReporter;
 use crate::source::PackageId;
 use crate::source::PackageSource;
-use tokio::sync::Semaphore;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::num::NonZero;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use tracing::Instrument as _;
@@ -52,8 +50,6 @@ pub struct InstallOptions<Reporter = ()> {
 	pub reporter: Option<Arc<Reporter>>,
 	/// Which dependencies to install.
 	pub install_dependencies_mode: InstallDependenciesMode,
-	/// The max number of concurrent network requests.
-	pub network_concurrency: NonZero<usize>,
 	/// Whether to re-install all dependencies even if they are already installed
 	pub force: bool,
 }
@@ -66,7 +62,6 @@ where
 		Self {
 			reporter: None,
 			install_dependencies_mode: InstallDependenciesMode::All,
-			network_concurrency: NonZero::new(16).unwrap(),
 			force: false,
 		}
 	}
@@ -99,13 +94,6 @@ where
 		self
 	}
 
-	/// Sets the max number of concurrent network requests.
-	#[must_use]
-	pub fn network_concurrency(mut self, network_concurrency: NonZero<usize>) -> Self {
-		self.network_concurrency = network_concurrency;
-		self
-	}
-
 	/// Sets whether to re-install all dependencies even if they are already installed
 	#[must_use]
 	pub fn force(mut self, force: bool) -> Self {
@@ -119,7 +107,6 @@ impl Clone for InstallOptions {
 		Self {
 			reporter: self.reporter.clone(),
 			install_dependencies_mode: self.install_dependencies_mode,
-			network_concurrency: self.network_concurrency,
 			force: self.force,
 		}
 	}
@@ -143,7 +130,6 @@ impl Project {
 		let InstallOptions {
 			reporter,
 			install_dependencies_mode,
-			network_concurrency,
 			force,
 		} = options;
 
@@ -287,14 +273,12 @@ impl Project {
 			deps_to_download
 		};
 
-		let semaphore = Arc::new(Semaphore::new(network_concurrency.get()));
 		let mut tasks = graph_to_download
 			.into_iter()
 			.map(|(package_id, needing_install)| {
 				let span = tracing::info_span!("install", package_id = package_id.to_string());
 
 				let reporter = reporter.clone();
-				let semaphore = semaphore.clone();
 
 				let mut installed = installed_packages.remove(&package_id).unwrap();
 
@@ -319,7 +303,6 @@ impl Project {
 						.await?;
 
 					if let Some(mut storer) = storer {
-						let _permit = semaphore.acquire().await.unwrap();
 						tracing::debug!("downloading");
 
 						let progress_reporter = reporter.map_or_else(

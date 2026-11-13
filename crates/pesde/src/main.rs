@@ -1,3 +1,4 @@
+use std::num::NonZero;
 use std::sync::Mutex;
 
 use indicatif::MultiProgress;
@@ -24,6 +25,10 @@ struct Cli {
 	/// Print version
 	#[arg(short = 'v', short_alias = 'V', long, action = clap::builder::ArgAction::Version)]
 	version: (),
+
+	/// The maximum number of concurrent network requests
+	#[arg(short, long, default_value = "16")]
+	network_concurrency: NonZero<usize>,
 
 	/// The subcommand to run
 	#[command(subcommand)]
@@ -62,7 +67,9 @@ async fn main() -> anyhow::Result<()> {
 		.init();
 
 	let cli = Cli::parse();
-	cli.command.run(cli::ui::CommandContext::new()).await
+	cli.command
+		.run(cli::ui::CommandContext::new(cli.network_concurrency))
+		.await
 }
 
 pub static PROGRESS_BARS: Mutex<Option<MultiProgress>> = Mutex::new(None);

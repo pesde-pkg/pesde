@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::BufRead as _;
 use std::io::PipeReader;
 use std::io::Read as _;
+use std::num::NonZero;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -15,6 +16,7 @@ use pesde::source::SourceId;
 use pesde::source::SourceProvider;
 use pesde::source::WorkspacePackageSource;
 use tokio::sync::OnceCell;
+use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 
 use crate::cli::scripts::ExecuteScriptHooks;
@@ -31,6 +33,7 @@ pub struct CliSourceProvider {
 	sources: Mutex<HashMap<SourceId, Arc<OnceCell<Arc<dyn PackageSource>>>>>,
 	workspace: Workspace,
 	reqwest: reqwest::Client,
+	network_concurrency: Arc<Semaphore>,
 	auth_scripts: HashMap<Url, Box<str>>,
 }
 
@@ -38,12 +41,14 @@ impl CliSourceProvider {
 	pub fn new(
 		workspace: Workspace,
 		reqwest: reqwest::Client,
+		network_concurrency: NonZero<usize>,
 		auth_scripts: HashMap<Url, Box<str>>,
 	) -> Self {
 		Self {
 			sources: Default::default(),
 			workspace,
 			reqwest,
+			network_concurrency: Arc::new(Semaphore::new(network_concurrency.get())),
 			auth_scripts,
 		}
 	}
@@ -63,9 +68,15 @@ impl SourceProvider for CliSourceProvider {
 
 		let source = cell
 			.get_or_try_init(async || {
-				let get_authorization = async |url: &Url| -> anyhow::Result<Option<Box<str>>> {
+				let network_access = async |url: &Url| -> anyhow::Result<NetworkAccess> {
+					let mut access = NetworkAccess {
+						reqwest: self.reqwest.clone(),
+						network_concurrency: self.network_concurrency.clone(),
+						authorization: None,
+					};
+
 					let Some(script) = self.auth_scripts.get(url) else {
-						return Ok(None);
+						return Ok(access);
 					};
 
 					let mut hooks = AuthScriptHooks {
@@ -83,7 +94,9 @@ impl SourceProvider for CliSourceProvider {
 						));
 					}
 
-					Ok(Some(hooks.stdout.into_boxed_str()).filter(|s| !s.is_empty()))
+					access.authorization =
+						Some(hooks.stdout.into_boxed_str()).filter(|s| !s.is_empty());
+					Ok(access)
 				};
 
 				tracing::debug!("initializing source `{source_id:?}`");
@@ -91,22 +104,19 @@ impl SourceProvider for CliSourceProvider {
 				anyhow::Ok(match source_id {
 					SourceId::Pesde(url) => Arc::new(registry_pesde::RegistryPesdePackageSource {
 						url: url.clone(),
-						reqwest: self.reqwest.clone(),
-						authorization: get_authorization(url).await?,
+						network: network_access(url).await?,
 					}) as Arc<dyn PackageSource>,
 					SourceId::Wally(url) => Arc::new(
 						index_wally::IndexWallyPackageSource::new(
 							url.clone(),
-							self.reqwest.clone(),
-							get_authorization(url).await?,
+							network_access(url).await?,
 						)
 						.await?,
 					),
 					SourceId::LegacyPesde(url) => Arc::new(
 						index_legacy_pesde::IndexLegacyPesdePackageSource::new(
 							url.clone(),
-							self.reqwest.clone(),
-							get_authorization(url).await?,
+							network_access(url).await?,
 						)
 						.await?,
 					),
@@ -123,6 +133,12 @@ impl SourceProvider for CliSourceProvider {
 
 		Ok(source)
 	}
+}
+
+struct NetworkAccess {
+	pub reqwest: reqwest::Client,
+	pub network_concurrency: Arc<Semaphore>,
+	pub authorization: Option<Box<str>>,
 }
 
 struct AuthScriptHooks {

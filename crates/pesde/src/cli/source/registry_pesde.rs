@@ -25,12 +25,12 @@ use tokio::io::BufReader;
 use tokio_util::io::StreamReader;
 
 use crate::cli::rootless_url;
+use crate::cli::source::NetworkAccess;
 use crate::cli::url_component_encode;
 
 pub struct RegistryPesdePackageSource {
 	pub url: Url,
-	pub reqwest: reqwest::Client,
-	pub authorization: Option<Box<str>>,
+	pub network: NetworkAccess,
 }
 
 #[async_trait]
@@ -49,13 +49,15 @@ impl PackageSource for RegistryPesdePackageSource {
 			registry,
 		} = specifier.clone();
 
-		let mut request = self.reqwest.get(format!(
+		let _permit = self.network.network_concurrency.acquire().await;
+
+		let mut request = self.network.reqwest.get(format!(
 			"{}/api/v2/scope/{}/state",
 			rootless_url(&self.url),
 			url_component_encode(&ScopeId::from(name.scope()).to_string()),
 		));
 
-		if let Some(authorization) = &self.authorization {
+		if let Some(authorization) = &self.network.authorization {
 			request = request.header(AUTHORIZATION, authorization.as_ref());
 		}
 
@@ -63,6 +65,7 @@ impl PackageSource for RegistryPesdePackageSource {
 			request.send().await?.error_for_status()?.json().await?;
 
 		let packages_response = self
+			.network
 			.reqwest
 			.get(format!(
 				"{}/api/v2/tree/package_versions/{}/entries",

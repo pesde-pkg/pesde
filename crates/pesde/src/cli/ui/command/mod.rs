@@ -1,3 +1,4 @@
+use std::num::NonZero;
 use std::sync::Arc;
 
 use anyhow::Context as _;
@@ -71,10 +72,11 @@ pub struct CommandContext {
 	cwd: std::sync::LazyLock<std::path::PathBuf>,
 	project: tokio::sync::OnceCell<(Arc<FsVfs>, Project, WorkspaceMember)>,
 	cli_config: tokio::sync::OnceCell<crate::cli::config::CliConfig>,
+	network_concurrency: NonZero<usize>,
 }
 
 impl CommandContext {
-	pub fn new() -> Self {
+	pub fn new(network_concurrency: NonZero<usize>) -> Self {
 		Self {
 			reqwest: std::sync::LazyLock::new(|| {
 				reqwest::Client::builder()
@@ -91,11 +93,16 @@ impl CommandContext {
 			}),
 			project: tokio::sync::OnceCell::new(),
 			cli_config: tokio::sync::OnceCell::new(),
+			network_concurrency,
 		}
 	}
 
 	pub fn reqwest(&self) -> &reqwest::Client {
 		&self.reqwest
+	}
+
+	pub fn network_concurrency(&self) -> NonZero<usize> {
+		self.network_concurrency
 	}
 }
 
@@ -153,6 +160,7 @@ mod impls {
 						Arc::from(CliSourceProvider::new(
 							workspace.clone(),
 							self.reqwest().clone(),
+							self.network_concurrency,
 							config.auth_scripts.clone(),
 						))
 					});

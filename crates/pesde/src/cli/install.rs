@@ -11,7 +11,6 @@ use pesde::source::PackageId;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::io::Write as _;
-use std::num::NonZeroUsize;
 use std::time::Instant;
 
 use crate::cli::reporters;
@@ -24,7 +23,6 @@ pub struct CliInstallOptions {
 	pub install_dependencies_mode: InstallDependenciesMode,
 	pub write: bool,
 	pub use_lockfile: bool,
-	pub network_concurrency: NonZeroUsize,
 	pub force: bool,
 }
 
@@ -151,7 +149,6 @@ pub async fn install(options: &CliInstallOptions, project: &Project) -> anyhow::
 						InstallOptions::<CliReporter>::new()
 							.reporter(reporter)
 							.install_dependencies_mode(options.install_dependencies_mode)
-							.network_concurrency(options.network_concurrency)
 							.force(options.force),
 					)
 					.await
