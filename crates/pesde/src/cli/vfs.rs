@@ -705,11 +705,14 @@ impl PackageStorer for CasPackageStorer {
 		path: VfsPath,
 		size_hint: u64,
 	) -> std::io::Result<&'a mut (dyn futures::io::AsyncWrite + Unpin + Send + 'a)> {
-		self.flush_current().await?;
+		let file = self.flush_current().await?;
 
-		let file = tokio::fs::File::create_new(&self.tmp_file_path)
-			.await
-			.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
+		let file = match file {
+			Some(file) => file,
+			None => tokio::fs::File::create_new(&self.tmp_file_path)
+				.await
+				.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?,
+		};
 
 		file.set_len(size_hint)
 			.await
@@ -726,13 +729,17 @@ impl PackageStorer for CasPackageStorer {
 	}
 
 	async fn commit(mut self: Box<Self>) -> std::io::Result<()> {
-		self.flush_current().await?;
+		let file = self.flush_current().await?;
 
 		let manifest_json = serde_json::to_vec(&self.manifest).map_err(std::io::Error::other)?;
 
-		let mut file = tokio::fs::File::create_new(&self.tmp_file_path)
-			.await
-			.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
+		let mut file = match file {
+			Some(file) => file,
+			None => tokio::fs::File::create_new(&self.tmp_file_path)
+				.await
+				.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?,
+		};
+
 		file.write_all(&manifest_json)
 			.await
 			.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
@@ -771,43 +778,47 @@ impl PackageStorer for CasPackageStorer {
 }
 
 impl CasPackageStorer {
-	async fn flush_current(&mut self) -> std::io::Result<()> {
-		if let Some(writer) = self.current_file.take() {
-			let hash = writer.hasher.finalize();
-			let file_path = self.vfs.file_path(hash.algorithm(), &hash.encoded());
+	async fn flush_current(&mut self) -> std::io::Result<Option<tokio::fs::File>> {
+		let Some(writer) = self.current_file.take() else {
+			return Ok(None);
+		};
 
-			self.manifest
-				.entries
-				.insert(writer.path, Some(hash.encoded().into()));
+		let hash = writer.hasher.finalize();
+		let file_path = self.vfs.file_path(hash.algorithm(), &hash.encoded());
 
-			let mut handle = writer.handle.into_inner();
+		self.manifest
+			.entries
+			.insert(writer.path, Some(hash.encoded().into()));
 
-			handle
-				.set_len(writer.written)
+		let mut handle = writer.handle.into_inner();
+
+		handle
+			.set_len(writer.written)
+			.await
+			.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
+
+		handle
+			.flush()
+			.await
+			.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
+
+		if let Some(parent) = file_path.parent() {
+			tokio::fs::create_dir_all(parent)
 				.await
-				.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
-
-			handle
-				.shutdown()
-				.await
-				.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
-
-			drop(handle);
-
-			if let Some(parent) = file_path.parent() {
-				tokio::fs::create_dir_all(parent)
-					.await
-					.map_err(|e| contextualize_io_error(e, parent))?;
-			}
-
-			match tokio::fs::rename(&self.tmp_file_path, file_path).await {
-				Ok(_) => {}
-				Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-				Err(e) => return Err(contextualize_io_error(e, &self.tmp_file_path)),
-			}
+				.map_err(|e| contextualize_io_error(e, parent))?;
 		}
 
-		Ok(())
+		match tokio::fs::rename(&self.tmp_file_path, file_path).await {
+			Ok(_) => {
+				drop(handle);
+
+				Ok(None)
+			}
+			// this lets us avoid having to re-open the file handle if we weren't able to discard it,
+			// call it a micro-optimization if you will
+			Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(Some(handle)),
+			Err(e) => Err(contextualize_io_error(e, &self.tmp_file_path)),
+		}
 	}
 }
 
