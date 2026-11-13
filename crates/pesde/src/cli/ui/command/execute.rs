@@ -17,8 +17,10 @@ use pesde::link::PackageStructure;
 use pesde::registry::manifest::ManifestPackage;
 use pesde::reporters::DownloadsReporter as _;
 use pesde::source::DependencySpecifier;
+use pesde::source::InspectResult;
 use pesde::source::PackageId;
 use pesde::source::PackageIdComparison;
+use pesde::source::PackageSource;
 use pesde::vfs::Vfs as _;
 use pesde::vfs::VfsPath;
 use std::cmp::Ordering;
@@ -83,26 +85,31 @@ impl ExecuteCommand {
 
 				let versions = crate::cli::ui::specifier::resolve(project, specifier).await?;
 
-				let package_id = versions
-					.try_fold(None::<PackageId>, async |acc, (candidate, _)| {
-						let Some(acc) = acc else {
-							return Ok(Some(candidate));
-						};
+				let (package_id, inspect_result) = versions
+					.try_fold(
+						None::<(PackageId, Option<InspectResult>)>,
+						async |acc, candidate| {
+							let Some(acc) = acc else {
+								return Ok(Some(candidate));
+							};
 
-						match candidate.compare(&acc) {
-							PackageIdComparison::Comparable(ordering) => {
-								if ordering == Ordering::Greater {
-									Ok(Some(candidate))
-								} else {
-									Ok(Some(acc))
+							match candidate.0.compare(&acc.0) {
+								PackageIdComparison::Comparable(ordering) => {
+									if ordering == Ordering::Greater {
+										Ok(Some(candidate))
+									} else {
+										Ok(Some(acc))
+									}
 								}
+								PackageIdComparison::Incomparable => Ok(Some(candidate)),
+								PackageIdComparison::NotSameSource => anyhow::bail!(
+									"package `{}` is not of the same source as package `{}`",
+									candidate.0,
+									acc.0
+								),
 							}
-							PackageIdComparison::Incomparable => Ok(Some(candidate)),
-							PackageIdComparison::NotSameSource => anyhow::bail!(
-								"package `{candidate}` is not of the same source as package `{acc}`"
-							),
-						}
-					})
+						},
+					)
 					.await
 					.context("failed to find version")?
 					.context("no versions found for package")?;
@@ -118,18 +125,31 @@ impl ExecuteCommand {
 				root_progress.set_message("download");
 				root_progress.set_style(reporters::root_progress_style_with_progress());
 
-				let source = project
-					.source_provider()
-					.get(&package_id.source_id())
-					.await
-					.map_err(anyhow::Error::from_boxed)
-					.context("failed to get package source")?;
+				let mut stored_source = None::<Arc<dyn PackageSource>>;
+				let mut get_source = async || {
+					if let Some(source) = stored_source.clone() {
+						return Ok(source);
+					}
 
-				let inspect_result = source
-					.inspect(&package_id)
-					.await
-					.map_err(anyhow::Error::from_boxed)
-					.context("failed to inspect package")?;
+					let source = project
+						.source_provider()
+						.get(&package_id.source_id())
+						.await
+						.map_err(anyhow::Error::from_boxed)
+						.context("failed to get package source")?;
+					stored_source = Some(source.clone());
+					anyhow::Ok(source)
+				};
+
+				let inspect_result = match inspect_result {
+					Some(inspect_result) => inspect_result,
+					None => get_source()
+						.await?
+						.inspect(&package_id)
+						.await
+						.map_err(anyhow::Error::from_boxed)
+						.context("failed to inspect package")?,
+				};
 
 				let structure_kind = inspect_result.structure.kind();
 				let (manifest, bin_file) = match inspect_result.structure {
@@ -199,7 +219,8 @@ impl ExecuteCommand {
 					.await
 					.context("failed to copy package to temporary directory")?;
 				if let Some(mut storer) = storer {
-					source
+					get_source()
+						.await?
 						.download(
 							&package_id,
 							Arc::new(reporter.clone().report_download(package_id.to_string())),
