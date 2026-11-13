@@ -89,7 +89,7 @@ merkle-bplustree = { version = "0.1.0", default-features = false, features = [
     "const",
 ] }
 
-jiff = { version = "0.2.23", default-features = false, features = [
+jiff = { version = "0.2.43", default-features = false, features = [
     "serde",
     "std",
 ] }
