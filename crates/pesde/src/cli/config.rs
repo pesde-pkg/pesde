@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::Context as _;
 use pesde::Url;
@@ -14,7 +15,7 @@ use crate::cli::dirs::config_path;
 pub struct CliConfig {
 	pub default_registry: Url,
 
-	pub auth_scripts: HashMap<Url, Box<str>>,
+	pub auth_scripts: Arc<HashMap<Url, Box<str>>>,
 	#[serde(skip_serializing_if = "HashMap::is_empty")]
 	pub identities: HashMap<Url, PublicKey>,
 }

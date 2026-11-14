@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::cli::config::read_config;
 use crate::cli::config::write_config;
 use anyhow::Context as _;
@@ -22,13 +24,18 @@ impl ScriptCommand {
 		let mut config = read_config().await?;
 
 		if let Some(script) = self.script {
+			let mut auth_scripts = Arc::unwrap_or_clone(config.auth_scripts);
+
 			if script.is_empty() {
-				if config.auth_scripts.remove(&self.url).is_none() {
+				if auth_scripts.remove(&self.url).is_none() {
 					println!("no auth script was set");
+					return Ok(());
 				}
 			} else {
-				config.auth_scripts.insert(self.url, script);
+				auth_scripts.insert(self.url, script);
 			}
+
+			config.auth_scripts = Arc::new(auth_scripts);
 
 			write_config(&config).await?;
 		} else {

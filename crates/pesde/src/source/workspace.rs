@@ -82,13 +82,13 @@ impl PackageSource for WorkspacePackageSource {
 
 impl WorkspacePackageSource {
 	fn inspect(manifest: &Manifest) -> Result<InspectResult, SourceError> {
-		let structure = PackageStructure::Pesde(
-			manifest
+		let structure = PackageStructure::Pesde {
+			exports: manifest
 				.exports
 				.clone()
 				.ok_or("workspace member manifest missing exports")?,
-			manifest.config.clone(),
-		);
+			config: manifest.config.clone(),
+		};
 
 		Ok(InspectResult {
 			structure,

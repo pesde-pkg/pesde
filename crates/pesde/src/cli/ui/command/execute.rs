@@ -28,13 +28,13 @@ use pesde::vfs::Vfs as _;
 use pesde::vfs::VfsPath;
 use std::cmp::Ordering;
 
+use crate::cli::impls::source::CliSourceProvider;
+use crate::cli::impls::vfs::FsVfs;
 use crate::cli::reporters;
 use crate::cli::reporters::CliReporter;
 use crate::cli::scripts::execute_script;
-use crate::cli::source::CliSourceProvider;
 use crate::cli::ui::CommandContext;
 use crate::cli::ui::specifier::CliDependencySpecifier;
-use crate::cli::vfs::FsVfs;
 
 /// Executes a one-off binary package
 #[derive(Debug, Args)]
@@ -152,7 +152,7 @@ impl ExecuteCommand {
 
 				let structure_kind = inspect_result.structure.kind();
 				let (manifest, bin_file) = match inspect_result.structure {
-					PackageStructure::Pesde(exports, config) => {
+					PackageStructure::Pesde { exports, config } => {
 						let mut manifest = Manifest::new_empty(ManifestPackage {
 							name: "fake/name".parse().unwrap(),
 							version: "0.1.0-fake".parse().unwrap(),
@@ -172,7 +172,7 @@ impl ExecuteCommand {
 
 						(manifest, bin_file)
 					}
-					PackageStructure::LegacyPesde(exports, _) => {
+					PackageStructure::LegacyPesde { exports, target: _ } => {
 						let mut manifest = Manifest::new_empty(ManifestPackage {
 							name: "fake/name".parse().unwrap(),
 							version: "0.1.0-fake".parse().unwrap(),
@@ -191,7 +191,7 @@ impl ExecuteCommand {
 
 						(manifest, bin_file)
 					}
-					PackageStructure::Wally(..) => {
+					PackageStructure::Wally { .. } => {
 						anyhow::bail!("cannot execute wally packages")
 					}
 				};
@@ -204,7 +204,11 @@ impl ExecuteCommand {
 					)
 				})?;
 
-				let temp_vfs = FsVfs::from_parts(vfs.cas_dir.clone(), tempdir.clone());
+				let temp_vfs = FsVfs {
+					cas_dir: vfs.cas_dir.clone(),
+					project_dir: tempdir.clone(),
+					sqlite: vfs.sqlite.clone(),
+				};
 				let temp_vfs = Arc::new(temp_vfs);
 
 				let storer = temp_vfs
@@ -239,6 +243,7 @@ impl ExecuteCommand {
 					|workspace| {
 						Arc::new(CliSourceProvider::new(
 							workspace.clone(),
+							vfs.sqlite.clone(),
 							reqwest,
 							ctx.network_concurrency(),
 							cli_config.auth_scripts.clone(),

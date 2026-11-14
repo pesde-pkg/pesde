@@ -35,17 +35,18 @@ use serde::Deserialize;
 use serde::Deserializer;
 use tokio::io::AsyncReadExt as _;
 use tokio::task::spawn_blocking;
+use tracing::instrument;
 
 use crate::cli::dirs::cache_dir;
+use crate::cli::impls::source::NetworkAccess;
+use crate::cli::impls::source::git_index::read_file;
+use crate::cli::impls::source::git_index::refresh_git_repo;
+use crate::cli::impls::source::git_index::root_tree;
 use crate::cli::reporters::response_to_async_buf_read;
 use crate::cli::rootless_url;
-use crate::cli::source::NetworkAccess;
-use crate::cli::source::git_index::read_file;
-use crate::cli::source::git_index::refresh_git_repo;
-use crate::cli::source::git_index::root_tree;
 use crate::cli::url_component_encode;
 
-pub struct IndexWallyPackageSource {
+pub(super) struct IndexWallyPackageSource {
 	path: Box<Path>,
 	config: WallyIndexConfig,
 	network: NetworkAccess,
@@ -134,6 +135,7 @@ impl IndexWallyPackageSource {
 
 #[async_trait]
 impl PackageSource for IndexWallyPackageSource {
+	#[instrument(skip(self), level = "debug")]
 	async fn resolve(&self, specifier: &DependencySpecifier) -> Result<ResolveResult, SourceError> {
 		let DependencySpecifier::Wally(specifier) = specifier else {
 			return Err(anyhow::format_err!(
@@ -170,6 +172,7 @@ impl PackageSource for IndexWallyPackageSource {
 		Ok(ResolveResult::Found(stream::iter(iter).boxed()))
 	}
 
+	#[instrument(skip(self, reporter, to), level = "debug")]
 	async fn download(
 		&self,
 		package_id: &PackageId,
@@ -254,6 +257,7 @@ impl PackageSource for IndexWallyPackageSource {
 		Ok(())
 	}
 
+	#[instrument(skip(self), level = "debug")]
 	async fn inspect(&self, package_id: &PackageId) -> Result<InspectResult, SourceError> {
 		let PackageId::Wally(_, name, version) = package_id else {
 			return Err(anyhow::format_err!(
@@ -323,7 +327,6 @@ pub(crate) struct WallyPackage {
 	version: Version,
 	#[serde(rename = "registry")]
 	index: Url,
-	#[expect(unused)]
 	realm: WallyRealm,
 }
 
@@ -444,7 +447,10 @@ impl WallyManifest {
 		Ok((
 			self.package.version,
 			InspectResult {
-				structure: PackageStructure::Wally(self.package.name.local_name().clone()),
+				structure: PackageStructure::Wally {
+					name: self.package.name.local_name().clone(),
+					server: matches!(self.package.realm, WallyRealm::Server),
+				},
 				dependencies,
 			},
 		))

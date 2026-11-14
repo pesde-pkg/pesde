@@ -6,8 +6,8 @@ use clap::Subcommand;
 use pesde::Project;
 use pesde::WorkspaceMember;
 
-use crate::cli::source::CliSourceProvider;
-use crate::cli::vfs::FsVfs;
+use crate::cli::impls::source::CliSourceProvider;
+use crate::cli::impls::vfs::FsVfs;
 
 mod add;
 mod auth;
@@ -159,6 +159,7 @@ mod impls {
 					let project = pesde::Project::new(vfs.clone(), |workspace| {
 						Arc::from(CliSourceProvider::new(
 							workspace.clone(),
+							vfs.sqlite.clone(),
 							self.reqwest().clone(),
 							self.network_concurrency,
 							config.auth_scripts.clone(),

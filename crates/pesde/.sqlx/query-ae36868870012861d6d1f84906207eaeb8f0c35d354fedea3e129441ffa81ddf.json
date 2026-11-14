@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nINSERT INTO package_cache (id, inspection, layout)\nVALUES (?1, X'', ?2)\nON CONFLICT(id) DO UPDATE SET layout = excluded.layout\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "ae36868870012861d6d1f84906207eaeb8f0c35d354fedea3e129441ffa81ddf"
+}

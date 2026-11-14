@@ -1,8 +1,6 @@
 use crate::cli::reporters::run_with_reporter;
 use crate::cli::ui::CommandContext;
-use anyhow::Context as _;
 use clap::Args;
-use futures::TryStreamExt as _;
 use pesde::hash::Hash;
 
 /// Removes unused files from the CAS
@@ -25,26 +23,28 @@ impl PruneCommand {
 
 				let mut removed = 0u64;
 
-				let stream = vfs.list_cas_packages();
+				let stream = vfs.sqlite.list_cached_packages().await?;
 				let mut stream = std::pin::pin!(stream);
-				while let Some((path, manifest)) = stream.try_next().await? {
-					for hash_str in manifest.entries.values().flatten() {
-						let hash = Hash::from_encoded(manifest.hash_algorithm, hash_str);
+				while let Some((package, manifest)) = stream.next().await? {
+					let Some(manifest) = manifest else {
+						tracing::debug!("package `{package}` has no CAS manifest, skipping");
+						continue;
+					};
+
+					for hash_bytes in manifest.entries.values().flatten() {
+						let hash = Hash::new(manifest.hash_algorithm, hash_bytes);
 						let Ok(hash) = hash else {
-							tracing::warn!("skipping invalid hash `{hash_str}`");
+							tracing::warn!("skipping invalid hash `{hash_bytes:?}`");
 							continue;
 						};
 
 						if removed_hashes.contains(&hash) {
 							tracing::debug!(
-								"removing unused file `{}` due to hash `{hash}`",
-								path.display()
+								"removing unused package `{package}` due to hash `{hash}`"
 							);
 							removed += 1;
 							root_progress.inc(1);
-							tokio::fs::remove_file(&path)
-								.await
-								.context("failed to remove unused file")?;
+							stream.delete_current_item().await?;
 							break;
 						}
 					}

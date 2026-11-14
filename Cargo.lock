@@ -738,6 +738,9 @@ name = "cbor-core"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9f70473b5194d5f6e3c271dc6d0f63f6b17cc5d004af959e9ed0be8c1dadcdb"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "cc"
@@ -3495,6 +3498,7 @@ version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
 dependencies = [
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -3973,6 +3977,7 @@ dependencies = [
  "serde_ignored",
  "serde_json",
  "signature",
+ "sqlx",
  "ssh-key",
  "thiserror",
  "thiserror-ext",

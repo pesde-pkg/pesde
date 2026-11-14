@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, layout FROM package_cache",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "package_cache",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "layout",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "package_cache",
+            "name": "layout"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "7b144ed1b68b2a91f96e3d4b45827263d52f4d825c15b91aea531ce214b3ae28"
+}

@@ -2,12 +2,11 @@ use pesde::Url;
 
 pub mod config;
 pub mod dirs;
+pub mod impls;
 pub mod install;
 pub mod reporters;
 pub mod scripts;
-pub mod source;
 pub mod ui;
-pub mod vfs;
 
 pub(crate) fn rootless_url(url: &Url) -> &str {
 	url.as_str().strip_suffix('/').unwrap_or(url.as_str())

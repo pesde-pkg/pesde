@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS `package_cache` (
+    id TEXT PRIMARY KEY NOT NULL,
+    inspection BLOB NOT NULL,
+    layout BLOB NOT NULL
+) WITHOUT ROWID;

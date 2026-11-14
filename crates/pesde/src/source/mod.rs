@@ -7,6 +7,8 @@ use crate::registry::manifest::Alias;
 use crate::registry::manifest::DependencyType;
 use async_trait::async_trait;
 use futures::stream::BoxStream;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::link::PackageStructure;
 use crate::reporters::DownloadProgressReporter;
@@ -48,6 +50,7 @@ pub enum ResolveResult {
 	Elsewhere(Box<[SourceId]>),
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InspectResult {
 	pub structure: PackageStructure,
 	pub dependencies: BTreeMap<Alias, (DependencySpecifier, DependencyType)>,

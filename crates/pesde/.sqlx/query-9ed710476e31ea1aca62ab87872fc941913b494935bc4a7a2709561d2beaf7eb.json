@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT inspection FROM package_cache WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "inspection",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "package_cache",
+            "name": "inspection"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9ed710476e31ea1aca62ab87872fc941913b494935bc4a7a2709561d2beaf7eb"
+}

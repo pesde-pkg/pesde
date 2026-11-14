@@ -21,10 +21,11 @@ use pesde::vfs::PackageStorer;
 use pesde::vfs::VfsPath;
 use tokio::io::AsyncReadExt as _;
 use tokio::task::spawn_blocking;
+use tracing::instrument;
 
 use crate::cli::dirs::cache_dir;
-use crate::cli::source::local_package::LocalPackage;
-use crate::cli::vfs::FsVfs;
+use crate::cli::impls::local_package::LocalPackage;
+use crate::cli::impls::vfs::FsVfs;
 
 const REFSPECS: &[&str] = &[
 	"+HEAD:refs/pesde/head",
@@ -212,6 +213,7 @@ impl GixGitPackageSource {
 
 #[async_trait]
 impl PackageSource for GixGitPackageSource {
+	#[instrument(skip(self), level = "debug")]
 	async fn resolve(&self, specifier: &DependencySpecifier) -> Result<ResolveResult, SourceError> {
 		let DependencySpecifier::Git(specifier) = specifier else {
 			return Err(anyhow::format_err!(
@@ -257,10 +259,11 @@ impl PackageSource for GixGitPackageSource {
 		))
 	}
 
+	#[instrument(skip(self, reporter, to), level = "debug")]
 	async fn download(
 		&self,
 		package_id: &PackageId,
-		_reporter: Arc<dyn DownloadProgressReporter + 'static>,
+		reporter: Arc<dyn DownloadProgressReporter + 'static>,
 		to: &mut dyn PackageStorer,
 	) -> Result<(), SourceError> {
 		let checkout = self.locate(package_id).await?;
@@ -341,12 +344,15 @@ impl PackageSource for GixGitPackageSource {
 		.await
 		.with_context(|| format!("error storing git package `{package_id}`"));
 
+		reporter.report_done();
+
 		remove_checkout(&checkout.dir).await;
 		result?;
 
 		Ok(())
 	}
 
+	#[instrument(skip(self), level = "debug")]
 	async fn inspect(&self, package_id: &PackageId) -> Result<InspectResult, SourceError> {
 		let checkout = self.locate(package_id).await?;
 

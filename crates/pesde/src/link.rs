@@ -6,7 +6,8 @@ use crate::registry::manifest::ManifestExports;
 use crate::registry::manifest::config_luau::LuauConfig;
 use crate::registry::manifest::wally_compat::WallyLocalName;
 use futures::StreamExt as _;
-use serde::Serialize as _;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::__private::str_as_fs_safe;
 use crate::Error;
@@ -18,6 +19,7 @@ use crate::vfs::PackageStorer;
 use crate::vfs::VfsPath;
 
 // A light wrapper over Vfs methods that is context-specific to linking.
+#[derive(Debug)]
 pub(crate) struct LinkVfs {
 	pub(crate) member: WorkspaceMember,
 	dependencies_dir: VfsPath,
@@ -72,9 +74,9 @@ impl LinkVfs {
 	fn install_directory(&self, package: &PackageId, structure: &PackageStructure) -> VfsPath {
 		let mut path = self.package_dir(package);
 		match structure {
-			PackageStructure::Pesde(..) => {}
-			PackageStructure::Wally(name) => path = path.join(&name.parse().unwrap()),
-			PackageStructure::LegacyPesde(..) => {}
+			PackageStructure::Pesde { .. } => {}
+			PackageStructure::Wally { name, server: _ } => path = path.join(&name.parse().unwrap()),
+			PackageStructure::LegacyPesde { .. } => {}
 		}
 		path
 	}
@@ -103,11 +105,12 @@ impl LinkVfs {
 	fn require_path_for(&self, package: &PackageId, structure: &PackageStructure) -> VfsPath {
 		let dir = self.install_directory(package, structure);
 		match structure {
-			PackageStructure::Pesde(exports, _) | PackageStructure::LegacyPesde(exports, _) => {
+			PackageStructure::Pesde { exports, .. }
+			| PackageStructure::LegacyPesde { exports, .. } => {
 				// TODO: handle libless (binary only)
 				dir.join(&exports.lib().unwrap().parse().unwrap())
 			}
-			PackageStructure::Wally(_) => dir,
+			PackageStructure::Wally { .. } => dir,
 		}
 	}
 
@@ -161,7 +164,7 @@ impl LinkVfs {
 		let for_package_dir = self.install_directory(for_package.package_id, for_package.structure);
 
 		match &for_package.structure {
-			PackageStructure::Pesde(_, config) => {
+			PackageStructure::Pesde { exports: _, config } => {
 				self.write_config_luau(
 					format_args!("package {}", for_package.package_id),
 					config.clone(),
@@ -175,7 +178,7 @@ impl LinkVfs {
 				)
 				.await?;
 			}
-			PackageStructure::Wally(_) => {
+			PackageStructure::Wally { .. } => {
 				let dependencies_dir = for_package_dir.pop().unwrap().0;
 				for (alias, dependency) in dependencies {
 					let context = if for_package.context.is_empty() {
@@ -202,24 +205,26 @@ impl LinkVfs {
 						.map_err(|e| Error::vfs(e, path))?;
 				}
 			}
-			PackageStructure::LegacyPesde(_, _) => {
+			PackageStructure::LegacyPesde { .. } => {
 				for (alias, dependency) in dependencies {
-					let dependencies_dir = match &dependency.structure {
-						PackageStructure::Pesde(..) => {
+					let dependency_target = match &dependency.structure {
+						PackageStructure::Pesde { .. } => {
 							tracing::error!(
 								"impossible: legacy pesde package depends on a pesde package"
 							);
 							continue;
 						}
-						#[expect(clippy::todo)]
-						PackageStructure::Wally(_) => {
-							// TODO: this needs to get the realm of the Wally package
-							todo!()
+						PackageStructure::Wally { name: _, server } => {
+							if *server {
+								TargetKind::RobloxServer
+							} else {
+								TargetKind::Roblox
+							}
 						}
-						PackageStructure::LegacyPesde(_, target) => {
-							for_package_dir.join(&target.packages_dir().parse().unwrap())
-						}
+						PackageStructure::LegacyPesde { exports: _, target } => *target,
 					};
+					let dependencies_dir =
+						for_package_dir.join(&dependency_target.packages_dir().parse().unwrap());
 
 					let context = if for_package.context.is_empty() {
 						format_args!("")
@@ -306,14 +311,24 @@ pub(crate) struct PackageLinkContext<'a> {
 }
 
 /// A package's layout
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PackageStructure {
 	/// Linker files in the parent of the directory containing the package's contents
-	Wally(WallyLocalName),
+	Wally {
+		name: WallyLocalName,
+		#[serde(default, skip_serializing_if = "std::ops::Not::not")]
+		server: bool,
+	},
 	/// Luau aliases in the directory containing the package's contents
-	Pesde(ManifestExports, LuauConfig),
+	Pesde {
+		exports: ManifestExports,
+		config: LuauConfig,
+	},
 	/// `*_packages` directories inside the package's content directory
-	LegacyPesde(ManifestExports, crate::legacy::TargetKind),
+	LegacyPesde {
+		exports: ManifestExports,
+		target: crate::legacy::TargetKind,
+	},
 }
 
 /// A kind of [PackageStructure].
@@ -331,9 +346,9 @@ impl PackageStructure {
 	#[must_use]
 	pub fn kind(&self) -> StructureKind {
 		match self {
-			Self::Wally(..) => StructureKind::Wally,
-			Self::Pesde(..) => StructureKind::Pesde,
-			Self::LegacyPesde(..) => StructureKind::LegacyPesde,
+			Self::Wally { .. } => StructureKind::Wally,
+			Self::Pesde { .. } => StructureKind::Pesde,
+			Self::LegacyPesde { .. } => StructureKind::LegacyPesde,
 		}
 	}
 }

@@ -42,19 +42,20 @@ use serde::Deserializer;
 use serde::de::IgnoredAny;
 use tokio::io::AsyncReadExt as _;
 use tokio::task::spawn_blocking;
+use tracing::instrument;
 
 use crate::cli::dirs::cache_dir;
+use crate::cli::impls::source::NetworkAccess;
+use crate::cli::impls::source::git_index::read_file;
+use crate::cli::impls::source::git_index::refresh_git_repo;
+use crate::cli::impls::source::git_index::root_tree;
 use crate::cli::reporters::response_to_async_buf_read;
 use crate::cli::rootless_url;
-use crate::cli::source::NetworkAccess;
-use crate::cli::source::git_index::read_file;
-use crate::cli::source::git_index::refresh_git_repo;
-use crate::cli::source::git_index::root_tree;
 use crate::cli::url_component_encode;
 
 const IGNORED_FILES: &[&str] = &["foreman.toml", "aftman.toml", "rokit.toml", ".DS_Store"];
 
-pub struct IndexLegacyPesdePackageSource {
+pub(super) struct IndexLegacyPesdePackageSource {
 	path: Box<Path>,
 	config: IndexConfig,
 	network: NetworkAccess,
@@ -121,6 +122,7 @@ impl IndexLegacyPesdePackageSource {
 
 #[async_trait]
 impl PackageSource for IndexLegacyPesdePackageSource {
+	#[instrument(skip(self), level = "debug")]
 	async fn resolve(&self, specifier: &DependencySpecifier) -> Result<ResolveResult, SourceError> {
 		let DependencySpecifier::LegacyPesde(specifier) = specifier else {
 			return Err(anyhow::format_err!(
@@ -181,6 +183,7 @@ impl PackageSource for IndexLegacyPesdePackageSource {
 		))
 	}
 
+	#[instrument(skip(self, reporter, to), level = "debug")]
 	async fn download(
 		&self,
 		package_id: &PackageId,
@@ -266,6 +269,7 @@ impl PackageSource for IndexLegacyPesdePackageSource {
 		Ok(())
 	}
 
+	#[instrument(skip(self), level = "debug")]
 	async fn inspect(&self, package_id: &PackageId) -> Result<InspectResult, SourceError> {
 		let PackageId::LegacyPesde(_, name, version, target) = package_id else {
 			return Err(anyhow::format_err!(
@@ -409,13 +413,14 @@ impl IndexFileEntry {
 		}
 
 		Ok(InspectResult {
-			structure: PackageStructure::LegacyPesde(
-				self.target
+			structure: PackageStructure::LegacyPesde {
+				exports: self
+					.target
 					.exports()
 					.map_err(anyhow::Error::from_boxed)
 					.context("legacy pesde index file")?,
-				self.target.kind(),
-			),
+				target: self.target.kind(),
+			},
 			dependencies,
 		})
 	}

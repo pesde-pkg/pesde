@@ -80,6 +80,10 @@ jobs:
         include:
           - db: mysql
             database_url: mysql://root:root@127.0.0.1:3306/test-pesde-registry
+            in: crates/registry-backend-mysql
+          - db: sqlite
+            database_url: sqlite://pesde.sqlite
+            in: crates/pesde
     services:
       mariadb:
         image: ${{ matrix.db == 'mysql' && 'mariadb:11.8' || '' }}
@@ -109,9 +113,9 @@ jobs:
           cargo install sqlx-cli@^0.9
 
       - name: Setup database
-        working-directory: crates/registry-backend-${{ matrix.db }}
+        working-directory: ${{ matrix.in }}
         run: cargo sqlx database setup
 
       - name: Check query state
-        working-directory: crates/registry-backend-${{ matrix.db }}
+        working-directory: ${{ matrix.in }}
         run: cargo sqlx prepare --check

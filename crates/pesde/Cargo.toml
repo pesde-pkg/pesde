@@ -28,6 +28,7 @@ bin = [
     "tokio/rt-multi-thread",
     "tokio/fs",
 
+    "cbor-core/serde",
     "dep:tokio-util",
     "dep:tracing-subscriber",
     "dep:reqwest",
@@ -36,6 +37,7 @@ bin = [
     "dep:async-compression",
     "dep:anyhow",
     "dep:serde_json",
+    "dep:sqlx",
     "dep:clap",
     "dep:gix",
     "dep:percent-encoding",
@@ -112,6 +114,7 @@ async-compression = { workspace = true, features = [
 ], optional = true }
 anyhow = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true, features = ["sqlite"] }
 clap = { version = "4.6.7", default-features = false, features = [
     "std",
     "color",

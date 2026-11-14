@@ -23,9 +23,10 @@ use reqwest::header::AUTHORIZATION;
 use tokio::io::AsyncBufReadExt as _;
 use tokio::io::BufReader;
 use tokio_util::io::StreamReader;
+use tracing::instrument;
 
+use crate::cli::impls::source::NetworkAccess;
 use crate::cli::rootless_url;
-use crate::cli::source::NetworkAccess;
 use crate::cli::url_component_encode;
 
 pub struct RegistryPesdePackageSource {
@@ -35,6 +36,7 @@ pub struct RegistryPesdePackageSource {
 
 #[async_trait]
 impl PackageSource for RegistryPesdePackageSource {
+	#[instrument(skip(self), level = "debug")]
 	async fn resolve(&self, specifier: &DependencySpecifier) -> Result<ResolveResult, SourceError> {
 		let DependencySpecifier::Pesde(specifier) = specifier else {
 			return Err(anyhow::format_err!(
@@ -108,6 +110,7 @@ impl PackageSource for RegistryPesdePackageSource {
 	}
 
 	#[expect(clippy::todo)]
+	#[instrument(skip(self, _reporter, _to), level = "debug")]
 	async fn download(
 		&self,
 		_package_id: &PackageId,
@@ -117,6 +120,7 @@ impl PackageSource for RegistryPesdePackageSource {
 		todo!()
 	}
 
+	#[instrument(skip(self), level = "debug")]
 	async fn inspect(&self, _package_id: &PackageId) -> Result<InspectResult, SourceError> {
 		todo!()
 	}

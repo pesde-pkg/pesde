@@ -14,9 +14,13 @@ use crate::reporters::PatchesReporter;
 use crate::source::PackageId;
 use crate::source::PackageSource;
 
+use futures::StreamExt as _;
+use futures::TryStreamExt as _;
+use futures::stream::FuturesUnordered;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::select;
 use tokio::task::JoinSet;
 use tracing::Instrument as _;
 use tracing::instrument;
@@ -134,6 +138,8 @@ impl Project {
 		} = options;
 
 		if force {
+			tracing::debug!("force install enabled, cleaning dependencies directories");
+
 			let mut tasks = resolution
 				.importers
 				.keys()
@@ -148,6 +154,8 @@ impl Project {
 			while let Some(task) = tasks.join_next().await {
 				task.unwrap()?;
 			}
+
+			tracing::debug!("cleaned dependencies directories");
 		}
 
 		struct InstalledPackage {
@@ -232,6 +240,8 @@ impl Project {
 			let (id, installed_package) = task.unwrap()?;
 			installed_packages.insert(id, installed_package);
 		}
+
+		tracing::debug!("stored all installed packages, proceeding to download");
 
 		let graph_to_download = if force {
 			importer_deps
@@ -321,10 +331,14 @@ impl Project {
 						storer.commit().await.map_err(Error::source)?;
 					}
 
-					for link_vfs in consumers {
-						link_vfs
-							.install_package(&package_id, &installed.structure, false)
-							.await?;
+					{
+						let mut tasks = consumers
+							.map(|link_vfs| {
+								link_vfs.install_package(&package_id, &installed.structure, false)
+							})
+							.collect::<FuturesUnordered<_>>();
+
+						while tasks.try_next().await?.is_some() {}
 					}
 
 					installed.used_by.extend(needing_install);
@@ -340,8 +354,13 @@ impl Project {
 			installed_packages.insert(id, installed);
 		}
 
+		tracing::debug!("installed all packages, proceeding to link");
+
 		// TODO: apply patches
 		// TODO: reconsider how packagestructure works/where it originates from.
+
+		let mut package_tasks = FuturesUnordered::new();
+		let mut importer_tasks = FuturesUnordered::new();
 
 		// step 2. link packages into their subprojects' dependencies.
 		// for now, do so without context. this allows the link hook to execute
@@ -369,9 +388,8 @@ impl Project {
 					});
 
 			for link_vfs in &installed.used_by {
-				link_vfs
-					.link_package_depenencies(link_context, dependencies.clone())
-					.await?;
+				package_tasks
+					.push(link_vfs.link_package_depenencies(link_context, dependencies.clone()));
 			}
 		}
 
@@ -379,21 +397,52 @@ impl Project {
 			let member = self.member(importer.clone());
 			let link_vfs = LinkVfs::new(member);
 
-			link_vfs
-				.link_subproject(importer_data.dependencies.iter().filter_map(
-					|(alias, (dep_id, _, _))| {
-						installed_packages
-							.get(dep_id)
-							.map(|dep| (alias, dep_id, &dep.structure))
-					},
-				))
-				.await?;
+			importer_tasks.push(async {
+				let link_vfs = link_vfs;
 
-			if matches!(install_dependencies_mode, InstallDependenciesMode::Prod) || !force {
 				link_vfs
-					.prune_unused_packages(installed_packages.keys())
-					.await?;
+					.link_subproject(importer_data.dependencies.iter().filter_map(
+						|(alias, (dep_id, _, _))| {
+							installed_packages
+								.get(dep_id)
+								.map(|dep| (alias, dep_id, &dep.structure))
+						},
+					))
+					.await
+			});
+		}
+
+		loop {
+			select! {
+				Some(task) = package_tasks.next() => {
+					task?;
+				}
+				Some(task) = importer_tasks.next() => {
+					task?;
+				}
+				else => break,
 			}
+		}
+
+		if matches!(install_dependencies_mode, InstallDependenciesMode::Prod) || !force {
+			let mut tasks = resolution
+				.importers
+				.keys()
+				.map(|importer| {
+					let member = self.member(importer.clone());
+					let link_vfs = LinkVfs::new(member);
+
+					async {
+						let link_vfs = link_vfs;
+
+						link_vfs
+							.prune_unused_packages(installed_packages.keys())
+							.await
+					}
+				})
+				.collect::<FuturesUnordered<_>>();
+
+			while tasks.try_next().await?.is_some() {}
 		}
 
 		Ok(())

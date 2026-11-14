@@ -19,34 +19,38 @@ use tokio::sync::OnceCell;
 use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 
+use crate::cli::impls::sqlite::Sqlite;
+use crate::cli::impls::sqlite::SqliteCachingPackageSource;
 use crate::cli::scripts::ExecuteScriptHooks;
 use crate::cli::scripts::execute_script;
 
 mod git_index;
 mod gix_git;
-mod index_legacy_pesde;
-mod index_wally;
-mod local_package;
+pub(super) mod index_legacy_pesde;
+pub(super) mod index_wally;
 mod registry_pesde;
 
 pub struct CliSourceProvider {
 	sources: Mutex<HashMap<SourceId, Arc<OnceCell<Arc<dyn PackageSource>>>>>,
 	workspace: Workspace,
+	sqlite: Sqlite,
 	reqwest: reqwest::Client,
 	network_concurrency: Arc<Semaphore>,
-	auth_scripts: HashMap<Url, Box<str>>,
+	auth_scripts: Arc<HashMap<Url, Box<str>>>,
 }
 
 impl CliSourceProvider {
 	pub fn new(
 		workspace: Workspace,
+		sqlite: Sqlite,
 		reqwest: reqwest::Client,
 		network_concurrency: NonZero<usize>,
-		auth_scripts: HashMap<Url, Box<str>>,
+		auth_scripts: Arc<HashMap<Url, Box<str>>>,
 	) -> Self {
 		Self {
 			sources: Default::default(),
 			workspace,
+			sqlite,
 			reqwest,
 			network_concurrency: Arc::new(Semaphore::new(network_concurrency.get())),
 			auth_scripts,
@@ -102,29 +106,63 @@ impl SourceProvider for CliSourceProvider {
 				tracing::debug!("initializing source `{source_id:?}`");
 
 				anyhow::Ok(match source_id {
-					SourceId::Pesde(url) => Arc::new(registry_pesde::RegistryPesdePackageSource {
-						url: url.clone(),
-						network: network_access(url).await?,
-					}) as Arc<dyn PackageSource>,
-					SourceId::Wally(url) => Arc::new(
-						index_wally::IndexWallyPackageSource::new(
+					SourceId::Pesde(url) => {
+						let source = registry_pesde::RegistryPesdePackageSource {
+							url: url.clone(),
+							network: network_access(url).await?,
+						};
+
+						let source = SqliteCachingPackageSource {
+							source,
+							sqlite: self.sqlite.clone(),
+						};
+
+						Arc::new(source) as Arc<dyn PackageSource>
+					}
+					SourceId::Wally(url) => {
+						let source = index_wally::IndexWallyPackageSource::new(
 							url.clone(),
 							network_access(url).await?,
 						)
-						.await?,
-					),
-					SourceId::LegacyPesde(url) => Arc::new(
-						index_legacy_pesde::IndexLegacyPesdePackageSource::new(
+						.await?;
+
+						let source = SqliteCachingPackageSource {
+							source,
+							sqlite: self.sqlite.clone(),
+						};
+
+						Arc::new(source)
+					}
+					SourceId::LegacyPesde(url) => {
+						let source = index_legacy_pesde::IndexLegacyPesdePackageSource::new(
 							url.clone(),
 							network_access(url).await?,
 						)
-						.await?,
-					),
+						.await?;
+
+						let source = SqliteCachingPackageSource {
+							source,
+							sqlite: self.sqlite.clone(),
+						};
+
+						Arc::new(source)
+					}
 					SourceId::Git(url) => {
-						Arc::new(gix_git::GixGitPackageSource::new(url.clone()).await?)
+						let source = gix_git::GixGitPackageSource::new(url.clone()).await?;
+
+						let source = SqliteCachingPackageSource {
+							source,
+							sqlite: self.sqlite.clone(),
+						};
+
+						Arc::new(source)
 					}
 					SourceId::Workspace => {
-						Arc::new(WorkspacePackageSource::new(self.workspace.clone()))
+						let source = WorkspacePackageSource::new(self.workspace.clone());
+
+						// no SQLite caching: very hot data
+
+						Arc::new(source)
 					}
 				})
 			})

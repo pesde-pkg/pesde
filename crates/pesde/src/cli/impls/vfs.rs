@@ -21,7 +21,6 @@ use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use itertools::EitherOrBoth;
 use itertools::Itertools as _;
-use pesde::__private::str_as_fs_safe;
 use pesde::Importer;
 use pesde::MANIFEST_FILE_NAME;
 use pesde::hash::Hash;
@@ -34,11 +33,13 @@ use pesde::vfs::PackageStorer;
 use pesde::vfs::Vfs;
 use pesde::vfs::VfsPath;
 use pesde::vfs::glob::VfsGlobset;
+use pesde::vfs::glob::VfsGlobsetVfs;
 use rand::RngExt as _;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 use tokio::io::AsyncReadExt as _;
+use tokio::io::AsyncSeekExt as _;
 use tokio::io::AsyncWriteExt as _;
 use tokio::task::JoinSet;
 use tokio_util::compat::Compat;
@@ -46,10 +47,13 @@ use tokio_util::compat::TokioAsyncReadCompatExt as _;
 use tokio_util::compat::TokioAsyncWriteCompatExt as _;
 use tracing::instrument;
 
+use crate::cli::impls::sqlite::Sqlite;
+
 #[derive(Debug)]
 pub struct FsVfs {
 	pub(crate) cas_dir: Box<Path>,
 	pub(crate) project_dir: Box<Path>,
+	pub(crate) sqlite: Sqlite,
 }
 
 impl FsVfs {
@@ -68,13 +72,8 @@ impl FsVfs {
 			.join("cas")
 			.join("v1");
 
-		let vfs = Self {
-			cas_dir: cas_dir.into(),
-			project_dir: for_dir,
-		};
-
 		// save on having to do this everywhere
-		let tmp_dir = vfs.tmp_dir_path();
+		let tmp_dir = tmp_dir_path(&cas_dir);
 		tokio::fs::create_dir_all(&tmp_dir).await.with_context(|| {
 			format!(
 				"failed to create parent directory for CAS directory {}",
@@ -82,7 +81,11 @@ impl FsVfs {
 			)
 		})?;
 
-		Ok(vfs)
+		Ok(Self {
+			sqlite: Sqlite::new(&cas_dir),
+			cas_dir: cas_dir.into(),
+			project_dir: for_dir,
+		})
 	}
 
 	pub async fn in_project(cwd: PathBuf) -> anyhow::Result<(Self, Importer)> {
@@ -97,22 +100,18 @@ impl FsVfs {
 
 		Ok((Self::new(root.join(workspace_root)).await?, importer))
 	}
-
-	pub fn from_parts(cas_dir: impl Into<Box<Path>>, project_dir: impl Into<Box<Path>>) -> Self {
-		Self {
-			cas_dir: cas_dir.into(),
-			project_dir: project_dir.into(),
-		}
-	}
 }
 
 pub(crate) async fn find_project(root: &Path, cwd: &Path) -> anyhow::Result<(PathBuf, Importer)> {
-	// hacky but this allows us to use the glob matching code
-	// cas_dir won't be used as package handles won't
-	let vfs = Arc::new(FsVfs {
-		cas_dir: Path::new("!!!DUMMY!!!").into(),
-		project_dir: root.into(),
-	});
+	struct ProjectVfsGlobsetVfs(PathBuf);
+	impl VfsGlobsetVfs for &'_ ProjectVfsGlobsetVfs {
+		fn read_dir(&self, path: VfsPath) -> BoxStream<'_, std::io::Result<DirEntry>> {
+			let path = self.0.join(path);
+			read_dir_impl(path)
+		}
+	}
+
+	let vfs = ProjectVfsGlobsetVfs(root.into());
 
 	let mut current_path = Some(cwd.to_path_buf());
 	let mut project_root = None::<PathBuf>;
@@ -122,7 +121,7 @@ pub(crate) async fn find_project(root: &Path, cwd: &Path) -> anyhow::Result<(Pat
 
 	async fn get_workspace_member(
 		buf: &mut Vec<u8>,
-		vfs: &Arc<FsVfs>,
+		vfs: &ProjectVfsGlobsetVfs,
 		manifest_file: &mut tokio::fs::File,
 		at_path: &Path,
 		member_path: &Path,
@@ -151,7 +150,7 @@ pub(crate) async fn find_project(root: &Path, cwd: &Path) -> anyhow::Result<(Pat
 		manifest
 			.workspace
 			.members
-			.matches(vfs.clone(), &at_path)
+			.matches(vfs, &at_path)
 			.try_any(async |p| {
 				// comparing std paths by equality is fragile
 				p.split('/')
@@ -288,194 +287,8 @@ async fn get_linkable_dir(path: &Path) -> anyhow::Result<PathBuf> {
 	result
 }
 
-#[async_trait]
-impl Vfs for FsVfs {
-	async fn read_file(
-		self: Arc<Self>,
-		path: &VfsPath,
-	) -> std::io::Result<Box<dyn AsyncRead + Unpin + Send>> {
-		let path = self.project_dir.join(path);
-		let file = tokio::fs::File::open(&path)
-			.await
-			.map_err(|e| contextualize_io_error(e, &path))?;
-		Ok(Box::new(file.compat()))
-	}
-
-	async fn write_file(self: Arc<Self>, path: &VfsPath, contents: &[u8]) -> std::io::Result<()> {
-		let temp_path = self.unique_tmp_path();
-		tokio::fs::write(&temp_path, contents)
-			.await
-			.map_err(|e| contextualize_io_error(e, &temp_path))?;
-
-		let path = self.project_dir.join(path);
-		if let Some(parent) = path.parent() {
-			tokio::fs::create_dir_all(parent)
-				.await
-				.map_err(|e| contextualize_io_error(e, parent))?;
-		}
-		tokio::fs::rename(&temp_path, &path)
-			.await
-			.map_err(|e| contextualize_io_error(e, &path))?;
-
-		Ok(())
-	}
-
-	async fn exists(self: Arc<Self>, path: &VfsPath) -> std::io::Result<bool> {
-		let path = self.project_dir.join(path);
-		tokio::fs::try_exists(&path)
-			.await
-			.map_err(|e| contextualize_io_error(e, &path))
-	}
-
-	fn read_dir(self: Arc<Self>, path: VfsPath) -> BoxStream<'static, std::io::Result<DirEntry>> {
-		let path = self.project_dir.join(path);
-		try_stream!({
-			let mut read_dir = match tokio::fs::read_dir(&path).await {
-				Ok(dir) => dir,
-				Err(e) => {
-					Err(contextualize_io_error(e, &path))?;
-					return;
-				}
-			};
-
-			while let Some(entry) = read_dir.next_entry().await.transpose() {
-				let entry = match entry {
-					Ok(entry) => entry,
-					Err(e) => {
-						Err(contextualize_io_error(e, &path))?;
-						return;
-					}
-				};
-
-				yield DirEntry {
-					name: entry
-						.file_name()
-						.into_string()
-						.map_err(|name| {
-							std::io::Error::new(
-								std::io::ErrorKind::InvalidData,
-								format!("invalid UTF-8 in file name: `{}`", name.to_string_lossy()),
-							)
-						})?
-						.parse()
-						.map_err(std::io::Error::other)?,
-					is_dir: match entry.metadata().await {
-						Ok(metadata) => metadata.is_dir(),
-						Err(e) => {
-							Err(contextualize_io_error(e, &path))?;
-							return;
-						}
-					},
-				};
-			}
-		})
-		.boxed()
-	}
-
-	async fn remove_dir_all(self: Arc<Self>, path: &VfsPath) -> std::io::Result<()> {
-		let path = self.project_dir.join(path);
-		tokio::fs::remove_dir_all(&path)
-			.await
-			.map_err(|e| contextualize_io_error(e, &path))
-	}
-
-	async fn copy_package_to(
-		self: Arc<Self>,
-		immutable: bool,
-		package: &PackageId,
-		structure: StructureKind,
-		destination: &VfsPath,
-	) -> std::io::Result<()> {
-		let manifest_path = match self.package_manifest(package) {
-			CasOrLink::Cas(path) => path,
-			CasOrLink::Link(path) => {
-				self.link_path_package_to(&path, structure, destination)
-					.await?;
-				return Ok(());
-			}
-		};
-
-		let manifest_file = tokio::fs::read(&manifest_path)
-			.await
-			.map_err(|e| contextualize_io_error(e, &manifest_path))?;
-
-		let manifest: CasPackageLayoutManifest =
-			serde_json::from_slice(&manifest_file).map_err(std::io::Error::other)?;
-
-		self.copy_existing_package_to(manifest, immutable, destination, self.unique_tmp_path())
-			.await
-	}
-
-	async fn copy_and_maybe_store_package(
-		self: Arc<Self>,
-		immutable: bool,
-		package: &PackageId,
-		structure: StructureKind,
-		destination: &VfsPath,
-	) -> std::io::Result<Option<Box<dyn PackageStorer>>> {
-		let manifest_path = match self.package_manifest(package) {
-			CasOrLink::Cas(path) => path,
-			CasOrLink::Link(path) => {
-				self.link_path_package_to(&path, structure, destination)
-					.await?;
-				return Ok(None);
-			}
-		};
-
-		match tokio::fs::read(&manifest_path).await {
-			Ok(manifest_file) => {
-				let manifest: CasPackageLayoutManifest =
-					serde_json::from_slice(&manifest_file).map_err(std::io::Error::other)?;
-
-				self.copy_existing_package_to(
-					manifest,
-					immutable,
-					destination,
-					self.unique_tmp_path(),
-				)
-				.await?;
-
-				return Ok(None);
-			}
-			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-			Err(e) => {
-				return Err(contextualize_io_error(e, &manifest_path));
-			}
-		}
-
-		let storer = CasPackageStorer {
-			manifest_path,
-			tmp_file_path: self.unique_tmp_path(),
-			vfs: self,
-			immutable,
-			destination: destination.clone(),
-			manifest: CasPackageLayoutManifest {
-				hash_algorithm: HashAlgorithm::default(),
-				entries: BTreeMap::new(),
-			},
-			current_file: None,
-		};
-
-		Ok(Some(Box::new(storer)))
-	}
-}
-
-enum CasOrLink {
-	Cas(Box<Path>),
-	Link(PathBuf),
-}
-
 impl FsVfs {
-	fn tmp_dir_path(&self) -> Box<Path> {
-		self.cas_dir.join(".tmp").into()
-	}
-
-	pub(crate) fn unique_tmp_path(&self) -> Box<Path> {
-		self.tmp_dir_path()
-			.join(format!("tmp-{}", rand::random::<u64>()))
-			.into()
-	}
-
+	// link refers to e.g. workspace packages that should not go through the CAS
 	async fn link_path_package_to(
 		&self,
 		path: &Path,
@@ -558,7 +371,21 @@ impl FsVfs {
 
 		Ok(())
 	}
+}
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CasPackageLayoutManifest {
+	#[serde(rename = "a")]
+	pub hash_algorithm: HashAlgorithm,
+	#[serde(rename = "e")]
+	pub entries: BTreeMap<VfsPath, Option<Box<[u8]>>>,
+}
+
+fn tmp_dir_path(cas_dir: &Path) -> PathBuf {
+	cas_dir.join("tmp")
+}
+
+impl FsVfs {
 	async fn copy_existing_package_to(
 		&self,
 		manifest: CasPackageLayoutManifest,
@@ -592,7 +419,7 @@ impl FsVfs {
 			}
 
 			if let Some(hash) = entry {
-				let src_path = self.file_path(manifest.hash_algorithm, &hash);
+				let src_path = self.blob_path(manifest.hash_algorithm, &hash);
 
 				// TODO: utilise reflinking
 				if immutable {
@@ -619,62 +446,24 @@ impl FsVfs {
 		Ok(())
 	}
 
-	fn cas_indices_dir(&self) -> PathBuf {
-		self.cas_dir.join("indices")
+	pub(crate) fn tmp_dir_path(&self) -> PathBuf {
+		tmp_dir_path(&self.cas_dir)
 	}
 
-	fn package_manifest(&self, package: &PackageId) -> CasOrLink {
-		let mut path = self.cas_indices_dir();
-
-		match package {
-			PackageId::Pesde(registry, name, version) => {
-				path.push("pesde");
-				path.push(str_as_fs_safe(&registry.to_string()));
-				path.push(str_as_fs_safe(name.scope()));
-				path.push(str_as_fs_safe(name.local_name()));
-				path.push(str_as_fs_safe(&version.to_string()));
-			}
-			PackageId::Wally(index, name, version) => {
-				path.push("wally");
-				path.push(str_as_fs_safe(&index.to_string()));
-				path.push(str_as_fs_safe(name.scope()));
-				path.push(str_as_fs_safe(name.local_name()));
-				path.push(str_as_fs_safe(&version.to_string()));
-			}
-			PackageId::LegacyPesde(index, name, version, target) => {
-				path.push("legacy_pesde");
-				path.push(str_as_fs_safe(&index.to_string()));
-				path.push(str_as_fs_safe(name.scope()));
-				path.push(str_as_fs_safe(name.local_name()));
-				path.push(str_as_fs_safe(&version.to_string()));
-				path.push(str_as_fs_safe(&target.to_string()));
-			}
-			PackageId::Git(url, revision, subpath) => {
-				path.push("git");
-				path.push(str_as_fs_safe(&url.to_string()));
-				path.push(str_as_fs_safe(revision));
-				// use : because it is an invalid character in a path, so we will not collide with any other paths
-				path.push(str_as_fs_safe(if subpath.is_empty() {
-					":"
-				} else {
-					subpath
-				}));
-			}
-			PackageId::Workspace(importer) => {
-				return CasOrLink::Link(self.project_dir.join(&**importer));
-			}
-		}
-
-		CasOrLink::Cas(path.into())
+	pub(crate) fn unique_tmp_path(&self) -> Box<Path> {
+		self.tmp_dir_path()
+			.join(format!("tmp-{}", rand::random::<u64>()))
+			.into()
 	}
 
-	fn cas_parts_dir(&self) -> PathBuf {
+	fn cas_blobs_dir(&self) -> PathBuf {
 		self.cas_dir.join("by_algorithm")
 	}
 
-	fn file_path(&self, algo: HashAlgorithm, hash: &str) -> Box<Path> {
+	fn blob_path(&self, algo: HashAlgorithm, hash_bytes: &[u8]) -> Box<Path> {
+		let hash = Hash::new(algo, hash_bytes).unwrap().encoded();
 		let (prefix, rest) = hash.split_at(2);
-		self.cas_parts_dir()
+		self.cas_blobs_dir()
 			.join(algo.to_string())
 			.join(prefix)
 			.join(rest)
@@ -682,14 +471,186 @@ impl FsVfs {
 	}
 }
 
+fn read_dir_impl(path: PathBuf) -> BoxStream<'static, std::io::Result<DirEntry>> {
+	try_stream!({
+		let mut read_dir = match tokio::fs::read_dir(&path).await {
+			Ok(dir) => dir,
+			Err(e) => {
+				Err(contextualize_io_error(e, &path))?;
+				return;
+			}
+		};
+
+		while let Some(entry) = read_dir.next_entry().await.transpose() {
+			let entry = match entry {
+				Ok(entry) => entry,
+				Err(e) => {
+					Err(contextualize_io_error(e, &path))?;
+					return;
+				}
+			};
+
+			yield DirEntry {
+				name: entry
+					.file_name()
+					.into_string()
+					.map_err(|name| {
+						std::io::Error::new(
+							std::io::ErrorKind::InvalidData,
+							format!("invalid UTF-8 in file name: `{}`", name.to_string_lossy()),
+						)
+					})?
+					.parse()
+					.map_err(std::io::Error::other)?,
+				is_dir: match entry.metadata().await {
+					Ok(metadata) => metadata.is_dir(),
+					Err(e) => {
+						Err(contextualize_io_error(e, &path))?;
+						return;
+					}
+				},
+			};
+		}
+	})
+	.boxed()
+}
+
+#[async_trait]
+impl Vfs for FsVfs {
+	async fn read_file(
+		self: Arc<Self>,
+		path: &VfsPath,
+	) -> std::io::Result<Box<dyn AsyncRead + Unpin + Send>> {
+		let path = self.project_dir.join(path);
+		let file = tokio::fs::File::open(&path)
+			.await
+			.map_err(|e| contextualize_io_error(e, &path))?;
+		Ok(Box::new(file.compat()))
+	}
+
+	async fn write_file(self: Arc<Self>, path: &VfsPath, contents: &[u8]) -> std::io::Result<()> {
+		let temp_path = self.unique_tmp_path();
+		tokio::fs::write(&temp_path, contents)
+			.await
+			.map_err(|e| contextualize_io_error(e, &temp_path))?;
+
+		let path = self.project_dir.join(path);
+		if let Some(parent) = path.parent() {
+			tokio::fs::create_dir_all(parent)
+				.await
+				.map_err(|e| contextualize_io_error(e, parent))?;
+		}
+		tokio::fs::rename(&temp_path, &path)
+			.await
+			.map_err(|e| contextualize_io_error(e, &path))?;
+
+		Ok(())
+	}
+
+	async fn exists(self: Arc<Self>, path: &VfsPath) -> std::io::Result<bool> {
+		let path = self.project_dir.join(path);
+		tokio::fs::try_exists(&path)
+			.await
+			.map_err(|e| contextualize_io_error(e, &path))
+	}
+
+	fn read_dir(self: Arc<Self>, path: VfsPath) -> BoxStream<'static, std::io::Result<DirEntry>> {
+		let path = self.project_dir.join(path);
+		read_dir_impl(path)
+	}
+
+	async fn remove_dir_all(self: Arc<Self>, path: &VfsPath) -> std::io::Result<()> {
+		let path = self.project_dir.join(path);
+		tokio::fs::remove_dir_all(&path)
+			.await
+			.map_err(|e| contextualize_io_error(e, &path))
+	}
+
+	async fn copy_package_to(
+		self: Arc<Self>,
+		immutable: bool,
+		package: &PackageId,
+		structure: StructureKind,
+		destination: &VfsPath,
+	) -> std::io::Result<()> {
+		if let PackageId::Workspace(importer) = package {
+			self.link_path_package_to(&self.project_dir.join(&**importer), structure, destination)
+				.await?;
+			return Ok(());
+		}
+
+		let manifest = self
+			.sqlite
+			.get_cached_layout(package)
+			.await
+			.map_err(std::io::Error::other)?;
+
+		let Some(manifest) = manifest else {
+			return Err(std::io::Error::new(
+				std::io::ErrorKind::NotFound,
+				format!("package `{package}` not found in CAS"),
+			));
+		};
+
+		self.copy_existing_package_to(manifest, immutable, destination, self.unique_tmp_path())
+			.await
+	}
+
+	async fn copy_and_maybe_store_package(
+		self: Arc<Self>,
+		immutable: bool,
+		package: &PackageId,
+		structure: StructureKind,
+		destination: &VfsPath,
+	) -> std::io::Result<Option<Box<dyn PackageStorer>>> {
+		if let PackageId::Workspace(importer) = package {
+			self.link_path_package_to(&self.project_dir.join(&**importer), structure, destination)
+				.await?;
+
+			return Ok(None);
+		}
+
+		let manifest = self
+			.sqlite
+			.get_cached_layout(package)
+			.await
+			.map_err(std::io::Error::other)?;
+
+		if let Some(manifest) = manifest {
+			self.copy_existing_package_to(manifest, immutable, destination, self.unique_tmp_path())
+				.await?;
+
+			return Ok(None);
+		}
+
+		let storer = CasPackageStorer {
+			tmp_file_path: self.unique_tmp_path(),
+			vfs: self,
+			package_id: package.clone(),
+			immutable,
+			destination: destination.clone(),
+			manifest: CasPackageLayoutManifest {
+				hash_algorithm: HashAlgorithm::default(),
+				entries: BTreeMap::new(),
+			},
+			current_file: None,
+		};
+
+		Ok(Some(Box::new(storer)))
+	}
+}
+
 struct CasPackageStorer {
 	vfs: Arc<FsVfs>,
+	package_id: PackageId,
+
+	manifest: CasPackageLayoutManifest,
+
+	tmp_file_path: Box<Path>,
+	current_file: Option<CasFileWriter>,
+
 	immutable: bool,
 	destination: VfsPath,
-	manifest_path: Box<Path>,
-	tmp_file_path: Box<Path>,
-	manifest: CasPackageLayoutManifest,
-	current_file: Option<CasFileWriter>,
 }
 
 #[async_trait]
@@ -708,7 +669,13 @@ impl PackageStorer for CasPackageStorer {
 		let file = self.flush_current().await?;
 
 		let file = match file {
-			Some(file) => file,
+			Some(mut file) => {
+				file.seek(std::io::SeekFrom::Start(0))
+					.await
+					.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
+
+				file
+			}
 			None => tokio::fs::File::create_new(&self.tmp_file_path)
 				.await
 				.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?,
@@ -729,39 +696,13 @@ impl PackageStorer for CasPackageStorer {
 	}
 
 	async fn commit(mut self: Box<Self>) -> std::io::Result<()> {
-		let file = self.flush_current().await?;
+		self.flush_current().await?;
 
-		let manifest_json = serde_json::to_vec(&self.manifest).map_err(std::io::Error::other)?;
-
-		let mut file = match file {
-			Some(file) => file,
-			None => tokio::fs::File::create_new(&self.tmp_file_path)
-				.await
-				.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?,
-		};
-
-		file.write_all(&manifest_json)
+		self.vfs
+			.sqlite
+			.cache_layout(&self.package_id, &self.manifest)
 			.await
-			.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
-
-		file.shutdown()
-			.await
-			.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
-
-		file.shutdown()
-			.await
-			.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
-		drop(file);
-
-		if let Some(parent) = self.manifest_path.parent() {
-			tokio::fs::create_dir_all(parent)
-				.await
-				.map_err(|e| contextualize_io_error(e, parent))?;
-		}
-
-		tokio::fs::rename(&self.tmp_file_path, &self.manifest_path)
-			.await
-			.map_err(|e| contextualize_io_error(e, &self.tmp_file_path))?;
+			.map_err(std::io::Error::other)?;
 
 		// TODO: do this continuously as files are written, rather than at the end
 		self.vfs
@@ -784,11 +725,11 @@ impl CasPackageStorer {
 		};
 
 		let hash = writer.hasher.finalize();
-		let file_path = self.vfs.file_path(hash.algorithm(), &hash.encoded());
+		let file_path = self.vfs.blob_path(hash.algorithm(), hash.bytes());
 
 		self.manifest
 			.entries
-			.insert(writer.path, Some(hash.encoded().into()));
+			.insert(writer.path, Some(hash.bytes().into()));
 
 		let mut handle = writer.handle.into_inner();
 
@@ -853,109 +794,7 @@ impl futures::io::AsyncWrite for CasFileWriter {
 	}
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CasPackageLayoutManifest {
-	#[serde(rename = "a")]
-	pub hash_algorithm: HashAlgorithm,
-	#[serde(rename = "e")]
-	pub entries: BTreeMap<VfsPath, Option<Box<str>>>,
-}
-
-#[derive(Debug, Error)]
-#[error("{1}")]
-struct ContextualizeIoError<T>(#[source] std::io::Error, T);
-
-fn contextualize_io_error(e: std::io::Error, path: &Path) -> std::io::Error {
-	std::io::Error::new(
-		e.kind(),
-		ContextualizeIoError(
-			e,
-			anyhow::format_err!("I/O error while accessing `{}`", path.display()),
-		),
-	)
-}
-
 impl FsVfs {
-	pub fn list_cas_packages(
-		&self,
-	) -> impl Stream<Item = anyhow::Result<(PathBuf, CasPackageLayoutManifest)>> + use<> {
-		async fn read_manifest(path: &Path) -> anyhow::Result<Option<CasPackageLayoutManifest>> {
-			let contents = match tokio::fs::read(path).await {
-				Ok(c) => c,
-				Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-				Err(e) => {
-					return Err(e).with_context(|| {
-						format!("failed to read cas package file at `{}`", path.display())
-					});
-				}
-			};
-			let manifest = serde_json::from_slice(&contents).with_context(|| {
-				format!(
-					"failed to parse cas package manifest at `{}`",
-					path.display()
-				)
-			})?;
-			Ok(Some(manifest))
-		}
-
-		let root = self.cas_indices_dir();
-		try_stream! {
-			let mut stack = vec![root.clone()];
-			while let Some(dir) = stack.pop() {
-				let mut read_dir = match tokio::fs::read_dir(&dir).await {
-					Ok(d) => d,
-					Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-					Err(e) if e.kind() == std::io::ErrorKind::NotADirectory => {
-						if let Some(m) = read_manifest(&dir).await? {
-							yield (dir, m);
-						}
-						continue;
-					}
-					Err(e) => {
-						Err(e).with_context(|| {
-							format!("failed to read cas package directory at `{}`", dir.display())
-						})?;
-
-						unreachable!()
-					}
-				};
-
-				loop {
-					let entry = match read_dir.next_entry().await {
-						Ok(Some(entry)) => entry,
-						Ok(None) => break,
-						Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
-						Err(e) => {
-							Err(e).with_context(|| {
-								format!("failed to read entry in `{}`", dir.display())
-							})?;
-							unreachable!()
-						}
-					};
-
-					let path = entry.path();
-					match entry.file_type().await {
-						Ok(ty) if ty.is_dir() => stack.push(path),
-						// we do not want to follow symlinks, they should not appear here at all
-						#[expect(clippy::filetype_is_file)]
-						Ok(ty) if ty.is_file() => {
-							if let Some(m) = read_manifest(&path).await? {
-								yield (path, m);
-							}
-						}
-						Ok(_) => {}
-						Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-						Err(e) => {
-							Err(e).with_context(|| {
-								format!("failed to stat `{}`", path.display())
-							})?;
-						}
-					}
-				}
-			}
-		}
-	}
-
 	pub async fn remove_unused_hashes(&self) -> anyhow::Result<HashSet<Hash>> {
 		fn traverse(
 			dir: PathBuf,
@@ -1027,7 +866,7 @@ impl FsVfs {
 
 		let mut res = HashSet::new();
 
-		let tasks = match read_dir_stream(&self.cas_parts_dir()).await {
+		let tasks = match read_dir_stream(&self.cas_blobs_dir()).await {
 			Ok(tasks) => tasks,
 			Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(res),
 			Err(e) => return Err(e).context("failed to read cas directory"),
@@ -1143,4 +982,18 @@ async fn get_nlinks(path: &Path) -> anyhow::Result<u64> {
 	{
 		compile_error!("unsupported platform");
 	}
+}
+
+#[derive(Debug, Error)]
+#[error("{1}")]
+struct ContextualizeIoError<T>(#[source] std::io::Error, T);
+
+fn contextualize_io_error(e: std::io::Error, path: &Path) -> std::io::Error {
+	std::io::Error::new(
+		e.kind(),
+		ContextualizeIoError(
+			e,
+			anyhow::format_err!("I/O error while accessing `{}`", path.display()),
+		),
+	)
 }

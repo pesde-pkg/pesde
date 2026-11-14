@@ -12,9 +12,9 @@ use pesde::source::InspectResult;
 use pesde::source::PackageId;
 use serde::Deserialize as _;
 
-use crate::cli::source::index_legacy_pesde::LegacyPesdeManifest;
-use crate::cli::source::index_wally::WallyManifest;
-use crate::cli::vfs::find_project;
+use crate::cli::impls::source::index_legacy_pesde::LegacyPesdeManifest;
+use crate::cli::impls::source::index_wally::WallyManifest;
+use crate::cli::impls::vfs::find_project;
 
 pub struct LocalPackage {
 	pub workspace_dir: PathBuf,
@@ -35,23 +35,23 @@ impl LocalPackage {
 	pub async fn inspect(&self, package_id: &PackageId) -> anyhow::Result<InspectResult> {
 		match self.detect_manifest(package_id).await? {
 			DetectedManifest::Pesde(manifest) => Ok(InspectResult {
-				structure: PackageStructure::Pesde(
-					manifest
+				structure: PackageStructure::Pesde {
+					exports: manifest
 						.exports
 						.context("can't depend on exportless package")?,
-					manifest.config,
-				),
+					config: manifest.config,
+				},
 				dependencies: manifest.dependencies.into_inner(),
 			}),
 			DetectedManifest::LegacyPesde(manifest) => Ok(InspectResult {
-				structure: PackageStructure::LegacyPesde(
-					manifest
+				structure: PackageStructure::LegacyPesde {
+					exports: manifest
 						.target
 						.exports()
 						.map_err(anyhow::Error::from_boxed)
 						.with_context(|| format!("package `{package_id}`"))?,
-					manifest.target.kind(),
-				),
+					target: manifest.target.kind(),
+				},
 				dependencies: manifest.all_dependencies()?,
 			}),
 			DetectedManifest::Wally(manifest) => {

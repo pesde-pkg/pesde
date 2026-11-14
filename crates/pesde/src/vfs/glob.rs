@@ -69,7 +69,7 @@ impl VfsGlobset {
 
 	pub fn matches<'a>(
 		&'a self,
-		vfs: Arc<dyn Vfs>,
+		vfs: impl VfsGlobsetVfs + 'a,
 		root: &'a VfsPath,
 	) -> impl Stream<Item = Result<VfsPath>> + Send + 'a {
 		struct Frame<'a> {
@@ -106,7 +106,7 @@ impl VfsGlobset {
 						None => (root.clone(), prefix.clone()),
 					};
 
-					let mut entries = std::pin::pin!(vfs.clone().read_dir(parent));
+					let mut entries = std::pin::pin!(vfs.read_dir(parent));
 					let mut found = false;
 					while let Some(entry) = entries.next().await {
 						match entry {
@@ -136,7 +136,7 @@ impl VfsGlobset {
 				let start = root.join(prefix);
 
 				let mut stack = vec![Frame {
-					entries: Box::pin(vfs.clone().read_dir(start.clone())),
+					entries: Box::pin(vfs.read_dir(start.clone())),
 					dir: start,
 					rel: PathBuf::new(),
 				}];
@@ -176,7 +176,7 @@ impl VfsGlobset {
 
 					if entry.is_dir && can_go_deeper && !prune.is_match(root_rel.as_path()) {
 						stack.push(Frame {
-							entries: Box::pin(vfs.clone().read_dir(child.clone())),
+							entries: Box::pin(vfs.read_dir(child.clone())),
 							dir: child,
 							rel,
 						});
@@ -184,6 +184,17 @@ impl VfsGlobset {
 				}
 			}
 		})
+	}
+}
+
+/// A trait subsetting `Vfs` to allow for globset matching without requiring the full `Vfs` trait to be implemented.
+pub trait VfsGlobsetVfs: Send + Sync {
+	fn read_dir(&self, path: VfsPath) -> BoxStream<'_, std::io::Result<DirEntry>>;
+}
+
+impl VfsGlobsetVfs for Arc<dyn Vfs> {
+	fn read_dir(&self, path: VfsPath) -> BoxStream<'_, std::io::Result<DirEntry>> {
+		Vfs::read_dir(self.clone(), path)
 	}
 }
 

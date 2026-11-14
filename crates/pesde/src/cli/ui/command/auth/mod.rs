@@ -3,6 +3,7 @@ use clap::Subcommand;
 mod format_key;
 mod script;
 
+/// Auth-related commands.
 #[derive(Debug, Subcommand)]
 pub enum AuthCommand {
 	FormatKey(format_key::FormatKeyCommand),
