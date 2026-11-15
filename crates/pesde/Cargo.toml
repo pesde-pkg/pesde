@@ -49,6 +49,7 @@ bin = [
     "dep:croshet",
     "dep:toml_edit",
     "dep:inquire",
+    "dep:ssh-encoding",
 
     "dep:windows",
 ]
@@ -162,6 +163,9 @@ toml_edit = { version = "0.25.19", default-features = false, optional = true, fe
 ] }
 inquire = { version = "0.9.4", default-features = false, optional = true, features = [
     "console",
+] }
+ssh-encoding = { version = "0.2.0", default-features = false, optional = true, features = [
+    "std",
 ] }
 
 [dev-dependencies]

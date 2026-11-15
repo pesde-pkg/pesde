@@ -8,48 +8,48 @@ use thiserror::Error;
 
 use crate::__private::ser_display_deser_fromstr;
 
-/// A key kind
+/// A public key algorithm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
-pub enum KeyKind {
-	/// An Ed25519 key
+pub enum PublicKeyAlgorithm {
+	/// Ed25519
 	Ed25519,
 }
-ser_display_deser_fromstr!(KeyKind);
+ser_display_deser_fromstr!(PublicKeyAlgorithm);
 
-impl KeyKind {
-	/// Returns the size of the key data in bytes
+impl PublicKeyAlgorithm {
+	/// Returns the size of the key data in bytes.
 	#[must_use]
 	pub fn size(self) -> usize {
 		match self {
-			KeyKind::Ed25519 => 32,
+			PublicKeyAlgorithm::Ed25519 => 32,
 		}
 	}
 }
 
-impl Display for KeyKind {
+impl Display for PublicKeyAlgorithm {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			KeyKind::Ed25519 => write!(f, "ed25519"),
+			PublicKeyAlgorithm::Ed25519 => write!(f, "ed25519"),
 		}
 	}
 }
 
-impl FromStr for KeyKind {
-	type Err = KeyKindParseError;
+impl FromStr for PublicKeyAlgorithm {
+	type Err = PublicKeyAlgorithmParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
 			"ed25519" => Ok(Self::Ed25519),
-			_ => Err(KeyKindParseError::UnknownKeyKind(s.into())),
+			_ => Err(PublicKeyAlgorithmParseError::UnknownKeyKind(s.into())),
 		}
 	}
 }
 
-/// A public key
+/// A public key.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PublicKey {
-	kind: KeyKind,
+	algorithm: PublicKeyAlgorithm,
 	data: Arc<[u8]>,
 }
 ser_display_deser_fromstr!(PublicKey);
@@ -59,7 +59,7 @@ impl Display for PublicKey {
 		write!(
 			f,
 			"{}:{}",
-			self.kind,
+			self.algorithm,
 			fast32::base64::RFC4648_NOPAD.encode(&self.data)
 		)
 	}
@@ -69,51 +69,51 @@ impl FromStr for PublicKey {
 	type Err = PublicKeyParseError;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let (kind, key) = s
+		let (algorithm, key) = s
 			.split_once(':')
 			.ok_or(PublicKeyParseError::InvalidFormat)?;
 
-		let kind: KeyKind = kind.parse()?;
+		let algorithm: PublicKeyAlgorithm = algorithm.parse()?;
 		let mut data = Vec::new();
-		data.reserve_exact(kind.size());
+		data.reserve_exact(algorithm.size());
 		fast32::base64::RFC4648_NOPAD.decode_into(key.as_bytes(), &mut data)?;
 
-		Self::new(kind, data).ok_or(PublicKeyParseError::InvalidFormat)
+		Self::new(algorithm, data).ok_or(PublicKeyParseError::InvalidFormat)
 	}
 }
 
 impl PublicKey {
-	/// Constructs a new public key
+	/// Constructs a new public key.
 	#[must_use]
-	pub fn new(kind: KeyKind, data: impl Into<Arc<[u8]>>) -> Option<Self> {
+	pub fn new(algorithm: PublicKeyAlgorithm, data: impl Into<Arc<[u8]>>) -> Option<Self> {
 		let data = data.into();
-		if data.len() != kind.size() {
+		if data.len() != algorithm.size() {
 			return None;
 		}
 
-		Some(Self { kind, data })
+		Some(Self { algorithm, data })
 	}
 
-	/// Returns the kind of key
+	/// Returns the algorithm of key.
 	#[must_use]
-	pub fn kind(&self) -> KeyKind {
-		self.kind
+	pub fn algorithm(&self) -> PublicKeyAlgorithm {
+		self.algorithm
 	}
 
-	/// Returns the raw key data
+	/// Returns the raw key data.
 	#[must_use]
 	pub fn data(&self) -> &[u8] {
 		&self.data
 	}
 }
 
-/// A signature kind
+/// A signature kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum SignatureKind {
-	/// An Ed25519 signature in the SSH signature (SSHSIG) format, using SHA-512
+	/// An Ed25519 signature over the SSHSIG bytes of the message, using the namespace [Signature::SSH_NAMESPACE] and SHA512 as the hash algorithm.
 	#[default]
-	SshEd25519Sha512,
+	SshEd25519,
 }
 ser_display_deser_fromstr!(SignatureKind);
 
@@ -122,7 +122,7 @@ impl SignatureKind {
 	#[must_use]
 	pub fn size(self) -> usize {
 		match self {
-			SignatureKind::SshEd25519Sha512 => 64,
+			SignatureKind::SshEd25519 => 64,
 		}
 	}
 }
@@ -130,7 +130,7 @@ impl SignatureKind {
 impl Display for SignatureKind {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			SignatureKind::SshEd25519Sha512 => write!(f, "ssh_ed25519_sha512"),
+			SignatureKind::SshEd25519 => write!(f, "ssh_ed25519"),
 		}
 	}
 }
@@ -140,7 +140,7 @@ impl FromStr for SignatureKind {
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		match s {
-			"ssh_ed25519_sha512" => Ok(Self::SshEd25519Sha512),
+			"ssh_ed25519" => Ok(Self::SshEd25519),
 			_ => Err(SignatureKindParseError::UnknownSignatureKind(s.into())),
 		}
 	}
@@ -213,8 +213,8 @@ impl Signature {
 	/// Information about the validity of data (e.g. formats) is not important to this crate, so they are silently ignored by returning false on invalid data
 	#[must_use]
 	pub fn verify(&self, public_key: &PublicKey, msg: &[u8]) -> bool {
-		match (self.kind, public_key.kind()) {
-			(SignatureKind::SshEd25519Sha512, KeyKind::Ed25519) => {
+		match (self.kind, public_key.algorithm()) {
+			(SignatureKind::SshEd25519, PublicKeyAlgorithm::Ed25519) => {
 				use signature::Verifier as _;
 
 				let Ok(key_data) = public_key
@@ -247,58 +247,58 @@ impl Signature {
 	}
 }
 
-/// Errors which can occur when parsing a key kind
+/// Errors which can occur when parsing a public key algorithm.
 #[derive(Debug, Error)]
-pub enum KeyKindParseError {
-	/// The key kind is in an invalid format
-	#[error("invalid key kind format")]
+pub enum PublicKeyAlgorithmParseError {
+	/// The algorithm is in an invalid format.
+	#[error("invalid public key algorithm format")]
 	InvalidFormat,
 
-	/// The key kind is unknown
-	#[error("unknown key kind `{0}`")]
+	/// The algorithm is unknown.
+	#[error("unknown public key algorithm `{0}`")]
 	UnknownKeyKind(Box<str>),
 }
 
-/// Errors which can occur when parsing a public key
+/// Errors which can occur when parsing a public key.
 #[derive(Debug, Error)]
 pub enum PublicKeyParseError {
-	/// The public key is in an invalid format
+	/// The public key is in an invalid format.
 	#[error("invalid public key format")]
 	InvalidFormat,
 
-	/// The key kind is not valid
-	#[error("invalid key kind")]
-	InvalidKeyKind(#[from] KeyKindParseError),
+	/// The public key algorithm is not valid.
+	#[error("invalid public key algorithm")]
+	InvalidAlgorithm(#[from] PublicKeyAlgorithmParseError),
 
 	/// The key data is not valid base64
 	#[error("invalid base64 in public key data")]
 	InvalidBase64(#[from] fast32::DecodeError),
 }
 
-/// Errors which can occur when parsing a signature kind
+/// Errors which can occur when parsing a signature kind.
 #[derive(Debug, Error)]
 pub enum SignatureKindParseError {
-	/// The signature kind is in an invalid format
+	/// The signature kind is in an invalid format.
 	#[error("invalid signature kind format")]
 	InvalidFormat,
 
-	/// The signature kind is unknown
+	/// The signature kind is unknown.
 	#[error("unknown signature kind `{0}`")]
 	UnknownSignatureKind(Box<str>),
 }
 
-/// Errors which can occur when parsing a signature
+/// Errors which can occur when parsing a signature.
 #[derive(Debug, Error)]
 pub enum SignatureParseError {
-	/// The signature is in an invalid format
+	/// The signature is in an invalid format.
 	#[error("invalid signature format")]
 	InvalidFormat,
 
-	/// The signature kind is not valid
+	/// The signature kind is not valid.
 	#[error("invalid signature kind")]
 	InvalidSignatureKind(#[from] SignatureKindParseError),
 
-	/// The signature is not valid base64
+	/// The signature is not valid base64.
 	#[error("invalid base64 in signature data")]
 	InvalidBase64(#[from] fast32::DecodeError),
 }

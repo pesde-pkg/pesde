@@ -56,7 +56,7 @@ CREATE TABLE global_log_scope_genesis_entry (
 
 	op_kind ENUM('scope_genesis') NOT NULL DEFAULT 'scope_genesis' CHECK (op_kind = 'scope_genesis'),
 
-	sig_algorithm ENUM('ssh_ed25519_sha512') NOT NULL,
+	sig_kind ENUM('ssh_ed25519') NOT NULL,
 	sig BLOB NOT NULL,
 
 	name_blake3 BINARY(32) NOT NULL UNIQUE,
@@ -323,7 +323,7 @@ CREATE TABLE signed_scope_log_entry (
 	) NOT NULL,
 	signer BIGINT UNSIGNED NOT NULL,
 
-	sig_algorithm ENUM('ssh_ed25519_sha512') NOT NULL,
+	sig_kind ENUM('ssh_ed25519') NOT NULL,
 	sig BLOB NOT NULL,
 
 	PRIMARY KEY (scope, pos),
@@ -350,7 +350,7 @@ CREATE TABLE signed_add_member_scope_log_entry (
 	member BIGINT UNSIGNED NOT NULL,
 	grant_blake3 BINARY(32) NOT NULL,
 
-	consent_algorithm ENUM('ssh_ed25519_sha512') NOT NULL,
+	consent_kind ENUM('ssh_ed25519') NOT NULL,
 	consent BLOB NOT NULL,
 	nonce BINARY(16) NOT NULL UNIQUE,
 
@@ -401,7 +401,7 @@ CREATE TABLE signed_rotate_key_scope_log_entry (
 
 	new_key BIGINT UNSIGNED NOT NULL,
 
-	consent_algorithm ENUM('ssh_ed25519_sha512') NOT NULL,
+	consent_kind ENUM('ssh_ed25519') NOT NULL,
 	consent BLOB NOT NULL,
 	nonce BINARY(16) NOT NULL UNIQUE,
 
@@ -447,7 +447,7 @@ CREATE TABLE signed_transfer_ownership_scope_log_entry (
 		'set_deprecation'
 	) NOT NULL DEFAULT 'transfer_ownership' CHECK (op_kind = 'transfer_ownership'),
 
-	consent_algorithm ENUM('ssh_ed25519_sha512') NOT NULL,
+	consent_kind ENUM('ssh_ed25519') NOT NULL,
 	consent BLOB NOT NULL,
 	nonce BINARY(16) NOT NULL UNIQUE,
 

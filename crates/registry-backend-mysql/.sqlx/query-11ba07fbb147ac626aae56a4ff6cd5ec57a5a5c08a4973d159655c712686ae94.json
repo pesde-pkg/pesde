@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT \n\tsigned_scope_log_entry.op_kind AS `op_kind: SignedOpKind`,\n\tsigned_scope_log_entry.sig_algorithm AS `sig_algorithm: Text<SignatureKind>`,\n\tsigned_scope_log_entry.sig,\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM signed_scope_log_entry\nINNER JOIN public_key ON public_key.id=signed_scope_log_entry.signer\nWHERE signed_scope_log_entry.scope = ? AND signed_scope_log_entry.pos = ?",
+  "query": "\nSELECT \n\tsigned_scope_log_entry.op_kind AS `op_kind: SignedOpKind`,\n\tsigned_scope_log_entry.sig_kind AS `sig_kind: Text<SignatureKind>`,\n\tsigned_scope_log_entry.sig,\n\tpublic_key.algorithm AS `algorithm: Text<PublicKeyAlgorithm>`,\n\tpublic_key.data\nFROM signed_scope_log_entry\nINNER JOIN public_key ON public_key.id=signed_scope_log_entry.signer\nWHERE signed_scope_log_entry.scope = ? AND signed_scope_log_entry.pos = ?",
   "describe": {
     "columns": [
       {
@@ -21,17 +21,17 @@
       },
       {
         "ordinal": 1,
-        "name": "sig_algorithm: Text<SignatureKind>",
+        "name": "sig_kind: Text<SignatureKind>",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | ENUM | NO_DEFAULT_VALUE",
           "collation": 224,
-          "max_size": 72
+          "max_size": 44
         },
         "origin": {
           "Table": {
             "table": "test-pesde-registry.signed_scope_log_entry",
-            "name": "sig_algorithm"
+            "name": "sig_kind"
           }
         }
       },
@@ -53,7 +53,7 @@
       },
       {
         "ordinal": 3,
-        "name": "kind: Text<KeyKind>",
+        "name": "algorithm: Text<PublicKeyAlgorithm>",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
@@ -95,5 +95,5 @@
       false
     ]
   },
-  "hash": "a1af858cb0cde8130732e217082234962496de0ff1745a41917c814a59a2d0f5"
+  "hash": "11ba07fbb147ac626aae56a4ff6cd5ec57a5a5c08a4973d159655c712686ae94"
 }

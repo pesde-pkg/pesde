@@ -109,7 +109,7 @@ SELECT
 		WHERE member_grant_package.local_name_blake3 = ?
 	) AS `has_package: bool`",
 				scope_id.hash().0.as_slice(),
-				Text(user.kind()),
+				Text(user.algorithm()),
 				user.data(),
 				scope_id.hash().0.as_slice(),
 				package,
@@ -236,7 +236,7 @@ impl MySqlTransaction {
 
 		let result = query!(
 			"INSERT INTO public_key (id, algorithm, data, blake3) VALUES (NULL, ?, ?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)",
-			Text(public_key.kind()),
+			Text(public_key.algorithm()),
 			public_key.data(),
 			blake3.0.as_slice(),
 		).execute(&mut **tx).await?;

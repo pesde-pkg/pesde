@@ -9,6 +9,7 @@ use serde::Serialize;
 use tracing::instrument;
 
 use crate::cli::dirs::config_path;
+use crate::cli::ui::signature::SignatureSource;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -18,6 +19,9 @@ pub struct CliConfig {
 	pub auth_scripts: Arc<HashMap<Url, Box<str>>>,
 	#[serde(skip_serializing_if = "HashMap::is_empty")]
 	pub identities: HashMap<Url, PublicKey>,
+	#[serde(skip_serializing_if = "HashMap::is_empty")]
+	#[expect(clippy::zero_sized_map_values)]
+	pub signature_sources: HashMap<PublicKey, SignatureSource>,
 }
 
 impl Default for CliConfig {
@@ -27,6 +31,7 @@ impl Default for CliConfig {
 
 			auth_scripts: Default::default(),
 			identities: Default::default(),
+			signature_sources: Default::default(),
 		}
 	}
 }

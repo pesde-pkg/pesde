@@ -17,8 +17,8 @@ use pesde::merkle_bplustree::node::TreeInternalNode;
 use pesde::merkle_bplustree::node::TreeLeafNode;
 use pesde::merkle_bplustree::node::TreeNode;
 use pesde::registry::*;
-use pesde::signature::KeyKind;
 use pesde::signature::PublicKey;
+use pesde::signature::PublicKeyAlgorithm;
 use pesde::signature::Signature;
 use pesde::signature::SignatureKind;
 use pesde_registry_core::features::scope::ScopeReadRepository;
@@ -161,9 +161,9 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_entry.pos = ?
 				r"
 SELECT 
 	signed_scope_log_entry.op_kind AS `op_kind: SignedOpKind`,
-	signed_scope_log_entry.sig_algorithm AS `sig_algorithm: Text<SignatureKind>`,
+	signed_scope_log_entry.sig_kind AS `sig_kind: Text<SignatureKind>`,
 	signed_scope_log_entry.sig,
-	public_key.algorithm AS `kind: Text<KeyKind>`,
+	public_key.algorithm AS `algorithm: Text<PublicKeyAlgorithm>`,
 	public_key.data
 FROM signed_scope_log_entry
 INNER JOIN public_key ON public_key.id=signed_scope_log_entry.signer
@@ -176,7 +176,7 @@ WHERE signed_scope_log_entry.scope = ? AND signed_scope_log_entry.pos = ?",
 
 			let header = UserScopeOpHeader {
 				common: header,
-				signer: PublicKey::new(signed_record.kind.0, signed_record.data)
+				signer: PublicKey::new(signed_record.algorithm.0, signed_record.data)
 					.context("corrupt signer")?,
 			};
 
@@ -185,11 +185,11 @@ WHERE signed_scope_log_entry.scope = ? AND signed_scope_log_entry.pos = ?",
 					let r = query!(
 						r"
 SELECT
-	signed_add_member_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,
+	signed_add_member_scope_log_entry.consent_kind AS `consent_kind: Text<SignatureKind>`,
 	signed_add_member_scope_log_entry.consent,
 	signed_add_member_scope_log_entry.nonce,
 	signed_add_member_scope_log_entry.grant_blake3,
-	public_key.algorithm AS `kind: Text<KeyKind>`,
+	public_key.algorithm AS `algorithm: Text<PublicKeyAlgorithm>`,
 	public_key.data
 FROM signed_add_member_scope_log_entry
 INNER JOIN public_key ON public_key.id=signed_add_member_scope_log_entry.member
@@ -201,11 +201,11 @@ WHERE signed_add_member_scope_log_entry.scope = ? AND signed_add_member_scope_lo
 					.await?;
 
 					let member = UnvalidatedSigned {
-						sig: Signature::new(r.consent_algorithm.0, r.consent)
+						sig: Signature::new(r.consent_kind.0, r.consent)
 							.context("corrupt signature")?,
 						body: UnvalidatedConsent {
 							nonce: r.nonce.try_into().ok().context("corrupt nonce")?,
-							consenter: PublicKey::new(r.kind.0, r.data)
+							consenter: PublicKey::new(r.algorithm.0, r.data)
 								.context("corrupt scope member")?,
 						},
 					};
@@ -224,7 +224,7 @@ WHERE signed_add_member_scope_log_entry.scope = ? AND signed_add_member_scope_lo
 						r"
 SELECT
 	signed_update_member_grant_scope_log_entry.grant_blake3,
-	public_key.algorithm AS `kind: Text<KeyKind>`,
+	public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,
 	public_key.data
 FROM signed_update_member_grant_scope_log_entry
 INNER JOIN public_key ON public_key.id=signed_update_member_grant_scope_log_entry.member
@@ -238,7 +238,8 @@ WHERE signed_update_member_grant_scope_log_entry.scope = ? AND signed_update_mem
 					UserScopeOp::UpdateMemberGrant(UpdateMemberGrantUserScopeOpBody {
 						header,
 						member: ScopeMember(
-							PublicKey::new(r.kind.0, r.data).context("corrupt scope member")?,
+							PublicKey::new(r.algorithm.0, r.data)
+								.context("corrupt scope member")?,
 						),
 						grant: scope_grant(&mut tx, &r.grant_blake3).await?,
 						scope_members_root,
@@ -248,10 +249,10 @@ WHERE signed_update_member_grant_scope_log_entry.scope = ? AND signed_update_mem
 					let r = query!(
 						r"
 SELECT
-	signed_rotate_key_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,
+	signed_rotate_key_scope_log_entry.consent_kind AS `consent_kind: Text<SignatureKind>`,
 	signed_rotate_key_scope_log_entry.consent,
 	signed_rotate_key_scope_log_entry.nonce,
-	public_key.algorithm AS `kind: Text<KeyKind>`,
+	public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,
 	public_key.data
 FROM signed_rotate_key_scope_log_entry
 INNER JOIN public_key ON public_key.id=signed_rotate_key_scope_log_entry.new_key
@@ -263,11 +264,11 @@ WHERE signed_rotate_key_scope_log_entry.scope = ? AND signed_rotate_key_scope_lo
 					.await?;
 
 					let new_key = UnvalidatedSigned {
-						sig: Signature::new(r.consent_algorithm.0, r.consent)
+						sig: Signature::new(r.consent_kind.0, r.consent)
 							.context("corrupt signature")?,
 						body: UnvalidatedConsent {
 							nonce: r.nonce.try_into().ok().context("corrupt nonce")?,
-							consenter: PublicKey::new(r.kind.0, r.data)
+							consenter: PublicKey::new(r.algorithm.0, r.data)
 								.context("corrupt new key")?,
 						},
 					};
@@ -282,7 +283,7 @@ WHERE signed_rotate_key_scope_log_entry.scope = ? AND signed_rotate_key_scope_lo
 					let r = query!(
 						r"
 SELECT
-	public_key.algorithm AS `kind: Text<KeyKind>`,
+	public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,
 	public_key.data AS `data`
 FROM signed_remove_member_scope_log_entry
 LEFT JOIN public_key ON public_key.id=signed_remove_member_scope_log_entry.member
@@ -294,7 +295,7 @@ WHERE signed_remove_member_scope_log_entry.scope = ? AND signed_remove_member_sc
 					.await?;
 
 					let member = r
-						.kind
+						.algorithm
 						.zip(r.data)
 						.map(|(kind, data)| {
 							PublicKey::new(kind.0, data)
@@ -313,10 +314,10 @@ WHERE signed_remove_member_scope_log_entry.scope = ? AND signed_remove_member_sc
 					let r = query!(
 						r"
 SELECT
-	signed_transfer_ownership_scope_log_entry.consent_algorithm AS `consent_algorithm: Text<SignatureKind>`,
+	signed_transfer_ownership_scope_log_entry.consent_kind AS `consent_kind: Text<SignatureKind>`,
 	signed_transfer_ownership_scope_log_entry.consent,
 	signed_transfer_ownership_scope_log_entry.nonce,
-	public_key.algorithm AS `kind: Text<KeyKind>`,
+	public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,
 	public_key.data
 FROM signed_transfer_ownership_scope_log_entry
 INNER JOIN scope_log_entry ON scope_log_entry.scope=signed_transfer_ownership_scope_log_entry.scope AND scope_log_entry.pos=signed_transfer_ownership_scope_log_entry.pos
@@ -329,11 +330,11 @@ WHERE signed_transfer_ownership_scope_log_entry.scope = ? AND signed_transfer_ow
 					.await?;
 
 					let new_owner = UnvalidatedSigned {
-						sig: Signature::new(r.consent_algorithm.0, r.consent)
+						sig: Signature::new(r.consent_kind.0, r.consent)
 							.context("corrupt signature")?,
 						body: UnvalidatedConsent {
 							nonce: r.nonce.try_into().ok().context("corrupt nonce")?,
-							consenter: PublicKey::new(r.kind.0, r.data)
+							consenter: PublicKey::new(r.algorithm.0, r.data)
 								.context("corrupt new owner")?,
 						},
 					};
@@ -437,7 +438,7 @@ WHERE signed_set_deprecation_scope_log_entry.scope = ? AND signed_set_deprecatio
 			};
 
 			Signed::new(UnvalidatedSigned {
-				sig: Signature::new(signed_record.sig_algorithm.0, signed_record.sig)
+				sig: Signature::new(signed_record.sig_kind.0, signed_record.sig)
 					.context("corrupt signature")?,
 				body,
 			})?
@@ -458,7 +459,7 @@ WHERE scope = ? AND pos = ?",
 				AdminOpKind::TransferOwnership => {
 					let r = query!(
 						r"
-SELECT public_key.algorithm AS `kind: Text<KeyKind>`, public_key.data
+SELECT public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`, public_key.data
 FROM admin_transfer_ownership_scope_log_entry
 INNER JOIN public_key ON public_key.id=admin_transfer_ownership_scope_log_entry.new_owner
 WHERE admin_transfer_ownership_scope_log_entry.scope = ? AND admin_transfer_ownership_scope_log_entry.pos = ?",
@@ -470,7 +471,8 @@ WHERE admin_transfer_ownership_scope_log_entry.scope = ? AND admin_transfer_owne
 
 					AdminScopeOp::TransferOwnership(TransferOwnershipAdminScopeOpBody {
 						header,
-						new_owner: PublicKey::new(r.kind.0, r.data).context("corrupt new owner")?,
+						new_owner: PublicKey::new(r.algorithm.0, r.data)
+							.context("corrupt new owner")?,
 					})
 				}
 				AdminOpKind::SetYanked => {
@@ -519,7 +521,7 @@ SELECT
 	scope_log_entry.scope_members_root_blake3,
 	scope_log_entry.versions_root_blake3,
 	scope_log_entry.deprecations_root_blake3,
-	public_key.algorithm AS `kind: Text<KeyKind>`,
+	public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,
 	public_key.data
 FROM scope_log_entry
 INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope
@@ -537,7 +539,7 @@ LIMIT 1",
 	};
 
 	Ok(Some(ScopeStateResponse {
-		owner: PublicKey::new(record.kind.0, record.data).context("corrupt owner key")?,
+		owner: PublicKey::new(record.algorithm.0, record.data).context("corrupt owner key")?,
 		scope_members_root: Blake3Hash::new(record.scope_members_root_blake3)
 			.context("corrupt scope_members_root")
 			.map(ScopeMembersTree)?,
@@ -630,7 +632,7 @@ async fn scope_members_node(
 		TreeKind::Internal => {
 			let keys = query!(
 				r"
-SELECT public_key.algorithm AS `algorithm: Text<KeyKind>`, public_key.data
+SELECT public_key.algorithm AS `algorithm: Text<PublicKeyAlgorithm>`, public_key.data
 FROM scope_members_internal_node_key AS `key`
 INNER JOIN public_key ON public_key.id=key.member
 WHERE key.node_blake3 = ?
@@ -673,7 +675,7 @@ ORDER BY idx",
 
 			let mut query = query!(
 				r"
-SELECT public_key.algorithm AS `algorithm: Text<KeyKind>`, public_key.data, plaintext_name.blake3, plaintext_name.plaintext
+SELECT public_key.algorithm AS `algorithm: Text<PublicKeyAlgorithm>`, public_key.data, plaintext_name.blake3, plaintext_name.plaintext
 FROM scope_members_leaf_node_entry AS `entry`
 INNER JOIN public_key ON public_key.id=entry.member
 LEFT JOIN member_grant_package ON member_grant_package.grant_blake3=entry.grant_blake3
@@ -1245,7 +1247,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 
 				let insert_signed = async |tx, kind| {
 					query!(
-						"INSERT INTO signed_scope_log_entry (scope, pos, op_kind, signer, sig_algorithm, sig) VALUES (?, ?, ?, ?, ?, ?)",
+						"INSERT INTO signed_scope_log_entry (scope, pos, op_kind, signer, sig_kind, sig) VALUES (?, ?, ?, ?, ?, ?)",
 						prev.scope_pos,
 						pos,
 						kind,
@@ -1278,7 +1280,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 						);
 
 						query!(
-							"INSERT INTO signed_add_member_scope_log_entry (scope, pos, member, grant_blake3, consent_algorithm, consent, nonce) VALUES (?, ?, ?, ?, ?, ?, ?)",
+							"INSERT INTO signed_add_member_scope_log_entry (scope, pos, member, grant_blake3, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?, ?, ?)",
 							scope_pos,
 							pos,
 							member,
@@ -1327,7 +1329,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 						);
 
 						query!(
-							"INSERT INTO signed_rotate_key_scope_log_entry (scope, pos, new_key, consent_algorithm, consent, nonce) VALUES (?, ?, ?, ?, ?, ?)",
+							"INSERT INTO signed_rotate_key_scope_log_entry (scope, pos, new_key, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?, ?)",
 							scope_pos,
 							pos,
 							new_key,
@@ -1367,7 +1369,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 						insert_signed!(SignedOpKind::TransferOwnership, new_owner);
 
 						query!(
-							"INSERT INTO signed_transfer_ownership_scope_log_entry (scope, pos, consent_algorithm, consent, nonce) VALUES (?, ?, ?, ?, ?)",
+							"INSERT INTO signed_transfer_ownership_scope_log_entry (scope, pos, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?)",
 							scope_pos,
 							pos,
 							Text(consent.sig.kind()),

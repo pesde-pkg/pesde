@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT\n\tscope_log_entry.scope_members_root_blake3,\n\tscope_log_entry.versions_root_blake3,\n\tscope_log_entry.deprecations_root_blake3,\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM scope_log_entry\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope\nINNER JOIN public_key ON public_key.id=scope_log_entry.owner\nWHERE global_log_scope_genesis_entry.name_blake3 = ?\nORDER BY scope_log_entry.pos DESC\nLIMIT 1",
+  "query": "\nSELECT\n\tscope_log_entry.scope_members_root_blake3,\n\tscope_log_entry.versions_root_blake3,\n\tscope_log_entry.deprecations_root_blake3,\n\tpublic_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,\n\tpublic_key.data\nFROM scope_log_entry\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope\nINNER JOIN public_key ON public_key.id=scope_log_entry.owner\nWHERE global_log_scope_genesis_entry.name_blake3 = ?\nORDER BY scope_log_entry.pos DESC\nLIMIT 1",
   "describe": {
     "columns": [
       {
@@ -53,7 +53,7 @@
       },
       {
         "ordinal": 3,
-        "name": "kind: Text<KeyKind>",
+        "name": "algorithm: Text<PublicKeyAlgorithm>",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
@@ -95,5 +95,5 @@
       false
     ]
   },
-  "hash": "6b5f0441099d7d64802c6de9ec6841c47d5a2ad0e3635a1ff414bd51ddeb1066"
+  "hash": "e4d3defe30ec0c1b2c16f4c8330f1937e4558ae3fcb7462e8c1327e2d26cab8f"
 }

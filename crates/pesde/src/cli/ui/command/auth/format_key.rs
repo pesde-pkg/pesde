@@ -1,8 +1,9 @@
 use anyhow::Context as _;
 use clap::Args;
 use clap::ValueEnum;
-use pesde::signature::KeyKind;
+use pesde::signature::PublicKeyAlgorithm;
 
+use crate::cli::ui::public_key::PublicKeyExt as _;
 use crate::cli::ui::public_key::UserInputPublicKey;
 
 /// Format a public key into a different format
@@ -25,38 +26,26 @@ enum TokenFormat {
 
 impl FormatKeyCommand {
 	pub fn run(self) -> anyhow::Result<()> {
-		let format =
-			self.format
-				.unwrap_or(match (self.key.was_external_format, self.key.key.kind()) {
-					(true, _) => TokenFormat::Pesde,
-					(false, KeyKind::Ed25519) => TokenFormat::Ssh,
-					(false, _) => {
-						anyhow::bail!("don't know how to format this key type, specify --format")
-					}
-				});
+		let format = self.format.unwrap_or(
+			match (self.key.was_external_format, self.key.key.algorithm()) {
+				(true, _) => TokenFormat::Pesde,
+				(false, PublicKeyAlgorithm::Ed25519) => TokenFormat::Ssh,
+				(false, _) => {
+					anyhow::bail!("don't know how to format this key type, specify --format")
+				}
+			},
+		);
 
 		match format {
 			TokenFormat::Pesde => {
 				println!("{}", self.key.key);
 			}
 			TokenFormat::Ssh => {
-				use ssh_key::PublicKey as SshKey;
-				use ssh_key::public::Ed25519PublicKey;
-				use ssh_key::public::KeyData;
-
-				let data = match self.key.key.kind() {
-					KeyKind::Ed25519 => KeyData::Ed25519(Ed25519PublicKey(
-						self.key
-							.key
-							.data()
-							.try_into()
-							.context("key data length should match key kind")?,
-					)),
-					_ => {
-						anyhow::bail!("don't know how to format this key type as SSH")
-					}
-				};
-				let key = SshKey::new(data, "");
+				let key = self
+					.key
+					.key
+					.as_ssh_key()
+					.context("key type cannot be converted to SSH format")?;
 				println!("{}", key.to_string());
 			}
 		}

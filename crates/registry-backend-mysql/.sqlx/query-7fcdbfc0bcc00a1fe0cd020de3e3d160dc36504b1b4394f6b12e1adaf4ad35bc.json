@@ -1,11 +1,11 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT public_key.algorithm AS `algorithm: Text<KeyKind>`, public_key.data\nFROM scope_members_internal_node_key AS `key`\nINNER JOIN public_key ON public_key.id=key.member\nWHERE key.node_blake3 = ?\nORDER BY key.idx",
+  "query": "\nSELECT public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`, public_key.data\nFROM admin_transfer_ownership_scope_log_entry\nINNER JOIN public_key ON public_key.id=admin_transfer_ownership_scope_log_entry.new_owner\nWHERE admin_transfer_ownership_scope_log_entry.scope = ? AND admin_transfer_ownership_scope_log_entry.pos = ?",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "algorithm: Text<KeyKind>",
+        "name": "algorithm: Text<PublicKeyAlgorithm>",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
@@ -37,12 +37,12 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
       false
     ]
   },
-  "hash": "541b5e9dfb0075b8badbabd4ce7d5b1659cde61fef6eb93a666cc6dea1d8a9dc"
+  "hash": "7fcdbfc0bcc00a1fe0cd020de3e3d160dc36504b1b4394f6b12e1adaf4ad35bc"
 }

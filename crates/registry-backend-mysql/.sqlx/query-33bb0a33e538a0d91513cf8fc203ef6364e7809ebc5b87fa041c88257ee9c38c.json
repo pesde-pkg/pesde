@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT\n\tsigned_update_member_grant_scope_log_entry.grant_blake3,\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data\nFROM signed_update_member_grant_scope_log_entry\nINNER JOIN public_key ON public_key.id=signed_update_member_grant_scope_log_entry.member\nWHERE signed_update_member_grant_scope_log_entry.scope = ? AND signed_update_member_grant_scope_log_entry.pos = ?",
+  "query": "\nSELECT\n\tsigned_update_member_grant_scope_log_entry.grant_blake3,\n\tpublic_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,\n\tpublic_key.data\nFROM signed_update_member_grant_scope_log_entry\nINNER JOIN public_key ON public_key.id=signed_update_member_grant_scope_log_entry.member\nWHERE signed_update_member_grant_scope_log_entry.scope = ? AND signed_update_member_grant_scope_log_entry.pos = ?",
   "describe": {
     "columns": [
       {
@@ -21,7 +21,7 @@
       },
       {
         "ordinal": 1,
-        "name": "kind: Text<KeyKind>",
+        "name": "algorithm: Text<PublicKeyAlgorithm>",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
@@ -61,5 +61,5 @@
       false
     ]
   },
-  "hash": "45c65dfd9839d5775d254c0c150544911f2dbbab3c62f70af7fe10f35d2b2348"
+  "hash": "33bb0a33e538a0d91513cf8fc203ef6364e7809ebc5b87fa041c88257ee9c38c"
 }

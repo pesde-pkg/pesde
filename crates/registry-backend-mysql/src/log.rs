@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use futures::TryStreamExt as _;
 use pesde::hash::Blake3Hash;
 use pesde::registry::*;
-use pesde::signature::KeyKind;
 use pesde::signature::PublicKey;
+use pesde::signature::PublicKeyAlgorithm;
 use pesde::signature::Signature;
 use pesde::signature::SignatureKind;
 use pesde_registry_core::features::global::GlobalReadRepository;
@@ -55,11 +55,11 @@ async fn global_log_entry(
 			let r = query!(
 				r"
 SELECT
-    global_log_scope_genesis_entry.sig_algorithm AS `sig_algorithm: Text<SignatureKind>`,
+    global_log_scope_genesis_entry.sig_kind AS `sig_kind: Text<SignatureKind>`,
     global_log_scope_genesis_entry.sig,
     global_log_scope_genesis_entry.first_entry_hash,
     global_log_scope_genesis_entry.name_blake3,
-    public_key.algorithm AS `kind: Text<KeyKind>`,
+    public_key.algorithm AS `kind: Text<PublicKeyAlgorithm>`,
 	public_key.data
 FROM global_log_scope_genesis_entry
 INNER JOIN public_key ON public_key.id=global_log_scope_genesis_entry.owner_id
@@ -70,7 +70,7 @@ WHERE global_log_scope_genesis_entry.pos = ?",
 			.await?;
 
 			Signed::new(UnvalidatedSigned {
-				sig: Signature::new(r.sig_algorithm.0, r.sig).context("corrupt signature")?,
+				sig: Signature::new(r.sig_kind.0, r.sig).context("corrupt signature")?,
 				body: ScopeGenesisPayload {
 					first_entry_hash: r.first_entry_hash.parse()?,
 					owner: PublicKey::new(r.kind.0, r.data).context("corrupt owner key")?,
@@ -248,7 +248,7 @@ impl GlobalWriteRepository for MySqlTransaction {
 				let owner_id = Self::insert_public_key(tx, owner).await?;
 
 				query!(
-					"INSERT INTO global_log_scope_genesis_entry (pos, sig_algorithm, sig, name_blake3, owner_id, first_entry_hash) VALUES (?, ?, ?, ?, ?, ?)",
+					"INSERT INTO global_log_scope_genesis_entry (pos, sig_kind, sig, name_blake3, owner_id, first_entry_hash) VALUES (?, ?, ?, ?, ?, ?)",
 					pos,
 					Text(sig.kind()),
 					sig.data(),

@@ -1,11 +1,11 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT public_key.algorithm AS `algorithm: Text<KeyKind>`, public_key.data, plaintext_name.blake3, plaintext_name.plaintext\nFROM scope_members_leaf_node_entry AS `entry`\nINNER JOIN public_key ON public_key.id=entry.member\nLEFT JOIN member_grant_package ON member_grant_package.grant_blake3=entry.grant_blake3\nLEFT JOIN plaintext_name ON plaintext_name.blake3=member_grant_package.local_name_blake3\nWHERE entry.node_blake3 = ?\nORDER BY entry.idx",
+  "query": "\nSELECT public_key.algorithm AS `algorithm: Text<PublicKeyAlgorithm>`, public_key.data, plaintext_name.blake3, plaintext_name.plaintext\nFROM scope_members_leaf_node_entry AS `entry`\nINNER JOIN public_key ON public_key.id=entry.member\nLEFT JOIN member_grant_package ON member_grant_package.grant_blake3=entry.grant_blake3\nLEFT JOIN plaintext_name ON plaintext_name.blake3=member_grant_package.local_name_blake3\nWHERE entry.node_blake3 = ?\nORDER BY entry.idx",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "algorithm: Text<KeyKind>",
+        "name": "algorithm: Text<PublicKeyAlgorithm>",
         "type_info": {
           "type": "String",
           "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
@@ -78,5 +78,5 @@
       true
     ]
   },
-  "hash": "1dc0fe9161c4b621e9fc7c25998036f933e83d1b06506f7e076a954eea701d93"
+  "hash": "4fe7f06b890f45552e6e4eda1579f946807574202d8792cc4da96d85adb78dab"
 }

@@ -3,6 +3,7 @@ use pesde::registry::manifest::DependencyType;
 mod command;
 pub use command::*;
 pub mod public_key;
+pub mod signature;
 pub mod specifier;
 
 pub fn dependency_type_to_key(ty: DependencyType) -> &'static str {

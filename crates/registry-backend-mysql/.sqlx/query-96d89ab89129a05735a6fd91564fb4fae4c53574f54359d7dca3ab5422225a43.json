@@ -1,11 +1,11 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT\n\tpublic_key.algorithm AS `kind: Text<KeyKind>`,\n\tpublic_key.data AS `data`\nFROM signed_remove_member_scope_log_entry\nLEFT JOIN public_key ON public_key.id=signed_remove_member_scope_log_entry.member\nWHERE signed_remove_member_scope_log_entry.scope = ? AND signed_remove_member_scope_log_entry.pos = ?",
+  "query": "\nSELECT\n\tpublic_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,\n\tpublic_key.data AS `data`\nFROM signed_remove_member_scope_log_entry\nLEFT JOIN public_key ON public_key.id=signed_remove_member_scope_log_entry.member\nWHERE signed_remove_member_scope_log_entry.scope = ? AND signed_remove_member_scope_log_entry.pos = ?",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "kind: Text<KeyKind>",
+        "name": "algorithm: Text<PublicKeyAlgorithm>",
         "type_info": {
           "type": "String",
           "flags": "MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
@@ -44,5 +44,5 @@
       true
     ]
   },
-  "hash": "1e634c850ce0fca850e9a443e52f9e5bf5901e7f92809886299d1922115ce93d"
+  "hash": "96d89ab89129a05735a6fd91564fb4fae4c53574f54359d7dca3ab5422225a43"
 }
