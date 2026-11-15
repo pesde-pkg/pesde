@@ -1,7 +1,8 @@
 use std::str::FromStr;
 
 use anyhow::Context as _;
-use pesde::signature::{PublicKey, PublicKeyAlgorithm};
+use pesde::signature::PublicKey;
+use pesde::signature::PublicKeyAlgorithm;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UserInputPublicKey {

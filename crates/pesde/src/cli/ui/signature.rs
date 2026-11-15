@@ -2,9 +2,12 @@ use std::sync::LazyLock;
 
 use anyhow::Context as _;
 use clap::ValueEnum;
-use pesde::signature::{PublicKey, Signature};
-use pesde::signature::{PublicKeyAlgorithm, SignatureKind};
-use serde::{Deserialize, Serialize};
+use pesde::signature::PublicKey;
+use pesde::signature::PublicKeyAlgorithm;
+use pesde::signature::Signature;
+use pesde::signature::SignatureKind;
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncWriteExt as _;
 
