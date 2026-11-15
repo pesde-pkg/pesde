@@ -1,6 +1,5 @@
 use pesde::hash::Hash;
 use reqwest::Body;
-use reqwest::header::CONTENT_TYPE;
 use rusty_s3::actions::PutObject;
 use std::path::PathBuf;
 use tokio::io::AsyncBufRead;
@@ -23,25 +22,21 @@ pub enum BlobStorage {
 	S3 {
 		bucket: Bucket,
 		credentials: Credentials,
-		#[expect(dead_code)]
 		reqwest: reqwest::Client,
 	},
 }
 
 pub enum BlobResponse {
-	File {
-		file: fs::File,
-		content_type: &'static str,
-	},
+	File(fs::File),
 	Url(String),
 }
 
 impl From<BlobResponse> for HttpResponse {
 	fn from(response: BlobResponse) -> HttpResponse {
 		match response {
-			BlobResponse::File { file, content_type } => HttpResponse::Ok()
-				.content_type(content_type)
-				.body(BodyStream::new(ReaderStream::new(file))),
+			BlobResponse::File(file) => {
+				HttpResponse::Ok().body(BodyStream::new(ReaderStream::new(file)))
+			}
 			BlobResponse::Url(url) => HttpResponse::TemporaryRedirect()
 				.insert_header((header::LOCATION, url))
 				.finish(),
@@ -49,47 +44,18 @@ impl From<BlobResponse> for HttpResponse {
 	}
 }
 
-trait Stored {
-	const CONTENT_TYPE: &'static str;
-
-	fn path(&self) -> String;
-}
-
-struct PackageArchive<'a> {
-	hash: &'a Hash,
-}
-impl Stored for PackageArchive<'_> {
-	const CONTENT_TYPE: &'static str = "application/zstd";
-
-	fn path(&self) -> String {
-		let mut prefix = self.hash.encoded();
-		let suffix = prefix.split_off(2);
-		format!("packages/{}/{prefix}/{suffix}", self.hash.algorithm())
-	}
+fn path(hash: &Hash) -> String {
+	let mut prefix = hash.encoded();
+	let suffix = prefix.split_off(2);
+	format!("packages/{}/{prefix}/{suffix}", hash.algorithm())
 }
 
 impl BlobStorage {
-	pub async fn get_package_archive(&self, hash: &Hash) -> anyhow::Result<Option<BlobResponse>> {
-		self.get_object(PackageArchive { hash }).await
-	}
-
-	#[expect(dead_code)]
-	pub async fn put_package_archive<R: AsyncBufRead + Unpin + Send + 'static>(
-		&self,
-		hash: &Hash,
-		data: R,
-	) -> anyhow::Result<()> {
-		self.put_object(PackageArchive { hash }, data).await
-	}
-
-	async fn get_object<S: Stored>(&self, stored: S) -> anyhow::Result<Option<BlobResponse>> {
-		let path = stored.path();
+	pub async fn get_object(&self, hash: &Hash) -> anyhow::Result<Option<BlobResponse>> {
+		let path = path(hash);
 		match self {
 			BlobStorage::FS(root) => match fs::File::open(root.join(path)).await {
-				Ok(file) => Ok(Some(BlobResponse::File {
-					file,
-					content_type: S::CONTENT_TYPE,
-				})),
+				Ok(file) => Ok(Some(BlobResponse::File(file))),
 				Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
 				Err(e) => Err(e.into()),
 			},
@@ -105,12 +71,12 @@ impl BlobStorage {
 		}
 	}
 
-	async fn put_object<S: Stored, R: AsyncBufRead + Unpin + Send + 'static>(
+	pub async fn put_object<R: AsyncBufRead + Unpin + Send + 'static>(
 		&self,
-		stored: S,
+		hash: &Hash,
 		mut data: R,
 	) -> anyhow::Result<()> {
-		let path = stored.path();
+		let path = path(hash);
 		match self {
 			BlobStorage::FS(root) => {
 				let path = root.join(path);
@@ -133,7 +99,6 @@ impl BlobStorage {
 
 				reqwest
 					.put(object_url)
-					.header(CONTENT_TYPE, S::CONTENT_TYPE)
 					.body(Body::wrap_stream(ReaderStream::new(data)))
 					.send()
 					.await?

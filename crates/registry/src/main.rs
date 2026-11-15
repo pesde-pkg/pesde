@@ -31,7 +31,6 @@ pub struct AppState {
 	blob_storage: BlobStorage,
 	access_token_hash: Option<TokenHash>,
 	read_requires_auth: bool,
-	#[expect(dead_code)]
 	max_archive_size: usize,
 }
 

@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT package.local_name_blake3, package_version.version, package_version.archive_hash, versions_leaf_node_entry.yank_state AS `yank_state: Text<VersionYankState>`\nFROM versions_leaf_node_entry\nINNER JOIN package_version ON package_version.scope=versions_leaf_node_entry.scope AND package_version.pos=versions_leaf_node_entry.version_pos\nINNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos\nWHERE versions_leaf_node_entry.node_blake3 = ?\nORDER BY versions_leaf_node_entry.idx",
+  "query": "\nSELECT package.local_name_blake3, package_version.version, package_version.archive_hash, package_version.manifest_hash, versions_leaf_node_entry.yank_state AS `yank_state: Text<VersionYankState>`\nFROM versions_leaf_node_entry\nINNER JOIN package_version ON package_version.scope=versions_leaf_node_entry.scope AND package_version.pos=versions_leaf_node_entry.version_pos\nINNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos\nWHERE versions_leaf_node_entry.node_blake3 = ?\nORDER BY versions_leaf_node_entry.idx",
   "describe": {
     "columns": [
       {
@@ -53,6 +53,22 @@
       },
       {
         "ordinal": 3,
+        "name": "manifest_hash",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 512
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package_version",
+            "name": "manifest_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "yank_state: Text<VersionYankState>",
         "type_info": {
           "type": "String",
@@ -75,8 +91,9 @@
       false,
       false,
       false,
+      false,
       true
     ]
   },
-  "hash": "fb2be231514ba407946f22060ca476f0398701eef1e6e48313b02fe5265cba4e"
+  "hash": "4916652cfd7576269dd7debe5751414f8caa811f398c2ac8bf2be3afed60c5ef"
 }

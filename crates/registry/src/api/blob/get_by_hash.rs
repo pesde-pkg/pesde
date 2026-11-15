@@ -26,5 +26,5 @@ pub(super) async fn http_v2(
 }
 
 async fn handler(blob: &BlobStorage, hash: &Hash) -> anyhow::Result<Option<BlobResponse>> {
-	blob.get_package_archive(hash).await
+	blob.get_object(hash).await
 }

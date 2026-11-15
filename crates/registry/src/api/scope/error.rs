@@ -5,6 +5,7 @@ use pesde_registry_core::db::StoreError;
 use crate::shared::error::Category;
 use crate::shared::error::http_response;
 use crate::shared::log::FromLogError;
+use crate::shared::tree::FromTreeError;
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum Error {
@@ -88,5 +89,10 @@ impl FromLogError for Error {}
 impl From<StoreError> for Error {
 	fn from(value: StoreError) -> Self {
 		Error::Internal(value.0)
+	}
+}
+impl FromTreeError for Error {
+	fn root_mismatch() -> Self {
+		Error::ComputedRootDifferent
 	}
 }

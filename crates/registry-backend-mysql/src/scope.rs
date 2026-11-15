@@ -793,7 +793,7 @@ ORDER BY idx",
 
 			let mut query = query!(
 				r"
-SELECT package.local_name_blake3, package_version.version, package_version.archive_hash, versions_leaf_node_entry.yank_state AS `yank_state: Text<VersionYankState>`
+SELECT package.local_name_blake3, package_version.version, package_version.archive_hash, package_version.manifest_hash, versions_leaf_node_entry.yank_state AS `yank_state: Text<VersionYankState>`
 FROM versions_leaf_node_entry
 INNER JOIN package_version ON package_version.scope=versions_leaf_node_entry.scope AND package_version.pos=versions_leaf_node_entry.version_pos
 INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
@@ -812,6 +812,7 @@ ORDER BY versions_leaf_node_entry.idx",
 				});
 				values.push(PackageVersionValue {
 					archive_hash: r.archive_hash.parse()?,
+					manifest_hash: r.manifest_hash.parse()?,
 					yank_state: r.yank_state.map(|s| s.0),
 				});
 			}

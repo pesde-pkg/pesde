@@ -12,9 +12,9 @@ use pesde_registry_core::features::scope::Scoped;
 
 use crate::Db;
 use crate::api::scope::error::Error;
-use crate::api::scope::run_tree;
 use crate::shared::db::append_leaf;
 use crate::shared::db::run_tx;
+use crate::shared::tree::run_tree;
 
 #[post("/scope/log/entry")]
 pub(super) async fn http_v2(

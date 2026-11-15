@@ -317,6 +317,8 @@ impl FromStr for PackageVersion {
 pub struct PackageVersionValue {
 	/// The hash of the archive containing the package's contents
 	pub archive_hash: Hash,
+	/// The hash of the manifest of the package
+	pub manifest_hash: Hash,
 	/// The version's yank status
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub yank_state: Option<VersionYankState>,
@@ -326,6 +328,7 @@ impl Canonical for PackageVersionValue {
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
 		cbor_core::map! {
 			"archive_hash" => self.archive_hash.to_string(),
+			"manifest_hash" => self.manifest_hash.to_string(),
 			"yank_state" => self.yank_state.as_ref().map_or(const { cbor_core::Value::null() }, |s| cbor_core::Value::TextString(s.to_string().into())),
 		}.write_to(writer)
 	}

@@ -1,215 +1,318 @@
-use std::io::Cursor;
+use std::collections::HashSet;
+use std::str::FromStr as _;
 
-use actix_multipart::Field;
-use actix_multipart::Multipart;
 use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::post;
 use actix_web::web;
 use actix_web::web::Bytes;
-use anyhow::Context as _;
-use fs_err::tokio as fs;
-use futures::TryFutureExt as _;
-use futures::TryStreamExt as _;
+use futures::AsyncReadExt as _;
 use pesde::MANIFEST_FILE_NAME;
 use pesde::hash::Hash;
-use pesde::manifest::Manifest;
-use pesde::names::PackageName;
-use pesde::source::pesde::registry::*;
+use pesde::registry::Canonical as _;
+use pesde::registry::Entry;
+use pesde::registry::GlobalEntryPayload;
+use pesde::registry::LocalNameId;
+use pesde::registry::PackageVersionValue;
+use pesde::registry::PublishPackageBody;
+use pesde::registry::PublishVersionUserScopeOpBody;
+use pesde::registry::ScopeEntryPayload;
+use pesde::registry::ScopeGenesisPayload;
+use pesde::registry::ScopeId;
+use pesde::registry::Signed;
+use pesde::registry::UnvalidatedSigned;
+use pesde::registry::UserScopeOp;
+use pesde::registry::manifest::ExportPath;
+use pesde::registry::manifest::ManifestPackage;
+use pesde::registry::manifest::ResolvedManifest;
 use pesde_registry_core::db::Backend;
-use serde::de::DeserializeOwned;
-use tokio::io::AsyncReadExt as _;
+use pesde_registry_core::db::CreatingScopeLockResult;
+use pesde_registry_core::db::ExistingScopeLockResult;
+use pesde_registry_core::db::PermissionWidth;
+use pesde_registry_core::features::global::Global;
+use pesde_registry_core::features::scope::Scoped;
+use tokio::try_join;
 
 use crate::AppState;
+use crate::Db;
 use crate::api::package::error::Error;
 use crate::shared::blob::BlobStorage;
 use crate::shared::db::append_leaf;
+use crate::shared::db::run_tx;
+use crate::shared::tree::run_tree;
 
-const MAX_ENTRY_SIZE: usize = 64 * 1024;
-const README_FILE_NAME: &str = "README.md";
-const MAX_README_SIZE: u64 = 256 * 1024;
+const JSON_BODY_LIMIT: usize = 1024 * 1024;
 
 #[post("/scope/log/entry")]
 pub(super) async fn http_v2(
+	db: Db,
 	app_state: web::Data<AppState>,
-	mut payload: Multipart,
+	payload: web::Payload,
 ) -> Result<impl Responder, Error> {
-	let mut scope_entry_payload: Option<UserScopeEntryPayload<PublishVersionSignedOpBody>> = None;
-	let mut global_entry_payload: Option<ScopeGenesisEntryPayload> = None;
-	let mut archive: Option<Bytes> = None;
+	let bytes_result = payload
+		.to_bytes_limited(app_state.max_archive_size + JSON_BODY_LIMIT)
+		.await?;
 
-	while let Some(mut field) = payload.try_next().await? {
-		if let Some(field) = FieldExt::new("scope_entry", &mut field) {
-			scope_entry_payload = Some(field.json(MAX_ENTRY_SIZE).await?)
-		} else if let Some(field) = FieldExt::new("global_entry", &mut field) {
-			global_entry_payload = Some(field.json(MAX_ENTRY_SIZE).await?);
-		} else if let Some(field) = FieldExt::new("archive", &mut field) {
-			archive = Some(field.bytes(app_state.max_archive_size).await?);
-		}
-	}
-
-	let entry = entry.ok_or_else(|| Error::BadRequest("missing `entry` field".to_string()))?;
-	let archive =
-		archive.ok_or_else(|| Error::BadRequest("missing `archive` field".to_string()))?;
-
-	let package = {
-		let body = entry.unsafe_body();
-		PackageName::new(body.scope.clone(), body.payload.name.clone())
+	let mut bytes = match bytes_result {
+		Ok(bytes) => bytes,
+		Err(e) => return Ok(e.error_response()),
 	};
 
-	handler(
-		app_state.db.as_ref(),
-		&app_state.blob_storage,
-		entry,
-		scope_entry,
-		archive,
-	)
-	.await?;
+	let separator_idx = bytes
+		.iter()
+		.position(|&b| b == b'\n')
+		.ok_or(Error::MalformedBody)?;
 
-	if let Err(e) = app_state
-		.search
-		.update(app_state.db.as_ref(), package)
-		.await
-	{
-		tracing::error!("failed to index published package for search: {e:#?}");
-	}
+	let archive_bytes = bytes.split_to(separator_idx);
+	let body_bytes = bytes.split_off(1);
+
+	let body: PublishPackageBody =
+		serde_json::from_slice(&body_bytes).map_err(Error::MalformedJson)?;
+
+	handler(db.as_ref(), &app_state.blob_storage, body, archive_bytes).await?;
+
+	// if let Err(e) = app_state
+	// 	.search
+	// 	.update(app_state.db.as_ref(), package)
+	// 	.await
+	// {
+	// 	tracing::error!("failed to index published package for search: {e:#?}");
+	// }
 
 	Ok(HttpResponse::Created().finish())
-}
-
-struct FieldExt<'a> {
-	field: &'a mut Field,
-	name: &'static str,
-}
-impl<'a> FieldExt<'a> {
-	fn new(name: &'static str, field: &'a mut Field) -> Option<Self> {
-		field
-			.name()
-			.is_some_and(|n| n == name)
-			.then_some(Self { field, name })
-	}
-
-	async fn bytes(&mut self, limit: usize) -> Result<Bytes, Error> {
-		self.field
-			.bytes(limit)
-			.map_err(|_| Error::FieldTooLarge {
-				name: self.name,
-				limit,
-			})
-			.await?
-			.map_err(Into::into)
-	}
-
-	async fn json<T: DeserializeOwned>(&mut self, limit: usize) -> Result<T, Error> {
-		let bytes = self.bytes(limit).await?;
-
-		serde_json::from_slice(&bytes).map_err(Into::into)
-	}
 }
 
 async fn handler(
 	db: &dyn Backend,
 	blob: &BlobStorage,
-	scope_entry_payload: UserScopeEntryPayload<PublishVersionSignedOpBody>,
-	global_entry_payload: Option<ScopeGenesisEntryPayload>,
+	body: PublishPackageBody,
 	archive: Bytes,
 ) -> Result<(), Error> {
-	let scope_entry_payload = scope_entry_payload.into_inner();
-	let op_payload = &scope_entry_payload.body.op_payload;
-	let scope_id = &op_payload.scope_id;
+	let PublishPackageBody {
+		scope_genesis,
+		publish_version,
+	} = body;
 
-	// let mut (scope_size, scope_tx) = match global_entry_payload {
-	// 	Some(payload) => {
-	// 		let () = db.begin_write_creating(scope_id).await?;
-	// 	}
-	// };
+	let UnvalidatedSigned {
+		sig: _,
+		body:
+			PublishVersionUserScopeOpBody {
+				header,
+				package_version,
+				archive_hash,
+				manifest_hash,
+				versions_root: _,
+			},
+	} = publish_version.inner();
 
-	let op_hash = &op_payload.op.archive_hash;
-	if Hash::digest(op_hash.algorithm(), &archive) != *op_hash {
-		return Err(Error::ArchiveHashMismatch);
+	if Hash::digest(archive_hash.algorithm(), &archive) != *archive_hash {
+		return Err(Error::HashMismatch);
 	}
 
-	let tempdir = tokio::task::spawn_blocking(tempfile::tempdir)
-		.await
-		.context("failed to spawn tempdir creation")?
-		.context("failed to create tempdir")?;
+	let mut zip = async_zip::base::read1::seek::ZipArchiveReader::open_with_options(
+		futures::io::Cursor::new(&*archive),
+		async_zip::base::read1::ZipOptions::untrusted(),
+	)
+	.await?;
 
-	tokio_tar::Archive::new(async_compression::tokio::bufread::ZstdDecoder::new(
-		&*archive.clone(),
-	))
-	.unpack(tempdir.path())
-	.await
-	.map_err(|e| Error::BadRequest(format!("invalid archive: {e}")))?;
+	let manifest_file_idx = {
+		let mut manifest_file = None;
 
-	let manifest = fs::read_to_string(tempdir.path().join(MANIFEST_FILE_NAME))
-		.await
-		.map_err(|e| Error::BadRequest(format!("could not read {MANIFEST_FILE_NAME}: {e}")))?;
-	let manifest: Manifest = toml::from_str(&manifest)
-		.map_err(|e| Error::BadRequest(format!("invalid {MANIFEST_FILE_NAME}: {e}")))?;
+		// check for duplicate paths (ZIP allows them) and case-only differences
+		let mut seen_paths = HashSet::new();
+		for (idx, c) in zip.cdrs().iter().enumerate() {
+			match c.insecure_file_name.as_str() {
+				Some(p)
+					if ExportPath::from_str(p).is_ok()
+						&& seen_paths.insert(p.to_lowercase().into_boxed_str()) => {}
+				_ => {
+					let bytes: Box<[u8]> = c.insecure_file_name.as_bytes().into();
 
-	let readme = match fs::File::open(tempdir.path().join(README_FILE_NAME)).await {
-		Ok(file) => {
-			let mut buffer = Vec::new();
-			file.take(MAX_README_SIZE + 1)
-				.read_to_end(&mut buffer)
-				.await
-				.map_err(|e| Error::Internal(e.into()))?;
-			if buffer.len() as u64 > MAX_README_SIZE {
-				return Err(Error::BadRequest(format!(
-					"{README_FILE_NAME} exceeds the maximum size of {MAX_README_SIZE} bytes"
-				)));
+					return Err(Error::InvalidPath(bytes.into()));
+				}
 			}
-			Some(buffer)
+
+			// specifically case-sensitive, this isn't an oversight!
+			if c.insecure_file_name.as_bytes() == MANIFEST_FILE_NAME.as_bytes() {
+				manifest_file = Some(idx);
+			}
 		}
-		Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-		Err(e) => return Err(Error::Internal(e.into())),
+
+		manifest_file.ok_or(Error::MalformedBody)?
 	};
 
-	tokio::task::spawn_blocking(move || tempdir.close())
+	let mut manifest_file = zip.file(manifest_file_idx).await?;
+	let mut manifest_contents = String::new();
+
+	manifest_file
+		.read_to_string(&mut manifest_contents)
 		.await
-		.unwrap()
-		.map_err(anyhow::Error::from)
-		.map_err(Error::Internal)?;
+		.map_err(Error::InvalidZipIo)?;
 
-	if manifest.private {
-		return Err(Error::BadRequest(
-			"cannot publish a private package".to_string(),
-		));
+	if Hash::digest(manifest_hash.algorithm(), &manifest_contents) != *manifest_hash {
+		return Err(Error::HashMismatch);
 	}
 
-	if manifest.name.scope() != &body.scope
-		|| manifest.name.local_name() != &body.payload.name
-		|| *manifest.version != *body.payload.version
-		|| *manifest.description != *body.payload.description
-		|| *manifest.license != *body.payload.license
-		|| manifest.repository.as_deref() != body.payload.repository.as_deref()
-		|| *manifest.authors != *body.payload.authors
+	let manifest: ResolvedManifest =
+		toml::from_str(&manifest_contents).map_err(Error::InvalidManifest)?;
+
 	{
-		return Err(Error::BadRequest(
-			"the manifest does not match the entry".to_string(),
-		));
+		let ResolvedManifest {
+			package:
+				ManifestPackage {
+					name,
+					version: _,
+					description: _,
+					// TODO: validate license as SPDX
+					license: _,
+					repository: _,
+				},
+			exports: _,
+			config_luau: _,
+			// TODO: validate allowed foreign registries, indices, etc.
+			dependencies: _,
+		} = &manifest;
+
+		if ScopeId::from(name.scope()) != header.scope_id
+			|| LocalNameId::from(name.local_name()) != package_version.pkg
+			|| manifest.package.version != package_version.version
+		{
+			return Err(Error::ManifestStateMismatch);
+		}
 	}
 
-	todo!();
-	let (mut store, _) = append_leaf(store, publish_pos, &body).await?;
-	db.insert_publish(&mut store, publish_pos, &sig, &body)
+	let (tx, scope_size) = if let Some(scope_genesis) = scope_genesis {
+		let UnvalidatedSigned {
+			sig: _,
+			body: ScopeGenesisPayload {
+				scope_id,
+				owner: _,
+				first_entry_hash,
+			},
+		} = scope_genesis.inner();
+
+		if *scope_id != header.scope_id {
+			return Err(Error::BadGenesisEntry);
+		}
+
+		if Hash::digest(
+			first_entry_hash.algorithm(),
+			publish_version.canonical_bytes(),
+		) != *first_entry_hash
+		{
+			return Err(Error::BadGenesisEntry);
+		}
+
+		if header.prev_hash.bytes().iter().any(|b| *b != 0) {
+			return Err(Error::BadGenesisEntry);
+		}
+
+		match db.begin_write_creating(&header.scope_id).await? {
+			CreatingScopeLockResult::Ok {
+				mut tx,
+				global_size,
+			} => {
+				let entry = Entry {
+					pos: global_size,
+					published_at: Default::default(),
+					payload: GlobalEntryPayload::ScopeGenesis(scope_genesis),
+				};
+
+				let new_size = append_leaf(Global(&mut *tx), global_size, &entry).await?;
+				tx.set_global_log_size(new_size).await?;
+				tx.insert_global_entry(&entry).await?;
+
+				(tx.into_scope_transaction(), 0)
+			}
+			CreatingScopeLockResult::AlreadyExists => {
+				return Err(Error::BadGenesisEntry);
+			}
+		}
+	} else {
+		let result = db
+			.begin_write_existing(
+				&header.scope_id,
+				&header.signer,
+				PermissionWidth::Package(&package_version.pkg),
+			)
+			.await?;
+
+		match result {
+			ExistingScopeLockResult::Ok { tx, scope_size } => (tx, scope_size.get()),
+			ExistingScopeLockResult::Unauthorized => return Err(Error::Unauthorized),
+			ExistingScopeLockResult::DoesntExist => return Err(Error::BadGenesisEntry),
+		}
+	};
+
+	run_tx(tx, async move |tx| {
+		let UnvalidatedSigned { sig, body } = publish_version.into_inner();
+		let scope_state = tx
+			.scope_state(&body.header.scope_id)
+			.await?
+			.expect("we have just created/locked this scope");
+
+		run_tree(
+			&body.header.scope_id,
+			tx,
+			&scope_state,
+			&body.versions_root,
+			async |tree| {
+				let result = tree
+					.insert_new(
+						body.package_version.clone(),
+						PackageVersionValue {
+							archive_hash: body.archive_hash,
+							manifest_hash: body.manifest_hash,
+							yank_state: None,
+						},
+					)
+					.await;
+
+				match result {
+					Ok(_) => Ok(()),
+					Err(_) => Err(Error::VersionAlreadyExists),
+				}
+			},
+		)
 		.await?;
 
-	let package_name = PackageName::new(body.scope.clone(), body.payload.name.clone());
-	tokio::try_join!(
-		blob.put_package_archive(&package_name, &body.payload.version, Cursor::new(archive))
-			.map_err(Error::Internal),
-		async {
-			if let Some(readme) = readme {
-				blob.put_package_readme(&package_name, &body.payload.version, Cursor::new(readme))
-					.await
-					.map_err(Error::Internal)?;
-			}
+		let entry = Entry {
+			pos: scope_size,
+			published_at: Default::default(),
+			payload: ScopeEntryPayload::User(
+				Signed::new(UnvalidatedSigned {
+					sig,
+					body: UserScopeOp::PublishVersion(body),
+				})
+				.expect(
+					"body ops should always have the same canonical bytes as in their enum variant",
+				),
+			),
+		};
+		#[expect(clippy::match_wildcard_for_single_variants)]
+		let (scope_id, archive_hash, manifest_hash) = match &entry.payload {
+			ScopeEntryPayload::User(payload) => match &payload.inner().body {
+				UserScopeOp::PublishVersion(PublishVersionUserScopeOpBody {
+					header,
+					package_version: _,
+					archive_hash,
+					manifest_hash,
+					versions_root: _,
+				}) => (&header.scope_id, archive_hash, manifest_hash),
+				_ => unreachable!(),
+			},
+			_ => unreachable!(),
+		};
 
-			Ok(())
-		},
-	)?;
-	store.commit().await?;
+		let new_size = append_leaf(Scoped(scope_id, &mut *tx), scope_size, &entry).await?;
+		tx.set_scope_log_size(scope_id, new_size).await?;
+		tx.insert_scope_entry(&entry).await?;
 
-	Ok(())
+		let archive = blob.put_object(archive_hash, std::io::Cursor::new(archive));
+		let manifest = blob.put_object(manifest_hash, std::io::Cursor::new(manifest_contents));
+		try_join!(archive, manifest).map_err(Error::Internal)?;
+
+		Ok(())
+	})
+	.await
 }

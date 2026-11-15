@@ -1,61 +1,86 @@
 use actix_web::HttpResponse;
 use actix_web::ResponseError;
+use bstr::BStr;
+use pesde_registry_core::db::StoreError;
 
 use crate::shared::error::Category;
 use crate::shared::error::http_response;
+use crate::shared::tree::FromTreeError;
 
-#[expect(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub(super) enum Error {
 	#[error(transparent)]
 	Internal(#[from] anyhow::Error),
 
+	#[error(transparent)]
+	BodyLimit(#[from] actix_web::body::BodyLimitExceeded),
+
+	#[error("the request body was malformed")]
+	MalformedBody,
+
+	#[error("the request body was malformed")]
+	MalformedJson(#[from] serde_json::Error),
+
+	#[error("the genesis entry is not valid for the provided scope")]
+	BadGenesisEntry,
+
+	#[error("a hash does not match the uploaded data")]
+	HashMismatch,
+
+	#[error("the uploaded archive is not a valid zip file")]
+	InvalidZip(#[from] async_zip::error::ZipError),
+
+	#[error("the uploaded archive is not valid")]
+	InvalidZipIo(#[source] std::io::Error),
+
+	#[error("the path `{0}` in the uploaded archive is not allowed")]
+	InvalidPath(Box<BStr>),
+
+	#[error("the manifest file is not valid")]
+	InvalidManifest(#[from] toml::de::Error),
+
+	#[error("the manifest file has a state mismatch")]
+	ManifestStateMismatch,
+
 	#[error("not authorized to perform this action in the scope")]
 	Unauthorized,
-
-	#[error("the package version does not exist")]
-	UnknownPackageVersion,
 
 	#[error("the package version has already been published")]
 	VersionAlreadyExists,
 
-	#[error("the package version is already yanked")]
-	AlreadyYanked,
-
-	#[error("the package version is not yanked")]
-	NotYanked,
-
-	#[error("the package is already deprecated")]
-	AlreadyDeprecated,
-
-	#[error("the package is not deprecated")]
-	NotDeprecated,
-
-	#[error("the archive hash does not match the uploaded data")]
-	ArchiveHashMismatch,
-
-	#[error(transparent)]
-	Multipart(#[from] actix_multipart::MultipartError),
-
-	#[error("`{name}` field exceeds the maximum size of {limit} bytes")]
-	FieldTooLarge { name: &'static str, limit: usize },
+	#[error("invalid tree root")]
+	ComputedRootDifferent,
 }
 
 impl ResponseError for Error {
 	fn error_response(&self) -> HttpResponse {
 		let category = match self {
 			Error::Internal(_) => Category::Internal,
-			Error::ArchiveHashMismatch | Error::Multipart(_) | Error::FieldTooLarge { .. } => {
-				Category::BadRequest
-			}
+			Error::BodyLimit(_) => Category::BadRequest,
+			Error::MalformedBody => Category::BadRequest,
+			Error::MalformedJson(_) => Category::BadRequest,
+			Error::BadGenesisEntry => Category::BadRequest,
+			Error::HashMismatch => Category::BadRequest,
+			Error::InvalidZip(_) => Category::BadRequest,
+			Error::InvalidZipIo(_) => Category::BadRequest,
+			Error::InvalidPath(_) => Category::BadRequest,
+			Error::InvalidManifest(_) => Category::BadRequest,
+			Error::ManifestStateMismatch => Category::BadRequest,
 			Error::Unauthorized => Category::Unauthorized,
-			Error::UnknownPackageVersion => Category::NotFound,
-			Error::VersionAlreadyExists
-			| Error::AlreadyYanked
-			| Error::NotYanked
-			| Error::AlreadyDeprecated
-			| Error::NotDeprecated => Category::Conflict,
+			Error::VersionAlreadyExists => Category::Conflict,
+			Error::ComputedRootDifferent => Category::BadRequest,
 		};
 		http_response(category, self)
+	}
+}
+
+impl From<StoreError> for Error {
+	fn from(value: StoreError) -> Self {
+		Self::Internal(value.0)
+	}
+}
+impl FromTreeError for Error {
+	fn root_mismatch() -> Self {
+		Self::ComputedRootDifferent
 	}
 }

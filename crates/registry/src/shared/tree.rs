@@ -1,11 +1,45 @@
 use std::sync::Arc;
 
+use pesde::merkle_bplustree::MerkleBPlusTree;
 use pesde::merkle_bplustree::TreeConfig;
+use pesde::merkle_bplustree::hasher::Hasher;
 use pesde::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::ScopeWriteTransaction;
+use pesde_registry_core::db::StoreError;
 use pesde_registry_core::features::scope::ScopeTreeReadRepository;
 use pesde_registry_core::features::scope::ScopeTreeWriteRepository;
+use pesde_registry_core::features::scope::Scoped;
+
+pub trait FromTreeError: From<StoreError> {
+	fn root_mismatch() -> Self;
+}
+
+pub async fn run_tree<T: ScopeTree, E: FromTreeError>(
+	scope: &ScopeId,
+	tx: &mut dyn ScopeWriteTransaction,
+	state: &ScopeStateResponse,
+	supplied_root: &T,
+	cb: impl AsyncFnOnce(
+		&mut MerkleBPlusTree<T, Scoped<'_, &mut dyn ScopeTreeWriteRepository<T>>>,
+	) -> Result<(), E>,
+) -> Result<(), E>
+where
+	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
+	T::Shaper: Default,
+{
+	let mut tree = MerkleBPlusTree::from_root_hash(
+		T::root_from_state(state),
+		Scoped(scope, T::write_repo(tx)),
+		Default::default(),
+	)
+	.await?;
+	cb(&mut tree).await?;
+	if tree.root_hash() != *supplied_root.hash() {
+		return Err(E::root_mismatch());
+	}
+	Ok(())
+}
 
 pub trait ScopeTree: TreeConfig {
 	fn root_from_state(state: &ScopeStateResponse) -> &CurrentHash;

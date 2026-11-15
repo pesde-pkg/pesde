@@ -1,6 +1,6 @@
 mod error;
-// mod publish;
+mod publish;
 
-pub(super) fn http_v2(_cfg: &mut actix_web::web::ServiceConfig) {
-	// cfg.service(publish::http_v2);
+pub(super) fn http_v2(cfg: &mut actix_web::web::ServiceConfig) {
+	cfg.service(publish::http_v2);
 }

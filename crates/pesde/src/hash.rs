@@ -179,7 +179,7 @@ macro_rules! algos {
 			)+
 
 			/// A hash of some data, consisting of the hash algorithm and the hash value
-			#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+			#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 			#[non_exhaustive]
 			pub enum Hash {
 				$(
