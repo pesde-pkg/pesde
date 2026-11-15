@@ -16,7 +16,7 @@ pub(super) async fn http_v2(
 	app_state: Data<AppState>,
 	path: web::Path<(HashAlgorithm, Box<str>)>,
 ) -> Result<impl Responder, Error> {
-	let hash = Hash::new(path.0, &*path.1)?;
+	let hash = Hash::from_encoded(path.0, &path.1)?;
 
 	let Some(response) = handler(&app_state.blob_storage, &hash).await? else {
 		return Ok(HttpResponse::NotFound().finish());

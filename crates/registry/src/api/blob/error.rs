@@ -10,7 +10,7 @@ pub(super) enum Error {
 	Internal(#[from] anyhow::Error),
 
 	#[error("the provided hash wasn't valid")]
-	InvalidHash(#[from] pesde::hash::NewHashError),
+	InvalidHash(#[from] pesde::hash::HashDecodeError),
 }
 
 impl ResponseError for Error {
