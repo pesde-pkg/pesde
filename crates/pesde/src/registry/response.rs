@@ -100,11 +100,8 @@ where
 		/// The value of the entry
 		value: T::Value,
 	},
-	/// The proof of the requested range, meaning the end has been reached
-	Proof {
-		/// The proof of the range
-		proof: merkle_bplustree::proof::range::RangeProof<T>,
-	},
+	/// A proof node
+	Node(merkle_bplustree::proof::range::RangeProofNode<T>),
 }
 
 /// A tree transition proof

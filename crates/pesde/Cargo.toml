@@ -86,7 +86,7 @@ semver = { version = "1.0.28", default-features = false, features = [
 ] }
 
 merkleberg = { version = "0.2.1", default-features = false, features = ["std"] }
-merkle-bplustree = { version = "0.1.0", default-features = false, features = [
+merkle-bplustree = { version = "0.2.0", default-features = false, features = [
     "serde",
     "const",
 ] }

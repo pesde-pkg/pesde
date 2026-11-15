@@ -1,10 +1,13 @@
 #![expect(clippy::todo)]
 use std::sync::Arc;
 
+use anyhow::Context as _;
 use async_stream::stream;
 use async_trait::async_trait;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
+use merkle_bplustree::proof::range::RangeVerifier as _;
+use merkle_bplustree::proof::range::range_verifier;
 use pesde::Url;
 use pesde::registry::PackageVersionsTree;
 use pesde::registry::ScopeId;
@@ -86,11 +89,17 @@ impl PackageSource for RegistryPesdePackageSource {
 			);
 			let mut packages_reader = BufReader::new(stream).lines();
 
+			let mut verifier = range_verifier(..);
+
 			while let Some(line) = packages_reader.next_line().await? {
 				let entry: TreeEntriesEndpointResponse<PackageVersionsTree> =
 					serde_json::from_str(&line)?;
 				match entry {
-					TreeEntriesEndpointResponse::Entry { key, value: _ } => {
+					TreeEntriesEndpointResponse::Entry { key, value } => {
+						verifier.push_entry(&key, &value).context(
+							"failed to push an entry to the package versions tree proof verifier",
+						)?;
+
 						let version = key.version.into();
 						if req.matches(&version) {
 							yield Ok::<_, SourceError>((
@@ -99,11 +108,17 @@ impl PackageSource for RegistryPesdePackageSource {
 							));
 						}
 					}
-					TreeEntriesEndpointResponse::Proof { .. } => {
-						// TODO: handle proof
+					TreeEntriesEndpointResponse::Node(node) => {
+						verifier.push_node(node).context(
+							"failed to push a node to the package versions tree proof verifier",
+						)?;
 					}
 				}
 			}
+
+			verifier
+				.finish(&state_response.package_versions_root.0)
+				.context("failed to verify the package versions tree proof")?;
 		});
 
 		Ok(ResolveResult::Found(stream.boxed()))
