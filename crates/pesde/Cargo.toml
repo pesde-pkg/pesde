@@ -50,6 +50,7 @@ bin = [
     "dep:toml_edit",
     "dep:inquire",
     "dep:ssh-encoding",
+    "dep:bytes",
 
     "dep:windows",
 ]
@@ -165,6 +166,9 @@ inquire = { version = "0.9.4", default-features = false, optional = true, featur
     "console",
 ] }
 ssh-encoding = { version = "0.2.0", default-features = false, optional = true, features = [
+    "std",
+] }
+bytes = { version = "1.12.1", default-features = false, optional = true, features = [
     "std",
 ] }
 

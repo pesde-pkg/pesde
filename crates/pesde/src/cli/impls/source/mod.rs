@@ -107,10 +107,10 @@ impl SourceProvider for CliSourceProvider {
 
 				anyhow::Ok(match source_id {
 					SourceId::Pesde(url) => {
-						let source = registry_pesde::RegistryPesdePackageSource {
-							url: url.clone(),
-							network: network_access(url).await?,
-						};
+						let source = registry_pesde::RegistryPesdePackageSource::new(
+							url.clone(),
+							network_access(url).await?,
+						);
 
 						let source = SqliteCachingPackageSource {
 							source,

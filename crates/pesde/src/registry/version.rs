@@ -14,7 +14,7 @@ const PRE_MAX: usize = 10;
 /// Differences from [Version]:
 /// - build metadata is not allowed: it is ambiguous (can't specify it) and overall has little to no purpose
 /// - only lowercase ASCII is allowed: while without this requirement versions can be deterministically chosen, they are surprising to users: `1.2.3-hello` is not `1.2.3-Hello`
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PesdeStyleVersion {
 	/// [Version::major]
 	pub major: u64,

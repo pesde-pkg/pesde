@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::__private::ser_display_deser_fromstr;
 use crate::PackageName;
 use crate::Url;
+use crate::registry::PesdeStyleVersion;
 use crate::registry::manifest::wally_compat::WallyPackageName;
 use crate::semver::Version;
 
@@ -17,7 +18,7 @@ use crate::vfs::VfsPath;
 /// but [PackageId::compare] should be used for actual comparisons.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PackageId {
-	Pesde(Url, PackageName, Version),
+	Pesde(Url, PackageName, PesdeStyleVersion),
 	Wally(Url, WallyPackageName, Version),
 	LegacyPesde(Url, PackageName, Version, crate::legacy::TargetKind),
 	Git(Url, Arc<str>, VfsPath),

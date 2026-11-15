@@ -87,7 +87,7 @@ macro_rules! name_part {
 			}
 
 			#[doc = concat!("The ", stringify!([< $name:lower >]), " id; hash of the ", stringify!([< $name:lower >]))]
-			#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+			#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 			pub struct [< $name Id >](CurrentHash);
 			ser_display_deser_fromstr!([< $name Id >]);
 
@@ -179,7 +179,7 @@ impl FromStr for PackageName {
 }
 
 /// The Merkle B+Tree that contains scope members along their grants
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ScopeMembersTree(pub CurrentHash);
 impl TreeConfig for ScopeMembersTree {
@@ -262,7 +262,7 @@ hash_with_plaintext!(
 pub struct ScopeGrantEntryError;
 
 /// The Merkle B+Tree that contains package versions along their state
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PackageVersionsTree(pub CurrentHash);
 impl TreeConfig for PackageVersionsTree {
@@ -273,7 +273,7 @@ impl TreeConfig for PackageVersionsTree {
 }
 
 /// A package version, i.e. its local id and version
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PackageVersion {
 	pub pkg: LocalNameId,
 	pub version: PesdeStyleVersion,
@@ -366,7 +366,7 @@ impl FromStr for VersionYankState {
 }
 
 /// The Merkle B+Tree that contains package deprecations along their reasons
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PackageDeprecationsTree(pub CurrentHash);
 impl TreeConfig for PackageDeprecationsTree {

@@ -3868,6 +3868,7 @@ dependencies = [
  "async_zip",
  "blake3",
  "bstr",
+ "bytes",
  "cbor-core",
  "clap",
  "console",
