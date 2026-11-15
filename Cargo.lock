@@ -4011,7 +4011,6 @@ dependencies = [
  "pesde",
  "pesde-registry-backend-mysql",
  "pesde-registry-core",
- "pin-project-lite",
  "reqwest",
  "rusty-s3",
  "serde",

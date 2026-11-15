@@ -1,6 +1,4 @@
 use std::fmt::Debug;
-use std::marker::PhantomData;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use actix_web::Responder;
@@ -11,7 +9,7 @@ use futures::TryStreamExt as _;
 use pesde::merkle_bplustree::MerkleBPlusTree;
 use pesde::merkle_bplustree::TreeConfig;
 use pesde::merkle_bplustree::hasher::Hasher;
-use pesde::merkle_bplustree::proof::range::GetRangeProof;
+use pesde::merkle_bplustree::proof::range::RangeItem;
 use pesde::registry::*;
 use pesde_registry_core::features::scope::Nodes;
 use pesde_registry_core::features::scope::ScopeTreeReadRepository;
@@ -52,48 +50,11 @@ where
 {
 	let node = db.scope_tree_node(root).await?.ok_or(Error::RootNotFound)?;
 	let tree = MerkleBPlusTree::from_root(node, Nodes(db), Default::default());
-	Ok(EntriesStream {
-		stream: Some(tree.into_proven_range(..)),
-		phantom: PhantomData,
-	}
-	.map_err(Into::into))
-}
-
-pin_project_lite::pin_project! {
-	struct EntriesStream<T, S> {
-		#[pin]
-		stream: Option<S>,
-		phantom: PhantomData<T>
-	}
-}
-
-impl<T: TreeConfig, E, S: Stream<Item = Result<(T::Key, T::Value), E>> + GetRangeProof<T>> Stream
-	for EntriesStream<T, S>
-where
-	T::Key: Debug,
-	T::Value: Debug,
-	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
-{
-	type Item = Result<TreeEntriesEndpointResponse<T>, E>;
-
-	fn poll_next(
-		self: Pin<&mut Self>,
-		cx: &mut std::task::Context<'_>,
-	) -> std::task::Poll<Option<Self::Item>> {
-		let mut this = self.project();
-		let Some(mut stream) = this.stream.as_mut().as_pin_mut() else {
-			return std::task::Poll::Ready(None);
-		};
-
-		if let Some(i) = std::task::ready!(stream.as_mut().poll_next(cx)) {
-			let i = i.map(|(key, value)| TreeEntriesEndpointResponse::Entry { key, value });
-
-			return std::task::Poll::Ready(Some(i));
-		}
-
-		let proof = stream.get_proof();
-		this.stream.set(None);
-
-		std::task::Poll::Ready(Some(Ok(TreeEntriesEndpointResponse::Proof { proof })))
-	}
+	Ok(tree
+		.into_proven_range(..)
+		.map_ok(|item| match item {
+			RangeItem::Entry((key, value)) => TreeEntriesEndpointResponse::Entry { key, value },
+			RangeItem::Node(node) => TreeEntriesEndpointResponse::Node(node),
+		})
+		.map_err(Into::into))
 }
