@@ -345,7 +345,7 @@ WHERE signed_transfer_ownership_scope_log_entry.scope = ? AND signed_transfer_ow
 				SignedOpKind::PublishVersion => {
 					let r = query!(
 						r"
-SELECT package.local_name_blake3, package_version.version, package_version.archive_hash
+SELECT package.local_name_blake3, package_version.version, package_version.archive_hash, package_version.manifest_hash
 FROM signed_publish_version_scope_log_entry
 INNER JOIN package_version ON package_version.scope=signed_publish_version_scope_log_entry.scope AND package_version.pos=signed_publish_version_scope_log_entry.pos
 INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
@@ -366,6 +366,7 @@ WHERE signed_publish_version_scope_log_entry.scope = ? AND signed_publish_versio
 							version: r.version.parse()?,
 						},
 						archive_hash: r.archive_hash.parse()?,
+						manifest_hash: r.manifest_hash.parse()?,
 						versions_root: package_versions_root,
 					})
 				}

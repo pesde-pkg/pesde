@@ -1,3 +1,4 @@
+mod blob;
 mod log;
 mod package;
 mod scope;
@@ -9,6 +10,7 @@ pub fn api(cfg: &mut actix_web::web::ServiceConfig) {
 			.configure(log::http_v2)
 			.configure(package::http_v2)
 			.configure(scope::http_v2)
-			.configure(tree::http_v2),
+			.configure(tree::http_v2)
+			.configure(blob::http_v2),
 	);
 }

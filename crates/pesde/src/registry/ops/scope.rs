@@ -290,6 +290,8 @@ ops!(
 		package_version: PackageVersion,
 		/// The hash of the archive being published
 		archive_hash: Hash,
+		/// The hash of the `pesde.toml` file within the archive
+		manifest_hash: Hash,
 		/// The root of the tree holding package versions
 		versions_root: PackageVersionsTree,
 	},
@@ -463,6 +465,7 @@ impl Canonical for PublishVersionUserScopeOpBody {
 				},
 			package_version,
 			archive_hash,
+			manifest_hash,
 			versions_root,
 		} = self;
 
@@ -474,6 +477,7 @@ impl Canonical for PublishVersionUserScopeOpBody {
 			"pkg" => package_version.pkg.to_string(),
 			"version" => package_version.version.to_string(),
 			"archive_hash" => archive_hash.to_string(),
+			"manifest_hash" => manifest_hash.to_string(),
 			"versions_root" => versions_root.0.to_string(),
 		}
 		.write_to(writer)

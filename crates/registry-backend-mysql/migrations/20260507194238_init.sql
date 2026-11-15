@@ -110,6 +110,7 @@ CREATE TABLE package_version (
 
 	version VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 	archive_hash VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+	manifest_hash VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
 	PRIMARY KEY (scope, pos),
 	UNIQUE (scope, package_pos, version),

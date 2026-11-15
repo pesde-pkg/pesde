@@ -2,19 +2,23 @@ use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
+use actix_web::web::Data;
 use pesde::hash::Hash;
+use pesde::hash::HashAlgorithm;
 
+use super::error::Error;
 use crate::AppState;
-use crate::api::package::error::Error;
 use crate::shared::blob::BlobResponse;
 use crate::shared::blob::BlobStorage;
 
-#[get("/package-archive/{hash}")]
+#[get("/blob/by-hash/{algorithm}/{hash}")]
 pub(super) async fn http_v2(
-	app_state: web::Data<AppState>,
-	path: web::Path<Hash>,
+	app_state: Data<AppState>,
+	path: web::Path<(HashAlgorithm, Box<str>)>,
 ) -> Result<impl Responder, Error> {
-	let Some(response) = handler(&app_state.blob_storage, &path).await? else {
+	let hash = Hash::new(path.0, &*path.1)?;
+
+	let Some(response) = handler(&app_state.blob_storage, &hash).await? else {
 		return Ok(HttpResponse::NotFound().finish());
 	};
 
