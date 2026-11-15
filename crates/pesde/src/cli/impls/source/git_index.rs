@@ -6,7 +6,6 @@ use anyhow::Context as _;
 use bstr::BString;
 use gix::remote::Direction;
 use itertools::Itertools as _;
-use itertools::Position;
 use pesde::Url;
 use tokio::task::spawn_blocking;
 use tracing::instrument;
@@ -97,7 +96,7 @@ pub fn read_file<I: IntoIterator<Item = P> + Debug, P: ToString + PartialEq<gix:
 
 	let entry = match tree.lookup_entry(file_path.into_iter().with_position().map(|(pos, path)| {
 		file_path_str.push_str(path.to_string().as_str());
-		if !matches!(pos, Position::Last) {
+		if pos.is_last {
 			file_path_str.push('/');
 		}
 
