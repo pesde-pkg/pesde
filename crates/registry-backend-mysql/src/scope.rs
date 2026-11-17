@@ -12,7 +12,6 @@ use pesde::bounded::BoundedStr;
 use pesde::hash::Blake3Hash;
 use pesde::hash::Hash;
 use pesde::merkle_bplustree::HasherOutput;
-use pesde::merkle_bplustree::TreeConfig;
 use pesde::merkle_bplustree::node::TreeInternalNode;
 use pesde::merkle_bplustree::node::TreeLeafNode;
 use pesde::merkle_bplustree::node::TreeNode;
@@ -126,9 +125,25 @@ async fn scope_log_entry(
 ) -> anyhow::Result<Option<ScopeEntry>> {
 	let result = query!(
 		r"
-SELECT scope_log_entry.scope AS scope_pos, ns AS `ns: ScopeNamespace`, published_at, prev_hash, scope_members_root_blake3, versions_root_blake3, deprecations_root_blake3
+SELECT
+	scope_log_entry.scope AS scope_pos,
+	ns AS `ns: ScopeNamespace`,
+	published_at,
+	public_key.algorithm AS `algorithm: Text<PublicKeyAlgorithm>`,
+	public_key.data,
+	scope_members_root_blake3,
+	versions_root_blake3,
+	deprecations_root_blake3,
+	(
+		SELECT previous.blake3
+		FROM scope_log_node AS `previous`
+		WHERE previous.scope = scope_log_entry.scope AND previous.pos < scope_log_entry.pos
+		ORDER BY previous.pos DESC
+		LIMIT 1
+	) AS `prev_hash`
 FROM scope_log_entry
 INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope
+INNER JOIN public_key ON public_key.id=scope_log_entry.owner
 WHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_entry.pos = ?",
 		scope_id.hash().0.as_slice(),
 		pos,
@@ -142,18 +157,23 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_entry.pos = ?
 
 	let header = ScopeOpHeader {
 		scope_id,
-		prev_hash: record.prev_hash.parse()?,
+		prev_hash: record
+			.prev_hash
+			.map_or_else(|| CurrentHash::new([0u8; 32]), CurrentHash::new)
+			.context("corrupt prev_hash")?,
+		post_state: ScopeState {
+			owner: PublicKey::new(record.algorithm.0, record.data).context("corrupt owner key")?,
+			scope_members_root: Blake3Hash::new(record.scope_members_root_blake3)
+				.context("corrupt scope_members_root")
+				.map(ScopeMembersTree)?,
+			package_versions_root: Blake3Hash::new(record.versions_root_blake3)
+				.context("corrupt package_versions_root")
+				.map(PackageVersionsTree)?,
+			package_deprecations_root: Blake3Hash::new(record.deprecations_root_blake3)
+				.context("corrupt package_deprecations_root")
+				.map(PackageDeprecationsTree)?,
+		},
 	};
-
-	let scope_members_root = Blake3Hash::new(record.scope_members_root_blake3)
-		.context("corrupt scope_members_root")
-		.map(ScopeMembersTree)?;
-	let package_versions_root = Blake3Hash::new(record.versions_root_blake3)
-		.context("corrupt package_versions_root")
-		.map(PackageVersionsTree)?;
-	let package_deprecations_root = Blake3Hash::new(record.deprecations_root_blake3)
-		.context("corrupt package_deprecations_root")
-		.map(PackageDeprecationsTree)?;
 
 	let payload = match record.ns {
 		ScopeNamespace::Signed => ScopeEntryPayload::User({
@@ -212,12 +232,7 @@ WHERE signed_add_member_scope_log_entry.scope = ? AND signed_add_member_scope_lo
 
 					let grant = scope_grant(&mut tx, &r.grant_blake3).await?;
 
-					UserScopeOp::AddMember(AddMemberUserScopeOpBody::new(
-						header,
-						member,
-						grant,
-						scope_members_root,
-					)?)
+					UserScopeOp::AddMember(AddMemberUserScopeOpBody::new(header, member, grant)?)
 				}
 				SignedOpKind::UpdateMemberGrant => {
 					let r = query!(
@@ -242,7 +257,6 @@ WHERE signed_update_member_grant_scope_log_entry.scope = ? AND signed_update_mem
 								.context("corrupt scope member")?,
 						),
 						grant: scope_grant(&mut tx, &r.grant_blake3).await?,
-						scope_members_root,
 					})
 				}
 				SignedOpKind::RotateKey => {
@@ -273,11 +287,7 @@ WHERE signed_rotate_key_scope_log_entry.scope = ? AND signed_rotate_key_scope_lo
 						},
 					};
 
-					UserScopeOp::RotateKey(RotateKeyUserScopeOpBody::new(
-						header,
-						new_key,
-						scope_members_root,
-					)?)
+					UserScopeOp::RotateKey(RotateKeyUserScopeOpBody::new(header, new_key)?)
 				}
 				SignedOpKind::RemoveMember => {
 					let r = query!(
@@ -304,11 +314,7 @@ WHERE signed_remove_member_scope_log_entry.scope = ? AND signed_remove_member_sc
 						})
 						.transpose()?;
 
-					UserScopeOp::RemoveMember(RemoveMemberUserScopeOpBody {
-						header,
-						member,
-						scope_members_root,
-					})
+					UserScopeOp::RemoveMember(RemoveMemberUserScopeOpBody { header, member })
 				}
 				SignedOpKind::TransferOwnership => {
 					let r = query!(
@@ -368,7 +374,6 @@ WHERE signed_publish_version_scope_log_entry.scope = ? AND signed_publish_versio
 						},
 						archive_hash: r.archive_hash.parse()?,
 						manifest_hash: r.manifest_hash.parse()?,
-						versions_root: package_versions_root,
 					})
 				}
 				SignedOpKind::SetYanked => {
@@ -395,7 +400,6 @@ WHERE signed_set_yanked_scope_log_entry.scope = ? AND signed_set_yanked_scope_lo
 							version: r.version.parse()?,
 						},
 						yanked: r.yanked,
-						versions_root: package_versions_root,
 					})
 				}
 				SignedOpKind::SetDeprecation => {
@@ -432,7 +436,6 @@ WHERE signed_set_deprecation_scope_log_entry.scope = ? AND signed_set_deprecatio
 								.context("illegal local name id")?,
 						),
 						state,
-						deprecations_root: package_deprecations_root,
 					})
 				}
 			};
@@ -497,7 +500,6 @@ WHERE admin_set_yanked_scope_log_entry.scope = ? AND admin_set_yanked_scope_log_
 						),
 						version: r.version.parse()?,
 						yanked: r.yanked,
-						versions_root: package_versions_root,
 					})
 				}
 			}
@@ -518,6 +520,7 @@ async fn scope_state(
 	let result = query!(
 		r"
 SELECT
+	scope_log_entry.pos,
 	scope_log_entry.scope_members_root_blake3,
 	scope_log_entry.versions_root_blake3,
 	scope_log_entry.deprecations_root_blake3,
@@ -539,16 +542,19 @@ LIMIT 1",
 	};
 
 	Ok(Some(ScopeStateResponse {
-		owner: PublicKey::new(record.algorithm.0, record.data).context("corrupt owner key")?,
-		scope_members_root: Blake3Hash::new(record.scope_members_root_blake3)
-			.context("corrupt scope_members_root")
-			.map(ScopeMembersTree)?,
-		package_versions_root: Blake3Hash::new(record.versions_root_blake3)
-			.context("corrupt package_versions_root")
-			.map(PackageVersionsTree)?,
-		package_deprecations_root: Blake3Hash::new(record.deprecations_root_blake3)
-			.context("corrupt package_deprecations_root")
-			.map(PackageDeprecationsTree)?,
+		state: ScopeState {
+			owner: PublicKey::new(record.algorithm.0, record.data).context("corrupt owner key")?,
+			scope_members_root: Blake3Hash::new(record.scope_members_root_blake3)
+				.context("corrupt scope_members_root")
+				.map(ScopeMembersTree)?,
+			package_versions_root: Blake3Hash::new(record.versions_root_blake3)
+				.context("corrupt package_versions_root")
+				.map(PackageVersionsTree)?,
+			package_deprecations_root: Blake3Hash::new(record.deprecations_root_blake3)
+				.context("corrupt package_deprecations_root")
+				.map(PackageDeprecationsTree)?,
+		},
+		tip_pos: record.pos,
 	}))
 }
 
@@ -1159,85 +1165,40 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 
 		let ScopeOpHeader {
 			scope_id,
-			prev_hash,
+			prev_hash: _,
+			post_state,
 		} = match payload {
 			ScopeEntryPayload::User(p) => p.inner().body.header(),
 			ScopeEntryPayload::Admin(op) => op.header(),
 		};
 
-		let prev = query!(
-			r"
-SELECT
-	global_log_scope_genesis_entry.pos AS `scope_pos`,
-	COALESCE(scope_log_entry.owner, global_log_scope_genesis_entry.owner_id) AS `owner`,
-	scope_log_entry.scope_members_root_blake3 AS `scope_members_root_blake3?`,
-	scope_log_entry.versions_root_blake3 AS `versions_root_blake3?`,
-	scope_log_entry.deprecations_root_blake3 AS `deprecations_root_blake3?`
-FROM global_log_scope_genesis_entry
-LEFT JOIN scope_log_entry ON scope_log_entry.scope=global_log_scope_genesis_entry.pos
-WHERE global_log_scope_genesis_entry.name_blake3 = ?
-ORDER BY scope_log_entry.pos DESC
-LIMIT 1",
+		let scope_pos = query!(
+			"SELECT global_log_scope_genesis_entry.pos FROM global_log_scope_genesis_entry WHERE global_log_scope_genesis_entry.name_blake3 = ?",
 			scope_id.hash().0.as_slice(),
 		)
 		.fetch_one(&mut **tx)
-		.await?;
+		.await?
+		.pos;
 
-		let scope_pos = prev.scope_pos;
+		let owner = Self::insert_public_key(tx, &post_state.owner).await?;
 
-		let insert_root = async |tx, ns, owner, members, versions, deprecations| {
+		let insert_root = async |tx, ns| {
 			query!(
 				r"
-INSERT INTO scope_log_entry (scope, pos, ns, published_at, prev_hash, owner, scope_members_root_blake3, versions_root_blake3, deprecations_root_blake3)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+INSERT INTO scope_log_entry (scope, pos, ns, published_at, owner, scope_members_root_blake3, versions_root_blake3, deprecations_root_blake3)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 				scope_pos,
 				pos,
 				ns,
 				published_at,
-				prev_hash.to_string(),
 				owner,
-				members,
-				versions,
-				deprecations,
+				post_state.scope_members_root.0.0.as_slice(),
+				post_state.package_versions_root.0.0.as_slice(),
+				post_state.package_deprecations_root.0.0.as_slice(),
 			)
 			.execute(tx)
 			.await
 		};
-
-		macro_rules! insert_root {
-			(
-				$ns:expr,
-				$owner:expr
-				$(, members = $members:expr)?
-				$(, versions = $versions:expr)?
-				$(, deprecations = $deprecations:expr)?
-			) => {{
-				insert_root(
-					&mut **tx,
-					$ns,
-					$owner,
-					insert_root!(@root scope_members_root_blake3 ScopeMembersTree => $($members)?),
-					insert_root!(@root versions_root_blake3 PackageVersionsTree => $($versions)?),
-					insert_root!(@root deprecations_root_blake3 PackageDeprecationsTree => $($deprecations)?),
-				).await?;
-			}};
-			(@root $name:ident $ty:ty => $($given:expr)?) => {{
-				let root = None $(.or(Some($given.0.0.as_slice())))?;
-				let root = root.or(prev.$name.as_ref().map(|r| r.as_slice()));
-				static EMPTY_ROOT: std::sync::OnceLock<Blake3Hash> = std::sync::OnceLock::new();
-				root.unwrap_or_else(||
-					EMPTY_ROOT.get_or_init(|| {
-						use pesde::merkle_bplustree::hasher::Hasher;
-						<<$ty as TreeConfig>::Hasher as Hasher<<$ty as TreeConfig>::Key, <$ty as TreeConfig>::Value>>::hash_leaf(
-							0,
-							&<<$ty as TreeConfig>::Hasher as Hasher<<$ty as TreeConfig>::Key, <$ty as TreeConfig>::Value>>::empty_hash()
-						)
-					})
-					.0
-					.as_slice()
-				)
-			}}
-		}
 
 		match payload {
 			ScopeEntryPayload::User(p) => {
@@ -1248,7 +1209,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 				let insert_signed = async |tx, kind| {
 					query!(
 						"INSERT INTO signed_scope_log_entry (scope, pos, op_kind, signer, sig_kind, sig) VALUES (?, ?, ?, ?, ?, ?)",
-						prev.scope_pos,
+						scope_pos,
 						pos,
 						kind,
 						signer_id,
@@ -1260,9 +1221,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 				};
 
 				macro_rules! insert_signed {
-					($kind:expr, $owner:expr $(, $($roots:tt)*)?) => {{
-						insert_root!(ScopeNamespace::Signed, $owner $(, $($roots)*)?);
-
+					($kind:expr) => {{
+						insert_root(&mut **tx, ScopeNamespace::Signed).await?;
 						insert_signed(&mut **tx, $kind).await?;
 					}};
 				}
@@ -1273,11 +1233,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 						let member = Self::insert_public_key(tx, &consent.body.consenter).await?;
 						let grant_blake3 = Self::insert_grant(tx, &b.grant).await?;
 
-						insert_signed!(
-							SignedOpKind::AddMember,
-							prev.owner,
-							members = &b.scope_members_root
-						);
+						insert_signed!(SignedOpKind::AddMember);
 
 						query!(
 							"INSERT INTO signed_add_member_scope_log_entry (scope, pos, member, grant_blake3, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1296,11 +1252,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 						let member = Self::insert_public_key(tx, &b.member.0).await?;
 						let grant_blake3 = Self::insert_grant(tx, &b.grant).await?;
 
-						insert_signed!(
-							SignedOpKind::UpdateMemberGrant,
-							prev.owner,
-							members = &b.scope_members_root
-						);
+						insert_signed!(SignedOpKind::UpdateMemberGrant);
 
 						query!(
 							"INSERT INTO signed_update_member_grant_scope_log_entry (scope, pos, member, grant_blake3) VALUES (?, ?, ?, ?)",
@@ -1316,17 +1268,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 						let consent = b.new_key().inner();
 						let new_key = Self::insert_public_key(tx, &consent.body.consenter).await?;
 
-						let owner = if signer_id == prev.owner {
-							new_key
-						} else {
-							prev.owner
-						};
-
-						insert_signed!(
-							SignedOpKind::RotateKey,
-							owner,
-							members = &b.scope_members_root
-						);
+						insert_signed!(SignedOpKind::RotateKey);
 
 						query!(
 							"INSERT INTO signed_rotate_key_scope_log_entry (scope, pos, new_key, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?, ?)",
@@ -1346,11 +1288,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 							None => None,
 						};
 
-						insert_signed!(
-							SignedOpKind::RemoveMember,
-							prev.owner,
-							members = &b.scope_members_root
-						);
+						insert_signed!(SignedOpKind::RemoveMember);
 
 						query!(
 							"INSERT INTO signed_remove_member_scope_log_entry (scope, pos, member) VALUES (?, ?, ?)",
@@ -1363,10 +1301,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 					}
 					UserScopeOp::TransferOwnership(b) => {
 						let consent = b.new_owner().inner();
-						let new_owner =
-							Self::insert_public_key(tx, &consent.body.consenter).await?;
-
-						insert_signed!(SignedOpKind::TransferOwnership, new_owner);
+						insert_signed!(SignedOpKind::TransferOwnership);
 
 						query!(
 							"INSERT INTO signed_transfer_ownership_scope_log_entry (scope, pos, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?)",
@@ -1379,12 +1314,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 						.execute(&mut **tx)
 						.await?;
 					}
-					UserScopeOp::PublishVersion(b) => {
-						insert_signed!(
-							SignedOpKind::PublishVersion,
-							prev.owner,
-							versions = &b.versions_root
-						);
+					UserScopeOp::PublishVersion(_) => {
+						insert_signed!(SignedOpKind::PublishVersion);
 
 						query!(
 							"INSERT INTO signed_publish_version_scope_log_entry (scope, pos) VALUES (?, ?)",
@@ -1397,11 +1328,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 					UserScopeOp::SetYanked(b) => {
 						let PackageVersion { pkg, version } = &b.package_version;
 
-						insert_signed!(
-							SignedOpKind::SetYanked,
-							prev.owner,
-							versions = &b.versions_root
-						);
+						insert_signed!(SignedOpKind::SetYanked);
 
 						let result = query!(
 							r"
@@ -1450,11 +1377,7 @@ WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.ve
 							None => None,
 						};
 
-						insert_signed!(
-							SignedOpKind::SetDeprecation,
-							prev.owner,
-							deprecations = &b.deprecations_root
-						);
+						insert_signed!(SignedOpKind::SetDeprecation);
 
 						query!(
 							"INSERT INTO signed_set_deprecation_scope_log_entry (scope, pos, package_pos, reason_id) VALUES (?, ?, ?, ?)",
@@ -1469,18 +1392,21 @@ WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.ve
 				}
 			}
 			ScopeEntryPayload::Admin(op) => {
-				macro_rules! insert_admin {
-					($kind:expr, $owner:expr $(, $($roots:tt)*)?) => {{
-						insert_root!(ScopeNamespace::Admin, $owner $(, $($roots)*)?);
+				let insert_admin = async |tx, kind| {
+					query!(
+						"INSERT INTO admin_scope_log_entry (scope, pos, op_kind) VALUES (?, ?, ?)",
+						scope_pos,
+						pos,
+						kind,
+					)
+					.execute(tx)
+					.await
+				};
 
-						query!(
-							"INSERT INTO admin_scope_log_entry (scope, pos, op_kind) VALUES (?, ?, ?)",
-							scope_pos,
-							pos,
-							$kind,
-						)
-						.execute(&mut **tx)
-						.await?;
+				macro_rules! insert_admin {
+					($kind:expr) => {{
+						insert_root(&mut **tx, ScopeNamespace::Admin).await?;
+						insert_admin(&mut **tx, $kind).await?;
 					}};
 				}
 
@@ -1488,7 +1414,7 @@ WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.ve
 					AdminScopeOp::TransferOwnership(b) => {
 						let new_owner = Self::insert_public_key(tx, &b.new_owner).await?;
 
-						insert_admin!(AdminOpKind::TransferOwnership, new_owner);
+						insert_admin!(AdminOpKind::TransferOwnership);
 
 						query!(
 							"INSERT INTO admin_transfer_ownership_scope_log_entry (scope, pos, new_owner) VALUES (?, ?, ?)",
@@ -1500,11 +1426,7 @@ WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.ve
 						.await?;
 					}
 					AdminScopeOp::SetYanked(b) => {
-						insert_admin!(
-							AdminOpKind::SetYanked,
-							prev.owner,
-							versions = &b.versions_root
-						);
+						insert_admin!(AdminOpKind::SetYanked);
 
 						let result = query!(
 							r"

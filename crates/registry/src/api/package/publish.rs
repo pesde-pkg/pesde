@@ -43,7 +43,7 @@ use crate::shared::tree::run_tree;
 
 const JSON_BODY_LIMIT: usize = 1024 * 1024;
 
-#[post("/scope/log/entry")]
+#[post("/package/publish")]
 pub(super) async fn http_v2(
 	db: Db,
 	app_state: web::Data<AppState>,
@@ -101,7 +101,6 @@ async fn handler(
 				package_version,
 				archive_hash,
 				manifest_hash,
-				versions_root: _,
 			},
 	} = publish_version.inner();
 
@@ -203,7 +202,7 @@ async fn handler(
 			return Err(Error::BadGenesisEntry);
 		}
 
-		if header.prev_hash.bytes().iter().any(|b| *b != 0) {
+		if header.prev_hash.0.iter().any(|b| *b != 0) {
 			return Err(Error::BadGenesisEntry);
 		}
 
@@ -251,11 +250,24 @@ async fn handler(
 			.await?
 			.expect("we have just created/locked this scope");
 
+		if scope_size != 0 {
+			let tip = tx
+				.scope_log_node(&body.header.scope_id, scope_state.tip_pos)
+				.await?
+				.ok_or(Error::InvalidPrevHash)?;
+
+			if body.header.prev_hash != tip {
+				return Err(Error::InvalidPrevHash);
+			}
+		}
+
+		let mut scope_state = scope_state.state;
+
 		run_tree(
 			&body.header.scope_id,
 			tx,
-			&scope_state,
-			&body.versions_root,
+			&mut scope_state,
+			&body.header.post_state.package_versions_root,
 			async |tree| {
 				let result = tree
 					.insert_new(
@@ -275,6 +287,10 @@ async fn handler(
 			},
 		)
 		.await?;
+
+		if body.header.post_state != scope_state {
+			return Err(Error::InvalidScopeState);
+		}
 
 		let entry = Entry {
 			pos: scope_size,
@@ -297,7 +313,6 @@ async fn handler(
 					package_version: _,
 					archive_hash,
 					manifest_hash,
-					versions_root: _,
 				}) => (&header.scope_id, archive_hash, manifest_hash),
 				_ => unreachable!(),
 			},

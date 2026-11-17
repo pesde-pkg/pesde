@@ -1,10 +1,26 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT\n\tscope_log_entry.scope_members_root_blake3,\n\tscope_log_entry.versions_root_blake3,\n\tscope_log_entry.deprecations_root_blake3,\n\tpublic_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,\n\tpublic_key.data\nFROM scope_log_entry\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope\nINNER JOIN public_key ON public_key.id=scope_log_entry.owner\nWHERE global_log_scope_genesis_entry.name_blake3 = ?\nORDER BY scope_log_entry.pos DESC\nLIMIT 1",
+  "query": "\nSELECT\n\tscope_log_entry.pos,\n\tscope_log_entry.scope_members_root_blake3,\n\tscope_log_entry.versions_root_blake3,\n\tscope_log_entry.deprecations_root_blake3,\n\tpublic_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,\n\tpublic_key.data\nFROM scope_log_entry\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope\nINNER JOIN public_key ON public_key.id=scope_log_entry.owner\nWHERE global_log_scope_genesis_entry.name_blake3 = ?\nORDER BY scope_log_entry.pos DESC\nLIMIT 1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.scope_log_entry",
+            "name": "pos"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
         "name": "scope_members_root_blake3",
         "type_info": {
           "type": "String",
@@ -20,7 +36,7 @@
         }
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "versions_root_blake3",
         "type_info": {
           "type": "String",
@@ -36,7 +52,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "deprecations_root_blake3",
         "type_info": {
           "type": "String",
@@ -52,7 +68,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "algorithm: Text<PublicKeyAlgorithm>",
         "type_info": {
           "type": "String",
@@ -68,7 +84,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "data",
         "type_info": {
           "type": "VarString",
@@ -92,8 +108,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "e4d3defe30ec0c1b2c16f4c8330f1937e4558ae3fcb7462e8c1327e2d26cab8f"
+  "hash": "cf17bdac5e7793273959b6a7cc1e0b31cce690b6d03a4d56632504ec342a90a3"
 }

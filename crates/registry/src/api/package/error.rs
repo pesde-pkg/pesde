@@ -50,6 +50,12 @@ pub(super) enum Error {
 
 	#[error("invalid tree root")]
 	ComputedRootDifferent,
+
+	#[error("`prev_hash` doesn't match")]
+	InvalidPrevHash,
+
+	#[error("invalid scope state")]
+	InvalidScopeState,
 }
 
 impl ResponseError for Error {
@@ -69,6 +75,8 @@ impl ResponseError for Error {
 			Error::Unauthorized => Category::Unauthorized,
 			Error::VersionAlreadyExists => Category::Conflict,
 			Error::ComputedRootDifferent => Category::BadRequest,
+			Error::InvalidPrevHash => Category::Conflict,
+			Error::InvalidScopeState => Category::BadRequest,
 		};
 		http_response(category, self)
 	}

@@ -178,8 +178,31 @@ impl FromStr for PackageName {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScopeState {
+	/// The owner of the scope
+	pub owner: PublicKey,
+	/// [ScopeMembersTree]
+	pub scope_members_root: ScopeMembersTree,
+	/// [PackageVersionsTree]
+	pub package_versions_root: PackageVersionsTree,
+	/// [PackageDeprecationsTree]
+	pub package_deprecations_root: PackageDeprecationsTree,
+}
+
+impl ScopeState {
+	pub(crate) fn as_cbor(&self) -> cbor_core::Value<'_> {
+		cbor_core::map! {
+			"owner" => self.owner.to_string(),
+			"scope_members_root" => self.scope_members_root.0.to_string(),
+			"package_versions_root" => self.package_versions_root.0.to_string(),
+			"package_deprecations_root" => self.package_deprecations_root.0.to_string(),
+		}
+	}
+}
+
 /// The Merkle B+Tree that contains scope members along their grants
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ScopeMembersTree(pub CurrentHash);
 impl TreeConfig for ScopeMembersTree {
@@ -262,7 +285,7 @@ hash_with_plaintext!(
 pub struct ScopeGrantEntryError;
 
 /// The Merkle B+Tree that contains package versions along their state
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PackageVersionsTree(pub CurrentHash);
 impl TreeConfig for PackageVersionsTree {
@@ -366,7 +389,7 @@ impl FromStr for VersionYankState {
 }
 
 /// The Merkle B+Tree that contains package deprecations along their reasons
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PackageDeprecationsTree(pub CurrentHash);
 impl TreeConfig for PackageDeprecationsTree {

@@ -218,8 +218,9 @@ macro_rules! ops {
 pub struct ScopeOpHeader {
 	/// The id of the scope
 	pub scope_id: ScopeId,
-	/// The hash of the previous entry in this scope's log
-	pub prev_hash: Hash,
+	/// The leaf hash of the previous entry in this scope's log
+	pub prev_hash: CurrentHash,
+	pub post_state: ScopeState,
 }
 
 /// The fields shared by every user-authored scope log entry
@@ -250,8 +251,6 @@ ops!(
 	{
 		/// The grant they're being added with
 		grant: ScopeGrant,
-		/// The root of the tree holding scope members
-		scope_members_root: ScopeMembersTree,
 	},
 	/// The owner is changing a member's grant
 	UpdateMemberGrant "update_member_grant" {
@@ -259,24 +258,18 @@ ops!(
 		member: ScopeMember,
 		/// The new grant
 		grant: ScopeGrant,
-		/// The root of the tree holding scope members
-		scope_members_root: ScopeMembersTree,
 	},
 	/// A member is rotating their key
 	RotateKey "rotate_key"
 	/// The key to replace the old key with
 	consent new_key
 	{
-		/// The root of the tree holding scope members
-		scope_members_root: ScopeMembersTree,
 	},
 	/// The owner is removing a member
 	RemoveMember "remove_member" {
 		/// The member being removed. None if the member is removing themselves (signing key is who's leaving)
 		#[serde(default, skip_serializing_if = "Option::is_none")]
 		member: Option<ScopeMember>,
-		/// The root of the tree holding scope members
-		scope_members_root: ScopeMembersTree,
 	},
 	/// The owner is transferring ownership
 	TransferOwnership "transfer_ownership"
@@ -292,8 +285,6 @@ ops!(
 		archive_hash: Hash,
 		/// The hash of the `pesde.toml` file within the archive
 		manifest_hash: Hash,
-		/// The root of the tree holding package versions
-		versions_root: PackageVersionsTree,
 	},
 	/// A package's yank status is being updated
 	SetYanked "set_yanked" {
@@ -301,8 +292,6 @@ ops!(
 		package_version: PackageVersion,
 		/// Whether it is yanked
 		yanked: bool,
-		/// The root of the tree holding package versions
-		versions_root: PackageVersionsTree,
 	},
 	/// A package's deprecation status is being updated
 	SetDeprecation "set_deprecation" {
@@ -310,8 +299,6 @@ ops!(
 		pkg: LocalNameId,
 		/// The deprecation state
 		state: Option<PackageDeprecationValue>,
-		/// The root of the tree holding package deprecations
-		deprecations_root: PackageDeprecationsTree,
 	},
 );
 
@@ -320,25 +307,26 @@ impl Canonical for AddMemberUserScopeOpBody {
 		let Self {
 			header:
 				UserScopeOpHeader {
-					common: ScopeOpHeader {
-						scope_id,
-						prev_hash,
-					},
+					common:
+						ScopeOpHeader {
+							scope_id,
+							prev_hash,
+							post_state,
+						},
 					signer,
 				},
 			member,
 			grant,
-			scope_members_root,
 		} = self;
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"member" => member.as_cbor(),
 			"grant" => grant.as_cbor(),
-			"scope_members_root" => scope_members_root.0.to_string(),
 		}
 		.write_to(writer)
 	}
@@ -349,25 +337,26 @@ impl Canonical for UpdateMemberGrantUserScopeOpBody {
 		let Self {
 			header:
 				UserScopeOpHeader {
-					common: ScopeOpHeader {
-						scope_id,
-						prev_hash,
-					},
+					common:
+						ScopeOpHeader {
+							scope_id,
+							prev_hash,
+							post_state,
+						},
 					signer,
 				},
 			member,
 			grant,
-			scope_members_root,
 		} = self;
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"member" => member.0.to_string(),
 			"grant" => grant.as_cbor(),
-			"scope_members_root" => scope_members_root.0.to_string(),
 		}
 		.write_to(writer)
 	}
@@ -378,23 +367,24 @@ impl Canonical for RotateKeyUserScopeOpBody {
 		let Self {
 			header:
 				UserScopeOpHeader {
-					common: ScopeOpHeader {
-						scope_id,
-						prev_hash,
-					},
+					common:
+						ScopeOpHeader {
+							scope_id,
+							prev_hash,
+							post_state,
+						},
 					signer,
 				},
 			new_key,
-			scope_members_root,
 		} = self;
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"new_key" => new_key.as_cbor(),
-			"scope_members_root" => scope_members_root.0.to_string(),
 		}
 		.write_to(writer)
 	}
@@ -405,23 +395,24 @@ impl Canonical for RemoveMemberUserScopeOpBody {
 		let Self {
 			header:
 				UserScopeOpHeader {
-					common: ScopeOpHeader {
-						scope_id,
-						prev_hash,
-					},
+					common:
+						ScopeOpHeader {
+							scope_id,
+							prev_hash,
+							post_state,
+						},
 					signer,
 				},
 			member,
-			scope_members_root,
 		} = self;
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"member" => member.as_ref().map_or(const { cbor_core::Value::null() }, |m| cbor_core::Value::TextString(m.0.to_string().into())),
-			"scope_members_root" => scope_members_root.0.to_string(),
 		}
 		.write_to(writer)
 	}
@@ -432,10 +423,12 @@ impl Canonical for TransferOwnershipUserScopeOpBody {
 		let Self {
 			header:
 				UserScopeOpHeader {
-					common: ScopeOpHeader {
-						scope_id,
-						prev_hash,
-					},
+					common:
+						ScopeOpHeader {
+							scope_id,
+							prev_hash,
+							post_state,
+						},
 					signer,
 				},
 			new_owner,
@@ -445,6 +438,7 @@ impl Canonical for TransferOwnershipUserScopeOpBody {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"new_owner" => new_owner.as_cbor(),
 		}
@@ -457,28 +451,29 @@ impl Canonical for PublishVersionUserScopeOpBody {
 		let Self {
 			header:
 				UserScopeOpHeader {
-					common: ScopeOpHeader {
-						scope_id,
-						prev_hash,
-					},
+					common:
+						ScopeOpHeader {
+							scope_id,
+							prev_hash,
+							post_state,
+						},
 					signer,
 				},
 			package_version,
 			archive_hash,
 			manifest_hash,
-			versions_root,
 		} = self;
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"pkg" => package_version.pkg.to_string(),
 			"version" => package_version.version.to_string(),
 			"archive_hash" => archive_hash.to_string(),
 			"manifest_hash" => manifest_hash.to_string(),
-			"versions_root" => versions_root.0.to_string(),
 		}
 		.write_to(writer)
 	}
@@ -489,26 +484,27 @@ impl Canonical for SetYankedUserScopeOpBody {
 		let Self {
 			header:
 				UserScopeOpHeader {
-					common: ScopeOpHeader {
-						scope_id,
-						prev_hash,
-					},
+					common:
+						ScopeOpHeader {
+							scope_id,
+							prev_hash,
+							post_state,
+						},
 					signer,
 				},
 			package_version,
 			yanked,
-			versions_root,
 		} = self;
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"pkg" => package_version.pkg.to_string(),
 			"version" => package_version.version.to_string(),
 			"yanked" => *yanked,
-			"versions_root" => versions_root.0.to_string(),
 		}
 		.write_to(writer)
 	}
@@ -519,25 +515,26 @@ impl Canonical for SetDeprecationUserScopeOpBody {
 		let Self {
 			header:
 				UserScopeOpHeader {
-					common: ScopeOpHeader {
-						scope_id,
-						prev_hash,
-					},
+					common:
+						ScopeOpHeader {
+							scope_id,
+							prev_hash,
+							post_state,
+						},
 					signer,
 				},
 			pkg,
 			state,
-			deprecations_root,
 		} = self;
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"pkg" => pkg.to_string(),
 			"reason_hash" => state.as_ref().map_or(const { cbor_core::Value::null() }, |s| cbor_core::Value::TextString(s.reason.hash().to_string().into())),
-			"deprecations_root" => deprecations_root.0.to_string(),
 		}
 		.write_to(writer)
 	}
@@ -560,8 +557,6 @@ ops!(
 		version: PesdeStyleVersion,
 		/// Whether it is yanked
 		yanked: bool,
-		/// The root of the tree holding package versions
-		versions_root: PackageVersionsTree,
 	},
 );
 
@@ -571,6 +566,7 @@ impl Canonical for TransferOwnershipAdminScopeOpBody {
 			header: ScopeOpHeader {
 				scope_id,
 				prev_hash,
+				post_state,
 			},
 			new_owner,
 		} = self;
@@ -579,6 +575,7 @@ impl Canonical for TransferOwnershipAdminScopeOpBody {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"new_owner" => new_owner.to_string(),
 		}
 		.write_to(writer)
@@ -591,21 +588,21 @@ impl Canonical for SetYankedAdminScopeOpBody {
 			header: ScopeOpHeader {
 				scope_id,
 				prev_hash,
+				post_state,
 			},
 			pkg,
 			version,
 			yanked,
-			versions_root,
 		} = self;
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
 			"scope_id" => scope_id.to_string(),
 			"prev_hash" => prev_hash.to_string(),
+			"post_state" => post_state.as_cbor(),
 			"pkg" => pkg.to_string(),
 			"version" => version.to_string(),
 			"yanked" => *yanked,
-			"versions_root" => versions_root.0.to_string(),
 		}
 		.write_to(writer)
 	}

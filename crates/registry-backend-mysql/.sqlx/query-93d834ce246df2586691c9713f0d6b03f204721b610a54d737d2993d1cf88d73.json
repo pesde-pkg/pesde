@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT global_log_scope_genesis_entry.pos FROM global_log_scope_genesis_entry WHERE global_log_scope_genesis_entry.name_blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "pos",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | MULTIPLE_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_scope_genesis_entry",
+            "name": "pos"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "93d834ce246df2586691c9713f0d6b03f204721b610a54d737d2993d1cf88d73"
+}

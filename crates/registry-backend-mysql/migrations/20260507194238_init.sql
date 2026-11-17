@@ -290,7 +290,6 @@ CREATE TABLE scope_log_entry (
 
 	ns ENUM('signed', 'admin') NOT NULL,
 	published_at DATETIME(6) NOT NULL DEFAULT(UTC_TIMESTAMP(6)),
-	prev_hash VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
 	owner BIGINT UNSIGNED NOT NULL,
 	scope_members_root_blake3 BINARY(32) NOT NULL,

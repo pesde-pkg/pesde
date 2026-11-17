@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT scope_log_entry.scope AS scope_pos, ns AS `ns: ScopeNamespace`, published_at, prev_hash, scope_members_root_blake3, versions_root_blake3, deprecations_root_blake3\nFROM scope_log_entry\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope\nWHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_entry.pos = ?",
+  "query": "\nSELECT\n\tscope_log_entry.scope AS scope_pos,\n\tns AS `ns: ScopeNamespace`,\n\tpublished_at,\n\tpublic_key.algorithm AS `algorithm: Text<PublicKeyAlgorithm>`,\n\tpublic_key.data,\n\tscope_members_root_blake3,\n\tversions_root_blake3,\n\tdeprecations_root_blake3,\n\t(\n\t\tSELECT previous.blake3\n\t\tFROM scope_log_node AS `previous`\n\t\tWHERE previous.scope = scope_log_entry.scope AND previous.pos < scope_log_entry.pos\n\t\tORDER BY previous.pos DESC\n\t\tLIMIT 1\n\t) AS `prev_hash`\nFROM scope_log_entry\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope\nINNER JOIN public_key ON public_key.id=scope_log_entry.owner\nWHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_entry.pos = ?",
   "describe": {
     "columns": [
       {
@@ -53,22 +53,38 @@
       },
       {
         "ordinal": 3,
-        "name": "prev_hash",
+        "name": "algorithm: Text<PublicKeyAlgorithm>",
         "type_info": {
-          "type": "VarString",
-          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | ENUM | NO_DEFAULT_VALUE",
           "collation": 224,
-          "max_size": 512
+          "max_size": 28
         },
         "origin": {
           "Table": {
-            "table": "test-pesde-registry.scope_log_entry",
-            "name": "prev_hash"
+            "table": "test-pesde-registry.public_key",
+            "name": "algorithm"
           }
         }
       },
       {
         "ordinal": 4,
+        "name": "data",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 4096
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.public_key",
+            "name": "data"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
         "name": "scope_members_root_blake3",
         "type_info": {
           "type": "String",
@@ -84,7 +100,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "versions_root_blake3",
         "type_info": {
           "type": "String",
@@ -100,7 +116,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "deprecations_root_blake3",
         "type_info": {
           "type": "String",
@@ -114,6 +130,17 @@
             "name": "deprecations_root_blake3"
           }
         }
+      },
+      {
+        "ordinal": 8,
+        "name": "prev_hash",
+        "type_info": {
+          "type": "String",
+          "flags": "BINARY",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": "Expression"
       }
     ],
     "parameters": {
@@ -126,8 +153,10 @@
       false,
       false,
       false,
-      false
+      false,
+      false,
+      true
     ]
   },
-  "hash": "68c8b3025ec2b950343aa93cf5e556600cb2f6be7c02dc5e29b852e791b15128"
+  "hash": "35f2c1098d831428d764cc985b077d56ccf7578ce6cb59bf2278af4597ffb27f"
 }

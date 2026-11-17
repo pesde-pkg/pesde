@@ -56,6 +56,9 @@ pub(super) enum Error {
 
 	#[error("invalid tree root")]
 	ComputedRootDifferent,
+
+	#[error("invalid scope state")]
+	InvalidScopeState,
 }
 
 impl ResponseError for Error {
@@ -78,7 +81,8 @@ impl ResponseError for Error {
 			| Error::GrantNoChange
 			| Error::KeyNotFound
 			| Error::VersionNotFound
-			| Error::ComputedRootDifferent => Category::BadRequest,
+			| Error::ComputedRootDifferent
+			| Error::InvalidScopeState => Category::BadRequest,
 			Error::Unauthorized => Category::Unauthorized,
 		};
 		http_response(category, self)

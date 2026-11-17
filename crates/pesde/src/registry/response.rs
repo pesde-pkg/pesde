@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::ops::Deref;
 
 use super::*;
 use serde::Deserialize;
@@ -37,14 +38,17 @@ pub struct LogEntryResponse<P: EntryPayload> {
 /// The response of the scope state endpoint
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScopeStateResponse {
-	/// The owner of the scope
-	pub owner: PublicKey,
-	/// [ScopeMembersTree]
-	pub scope_members_root: ScopeMembersTree,
-	/// [PackageVersionsTree]
-	pub package_versions_root: PackageVersionsTree,
-	/// [PackageDeprecationsTree]
-	pub package_deprecations_root: PackageDeprecationsTree,
+	#[serde(flatten)]
+	pub state: ScopeState,
+	pub tip_pos: u64,
+}
+
+impl Deref for ScopeStateResponse {
+	type Target = ScopeState;
+
+	fn deref(&self) -> &ScopeState {
+		&self.state
+	}
 }
 
 /// The response of the tree entry endpoint
