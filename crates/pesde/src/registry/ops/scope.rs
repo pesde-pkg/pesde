@@ -213,10 +213,10 @@ macro_rules! ops {
 	};
 }
 
-/// The fields shared by every scope log entry
+/// The fields shared by every scope log entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScopeOpHeader {
-	/// The id of the scope
+	/// The id of the scope.
 	pub scope_id: ScopeId,
 	/// The leaf hash of the previous entry in this scope's log
 	pub prev_hash: CurrentHash,
@@ -321,8 +321,8 @@ impl Canonical for AddMemberUserScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"member" => member.as_cbor(),
@@ -351,8 +351,8 @@ impl Canonical for UpdateMemberGrantUserScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"member" => member.0.to_string(),
@@ -380,8 +380,8 @@ impl Canonical for RotateKeyUserScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"new_key" => new_key.as_cbor(),
@@ -408,8 +408,8 @@ impl Canonical for RemoveMemberUserScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"member" => member.as_ref().map_or(const { cbor_core::Value::null() }, |m| cbor_core::Value::TextString(m.0.to_string().into())),
@@ -436,8 +436,8 @@ impl Canonical for TransferOwnershipUserScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"new_owner" => new_owner.as_cbor(),
@@ -466,8 +466,8 @@ impl Canonical for PublishVersionUserScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"pkg" => package_version.pkg.to_string(),
@@ -498,8 +498,8 @@ impl Canonical for SetYankedUserScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"pkg" => package_version.pkg.to_string(),
@@ -529,8 +529,8 @@ impl Canonical for SetDeprecationUserScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"signer" => signer.to_string(),
 			"pkg" => pkg.to_string(),
@@ -573,8 +573,8 @@ impl Canonical for TransferOwnershipAdminScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"new_owner" => new_owner.to_string(),
 		}
@@ -597,8 +597,8 @@ impl Canonical for SetYankedAdminScopeOpBody {
 
 		cbor_core::map! {
 			"tag" => Self::TAG,
-			"scope_id" => scope_id.to_string(),
-			"prev_hash" => prev_hash.to_string(),
+			"scope_id" => scope_id.hash().0,
+			"prev_hash" => prev_hash.0,
 			"post_state" => post_state.as_cbor(),
 			"pkg" => pkg.to_string(),
 			"version" => version.to_string(),

@@ -1,6 +1,7 @@
 use std::sync::LazyLock;
 
 use anyhow::Context as _;
+use clap::Args;
 use clap::ValueEnum;
 use pesde::signature::PublicKey;
 use pesde::signature::PublicKeyAlgorithm;
@@ -11,6 +12,7 @@ use serde::Serialize;
 use tokio::io::AsyncReadExt as _;
 use tokio::io::AsyncWriteExt as _;
 
+use crate::cli::ui::CommandContext;
 use crate::cli::ui::public_key::PublicKeyExt as _;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
@@ -145,5 +147,39 @@ impl SignatureSource {
 				}
 			}
 		}
+	}
+}
+
+#[derive(Debug, Args)]
+pub struct SignatureSourceArgs {
+	/// An override for the signature source to use. If not provided, the signature source associated with the key is used
+	#[arg(long, aliases = ["sig-source", "signature-source", "sigsrc"])]
+	signature_source: Option<SignatureSource>,
+}
+
+impl SignatureSourceArgs {
+	pub async fn get_source_from_config(
+		&self,
+		key: &PublicKey,
+		signature_source: impl AsyncFnOnce(&PublicKey) -> anyhow::Result<Option<SignatureSource>>,
+	) -> anyhow::Result<SignatureSource> {
+		if let Some(source) = self.signature_source {
+			Ok(source)
+		} else {
+			signature_source(key)
+				.await?
+				.context("no signature source was set for this key, and no override was provided")
+		}
+	}
+
+	pub async fn get_source(
+		&self,
+		ctx: &CommandContext,
+		key: &PublicKey,
+	) -> anyhow::Result<SignatureSource> {
+		self.get_source_from_config(key, async |key| {
+			Ok(ctx.cli_config().await?.signature_sources.get(key).copied())
+		})
+		.await
 	}
 }

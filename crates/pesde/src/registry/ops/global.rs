@@ -2,7 +2,6 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::super::*;
-use crate::hash::Hash;
 use crate::signature::PublicKey;
 
 /// The payload anchoring a scope's creation
@@ -12,8 +11,8 @@ pub struct ScopeGenesisPayload {
 	pub scope_id: ScopeId,
 	/// The owner of this scope
 	pub owner: PublicKey,
-	/// The hash of the first entry in the scope's log
-	pub first_entry_hash: Hash,
+	/// The scope log leaf hash of the first entry in the scope log.
+	pub first_entry_hash: CurrentHash,
 }
 impl crate::sealed::Sealed for ScopeGenesisPayload {}
 impl Tagged for ScopeGenesisPayload {

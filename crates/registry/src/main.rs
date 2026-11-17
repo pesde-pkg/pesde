@@ -72,29 +72,39 @@ async fn main() -> std::io::Result<()> {
 	let db = web::Data::from(db);
 
 	let app_state = web::Data::new(AppState {
-		blob_storage: match Env::new("PACKAGE_ARCHIVES_ROOT").try_parse().await {
-			Some(root) => BlobStorage::FS(root),
-			None => BlobStorage::S3 {
-				bucket: Bucket::new(
-					Env::new("S3_ENDPOINT").parse().await,
-					UrlStyle::Path,
-					Env::new("S3_BUCKET_NAME").get().await,
-					Env::new("S3_REGION").get().await,
-				)
-				.unwrap(),
-				credentials: Credentials::new(
-					Env::new("S3_ACCESS_KEY").get().await,
-					Env::new("S3_SECRET_KEY").get().await,
-				),
-				reqwest: reqwest::Client::builder()
-					.user_agent(concat!(
-						env!("CARGO_PKG_NAME"),
-						"/",
-						env!("CARGO_PKG_VERSION")
-					))
-					.build()
+		blob_storage: 'blob: {
+			if let Some(root) = Env::new("BLOB_STORAGE_ROOT").try_get().await {
+				break 'blob BlobStorage::FS(
+					root.parse()
+						.expect("BLOB_STORAGE_ROOT must be a valid path"),
+				);
+			}
+
+			if let Some(endpoint) = Env::new("S3_ENDPOINT").try_get().await {
+				break 'blob BlobStorage::S3 {
+					bucket: Bucket::new(
+						endpoint.parse().expect("S3_ENDPOINT must be a valid URL"),
+						UrlStyle::Path,
+						Env::new("S3_BUCKET_NAME").get().await,
+						Env::new("S3_REGION").get().await,
+					)
 					.unwrap(),
-			},
+					credentials: Credentials::new(
+						Env::new("S3_ACCESS_KEY").get().await,
+						Env::new("S3_SECRET_KEY").get().await,
+					),
+					reqwest: reqwest::Client::builder()
+						.user_agent(concat!(
+							env!("CARGO_PKG_NAME"),
+							"/",
+							env!("CARGO_PKG_VERSION")
+						))
+						.build()
+						.unwrap(),
+				};
+			}
+
+			panic!("no blob storage backend configured; set BLOB_STORAGE_ROOT or S3_ENDPOINT");
 		},
 		access_token_hash: Env::new("ACCESS_TOKEN")
 			.try_get()

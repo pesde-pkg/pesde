@@ -53,6 +53,7 @@ impl Env {
 		}
 	}
 
+	#[expect(dead_code)]
 	pub async fn parse<T>(&self) -> T
 	where
 		T: FromStr,

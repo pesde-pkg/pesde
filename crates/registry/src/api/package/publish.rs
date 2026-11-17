@@ -10,7 +10,9 @@ use actix_web::web::Bytes;
 use futures::AsyncReadExt as _;
 use pesde::MANIFEST_FILE_NAME;
 use pesde::hash::Hash;
+use pesde::merkleberg::Merge as _;
 use pesde::registry::Canonical as _;
+use pesde::registry::CurrentMerkleHasher;
 use pesde::registry::Entry;
 use pesde::registry::GlobalEntryPayload;
 use pesde::registry::LocalNameId;
@@ -201,10 +203,8 @@ async fn handler(
 			return Err(Error::BadGenesisEntry);
 		}
 
-		if Hash::digest(
-			first_entry_hash.algorithm(),
-			publish_version.canonical_bytes(),
-		) != *first_entry_hash
+		if CurrentMerkleHasher::leaf_hash(&publish_version.canonical_bytes()).unwrap()
+			!= *first_entry_hash
 		{
 			return Err(Error::BadGenesisEntry);
 		}

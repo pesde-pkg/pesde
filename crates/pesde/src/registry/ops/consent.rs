@@ -16,21 +16,29 @@ pub struct UnvalidatedConsent {
 pub struct Consent<T: Tagged>(UnvalidatedSigned<UnvalidatedConsent>, PhantomData<T>);
 
 impl<T: Tagged> Consent<T> {
+	#[must_use]
+	pub fn signing_bytes(scope_id: &ScopeId, unvalidated: &UnvalidatedConsent) -> Vec<u8> {
+		let UnvalidatedConsent { nonce, consenter } = unvalidated;
+		cbor_core::map! {
+			"tag" => T::TAG,
+			"scope_id" => scope_id.hash().0,
+			"nonce" => nonce,
+			"consenter" => consenter.to_string(),
+		}
+		.encode()
+	}
+
 	/// Returns Ok if the [ScopeId] and [UnvalidatedConsent] matched what is expected
 	pub fn new(
 		scope_id: &ScopeId,
 		unvalidated: UnvalidatedSigned<UnvalidatedConsent>,
 	) -> Result<Self, BadSignature> {
-		let UnvalidatedConsent { nonce, consenter } = &unvalidated.body;
-		let signed_bytes = cbor_core::map! {
-			"tag" => T::TAG,
-			"scope_id" => scope_id.to_string(),
-			"nonce" => nonce,
-			"consenter" => consenter.to_string(),
-		}
-		.encode();
+		let signed_bytes = Self::signing_bytes(scope_id, &unvalidated.body);
 
-		if !unvalidated.sig.verify(consenter, &signed_bytes) {
+		if !unvalidated
+			.sig
+			.verify(&unvalidated.body.consenter, &signed_bytes)
+		{
 			return Err(BadSignature);
 		}
 
@@ -41,6 +49,12 @@ impl<T: Tagged> Consent<T> {
 	#[must_use]
 	pub fn inner(&self) -> &UnvalidatedSigned<UnvalidatedConsent> {
 		&self.0
+	}
+
+	/// Returns the underlying [UnvalidatedSigned]
+	#[must_use]
+	pub fn into_inner(self) -> UnvalidatedSigned<UnvalidatedConsent> {
+		self.0
 	}
 
 	/// Returns the consenter

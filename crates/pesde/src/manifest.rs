@@ -521,6 +521,14 @@ impl Manifest {
 	}
 
 	#[must_use]
+	pub fn registry_named(&self, name: &str) -> Option<&BoundedUrl<MAX_URL_LEN>> {
+		match self.sources.get(name)? {
+			SourceSpecifier::Pesde(url) => Some(url),
+			_ => None,
+		}
+	}
+
+	#[must_use]
 	pub fn from_resolved(from_registry: &Url, resolved: ResolvedManifest) -> Self {
 		let dependencies = resolved
 			.dependencies

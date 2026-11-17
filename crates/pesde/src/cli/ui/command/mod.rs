@@ -19,6 +19,7 @@ mod list;
 mod outdated;
 mod remove;
 mod run;
+mod scope;
 mod update;
 
 #[derive(Debug, Subcommand)]
@@ -28,6 +29,8 @@ pub enum Command {
 
 	#[command(subcommand)]
 	Cas(cas::CasCommand),
+
+	Scope(scope::ScopeCommand),
 
 	Init(init::InitCommand),
 
@@ -53,6 +56,7 @@ impl Command {
 		match self {
 			Command::Auth(cmd) => cmd.run().await,
 			Command::Cas(cmd) => cmd.run(ctx).await,
+			Command::Scope(cmd) => cmd.run(ctx).await,
 			Command::Init(cmd) => cmd.run(ctx).await,
 			Command::Add(cmd) => cmd.run(ctx).await,
 			Command::Remove(cmd) => cmd.run(ctx).await,

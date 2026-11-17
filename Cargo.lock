@@ -3505,9 +3505,9 @@ dependencies = [
 
 [[package]]
 name = "merkle-bplustree"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "348b1dd4a0d60d5442b51dc1cd84610d19520e6370bf13f8ad1a2d7d1840df86"
+checksum = "f01c2b3944b2a152a82f09dfe996c760389efd87dbcb3695d92e63dce78af80e"
 dependencies = [
  "arrayvec",
  "derive-where",

@@ -194,9 +194,9 @@ impl ScopeState {
 	pub(crate) fn as_cbor(&self) -> cbor_core::Value<'_> {
 		cbor_core::map! {
 			"owner" => self.owner.to_string(),
-			"scope_members_root" => self.scope_members_root.0.to_string(),
-			"package_versions_root" => self.package_versions_root.0.to_string(),
-			"package_deprecations_root" => self.package_deprecations_root.0.to_string(),
+			"scope_members_root" => self.scope_members_root.0.0,
+			"package_versions_root" => self.package_versions_root.0.0,
+			"package_deprecations_root" => self.package_deprecations_root.0.0,
 		}
 	}
 }
