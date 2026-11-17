@@ -96,7 +96,7 @@ pub fn read_file<I: IntoIterator<Item = P> + Debug, P: ToString + PartialEq<gix:
 
 	let entry = match tree.lookup_entry(file_path.into_iter().with_position().map(|(pos, path)| {
 		file_path_str.push_str(path.to_string().as_str());
-		if pos.is_last {
+		if !pos.is_last {
 			file_path_str.push('/');
 		}
 
