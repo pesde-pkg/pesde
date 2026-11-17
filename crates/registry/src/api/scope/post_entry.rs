@@ -295,7 +295,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 			ScopeEntryPayload::Admin(e) => &e.header().scope_id,
 		};
 
-		let new_size = append_leaf(Scoped(scope_id, &mut *tx), scope_size.get(), &entry).await?;
+		let new_size = append_leaf(Scoped(scope_id, &mut *tx), entry.pos, &entry).await?;
 		tx.set_scope_log_size(scope_id, new_size).await?;
 		tx.insert_scope_entry(&entry).await?;
 

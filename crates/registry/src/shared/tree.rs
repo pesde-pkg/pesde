@@ -3,6 +3,8 @@ use std::sync::Arc;
 use pesde::merkle_bplustree::MerkleBPlusTree;
 use pesde::merkle_bplustree::TreeConfig;
 use pesde::merkle_bplustree::hasher::Hasher;
+use pesde::merkle_bplustree::node::TreeLeafNode;
+use pesde::merkle_bplustree::node::TreeNode;
 use pesde::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::ScopeWriteTransaction;
@@ -41,6 +43,25 @@ where
 	}
 	*root = *supplied_root.hash();
 	Ok(())
+}
+
+pub async fn empty_tree<T: ScopeTree>(
+	tx: &mut dyn ScopeWriteTransaction,
+	scope: &ScopeId,
+) -> anyhow::Result<T>
+where
+	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
+	T::Shaper: Default,
+{
+	let empty_root = T::Hasher::hash_leaf(0, &T::Hasher::empty_hash());
+	let empty_node = TreeLeafNode::new(Default::default(), Default::default()).unwrap();
+	let empty_node = TreeNode::Leaf(empty_node.into());
+
+	T::write_repo(tx)
+		.store_scope_nodes(scope, vec![(empty_root, empty_node)])
+		.await?;
+
+	Ok(T::from_hash(empty_root))
 }
 
 pub trait ScopeTree: TreeConfig {

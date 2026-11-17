@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::num::NonZero;
 use std::str::FromStr as _;
 
 use actix_web::HttpResponse;
@@ -19,6 +20,7 @@ use pesde::registry::PublishVersionUserScopeOpBody;
 use pesde::registry::ScopeEntryPayload;
 use pesde::registry::ScopeGenesisPayload;
 use pesde::registry::ScopeId;
+use pesde::registry::ScopeState;
 use pesde::registry::Signed;
 use pesde::registry::UnvalidatedSigned;
 use pesde::registry::UserScopeOp;
@@ -39,6 +41,7 @@ use crate::api::package::error::Error;
 use crate::shared::blob::BlobStorage;
 use crate::shared::db::append_leaf;
 use crate::shared::db::run_tx;
+use crate::shared::tree::empty_tree;
 use crate::shared::tree::run_tree;
 
 const JSON_BODY_LIMIT: usize = 1024 * 1024;
@@ -185,12 +188,16 @@ async fn handler(
 			sig: _,
 			body: ScopeGenesisPayload {
 				scope_id,
-				owner: _,
+				owner,
 				first_entry_hash,
 			},
 		} = scope_genesis.inner();
 
 		if *scope_id != header.scope_id {
+			return Err(Error::BadGenesisEntry);
+		}
+
+		if *owner != header.signer {
 			return Err(Error::BadGenesisEntry);
 		}
 
@@ -221,7 +228,7 @@ async fn handler(
 				tx.set_global_log_size(new_size).await?;
 				tx.insert_global_entry(&entry).await?;
 
-				(tx.into_scope_transaction(), 0)
+				(tx.into_scope_transaction(), None)
 			}
 			CreatingScopeLockResult::AlreadyExists => {
 				return Err(Error::BadGenesisEntry);
@@ -237,7 +244,7 @@ async fn handler(
 			.await?;
 
 		match result {
-			ExistingScopeLockResult::Ok { tx, scope_size } => (tx, scope_size.get()),
+			ExistingScopeLockResult::Ok { tx, scope_size } => (tx, Some(scope_size)),
 			ExistingScopeLockResult::Unauthorized => return Err(Error::Unauthorized),
 			ExistingScopeLockResult::DoesntExist => return Err(Error::BadGenesisEntry),
 		}
@@ -245,12 +252,10 @@ async fn handler(
 
 	run_tx(tx, async move |tx| {
 		let UnvalidatedSigned { sig, body } = publish_version.into_inner();
-		let scope_state = tx
-			.scope_state(&body.header.scope_id)
-			.await?
-			.expect("we have just created/locked this scope");
 
-		if scope_size != 0 {
+		let mut scope_state = if scope_size.is_some() {
+			let scope_state = tx.scope_state(&body.header.scope_id).await?.unwrap();
+
 			let tip = tx
 				.scope_log_node(&body.header.scope_id, scope_state.tip_pos)
 				.await?
@@ -259,9 +264,16 @@ async fn handler(
 			if body.header.prev_hash != tip {
 				return Err(Error::InvalidPrevHash);
 			}
-		}
 
-		let mut scope_state = scope_state.state;
+			scope_state.state
+		} else {
+			ScopeState {
+				owner: body.header.signer.clone(),
+				scope_members_root: empty_tree(tx, &body.header.scope_id).await?,
+				package_versions_root: empty_tree(tx, &body.header.scope_id).await?,
+				package_deprecations_root: empty_tree(tx, &body.header.scope_id).await?,
+			}
+		};
 
 		run_tree(
 			&body.header.scope_id,
@@ -293,7 +305,7 @@ async fn handler(
 		}
 
 		let entry = Entry {
-			pos: scope_size,
+			pos: scope_size.map_or(0, NonZero::get),
 			published_at: Default::default(),
 			payload: ScopeEntryPayload::User(
 				Signed::new(UnvalidatedSigned {
@@ -319,7 +331,7 @@ async fn handler(
 			_ => unreachable!(),
 		};
 
-		let new_size = append_leaf(Scoped(scope_id, &mut *tx), scope_size, &entry).await?;
+		let new_size = append_leaf(Scoped(scope_id, &mut *tx), entry.pos, &entry).await?;
 		tx.set_scope_log_size(scope_id, new_size).await?;
 		tx.insert_scope_entry(&entry).await?;
 
