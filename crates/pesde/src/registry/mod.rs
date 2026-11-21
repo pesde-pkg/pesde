@@ -125,26 +125,35 @@ impl<T: Signable + Canonical> Canonical for Signed<T> {
 /// Things that can be an [Entry]'s payload
 pub trait EntryPayload: Canonical {}
 
-/// An entry in a log, at a known leaf position
+/// An entry in a log.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry<T: EntryPayload> {
-	/// The leaf position of this entry
-	pub pos: u64,
-	/// The time of publishing of this entry
-	/// This value is server authoritative because of time sync issues a client provided value would pose
+	/// The index of this entry in its log.
+	pub index: u64,
+	/// The time of publishing of this entry.
+	///
+	/// This value is server authoritative because of time sync issues a client provided value would pose.
 	pub published_at: jiff::Timestamp,
-	/// The payload of this entry
+	/// The payload of this entry.
 	pub payload: T,
 }
 impl<T: EntryPayload> crate::sealed::Sealed for Entry<T> {}
 impl<T: EntryPayload> Canonical for Entry<T> {
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
 		cbor_core::map! {
-			"pos" => self.pos,
+			"index" => self.index,
 			"published_at" => self.published_at.to_string(),
 			"payload" => self.payload.canonical_bytes(),
 		}
 		.write_to(writer)
+	}
+}
+
+impl<T: EntryPayload> Entry<T> {
+	/// Returns the leaf hash of this entry, which is the expected format for `prev_hash` fields.
+	#[must_use]
+	pub fn hash(&self) -> CurrentHash {
+		CurrentMerkleHasher::leaf_hash(&self.canonical_bytes()).unwrap()
 	}
 }
 

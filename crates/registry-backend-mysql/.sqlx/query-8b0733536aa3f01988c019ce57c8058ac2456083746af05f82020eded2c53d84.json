@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\nINSERT INTO scope_log_entry (scope, idx, pos, ns, published_at, owner, scope_members_root_blake3, versions_root_blake3, deprecations_root_blake3)\nVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "8b0733536aa3f01988c019ce57c8058ac2456083746af05f82020eded2c53d84"
+}

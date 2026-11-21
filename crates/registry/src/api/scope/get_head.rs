@@ -2,6 +2,7 @@ use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
+use futures::TryFutureExt as _;
 use pesde::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::features::scope::ScopeReadRepository;
@@ -27,7 +28,7 @@ async fn handler(
 	db: &dyn Backend,
 	scope_id: &ScopeId,
 	query: LogHeadQuery,
-) -> Result<LogHeadResponse, Error> {
+) -> Result<LogHeadResponse<ScopeEntryPayload>, Error> {
 	let current_size = db
 		.scope_log_size(scope_id)
 		.await?
@@ -36,6 +37,10 @@ async fn handler(
 	log_head(
 		current_size,
 		Scoped(scope_id, db as &dyn ScopeReadRepository),
+		|index| {
+			db.scope_log_entry(scope_id.clone(), index)
+				.map_err(Into::into)
+		},
 		query,
 	)
 	.await

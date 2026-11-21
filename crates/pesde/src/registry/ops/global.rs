@@ -11,7 +11,8 @@ pub struct ScopeGenesisPayload {
 	pub scope_id: ScopeId,
 	/// The owner of this scope
 	pub owner: PublicKey,
-	/// The scope log leaf hash of the first entry in the scope log.
+	/// The hash of the first in the scope log's entry's payload,
+	/// unlike the `prev_hash` field of subsequent entries, which is the hash of the entire entry.
 	pub first_entry_hash: CurrentHash,
 }
 impl crate::sealed::Sealed for ScopeGenesisPayload {}

@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT id FROM global_log FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL | PRIMARY_KEY",
+          "collation": 63,
+          "max_size": 1
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "eb150bc0a7bd1731f358f70390ecfce4cca54857ae22f7546906fab160efb6b6"
+}

@@ -25,12 +25,11 @@ CREATE TABLE deprecation_reason (
 
 
 CREATE TABLE global_log (
-	id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
-	size BIGINT UNSIGNED NOT NULL
+	id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id)
 );
 
 
-INSERT INTO global_log (size) VALUES (0);
+INSERT INTO global_log (id) VALUES (TRUE);
 
 
 CREATE TABLE global_log_node (
@@ -40,19 +39,20 @@ CREATE TABLE global_log_node (
 
 
 CREATE TABLE global_log_entry (
-	pos BIGINT UNSIGNED PRIMARY KEY,
+	idx BIGINT UNSIGNED PRIMARY KEY,
+	pos BIGINT UNSIGNED NOT NULL UNIQUE,
 
 	op_kind ENUM('scope_genesis') NOT NULL,
 
 	published_at DATETIME(6) NOT NULL DEFAULT(UTC_TIMESTAMP(6)),
 
-	UNIQUE (pos, op_kind),
+	UNIQUE (idx, op_kind),
 	FOREIGN KEY (pos) REFERENCES global_log_node (pos)
 );
 
 
 CREATE TABLE global_log_scope_genesis_entry (
-	pos BIGINT UNSIGNED PRIMARY KEY,
+	idx BIGINT UNSIGNED PRIMARY KEY,
 
 	op_kind ENUM('scope_genesis') NOT NULL DEFAULT 'scope_genesis' CHECK (op_kind = 'scope_genesis'),
 
@@ -64,19 +64,10 @@ CREATE TABLE global_log_scope_genesis_entry (
 	owner_id BIGINT UNSIGNED NOT NULL,
 	first_entry_hash VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
-	UNIQUE (pos, op_kind),
-	FOREIGN KEY (pos, op_kind) REFERENCES global_log_entry (pos, op_kind),
+	UNIQUE (idx, op_kind),
+	FOREIGN KEY (idx, op_kind) REFERENCES global_log_entry (idx, op_kind),
 	FOREIGN KEY (name_blake3) REFERENCES plaintext_name (blake3),
 	FOREIGN KEY (owner_id) REFERENCES public_key (id)
-);
-
-
-CREATE TABLE scope (
-	genesis_pos BIGINT UNSIGNED PRIMARY KEY,
-
-	log_size BIGINT UNSIGNED NOT NULL,
-
-	FOREIGN KEY (genesis_pos) REFERENCES global_log_scope_genesis_entry (pos)
 );
 
 
@@ -86,36 +77,36 @@ CREATE TABLE scope_log_node (
 	blake3 BINARY(32) NOT NULL,
 
 	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope) REFERENCES scope (genesis_pos)
+	FOREIGN KEY (scope) REFERENCES global_log_scope_genesis_entry (idx)
 );
 
 
 CREATE TABLE package (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 
 	local_name_blake3 BINARY(32) NOT NULL,
 
-	PRIMARY KEY (scope, pos),
+	PRIMARY KEY (scope, idx),
 	UNIQUE (scope, local_name_blake3),
-	FOREIGN KEY (scope, pos) REFERENCES scope_log_node (scope, pos),
+	FOREIGN KEY (scope) REFERENCES global_log_scope_genesis_entry (idx),
 	FOREIGN KEY (local_name_blake3) REFERENCES plaintext_name (blake3)
 );
 
 
 CREATE TABLE package_version (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
-	package_pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
+	package_idx BIGINT UNSIGNED NOT NULL,
 
 	version VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 	archive_hash VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 	manifest_hash VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
 
-	PRIMARY KEY (scope, pos),
-	UNIQUE (scope, package_pos, version),
-	FOREIGN KEY (scope, pos) REFERENCES scope_log_node (scope, pos),
-	FOREIGN KEY (scope, package_pos) REFERENCES package (scope, pos)
+	PRIMARY KEY (scope, idx),
+	UNIQUE (scope, package_idx, version),
+	FOREIGN KEY (scope) REFERENCES global_log_scope_genesis_entry (idx),
+	FOREIGN KEY (scope, package_idx) REFERENCES package (scope, idx)
 );
 
 
@@ -197,12 +188,12 @@ CREATE TABLE versions_leaf_node_entry (
 	idx SMALLINT UNSIGNED NOT NULL,
 
 	scope BIGINT UNSIGNED NOT NULL,
-	version_pos BIGINT UNSIGNED NOT NULL,
+	version_idx BIGINT UNSIGNED NOT NULL,
 	yank_state ENUM('yanked', 'admin_yanked'),
 
 	PRIMARY KEY (node_blake3, idx),
 	FOREIGN KEY (node_blake3, kind) REFERENCES versions_node (blake3, kind),
-	FOREIGN KEY (scope, version_pos) REFERENCES package_version (scope, pos)
+	FOREIGN KEY (scope, version_idx) REFERENCES package_version (scope, idx)
 );
 
 
@@ -212,11 +203,11 @@ CREATE TABLE versions_internal_node_key (
 	idx SMALLINT UNSIGNED NOT NULL,
 
 	scope BIGINT UNSIGNED NOT NULL,
-	version_pos BIGINT UNSIGNED NOT NULL,
+	version_idx BIGINT UNSIGNED NOT NULL,
 
 	PRIMARY KEY (node_blake3, idx),
 	FOREIGN KEY (node_blake3, kind) REFERENCES versions_node (blake3, kind),
-	FOREIGN KEY (scope, version_pos) REFERENCES package_version (scope, pos)
+	FOREIGN KEY (scope, version_idx) REFERENCES package_version (scope, idx)
 );
 
 
@@ -247,12 +238,12 @@ CREATE TABLE deprecations_leaf_node_entry (
 	idx SMALLINT UNSIGNED NOT NULL,
 
 	scope BIGINT UNSIGNED NOT NULL,
-	package_pos BIGINT UNSIGNED NOT NULL,
+	package_idx BIGINT UNSIGNED NOT NULL,
 	reason_id BIGINT UNSIGNED NOT NULL,
 
 	PRIMARY KEY (node_blake3, idx),
 	FOREIGN KEY (node_blake3, kind) REFERENCES deprecations_node (blake3, kind),
-	FOREIGN KEY (scope, package_pos) REFERENCES package (scope, pos),
+	FOREIGN KEY (scope, package_idx) REFERENCES package (scope, idx),
 	FOREIGN KEY (reason_id) REFERENCES deprecation_reason (id)
 );
 
@@ -263,11 +254,11 @@ CREATE TABLE deprecations_internal_node_key (
 	idx SMALLINT UNSIGNED NOT NULL,
 
 	scope BIGINT UNSIGNED NOT NULL,
-	package_pos BIGINT UNSIGNED NOT NULL,
+	package_idx BIGINT UNSIGNED NOT NULL,
 
 	PRIMARY KEY (node_blake3, idx),
 	FOREIGN KEY (node_blake3, kind) REFERENCES deprecations_node (blake3, kind),
-	FOREIGN KEY (scope, package_pos) REFERENCES package (scope, pos)
+	FOREIGN KEY (scope, package_idx) REFERENCES package (scope, idx)
 );
 
 
@@ -286,6 +277,7 @@ CREATE TABLE deprecations_internal_node_child (
 
 CREATE TABLE scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	pos BIGINT UNSIGNED NOT NULL,
 
 	ns ENUM('signed', 'admin') NOT NULL,
@@ -296,8 +288,10 @@ CREATE TABLE scope_log_entry (
 	versions_root_blake3 BINARY(32) NOT NULL,
 	deprecations_root_blake3 BINARY(32) NOT NULL,
 
-	PRIMARY KEY (scope, pos),
-	UNIQUE (scope, pos, ns),
+	PRIMARY KEY (scope, idx),
+	UNIQUE (scope, idx, ns),
+	UNIQUE (scope, pos),
+	FOREIGN KEY (scope) REFERENCES global_log_scope_genesis_entry (idx),
 	FOREIGN KEY (scope, pos) REFERENCES scope_log_node (scope, pos),
 	FOREIGN KEY (owner) REFERENCES public_key (id),
 	FOREIGN KEY (scope_members_root_blake3) REFERENCES scope_members_node (blake3),
@@ -308,7 +302,7 @@ CREATE TABLE scope_log_entry (
 
 CREATE TABLE signed_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	ns ENUM('signed', 'admin') NOT NULL DEFAULT 'signed' CHECK (ns = 'signed'),
 	op_kind ENUM(
 		'add_member',
@@ -325,16 +319,16 @@ CREATE TABLE signed_scope_log_entry (
 	sig_kind ENUM('ssh_ed25519') NOT NULL,
 	sig BLOB NOT NULL,
 
-	PRIMARY KEY (scope, pos),
-	UNIQUE (scope, pos, op_kind),
-	FOREIGN KEY (scope, pos, ns) REFERENCES scope_log_entry (scope, pos, ns),
+	PRIMARY KEY (scope, idx),
+	UNIQUE (scope, idx, op_kind),
+	FOREIGN KEY (scope, idx, ns) REFERENCES scope_log_entry (scope, idx, ns),
 	FOREIGN KEY (signer) REFERENCES public_key (id)
 );
 
 
 CREATE TABLE signed_add_member_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM(
 		'add_member',
 		'update_member_grant',
@@ -353,8 +347,8 @@ CREATE TABLE signed_add_member_scope_log_entry (
 	consent BLOB NOT NULL,
 	nonce BINARY(16) NOT NULL UNIQUE,
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES signed_scope_log_entry (scope, pos, op_kind),
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES signed_scope_log_entry (scope, idx, op_kind),
 	FOREIGN KEY (member) REFERENCES public_key (id),
 	FOREIGN KEY (grant_blake3) REFERENCES member_grant (blake3)
 );
@@ -362,7 +356,7 @@ CREATE TABLE signed_add_member_scope_log_entry (
 
 CREATE TABLE signed_update_member_grant_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM(
 		'add_member',
 		'update_member_grant',
@@ -377,8 +371,8 @@ CREATE TABLE signed_update_member_grant_scope_log_entry (
 	member BIGINT UNSIGNED NOT NULL,
 	grant_blake3 BINARY(32) NOT NULL,
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES signed_scope_log_entry (scope, pos, op_kind),
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES signed_scope_log_entry (scope, idx, op_kind),
 	FOREIGN KEY (member) REFERENCES public_key (id),
 	FOREIGN KEY (grant_blake3) REFERENCES member_grant (blake3)
 );
@@ -386,7 +380,7 @@ CREATE TABLE signed_update_member_grant_scope_log_entry (
 
 CREATE TABLE signed_rotate_key_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM(
 		'add_member',
 		'update_member_grant',
@@ -404,15 +398,15 @@ CREATE TABLE signed_rotate_key_scope_log_entry (
 	consent BLOB NOT NULL,
 	nonce BINARY(16) NOT NULL UNIQUE,
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES signed_scope_log_entry (scope, pos, op_kind),
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES signed_scope_log_entry (scope, idx, op_kind),
 	FOREIGN KEY (new_key) REFERENCES public_key (id)
 );
 
 
 CREATE TABLE signed_remove_member_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM(
 		'add_member',
 		'update_member_grant',
@@ -426,15 +420,15 @@ CREATE TABLE signed_remove_member_scope_log_entry (
 
 	member BIGINT UNSIGNED,
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES signed_scope_log_entry (scope, pos, op_kind),
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES signed_scope_log_entry (scope, idx, op_kind),
 	FOREIGN KEY (member) REFERENCES public_key (id)
 );
 
 
 CREATE TABLE signed_transfer_ownership_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM(
 		'add_member',
 		'update_member_grant',
@@ -450,14 +444,14 @@ CREATE TABLE signed_transfer_ownership_scope_log_entry (
 	consent BLOB NOT NULL,
 	nonce BINARY(16) NOT NULL UNIQUE,
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES signed_scope_log_entry (scope, pos, op_kind)
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES signed_scope_log_entry (scope, idx, op_kind)
 );
 
 
 CREATE TABLE signed_publish_version_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM(
 		'add_member',
 		'update_member_grant',
@@ -469,15 +463,15 @@ CREATE TABLE signed_publish_version_scope_log_entry (
 		'set_deprecation'
 	) NOT NULL DEFAULT 'publish_version' CHECK (op_kind = 'publish_version'),
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES signed_scope_log_entry (scope, pos, op_kind),
-	FOREIGN KEY (scope, pos) REFERENCES package_version (scope, pos)
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES signed_scope_log_entry (scope, idx, op_kind),
+	FOREIGN KEY (scope, idx) REFERENCES package_version (scope, idx)
 );
 
 
 CREATE TABLE signed_set_yanked_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM(
 		'add_member',
 		'update_member_grant',
@@ -489,18 +483,18 @@ CREATE TABLE signed_set_yanked_scope_log_entry (
 		'set_deprecation'
 	) NOT NULL DEFAULT 'set_yanked' CHECK (op_kind = 'set_yanked'),
 
-	version_pos BIGINT UNSIGNED NOT NULL,
+	version_idx BIGINT UNSIGNED NOT NULL,
 	yanked BOOLEAN NOT NULL,
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES signed_scope_log_entry (scope, pos, op_kind),
-	FOREIGN KEY (scope, version_pos) REFERENCES package_version (scope, pos)
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES signed_scope_log_entry (scope, idx, op_kind),
+	FOREIGN KEY (scope, version_idx) REFERENCES package_version (scope, idx)
 );
 
 
 CREATE TABLE signed_set_deprecation_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM(
 		'add_member',
 		'update_member_grant',
@@ -512,50 +506,50 @@ CREATE TABLE signed_set_deprecation_scope_log_entry (
 		'set_deprecation'
 	) NOT NULL DEFAULT 'set_deprecation' CHECK (op_kind = 'set_deprecation'),
 
-	package_pos BIGINT UNSIGNED NOT NULL,
+	package_idx BIGINT UNSIGNED NOT NULL,
 	reason_id BIGINT UNSIGNED,
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES signed_scope_log_entry (scope, pos, op_kind),
-	FOREIGN KEY (scope, package_pos) REFERENCES package (scope, pos),
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES signed_scope_log_entry (scope, idx, op_kind),
+	FOREIGN KEY (scope, package_idx) REFERENCES package (scope, idx),
 	FOREIGN KEY (reason_id) REFERENCES deprecation_reason (id)
 );
 
 
 CREATE TABLE admin_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	ns ENUM('signed', 'admin') NOT NULL DEFAULT 'admin' CHECK (ns = 'admin'),
 	op_kind ENUM('transfer_ownership', 'set_yanked') NOT NULL,
 
-	PRIMARY KEY (scope, pos),
-	UNIQUE (scope, pos, op_kind),
-	FOREIGN KEY (scope, pos, ns) REFERENCES scope_log_entry (scope, pos, ns)
+	PRIMARY KEY (scope, idx),
+	UNIQUE (scope, idx, op_kind),
+	FOREIGN KEY (scope, idx, ns) REFERENCES scope_log_entry (scope, idx, ns)
 );
 
 
 CREATE TABLE admin_transfer_ownership_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM('transfer_ownership', 'set_yanked') NOT NULL DEFAULT 'transfer_ownership' CHECK (op_kind = 'transfer_ownership'),
 
 	new_owner BIGINT UNSIGNED NOT NULL,
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES admin_scope_log_entry (scope, pos, op_kind),
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES admin_scope_log_entry (scope, idx, op_kind),
 	FOREIGN KEY (new_owner) REFERENCES public_key (id)
 );
 
 
 CREATE TABLE admin_set_yanked_scope_log_entry (
 	scope BIGINT UNSIGNED NOT NULL,
-	pos BIGINT UNSIGNED NOT NULL,
+	idx BIGINT UNSIGNED NOT NULL,
 	op_kind ENUM('transfer_ownership', 'set_yanked') NOT NULL DEFAULT 'set_yanked' CHECK (op_kind = 'set_yanked'),
 
-	version_pos BIGINT UNSIGNED NOT NULL,
+	version_idx BIGINT UNSIGNED NOT NULL,
 	yanked BOOLEAN NOT NULL,
 
-	PRIMARY KEY (scope, pos),
-	FOREIGN KEY (scope, pos, op_kind) REFERENCES admin_scope_log_entry (scope, pos, op_kind),
-	FOREIGN KEY (scope, version_pos) REFERENCES package_version (scope, pos)
+	PRIMARY KEY (scope, idx),
+	FOREIGN KEY (scope, idx, op_kind) REFERENCES admin_scope_log_entry (scope, idx, op_kind),
+	FOREIGN KEY (scope, version_idx) REFERENCES package_version (scope, idx)
 );

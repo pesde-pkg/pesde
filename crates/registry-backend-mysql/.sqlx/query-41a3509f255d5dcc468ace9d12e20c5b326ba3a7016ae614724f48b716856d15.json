@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO package_version (scope, idx, package_idx, version, archive_hash) VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "41a3509f255d5dcc468ace9d12e20c5b326ba3a7016ae614724f48b716856d15"
+}

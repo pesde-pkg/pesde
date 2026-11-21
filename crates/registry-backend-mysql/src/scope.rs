@@ -15,6 +15,7 @@ use pesde::merkle_bplustree::HasherOutput;
 use pesde::merkle_bplustree::node::TreeInternalNode;
 use pesde::merkle_bplustree::node::TreeLeafNode;
 use pesde::merkle_bplustree::node::TreeNode;
+use pesde::merkleberg::leaf_index_to_pos;
 use pesde::registry::*;
 use pesde::signature::PublicKey;
 use pesde::signature::PublicKeyAlgorithm;
@@ -76,16 +77,18 @@ async fn scope_log_size(
 ) -> anyhow::Result<Option<NonZero<u64>>> {
 	let record = query!(
 		r"
-SELECT scope.log_size AS `log_size: NonZero<u64>`
-FROM scope
-INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope.genesis_pos
-WHERE global_log_scope_genesis_entry.name_blake3 = ?",
+SELECT scope_log_entry.idx + 1 AS `size: NonZero<u64>`
+FROM scope_log_entry
+INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=scope_log_entry.scope
+WHERE global_log_scope_genesis_entry.name_blake3 = ?
+ORDER BY scope_log_entry.idx DESC
+LIMIT 1",
 		scope_id.hash().0.as_slice()
 	)
 	.fetch_optional(tx.as_executor())
 	.await?;
 
-	Ok(record.map(|r| r.log_size))
+	Ok(record.map(|r| r.size))
 }
 
 async fn scope_grant(tx: &mut impl AsExecutor, grant_blake3: &[u8]) -> anyhow::Result<ScopeGrant> {
@@ -121,12 +124,12 @@ WHERE member_grant_package.grant_blake3 = ?",
 async fn scope_log_entry(
 	mut tx: impl AsExecutor,
 	scope_id: ScopeId,
-	pos: u64,
+	index: u64,
 ) -> anyhow::Result<Option<ScopeEntry>> {
 	let result = query!(
 		r"
 SELECT
-	scope_log_entry.scope AS scope_pos,
+	scope_log_entry.scope AS scope_idx,
 	ns AS `ns: ScopeNamespace`,
 	published_at,
 	public_key.algorithm AS `algorithm: Text<PublicKeyAlgorithm>`,
@@ -136,17 +139,17 @@ SELECT
 	deprecations_root_blake3,
 	(
 		SELECT previous.blake3
-		FROM scope_log_node AS `previous`
-		WHERE previous.scope = scope_log_entry.scope AND previous.pos < scope_log_entry.pos
-		ORDER BY previous.pos DESC
-		LIMIT 1
+		FROM scope_log_entry AS `previous_entry`
+		INNER JOIN scope_log_node AS `previous` ON previous.scope = previous_entry.scope AND previous.pos = previous_entry.pos
+		WHERE previous_entry.scope = scope_log_entry.scope AND previous_entry.idx = ?
 	) AS `prev_hash`
 FROM scope_log_entry
-INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope
+INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=scope_log_entry.scope
 INNER JOIN public_key ON public_key.id=scope_log_entry.owner
-WHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_entry.pos = ?",
+WHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_entry.idx = ?",
+		index.checked_sub(1),
 		scope_id.hash().0.as_slice(),
-		pos,
+		index,
 	)
 	.fetch_optional(tx.as_executor())
 	.await?;
@@ -187,9 +190,9 @@ SELECT
 	public_key.data
 FROM signed_scope_log_entry
 INNER JOIN public_key ON public_key.id=signed_scope_log_entry.signer
-WHERE signed_scope_log_entry.scope = ? AND signed_scope_log_entry.pos = ?",
-				record.scope_pos,
-				pos,
+WHERE signed_scope_log_entry.scope = ? AND signed_scope_log_entry.idx = ?",
+				record.scope_idx,
+				index,
 			)
 			.fetch_one(tx.as_executor())
 			.await?;
@@ -213,9 +216,9 @@ SELECT
 	public_key.data
 FROM signed_add_member_scope_log_entry
 INNER JOIN public_key ON public_key.id=signed_add_member_scope_log_entry.member
-WHERE signed_add_member_scope_log_entry.scope = ? AND signed_add_member_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+WHERE signed_add_member_scope_log_entry.scope = ? AND signed_add_member_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -243,9 +246,9 @@ SELECT
 	public_key.data
 FROM signed_update_member_grant_scope_log_entry
 INNER JOIN public_key ON public_key.id=signed_update_member_grant_scope_log_entry.member
-WHERE signed_update_member_grant_scope_log_entry.scope = ? AND signed_update_member_grant_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+WHERE signed_update_member_grant_scope_log_entry.scope = ? AND signed_update_member_grant_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -270,9 +273,9 @@ SELECT
 	public_key.data
 FROM signed_rotate_key_scope_log_entry
 INNER JOIN public_key ON public_key.id=signed_rotate_key_scope_log_entry.new_key
-WHERE signed_rotate_key_scope_log_entry.scope = ? AND signed_rotate_key_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+WHERE signed_rotate_key_scope_log_entry.scope = ? AND signed_rotate_key_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -297,9 +300,9 @@ SELECT
 	public_key.data AS `data`
 FROM signed_remove_member_scope_log_entry
 LEFT JOIN public_key ON public_key.id=signed_remove_member_scope_log_entry.member
-WHERE signed_remove_member_scope_log_entry.scope = ? AND signed_remove_member_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+WHERE signed_remove_member_scope_log_entry.scope = ? AND signed_remove_member_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -326,11 +329,11 @@ SELECT
 	public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,
 	public_key.data
 FROM signed_transfer_ownership_scope_log_entry
-INNER JOIN scope_log_entry ON scope_log_entry.scope=signed_transfer_ownership_scope_log_entry.scope AND scope_log_entry.pos=signed_transfer_ownership_scope_log_entry.pos
+INNER JOIN scope_log_entry ON scope_log_entry.scope=signed_transfer_ownership_scope_log_entry.scope AND scope_log_entry.idx=signed_transfer_ownership_scope_log_entry.idx
 INNER JOIN public_key ON public_key.id=scope_log_entry.owner
-WHERE signed_transfer_ownership_scope_log_entry.scope = ? AND signed_transfer_ownership_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+WHERE signed_transfer_ownership_scope_log_entry.scope = ? AND signed_transfer_ownership_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -354,11 +357,11 @@ WHERE signed_transfer_ownership_scope_log_entry.scope = ? AND signed_transfer_ow
 						r"
 SELECT package.local_name_blake3, package_version.version, package_version.archive_hash, package_version.manifest_hash
 FROM signed_publish_version_scope_log_entry
-INNER JOIN package_version ON package_version.scope=signed_publish_version_scope_log_entry.scope AND package_version.pos=signed_publish_version_scope_log_entry.pos
-INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
-WHERE signed_publish_version_scope_log_entry.scope = ? AND signed_publish_version_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+INNER JOIN package_version ON package_version.scope=signed_publish_version_scope_log_entry.scope AND package_version.idx=signed_publish_version_scope_log_entry.idx
+INNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx
+WHERE signed_publish_version_scope_log_entry.scope = ? AND signed_publish_version_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -381,11 +384,11 @@ WHERE signed_publish_version_scope_log_entry.scope = ? AND signed_publish_versio
 						r"
 SELECT package.local_name_blake3, package_version.version, signed_set_yanked_scope_log_entry.yanked AS `yanked: bool`
 FROM signed_set_yanked_scope_log_entry
-INNER JOIN package_version ON package_version.scope=signed_set_yanked_scope_log_entry.scope AND package_version.pos=signed_set_yanked_scope_log_entry.version_pos
-INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
-WHERE signed_set_yanked_scope_log_entry.scope = ? AND signed_set_yanked_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+INNER JOIN package_version ON package_version.scope=signed_set_yanked_scope_log_entry.scope AND package_version.idx=signed_set_yanked_scope_log_entry.version_idx
+INNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx
+WHERE signed_set_yanked_scope_log_entry.scope = ? AND signed_set_yanked_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -407,11 +410,11 @@ WHERE signed_set_yanked_scope_log_entry.scope = ? AND signed_set_yanked_scope_lo
 						r"
 SELECT package.local_name_blake3, deprecation_reason.hash, deprecation_reason.plaintext AS `plaintext: Box<str>`
 FROM signed_set_deprecation_scope_log_entry
-INNER JOIN package ON package.scope=signed_set_deprecation_scope_log_entry.scope AND package.pos=signed_set_deprecation_scope_log_entry.package_pos
+INNER JOIN package ON package.scope=signed_set_deprecation_scope_log_entry.scope AND package.idx=signed_set_deprecation_scope_log_entry.package_idx
 LEFT JOIN deprecation_reason ON deprecation_reason.id=signed_set_deprecation_scope_log_entry.reason_id
-WHERE signed_set_deprecation_scope_log_entry.scope = ? AND signed_set_deprecation_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+WHERE signed_set_deprecation_scope_log_entry.scope = ? AND signed_set_deprecation_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -451,9 +454,9 @@ WHERE signed_set_deprecation_scope_log_entry.scope = ? AND signed_set_deprecatio
 				r"
 SELECT op_kind AS `op_kind: AdminOpKind`
 FROM admin_scope_log_entry
-WHERE scope = ? AND pos = ?",
-				record.scope_pos,
-				pos,
+WHERE scope = ? AND idx = ?",
+				record.scope_idx,
+				index,
 			)
 			.fetch_one(tx.as_executor())
 			.await?;
@@ -465,9 +468,9 @@ WHERE scope = ? AND pos = ?",
 SELECT public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`, public_key.data
 FROM admin_transfer_ownership_scope_log_entry
 INNER JOIN public_key ON public_key.id=admin_transfer_ownership_scope_log_entry.new_owner
-WHERE admin_transfer_ownership_scope_log_entry.scope = ? AND admin_transfer_ownership_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+WHERE admin_transfer_ownership_scope_log_entry.scope = ? AND admin_transfer_ownership_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -483,11 +486,11 @@ WHERE admin_transfer_ownership_scope_log_entry.scope = ? AND admin_transfer_owne
 						r"
 SELECT package.local_name_blake3, package_version.version, admin_set_yanked_scope_log_entry.yanked AS `yanked: bool`
 FROM admin_set_yanked_scope_log_entry
-INNER JOIN package_version ON package_version.scope=admin_set_yanked_scope_log_entry.scope AND package_version.pos=admin_set_yanked_scope_log_entry.version_pos
-INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
-WHERE admin_set_yanked_scope_log_entry.scope = ? AND admin_set_yanked_scope_log_entry.pos = ?",
-						record.scope_pos,
-						pos,
+INNER JOIN package_version ON package_version.scope=admin_set_yanked_scope_log_entry.scope AND package_version.idx=admin_set_yanked_scope_log_entry.version_idx
+INNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx
+WHERE admin_set_yanked_scope_log_entry.scope = ? AND admin_set_yanked_scope_log_entry.idx = ?",
+						record.scope_idx,
+						index,
 					)
 					.fetch_one(tx.as_executor())
 					.await?;
@@ -507,54 +510,9 @@ WHERE admin_set_yanked_scope_log_entry.scope = ? AND admin_set_yanked_scope_log_
 	};
 
 	Ok(Some(Entry {
-		pos,
+		index,
 		published_at: chrono_to_jiff(record.published_at)?,
 		payload,
-	}))
-}
-
-async fn scope_state(
-	mut tx: impl AsExecutor,
-	scope_id: &ScopeId,
-) -> anyhow::Result<Option<ScopeStateResponse>> {
-	let result = query!(
-		r"
-SELECT
-	scope_log_entry.pos,
-	scope_log_entry.scope_members_root_blake3,
-	scope_log_entry.versions_root_blake3,
-	scope_log_entry.deprecations_root_blake3,
-	public_key.algorithm as `algorithm: Text<PublicKeyAlgorithm>`,
-	public_key.data
-FROM scope_log_entry
-INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_entry.scope
-INNER JOIN public_key ON public_key.id=scope_log_entry.owner
-WHERE global_log_scope_genesis_entry.name_blake3 = ?
-ORDER BY scope_log_entry.pos DESC
-LIMIT 1",
-		scope_id.hash().0.as_slice(),
-	)
-	.fetch_optional(tx.as_executor())
-	.await?;
-
-	let Some(record) = result else {
-		return Ok(None);
-	};
-
-	Ok(Some(ScopeStateResponse {
-		state: ScopeState {
-			owner: PublicKey::new(record.algorithm.0, record.data).context("corrupt owner key")?,
-			scope_members_root: Blake3Hash::new(record.scope_members_root_blake3)
-				.context("corrupt scope_members_root")
-				.map(ScopeMembersTree)?,
-			package_versions_root: Blake3Hash::new(record.versions_root_blake3)
-				.context("corrupt package_versions_root")
-				.map(PackageVersionsTree)?,
-			package_deprecations_root: Blake3Hash::new(record.deprecations_root_blake3)
-				.context("corrupt package_deprecations_root")
-				.map(PackageDeprecationsTree)?,
-		},
-		tip_pos: record.pos,
 	}))
 }
 
@@ -564,7 +522,7 @@ async fn scope_log_node(
 	pos: u64,
 ) -> anyhow::Result<Option<CurrentHash>> {
 	let result = query!(
-		"SELECT scope_log_node.blake3 FROM scope_log_node INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_node.scope WHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_node.pos = ?",
+		"SELECT scope_log_node.blake3 FROM scope_log_node INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=scope_log_node.scope WHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_node.pos = ?",
 		scope_id.hash().0.as_slice(),
 		pos,
 	)
@@ -589,7 +547,7 @@ async fn scope_log_nodes(
 	nodes.reserve_exact(positions.len());
 
 	let mut query = QueryBuilder::new(
-		"SELECT scope_log_node.blake3 FROM scope_log_node INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope_log_node.scope WHERE global_log_scope_genesis_entry.name_blake3 = ",
+		"SELECT scope_log_node.blake3 FROM scope_log_node INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=scope_log_node.scope WHERE global_log_scope_genesis_entry.name_blake3 = ",
 	);
 	query.push_bind(scope_id.hash().0.as_slice());
 	query.push(" AND scope_log_node.pos IN (");
@@ -756,8 +714,8 @@ async fn package_versions_node(
 				r"
 SELECT package.local_name_blake3, package_version.version
 FROM versions_internal_node_key
-INNER JOIN package_version ON package_version.scope=versions_internal_node_key.scope AND package_version.pos=versions_internal_node_key.version_pos
-INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
+INNER JOIN package_version ON package_version.scope=versions_internal_node_key.scope AND package_version.idx=versions_internal_node_key.version_idx
+INNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx
 WHERE versions_internal_node_key.node_blake3 = ?
 ORDER BY versions_internal_node_key.idx",
 				hash.0.as_slice()
@@ -803,8 +761,8 @@ ORDER BY idx",
 				r"
 SELECT package.local_name_blake3, package_version.version, package_version.archive_hash, package_version.manifest_hash, versions_leaf_node_entry.yank_state AS `yank_state: Text<VersionYankState>`
 FROM versions_leaf_node_entry
-INNER JOIN package_version ON package_version.scope=versions_leaf_node_entry.scope AND package_version.pos=versions_leaf_node_entry.version_pos
-INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
+INNER JOIN package_version ON package_version.scope=versions_leaf_node_entry.scope AND package_version.idx=versions_leaf_node_entry.version_idx
+INNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx
 WHERE versions_leaf_node_entry.node_blake3 = ?
 ORDER BY versions_leaf_node_entry.idx",
 				hash.0.as_slice()
@@ -853,7 +811,7 @@ async fn package_deprecations_node(
 				r"
 SELECT package.local_name_blake3
 FROM deprecations_internal_node_key
-INNER JOIN package ON package.scope=deprecations_internal_node_key.scope AND package.pos=deprecations_internal_node_key.package_pos
+INNER JOIN package ON package.scope=deprecations_internal_node_key.scope AND package.idx=deprecations_internal_node_key.package_idx
 WHERE deprecations_internal_node_key.node_blake3 = ?
 ORDER BY deprecations_internal_node_key.idx",
 				hash.0.as_slice()
@@ -896,7 +854,7 @@ ORDER BY idx",
 				r"
 SELECT package.local_name_blake3, deprecation_reason.hash, deprecation_reason.plaintext
 FROM deprecations_leaf_node_entry
-INNER JOIN package ON package.scope=deprecations_leaf_node_entry.scope AND package.pos=deprecations_leaf_node_entry.package_pos
+INNER JOIN package ON package.scope=deprecations_leaf_node_entry.scope AND package.idx=deprecations_leaf_node_entry.package_idx
 INNER JOIN deprecation_reason ON deprecation_reason.id=deprecations_leaf_node_entry.reason_id
 WHERE deprecations_leaf_node_entry.node_blake3 = ?
 ORDER BY deprecations_leaf_node_entry.idx",
@@ -934,13 +892,9 @@ impl ScopeReadRepository for MySqlBackend {
 	async fn scope_log_entry(
 		&self,
 		scope: ScopeId,
-		pos: u64,
+		index: u64,
 	) -> anyhow::Result<Option<ScopeEntry>> {
-		scope_log_entry(&self.pool, scope, pos).await
-	}
-
-	async fn scope_state(&self, scope: &ScopeId) -> anyhow::Result<Option<ScopeStateResponse>> {
-		scope_state(&self.pool, scope).await
+		scope_log_entry(&self.pool, scope, index).await
 	}
 
 	async fn scope_log_node(
@@ -970,15 +924,10 @@ impl ScopeReadRepository for MySqlTransaction {
 	async fn scope_log_entry(
 		&self,
 		scope: ScopeId,
-		pos: u64,
+		index: u64,
 	) -> anyhow::Result<Option<ScopeEntry>> {
 		let mut tx = self.tx.lock().await;
-		scope_log_entry(&mut *tx, scope, pos).await
-	}
-
-	async fn scope_state(&self, scope: &ScopeId) -> anyhow::Result<Option<ScopeStateResponse>> {
-		let mut tx = self.tx.lock().await;
-		scope_state(&mut *tx, scope).await
+		scope_log_entry(&mut *tx, scope, index).await
 	}
 
 	async fn scope_log_node(
@@ -1087,26 +1036,10 @@ impl ScopeWriteRepository for MySqlTransaction {
 		Ok(())
 	}
 
-	async fn set_scope_log_size(&mut self, scope: &ScopeId, size: u64) -> anyhow::Result<()> {
-		query!(
-			r"
-UPDATE scope
-INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope.genesis_pos
-SET scope.log_size = ?
-WHERE global_log_scope_genesis_entry.name_blake3 = ?",
-			size,
-			scope.hash().0.as_slice()
-		)
-		.execute(&mut **self.tx.get_mut())
-		.await?;
-
-		Ok(())
-	}
-
 	async fn insert_package_version(
 		&mut self,
 		scope: &ScopeId,
-		pos: u64,
+		index: u64,
 		package_version: &PackageVersion,
 		archive_hash: &Hash,
 	) -> anyhow::Result<()> {
@@ -1114,9 +1047,9 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ?",
 
 		let record = query!(
 			r"
-SELECT global_log_scope_genesis_entry.pos AS scope_pos, package.pos AS package_pos
+SELECT global_log_scope_genesis_entry.idx AS scope_idx, package.idx AS package_idx
 FROM global_log_scope_genesis_entry
-LEFT JOIN package ON package.scope=global_log_scope_genesis_entry.pos
+LEFT JOIN package ON package.scope=global_log_scope_genesis_entry.idx
 WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ?",
 			scope.hash().0.as_slice(),
 			package_version.pkg.hash().0.as_slice(),
@@ -1124,26 +1057,26 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 		.fetch_one(&mut **tx)
 		.await?;
 
-		let package_pos = if let Some(p) = record.package_pos {
+		let package_idx = if let Some(p) = record.package_idx {
 			p
 		} else {
 			query!(
-				"INSERT INTO package (scope, pos, local_name_blake3) VALUES (?, ?, ?)",
-				record.scope_pos,
-				pos,
+				"INSERT INTO package (scope, idx, local_name_blake3) VALUES (?, ?, ?)",
+				record.scope_idx,
+				index,
 				package_version.pkg.hash().0.as_slice(),
 			)
 			.execute(&mut **tx)
 			.await?;
 
-			pos
+			index
 		};
 
 		query!(
-			"INSERT INTO package_version (scope, pos, package_pos, version, archive_hash) VALUES (?, ?, ?, ?, ?)",
-			record.scope_pos,
-			pos,
-			package_pos,
+			"INSERT INTO package_version (scope, idx, package_idx, version, archive_hash) VALUES (?, ?, ?, ?, ?)",
+			record.scope_idx,
+			index,
+			package_idx,
 			package_version.version.to_string(),
 			archive_hash.to_string(),
 		)
@@ -1156,11 +1089,11 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 	async fn insert_scope_entry(&mut self, entry: &ScopeEntry) -> anyhow::Result<()> {
 		let tx = self.tx.get_mut();
 		let Entry {
-			pos,
+			index,
 			published_at,
 			payload,
 		} = entry;
-		let pos = *pos;
+		let index = *index;
 		let published_at = jiff_to_chrono(*published_at)?;
 
 		let ScopeOpHeader {
@@ -1172,23 +1105,24 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 			ScopeEntryPayload::Admin(op) => op.header(),
 		};
 
-		let scope_pos = query!(
-			"SELECT global_log_scope_genesis_entry.pos FROM global_log_scope_genesis_entry WHERE global_log_scope_genesis_entry.name_blake3 = ?",
+		let scope_idx = query!(
+			"SELECT global_log_scope_genesis_entry.idx FROM global_log_scope_genesis_entry WHERE global_log_scope_genesis_entry.name_blake3 = ?",
 			scope_id.hash().0.as_slice(),
 		)
 		.fetch_one(&mut **tx)
 		.await?
-		.pos;
+		.idx;
 
 		let owner = Self::insert_public_key(tx, &post_state.owner).await?;
 
 		let insert_root = async |tx, ns| {
 			query!(
 				r"
-INSERT INTO scope_log_entry (scope, pos, ns, published_at, owner, scope_members_root_blake3, versions_root_blake3, deprecations_root_blake3)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-				scope_pos,
-				pos,
+INSERT INTO scope_log_entry (scope, idx, pos, ns, published_at, owner, scope_members_root_blake3, versions_root_blake3, deprecations_root_blake3)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				scope_idx,
+				index,
+				leaf_index_to_pos(index),
 				ns,
 				published_at,
 				owner,
@@ -1208,9 +1142,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 
 				let insert_signed = async |tx, kind| {
 					query!(
-						"INSERT INTO signed_scope_log_entry (scope, pos, op_kind, signer, sig_kind, sig) VALUES (?, ?, ?, ?, ?, ?)",
-						scope_pos,
-						pos,
+						"INSERT INTO signed_scope_log_entry (scope, idx, op_kind, signer, sig_kind, sig) VALUES (?, ?, ?, ?, ?, ?)",
+						scope_idx,
+						index,
 						kind,
 						signer_id,
 						Text(sig.kind()),
@@ -1236,9 +1170,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 						insert_signed!(SignedOpKind::AddMember);
 
 						query!(
-							"INSERT INTO signed_add_member_scope_log_entry (scope, pos, member, grant_blake3, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?, ?, ?)",
-							scope_pos,
-							pos,
+							"INSERT INTO signed_add_member_scope_log_entry (scope, idx, member, grant_blake3, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?, ?, ?)",
+							scope_idx,
+							index,
 							member,
 							grant_blake3.0.as_slice(),
 							Text(consent.sig.kind()),
@@ -1255,9 +1189,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 						insert_signed!(SignedOpKind::UpdateMemberGrant);
 
 						query!(
-							"INSERT INTO signed_update_member_grant_scope_log_entry (scope, pos, member, grant_blake3) VALUES (?, ?, ?, ?)",
-							scope_pos,
-							pos,
+							"INSERT INTO signed_update_member_grant_scope_log_entry (scope, idx, member, grant_blake3) VALUES (?, ?, ?, ?)",
+							scope_idx,
+							index,
 							member,
 							grant_blake3.0.as_slice(),
 						)
@@ -1271,9 +1205,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 						insert_signed!(SignedOpKind::RotateKey);
 
 						query!(
-							"INSERT INTO signed_rotate_key_scope_log_entry (scope, pos, new_key, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?, ?)",
-							scope_pos,
-							pos,
+							"INSERT INTO signed_rotate_key_scope_log_entry (scope, idx, new_key, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?, ?)",
+							scope_idx,
+							index,
 							new_key,
 							Text(consent.sig.kind()),
 							consent.sig.data(),
@@ -1291,9 +1225,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 						insert_signed!(SignedOpKind::RemoveMember);
 
 						query!(
-							"INSERT INTO signed_remove_member_scope_log_entry (scope, pos, member) VALUES (?, ?, ?)",
-							scope_pos,
-							pos,
+							"INSERT INTO signed_remove_member_scope_log_entry (scope, idx, member) VALUES (?, ?, ?)",
+							scope_idx,
+							index,
 							member,
 						)
 						.execute(&mut **tx)
@@ -1304,9 +1238,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 						insert_signed!(SignedOpKind::TransferOwnership);
 
 						query!(
-							"INSERT INTO signed_transfer_ownership_scope_log_entry (scope, pos, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?)",
-							scope_pos,
-							pos,
+							"INSERT INTO signed_transfer_ownership_scope_log_entry (scope, idx, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?)",
+							scope_idx,
+							index,
 							Text(consent.sig.kind()),
 							consent.sig.data(),
 							consent.body.nonce.as_slice(),
@@ -1318,9 +1252,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 						insert_signed!(SignedOpKind::PublishVersion);
 
 						query!(
-							"INSERT INTO signed_publish_version_scope_log_entry (scope, pos) VALUES (?, ?)",
-							scope_pos,
-							pos,
+							"INSERT INTO signed_publish_version_scope_log_entry (scope, idx) VALUES (?, ?)",
+							scope_idx,
+							index,
 						)
 						.execute(&mut **tx)
 						.await?;
@@ -1332,15 +1266,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 
 						let result = query!(
 							r"
-INSERT INTO signed_set_yanked_scope_log_entry (scope, pos, version_pos, yanked)
-SELECT ?, ?, package_version.pos, ?
+INSERT INTO signed_set_yanked_scope_log_entry (scope, idx, version_idx, yanked)
+SELECT ?, ?, package_version.idx, ?
 FROM package_version
-INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
+INNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx
 WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.version = ?",
-							scope_pos,
-							pos,
+							scope_idx,
+							index,
 							b.yanked,
-							scope_pos,
+							scope_idx,
 							pkg.hash().0.as_slice(),
 							version.to_string(),
 						)
@@ -1354,14 +1288,14 @@ WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.ve
 						);
 					}
 					UserScopeOp::SetDeprecation(b) => {
-						let package_pos = query!(
-							"SELECT pos FROM package WHERE scope = ? AND local_name_blake3 = ?",
-							scope_pos,
+						let package_idx = query!(
+							"SELECT idx FROM package WHERE scope = ? AND local_name_blake3 = ?",
+							scope_idx,
 							b.pkg.hash().0.as_slice(),
 						)
 						.fetch_one(&mut **tx)
 						.await?
-						.pos;
+						.idx;
 
 						let reason_id = match &b.state {
 							Some(state) => Some(
@@ -1380,10 +1314,10 @@ WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.ve
 						insert_signed!(SignedOpKind::SetDeprecation);
 
 						query!(
-							"INSERT INTO signed_set_deprecation_scope_log_entry (scope, pos, package_pos, reason_id) VALUES (?, ?, ?, ?)",
-							scope_pos,
-							pos,
-							package_pos,
+							"INSERT INTO signed_set_deprecation_scope_log_entry (scope, idx, package_idx, reason_id) VALUES (?, ?, ?, ?)",
+							scope_idx,
+							index,
+							package_idx,
 							reason_id,
 						)
 						.execute(&mut **tx)
@@ -1394,9 +1328,9 @@ WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.ve
 			ScopeEntryPayload::Admin(op) => {
 				let insert_admin = async |tx, kind| {
 					query!(
-						"INSERT INTO admin_scope_log_entry (scope, pos, op_kind) VALUES (?, ?, ?)",
-						scope_pos,
-						pos,
+						"INSERT INTO admin_scope_log_entry (scope, idx, op_kind) VALUES (?, ?, ?)",
+						scope_idx,
+						index,
 						kind,
 					)
 					.execute(tx)
@@ -1417,9 +1351,9 @@ WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.ve
 						insert_admin!(AdminOpKind::TransferOwnership);
 
 						query!(
-							"INSERT INTO admin_transfer_ownership_scope_log_entry (scope, pos, new_owner) VALUES (?, ?, ?)",
-							scope_pos,
-							pos,
+							"INSERT INTO admin_transfer_ownership_scope_log_entry (scope, idx, new_owner) VALUES (?, ?, ?)",
+							scope_idx,
+							index,
 							new_owner,
 						)
 						.execute(&mut **tx)
@@ -1430,15 +1364,15 @@ WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.ve
 
 						let result = query!(
 							r"
-INSERT INTO admin_set_yanked_scope_log_entry (scope, pos, version_pos, yanked)
-SELECT ?, ?, package_version.pos, ?
+INSERT INTO admin_set_yanked_scope_log_entry (scope, idx, version_idx, yanked)
+SELECT ?, ?, package_version.idx, ?
 FROM package_version
-INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
+INNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx
 WHERE package.scope = ? AND package.local_name_blake3 = ? AND package_version.version = ?",
-							scope_pos,
-							pos,
+							scope_idx,
+							index,
 							b.yanked,
-							scope_pos,
+							scope_idx,
 							b.pkg.hash().0.as_slice(),
 							b.version.to_string(),
 						)
@@ -1564,11 +1498,11 @@ impl ScopeTreeWriteRepository<PackageVersionsTree> for MySqlTransaction {
 					for (idx, (key, value)) in node.keys().iter().zip(node.values()).enumerate() {
 						let result = query!(
 							r"
-INSERT INTO versions_leaf_node_entry (node_blake3, idx, scope, version_pos, yank_state)
-SELECT ?, ?, package_version.scope, package_version.pos, ?
+INSERT INTO versions_leaf_node_entry (node_blake3, idx, scope, version_idx, yank_state)
+SELECT ?, ?, package_version.scope, package_version.idx, ?
 FROM package_version
-INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=package_version.scope
-INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
+INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=package_version.scope
+INNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx
 WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ? AND package_version.version = ?",
 							hash.0.as_slice(),
 							idx as u8,
@@ -1598,11 +1532,11 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 					for (idx, key) in node.keys().iter().enumerate() {
 						let result = query!(
 							r"
-INSERT INTO versions_internal_node_key (node_blake3, idx, scope, version_pos)
-SELECT ?, ?, package_version.scope, package_version.pos
+INSERT INTO versions_internal_node_key (node_blake3, idx, scope, version_idx)
+SELECT ?, ?, package_version.scope, package_version.idx
 FROM package_version
-INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=package_version.scope
-INNER JOIN package ON package.scope=package_version.scope AND package.pos=package_version.package_pos
+INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=package_version.scope
+INNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx
 WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ? AND package_version.version = ?",
 							hash.0.as_slice(),
 							idx as u8,
@@ -1672,10 +1606,10 @@ impl ScopeTreeWriteRepository<PackageDeprecationsTree> for MySqlTransaction {
 
 						let result = query!(
 							r"
-INSERT INTO deprecations_leaf_node_entry (node_blake3, idx, scope, package_pos, reason_id)
-SELECT ?, ?, package.scope, package.pos, ?
+INSERT INTO deprecations_leaf_node_entry (node_blake3, idx, scope, package_idx, reason_id)
+SELECT ?, ?, package.scope, package.idx, ?
 FROM package
-INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=package.scope
+INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=package.scope
 WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ?",
 							hash.0.as_slice(),
 							idx as u8,
@@ -1705,10 +1639,10 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 					for (idx, key) in node.keys().iter().enumerate() {
 						let result = query!(
 							r"
-INSERT INTO deprecations_internal_node_key (node_blake3, idx, scope, package_pos)
-SELECT ?, ?, package.scope, package.pos
+INSERT INTO deprecations_internal_node_key (node_blake3, idx, scope, package_idx)
+SELECT ?, ?, package.scope, package.idx
 FROM package
-INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=package.scope
+INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=package.scope
 WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ?",
 							hash.0.as_slice(),
 							idx as u8,

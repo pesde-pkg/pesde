@@ -1,19 +1,15 @@
 use anyhow::Context as _;
 use clap::Subcommand;
-use merkleberg::Merge as _;
 use pesde::registry::AddMemberUserScopeOpBody;
-use pesde::registry::Canonical as _;
 use pesde::registry::Consent;
-use pesde::registry::CurrentMerkleHasher;
 use pesde::registry::Entry;
-use pesde::registry::LogEntryResponse;
+use pesde::registry::LogHeadResponse;
 use pesde::registry::ScopeEntryPayload;
 use pesde::registry::ScopeId;
 use pesde::registry::ScopeMember;
 use pesde::registry::ScopeMemberValue;
 use pesde::registry::ScopeMembersTree;
 use pesde::registry::ScopeOpHeader;
-use pesde::registry::ScopeStateResponse;
 use pesde::registry::Signable as _;
 use pesde::registry::Signed;
 use pesde::registry::TreeOperation;
@@ -25,7 +21,6 @@ use pesde::registry::UserScopeOp;
 use pesde::registry::UserScopeOpHeader;
 use reqwest::Method;
 use reqwest::header::AUTHORIZATION;
-use tokio::try_join;
 
 use crate::cli::rootless_url;
 use crate::cli::ui::command::scope::ScopeCommandContext;
@@ -153,17 +148,20 @@ impl AddMemberCommand {
 						.ok_or_else(|| anyhow::anyhow!("aborted by user"))?;
 				}
 
-				let mut request = ctx.reqwest().get(format!(
-					"{}/v2/api/scope/{}/state",
+				let authorization = ctx.authorization().await?;
+
+				let mut head_request = ctx.reqwest().get(format!(
+					"{}/v2/api/scope/{}/log/head",
 					rootless_url(ctx.registry()),
 					url_component_encode(&scope_id.to_string())
 				));
 
-				if let Some(auth) = ctx.authorization().await? {
-					request = request.header(AUTHORIZATION, auth);
+				if let Some(auth) = authorization {
+					head_request = head_request.header(AUTHORIZATION, auth);
 				}
 
-				let scope_state: ScopeStateResponse = request
+				// TODO: check transparency log consistency & inclusion proofs
+				let head: LogHeadResponse<ScopeEntryPayload> = head_request
 					.send()
 					.await
 					.context("failed to send request to registry")?
@@ -172,6 +170,9 @@ impl AddMemberCommand {
 					.json()
 					.await
 					.context("failed to parse response from registry")?;
+				let tip_entry = head.tip.entry;
+
+				let mut scope_state = tip_entry.payload.header().post_state.clone();
 
 				let tree_key = ScopeMember(consent.body.consenter.clone());
 				let tree_value = ScopeMemberValue {
@@ -193,43 +194,19 @@ impl AddMemberCommand {
 						value: tree_value.clone(),
 					}]);
 
-				let mut tip_request = ctx.reqwest().get(format!(
-					"{}/v2/api/scope/{}/log/entry/{}",
-					rootless_url(ctx.registry()),
-					url_component_encode(&scope_id.to_string()),
-					url_component_encode(&scope_state.tip_pos.to_string())
-				));
-
-				if let Some(auth) = ctx.authorization().await? {
+				if let Some(auth) = authorization {
 					transition_request = transition_request.header(AUTHORIZATION, auth);
-					tip_request = tip_request.header(AUTHORIZATION, auth);
 				}
 
-				let ([transition_response], tip_response) = try_join!(
-					async move {
-						transition_request
-							.send()
-							.await
-							.context("failed to send request to registry")?
-							.error_for_status()
-							.context("registry returned an error response")?
-							.json::<[TreeTransitionResult<ScopeMembersTree>; 1]>()
-							.await
-							.context("failed to parse response from registry")
-					},
-					async move {
-						// TODO: check transparency log consistency & inclusion proofs
-						tip_request
-							.send()
-							.await
-							.context("failed to send request to registry")?
-							.error_for_status()
-							.context("registry returned an error response")?
-							.json::<LogEntryResponse<ScopeEntryPayload>>()
-							.await
-							.context("failed to parse response from registry")
-					}
-				)?;
+				let [transition_response] = transition_request
+					.send()
+					.await
+					.context("failed to send request to registry")?
+					.error_for_status()
+					.context("registry returned an error response")?
+					.json::<[TreeTransitionResult<ScopeMembersTree>; 1]>()
+					.await
+					.context("failed to parse response from registry")?;
 
 				let TreeTransitionProof::Modify(proof) = transition_response.proof else {
 					anyhow::bail!("registry returned an unexpected proof type");
@@ -251,7 +228,6 @@ impl AddMemberCommand {
 					}
 				}
 
-				let mut scope_state = scope_state.state;
 				scope_state.scope_members_root = transition_response.root;
 
 				let body = AddMemberUserScopeOpBody::new(
@@ -259,10 +235,7 @@ impl AddMemberCommand {
 						signer: scope_state.owner.clone(),
 						common: ScopeOpHeader {
 							scope_id: scope_id.clone(),
-							prev_hash: CurrentMerkleHasher::leaf_hash(
-								&tip_response.entry.canonical_bytes(),
-							)
-							.context("failed to compute hash of tip entry")?,
+							prev_hash: tip_entry.hash(),
 							post_state: scope_state,
 						},
 					},

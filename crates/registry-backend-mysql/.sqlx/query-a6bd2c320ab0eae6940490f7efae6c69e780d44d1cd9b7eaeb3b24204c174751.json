@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO global_log_entry (idx, pos, op_kind, published_at) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "a6bd2c320ab0eae6940490f7efae6c69e780d44d1cd9b7eaeb3b24204c174751"
+}

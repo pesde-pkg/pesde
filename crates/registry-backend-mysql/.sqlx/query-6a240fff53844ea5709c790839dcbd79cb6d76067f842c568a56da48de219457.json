@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO admin_scope_log_entry (scope, idx, op_kind) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "6a240fff53844ea5709c790839dcbd79cb6d76067f842c568a56da48de219457"
+}

@@ -4,6 +4,7 @@ use actix_web::HttpResponse;
 use actix_web::Responder;
 use actix_web::get;
 use actix_web::web;
+use futures::TryFutureExt as _;
 use pesde::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::features::global::Global;
@@ -25,11 +26,21 @@ pub(super) async fn http_v2(
 	Ok(HttpResponse::Ok().json(head))
 }
 
-async fn handler(db: &dyn Backend, query: LogHeadQuery) -> Result<Option<LogHeadResponse>, Error> {
+async fn handler(
+	db: &dyn Backend,
+	query: LogHeadQuery,
+) -> Result<Option<LogHeadResponse<GlobalEntryPayload>>, Error> {
 	let current_size = db.global_log_size().await?;
 
 	if let Some(current_size) = NonZero::new(current_size) {
-		log_head(current_size, Global(db), query).await.map(Some)
+		log_head(
+			current_size,
+			Global(db),
+			|index| db.global_log_entry(index).map_err(Into::into),
+			query,
+		)
+		.await
+		.map(Some)
 	} else {
 		Ok(None)
 	}

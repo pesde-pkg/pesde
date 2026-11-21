@@ -1,0 +1,48 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT global_log_scope_genesis_entry.idx AS scope_idx, package.idx AS package_idx\nFROM global_log_scope_genesis_entry\nLEFT JOIN package ON package.scope=global_log_scope_genesis_entry.idx\nWHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "scope_idx",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | MULTIPLE_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_scope_genesis_entry",
+            "name": "idx"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "package_idx",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "idx"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "6fb53440ca179e15ccdbcdd5379e5ad92cb797a311f84e20e63584693316f31f"
+}

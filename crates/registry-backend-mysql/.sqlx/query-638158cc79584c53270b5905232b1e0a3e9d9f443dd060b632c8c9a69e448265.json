@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT scope_log_node.blake3 FROM scope_log_node INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=scope_log_node.scope WHERE global_log_scope_genesis_entry.name_blake3 = ? AND scope_log_node.pos = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.scope_log_node",
+            "name": "blake3"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "638158cc79584c53270b5905232b1e0a3e9d9f443dd060b632c8c9a69e448265"
+}

@@ -2,6 +2,7 @@ use anyhow::Context as _;
 use async_trait::async_trait;
 use futures::TryStreamExt as _;
 use pesde::hash::Blake3Hash;
+use pesde::merkleberg::leaf_index_to_pos;
 use pesde::registry::*;
 use pesde::signature::PublicKey;
 use pesde::signature::PublicKeyAlgorithm;
@@ -28,20 +29,25 @@ enum OpKind {
 }
 
 async fn global_log_size(mut tx: impl AsExecutor) -> anyhow::Result<u64> {
-	let record = query!("SELECT size FROM global_log")
-		.fetch_one(tx.as_executor())
-		.await?;
-
-	Ok(record.size)
+	Ok(query!(
+		r"
+SELECT idx
+FROM global_log_scope_genesis_entry
+ORDER BY idx DESC
+LIMIT 1",
+	)
+	.fetch_optional(tx.as_executor())
+	.await?
+	.map_or(0, |r| r.idx + 1))
 }
 
 async fn global_log_entry(
 	mut tx: impl AsExecutor,
-	pos: u64,
+	index: u64,
 ) -> anyhow::Result<Option<GlobalEntry>> {
 	let result = query!(
-		"SELECT op_kind AS `op_kind: OpKind`, published_at FROM global_log_entry WHERE pos = ?",
-		pos
+		"SELECT op_kind AS `op_kind: OpKind`, published_at FROM global_log_entry WHERE idx = ?",
+		index
 	)
 	.fetch_optional(tx.as_executor())
 	.await?;
@@ -63,8 +69,8 @@ SELECT
 	public_key.data
 FROM global_log_scope_genesis_entry
 INNER JOIN public_key ON public_key.id=global_log_scope_genesis_entry.owner_id
-WHERE global_log_scope_genesis_entry.pos = ?",
-				pos,
+WHERE global_log_scope_genesis_entry.idx = ?",
+				index,
 			)
 			.fetch_one(tx.as_executor())
 			.await?;
@@ -83,7 +89,7 @@ WHERE global_log_scope_genesis_entry.pos = ?",
 	};
 
 	Ok(Some(Entry {
-		pos,
+		index,
 		published_at: chrono_to_jiff(record.published_at)?,
 		payload,
 	}))
@@ -143,8 +149,8 @@ impl GlobalReadRepository for MySqlBackend {
 		global_log_size(&self.pool).await
 	}
 
-	async fn global_log_entry(&self, pos: u64) -> anyhow::Result<Option<GlobalEntry>> {
-		global_log_entry(&self.pool, pos).await
+	async fn global_log_entry(&self, index: u64) -> anyhow::Result<Option<GlobalEntry>> {
+		global_log_entry(&self.pool, index).await
 	}
 
 	async fn global_log_node(&self, pos: u64) -> anyhow::Result<Option<CurrentHash>> {
@@ -166,9 +172,9 @@ impl GlobalReadRepository for MySqlTransaction {
 		global_log_size(&mut *tx).await
 	}
 
-	async fn global_log_entry(&self, pos: u64) -> anyhow::Result<Option<GlobalEntry>> {
+	async fn global_log_entry(&self, index: u64) -> anyhow::Result<Option<GlobalEntry>> {
 		let mut tx = self.tx.lock().await;
-		global_log_entry(&mut *tx, pos).await
+		global_log_entry(&mut *tx, index).await
 	}
 
 	async fn global_log_node(&self, pos: u64) -> anyhow::Result<Option<CurrentHash>> {
@@ -206,18 +212,10 @@ impl GlobalWriteRepository for MySqlTransaction {
 		Ok(())
 	}
 
-	async fn set_global_log_size(&mut self, size: u64) -> anyhow::Result<()> {
-		query!("UPDATE global_log SET size = ?", size)
-			.execute(&mut **self.tx.get_mut())
-			.await?;
-
-		Ok(())
-	}
-
 	async fn insert_global_entry(&mut self, entry: &GlobalEntry) -> anyhow::Result<()> {
 		let tx = self.tx.get_mut();
 		let Entry {
-			pos,
+			index,
 			published_at,
 			payload,
 		} = entry;
@@ -227,8 +225,9 @@ impl GlobalWriteRepository for MySqlTransaction {
 		match payload {
 			GlobalEntryPayload::ScopeGenesis(payload) => {
 				query!(
-					"INSERT INTO global_log_entry (pos, op_kind, published_at) VALUES (?, ?, ?)",
-					pos,
+					"INSERT INTO global_log_entry (idx, pos, op_kind, published_at) VALUES (?, ?, ?, ?)",
+					index,
+					leaf_index_to_pos(*index),
 					OpKind::ScopeGenesis,
 					published_at
 				)
@@ -248,8 +247,8 @@ impl GlobalWriteRepository for MySqlTransaction {
 				let owner_id = Self::insert_public_key(tx, owner).await?;
 
 				query!(
-					"INSERT INTO global_log_scope_genesis_entry (pos, sig_kind, sig, name_blake3, owner_id, first_entry_hash) VALUES (?, ?, ?, ?, ?, ?)",
-					pos,
+					"INSERT INTO global_log_scope_genesis_entry (idx, sig_kind, sig, name_blake3, owner_id, first_entry_hash) VALUES (?, ?, ?, ?, ?, ?)",
+					index,
 					Text(sig.kind()),
 					sig.data(),
 					scope_id.hash().0.as_slice(),

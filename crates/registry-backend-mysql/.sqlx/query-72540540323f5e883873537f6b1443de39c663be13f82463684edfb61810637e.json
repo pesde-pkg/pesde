@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO signed_set_deprecation_scope_log_entry (scope, idx, package_idx, reason_id) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "72540540323f5e883873537f6b1443de39c663be13f82463684edfb61810637e"
+}

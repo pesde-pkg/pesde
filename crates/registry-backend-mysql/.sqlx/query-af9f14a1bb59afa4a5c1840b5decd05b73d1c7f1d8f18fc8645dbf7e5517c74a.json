@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT global_log_scope_genesis_entry.idx FROM global_log_scope_genesis_entry WHERE global_log_scope_genesis_entry.name_blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "idx",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | MULTIPLE_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.global_log_scope_genesis_entry",
+            "name": "idx"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "af9f14a1bb59afa4a5c1840b5decd05b73d1c7f1d8f18fc8645dbf7e5517c74a"
+}

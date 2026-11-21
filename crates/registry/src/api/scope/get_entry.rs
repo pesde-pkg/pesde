@@ -12,14 +12,14 @@ use crate::api::scope::error::Error;
 use crate::shared::log::LogEntryQuery;
 use crate::shared::log::log_entry;
 
-#[get("/scope/{scope_id}/log/entry/{pos}")]
+#[get("/scope/{scope_id}/log/entry/{index}")]
 pub(super) async fn http_v2(
 	db: Db,
 	path: web::Path<(ScopeId, u64)>,
 	query: web::Query<LogEntryQuery>,
 ) -> Result<impl Responder, Error> {
-	let (scope_id, pos) = path.into_inner();
-	let entry = handler(db.as_ref(), scope_id, pos, query.into_inner()).await?;
+	let (scope_id, index) = path.into_inner();
+	let entry = handler(db.as_ref(), scope_id, index, query.into_inner()).await?;
 
 	Ok(HttpResponse::Ok().json(entry))
 }
@@ -27,13 +27,13 @@ pub(super) async fn http_v2(
 async fn handler(
 	db: &dyn Backend,
 	scope_id: ScopeId,
-	pos: u64,
+	index: u64,
 	query: LogEntryQuery,
 ) -> Result<LogEntryResponse<ScopeEntryPayload>, Error> {
 	log_entry(
-		pos,
-		|pos| {
-			db.scope_log_entry(scope_id.clone(), pos)
+		index,
+		|index| {
+			db.scope_log_entry(scope_id.clone(), index)
 				.map_err(Into::into)
 		},
 		async || {

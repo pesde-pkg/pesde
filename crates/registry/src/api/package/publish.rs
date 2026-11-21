@@ -10,9 +10,8 @@ use actix_web::web::Bytes;
 use futures::AsyncReadExt as _;
 use pesde::MANIFEST_FILE_NAME;
 use pesde::hash::Hash;
-use pesde::merkleberg::Merge as _;
 use pesde::registry::Canonical as _;
-use pesde::registry::CurrentMerkleHasher;
+use pesde::registry::CurrentHash;
 use pesde::registry::Entry;
 use pesde::registry::GlobalEntryPayload;
 use pesde::registry::LocalNameId;
@@ -203,9 +202,7 @@ async fn handler(
 			return Err(Error::BadGenesisEntry);
 		}
 
-		if CurrentMerkleHasher::leaf_hash(&publish_version.canonical_bytes()).unwrap()
-			!= *first_entry_hash
-		{
+		if CurrentHash::digest(publish_version.canonical_bytes()) != *first_entry_hash {
 			return Err(Error::BadGenesisEntry);
 		}
 
@@ -219,13 +216,12 @@ async fn handler(
 				global_size,
 			} => {
 				let entry = Entry {
-					pos: global_size,
+					index: global_size,
 					published_at: Default::default(),
 					payload: GlobalEntryPayload::ScopeGenesis(scope_genesis),
 				};
 
-				let new_size = append_leaf(Global(&mut *tx), global_size, &entry).await?;
-				tx.set_global_log_size(new_size).await?;
+				append_leaf(Global(&mut *tx), &entry).await?;
 				tx.insert_global_entry(&entry).await?;
 
 				(tx.into_scope_transaction(), None)
@@ -253,19 +249,17 @@ async fn handler(
 	run_tx(tx, async move |tx| {
 		let UnvalidatedSigned { sig, body } = publish_version.into_inner();
 
-		let mut scope_state = if scope_size.is_some() {
-			let scope_state = tx.scope_state(&body.header.scope_id).await?.unwrap();
-
+		let mut scope_state = if let Some(scope_size) = scope_size {
 			let tip = tx
-				.scope_log_node(&body.header.scope_id, scope_state.tip_pos)
+				.scope_log_entry(body.header.scope_id.clone(), scope_size.get() - 1)
 				.await?
 				.ok_or(Error::InvalidPrevHash)?;
 
-			if body.header.prev_hash != tip {
+			if body.header.prev_hash != tip.hash() {
 				return Err(Error::InvalidPrevHash);
 			}
 
-			scope_state.state
+			tip.payload.header().post_state.clone()
 		} else {
 			ScopeState {
 				owner: body.header.signer.clone(),
@@ -305,7 +299,7 @@ async fn handler(
 		}
 
 		let entry = Entry {
-			pos: scope_size.map_or(0, NonZero::get),
+			index: scope_size.map_or(0, NonZero::get),
 			published_at: Default::default(),
 			payload: ScopeEntryPayload::User(
 				Signed::new(UnvalidatedSigned {
@@ -331,8 +325,7 @@ async fn handler(
 			_ => unreachable!(),
 		};
 
-		let new_size = append_leaf(Scoped(scope_id, &mut *tx), entry.pos, &entry).await?;
-		tx.set_scope_log_size(scope_id, new_size).await?;
+		append_leaf(Scoped(scope_id, &mut *tx), &entry).await?;
 		tx.insert_scope_entry(&entry).await?;
 
 		let archive = blob.put_object(archive_hash, std::io::Cursor::new(archive));

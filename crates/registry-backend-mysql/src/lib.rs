@@ -71,9 +71,9 @@ WITH RECURSIVE
 head AS (
 	SELECT scope_log_entry.owner, scope_log_entry.scope_members_root_blake3
 	FROM global_log_scope_genesis_entry
-	INNER JOIN scope_log_entry ON scope_log_entry.scope=global_log_scope_genesis_entry.pos
+	INNER JOIN scope_log_entry ON scope_log_entry.scope=global_log_scope_genesis_entry.idx
 	WHERE global_log_scope_genesis_entry.name_blake3 = ?
-	ORDER BY scope_log_entry.pos DESC
+	ORDER BY scope_log_entry.idx DESC
 	LIMIT 1
 ),
 caller AS (
@@ -139,12 +139,11 @@ SELECT
 		}
 
 		let mut tx = self.pool.begin().await?;
-		let scope_log = query!(
+		let scope = query!(
 			r"
-SELECT scope.log_size AS `log_size: NonZero<u64>`
-FROM scope
-INNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.pos=scope.genesis_pos
-WHERE global_log_scope_genesis_entry.name_blake3 = ?
+SELECT idx
+FROM global_log_scope_genesis_entry
+WHERE name_blake3 = ?
 FOR UPDATE",
 			scope_id.hash().0.as_slice()
 		)
@@ -155,9 +154,21 @@ FOR UPDATE",
 			return Ok(ret);
 		}
 
+		let scope = query!(
+			r"
+SELECT idx
+FROM scope_log_entry
+WHERE scope = ?
+ORDER BY idx DESC
+LIMIT 1",
+			scope.idx
+		)
+		.fetch_one(&mut *tx)
+		.await?;
+
 		Ok(ExistingScopeLockResult::Ok {
 			tx: Box::new(MySqlTransaction { tx: Mutex::new(tx) }),
-			scope_size: scope_log.log_size,
+			scope_size: NonZero::new(scope.idx + 1).unwrap(),
 		})
 	}
 
@@ -190,7 +201,7 @@ FOR UPDATE",
 		}
 
 		let mut tx = self.pool.begin().await?;
-		let global_log = query!("SELECT size FROM global_log FOR UPDATE")
+		query!("SELECT id FROM global_log FOR UPDATE")
 			.fetch_one(&mut *tx)
 			.await?;
 
@@ -198,9 +209,20 @@ FOR UPDATE",
 			return Ok(ret);
 		}
 
+		let global_size = query!(
+			r"
+SELECT idx + 1 AS `size: NonZero<u64>`
+FROM global_log_scope_genesis_entry
+ORDER BY idx DESC
+LIMIT 1",
+		)
+		.fetch_optional(&mut *tx)
+		.await?
+		.map_or(0, |r| r.size.get());
+
 		Ok(CreatingScopeLockResult::Ok {
 			tx: Box::new(MySqlTransaction { tx: Mutex::new(tx) }),
-			global_size: global_log.size,
+			global_size,
 		})
 	}
 }

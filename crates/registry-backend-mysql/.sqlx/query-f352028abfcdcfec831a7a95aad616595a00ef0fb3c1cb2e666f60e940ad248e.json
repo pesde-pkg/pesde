@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "SELECT idx FROM package WHERE scope = ? AND local_name_blake3 = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "idx",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 20
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "idx"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f352028abfcdcfec831a7a95aad616595a00ef0fb3c1cb2e666f60e940ad248e"
+}

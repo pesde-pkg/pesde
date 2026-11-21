@@ -620,6 +620,17 @@ pub enum ScopeEntryPayload {
 impl crate::sealed::Sealed for ScopeEntryPayload {}
 impl EntryPayload for ScopeEntryPayload {}
 
+impl ScopeEntryPayload {
+	/// Returns the fields in common between all scope log entries.
+	#[must_use]
+	pub fn header(&self) -> &ScopeOpHeader {
+		match self {
+			Self::User(p) => p.inner().body.header(),
+			Self::Admin(op) => op.header(),
+		}
+	}
+}
+
 impl Canonical for ScopeEntryPayload {
 	fn write_canonical_to(&self, writer: &mut impl Write) -> std::io::Result<()> {
 		match self {

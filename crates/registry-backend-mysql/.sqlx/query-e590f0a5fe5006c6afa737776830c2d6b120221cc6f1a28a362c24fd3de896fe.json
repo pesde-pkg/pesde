@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO signed_rotate_key_scope_log_entry (scope, idx, new_key, consent_kind, consent, nonce) VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "e590f0a5fe5006c6afa737776830c2d6b120221cc6f1a28a362c24fd3de896fe"
+}

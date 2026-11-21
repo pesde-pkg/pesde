@@ -1,0 +1,31 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT package.local_name_blake3\nFROM deprecations_internal_node_key\nINNER JOIN package ON package.scope=deprecations_internal_node_key.scope AND package.idx=deprecations_internal_node_key.package_idx\nWHERE deprecations_internal_node_key.node_blake3 = ?\nORDER BY deprecations_internal_node_key.idx",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_name_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "local_name_blake3"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "076597eb828b1dd8d0e77d496cb43a669eecb096f0ae2e5b44b5813a1f98d3de"
+}

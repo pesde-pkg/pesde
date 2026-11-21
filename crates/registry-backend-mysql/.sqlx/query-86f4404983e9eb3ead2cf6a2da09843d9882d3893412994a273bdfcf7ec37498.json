@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO signed_publish_version_scope_log_entry (scope, idx) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "86f4404983e9eb3ead2cf6a2da09843d9882d3893412994a273bdfcf7ec37498"
+}

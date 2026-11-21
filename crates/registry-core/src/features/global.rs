@@ -9,7 +9,7 @@ use crate::db::StoreError;
 pub trait GlobalReadRepository: Send + Sync {
 	async fn global_log_size(&self) -> anyhow::Result<u64>;
 
-	async fn global_log_entry(&self, pos: u64) -> anyhow::Result<Option<GlobalEntry>>;
+	async fn global_log_entry(&self, index: u64) -> anyhow::Result<Option<GlobalEntry>>;
 
 	async fn global_log_node(&self, pos: u64) -> anyhow::Result<Option<CurrentHash>>;
 
@@ -27,8 +27,6 @@ pub trait GlobalWriteRepository: GlobalReadRepository {
 		elems: Vec<CurrentHash>,
 	) -> anyhow::Result<()>;
 
-	async fn set_global_log_size(&mut self, size: u64) -> anyhow::Result<()>;
-
 	async fn insert_global_entry(&mut self, entry: &GlobalEntry) -> anyhow::Result<()>;
 }
 
@@ -40,8 +38,8 @@ macro_rules! forward_global_read {
 				(**self).global_log_size().await
 			}
 
-			async fn global_log_entry(&self, pos: u64) -> anyhow::Result<Option<GlobalEntry>> {
-				(**self).global_log_entry(pos).await
+			async fn global_log_entry(&self, index: u64) -> anyhow::Result<Option<GlobalEntry>> {
+				(**self).global_log_entry(index).await
 			}
 
 			async fn global_log_node(&self, pos: u64) -> anyhow::Result<Option<CurrentHash>> {
@@ -68,10 +66,6 @@ macro_rules! forward_global_write {
 				elems: Vec<CurrentHash>,
 			) -> anyhow::Result<()> {
 				(**self).append_global_log_nodes(pos, elems).await
-			}
-
-			async fn set_global_log_size(&mut self, size: u64) -> anyhow::Result<()> {
-				(**self).set_global_log_size(size).await
 			}
 
 			async fn insert_global_entry(&mut self, entry: &GlobalEntry) -> anyhow::Result<()> {

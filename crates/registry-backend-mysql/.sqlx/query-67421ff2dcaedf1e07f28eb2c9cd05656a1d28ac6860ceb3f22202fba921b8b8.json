@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO signed_remove_member_scope_log_entry (scope, idx, member) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "67421ff2dcaedf1e07f28eb2c9cd05656a1d28ac6860ceb3f22202fba921b8b8"
+}

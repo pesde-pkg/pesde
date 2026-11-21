@@ -1,0 +1,26 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT scope_log_entry.idx + 1 AS `size: NonZero<u64>`\nFROM scope_log_entry\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=scope_log_entry.scope\nWHERE global_log_scope_genesis_entry.name_blake3 = ?\nORDER BY scope_log_entry.idx DESC\nLIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "size: NonZero<u64>",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | UNSIGNED | BINARY",
+          "collation": 63,
+          "max_size": 21
+        },
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "93746dbc63a697b92fef09785ed1aee2441c60d45c2afb48ec60570663f32227"
+}

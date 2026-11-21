@@ -110,20 +110,16 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 			signer,
 		} = op.header();
 
-		let scope_state = tx
-			.scope_state(scope_id)
+		let tip = tx
+			.scope_log_entry(scope_id.clone(), scope_size.get() - 1)
 			.await?
 			.ok_or(Error::ScopeNotFound)?;
 
-		let tip = tx
-			.scope_log_node(scope_id, scope_state.tip_pos)
-			.await?
-			.ok_or(Error::ScopeNotFound)?;
-		if *given_prev_hash != tip {
+		if *given_prev_hash != tip.hash() {
 			return Err(Error::InvalidPrevHash);
 		}
 
-		let mut scope_state = scope_state.state;
+		let mut scope_state = tip.payload.header().post_state.clone();
 
 		match op {
 			UserScopeOp::AddMember(op @ AddMemberUserScopeOpBody { grant, .. }) => {
@@ -286,7 +282,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 		}
 
 		let entry = Entry {
-			pos: scope_size.get(),
+			index: scope_size.get(),
 			published_at: Default::default(),
 			payload: ScopeEntryPayload::User(payload),
 		};
@@ -295,8 +291,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 			ScopeEntryPayload::Admin(e) => &e.header().scope_id,
 		};
 
-		let new_size = append_leaf(Scoped(scope_id, &mut *tx), entry.pos, &entry).await?;
-		tx.set_scope_log_size(scope_id, new_size).await?;
+		append_leaf(Scoped(scope_id, &mut *tx), &entry).await?;
 		tx.insert_scope_entry(&entry).await?;
 
 		Ok(entry)

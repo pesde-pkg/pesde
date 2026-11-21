@@ -1,0 +1,26 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT idx + 1 AS `size: NonZero<u64>`\nFROM global_log_scope_genesis_entry\nORDER BY idx DESC\nLIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "size: NonZero<u64>",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | UNSIGNED | BINARY",
+          "collation": 63,
+          "max_size": 21
+        },
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "508aba6f0820647b1e3c8cd3906b746975ca99dec8194d8911c5f0fd69941205"
+}

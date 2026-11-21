@@ -14,7 +14,7 @@ use crate::api::log::error::Error;
 use crate::shared::log::LogEntryQuery;
 use crate::shared::log::log_entry;
 
-#[get("/log/entry/{pos}")]
+#[get("/log/entry/{index}")]
 pub(super) async fn http_v2(
 	db: Db,
 	path: web::Path<u64>,
@@ -29,17 +29,17 @@ pub(super) async fn http_v2(
 
 async fn handler(
 	db: &dyn Backend,
-	pos: u64,
+	index: u64,
 	query: LogEntryQuery,
 ) -> Result<Option<LogEntryResponse<GlobalEntryPayload>>, Error> {
 	log_entry(
-		pos,
-		|pos| db.global_log_entry(pos).map_err(Into::into),
+		index,
+		|index| db.global_log_entry(index).map_err(Into::into),
 		async || {
 			let size = db.global_log_size().await?;
 			let Some(size) = NonZero::new(size) else {
 				return Err(Error::SizeOutOfRange {
-					requested: pos,
+					requested: index,
 					current: 0,
 				});
 			};

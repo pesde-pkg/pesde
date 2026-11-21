@@ -1,0 +1,82 @@
+{
+  "db_name": "MySQL",
+  "query": "\nSELECT package.local_name_blake3, package_version.version, package_version.archive_hash, package_version.manifest_hash\nFROM signed_publish_version_scope_log_entry\nINNER JOIN package_version ON package_version.scope=signed_publish_version_scope_log_entry.scope AND package_version.idx=signed_publish_version_scope_log_entry.idx\nINNER JOIN package ON package.scope=package_version.scope AND package.idx=package_version.package_idx\nWHERE signed_publish_version_scope_log_entry.scope = ? AND signed_publish_version_scope_log_entry.idx = ?",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "local_name_blake3",
+        "type_info": {
+          "type": "String",
+          "flags": "NOT_NULL | MULTIPLE_KEY | BINARY | NO_DEFAULT_VALUE",
+          "collation": 63,
+          "max_size": 32
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package",
+            "name": "local_name_blake3"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 1020
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package_version",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "archive_hash",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 512
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package_version",
+            "name": "archive_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "manifest_hash",
+        "type_info": {
+          "type": "VarString",
+          "flags": "NOT_NULL | BINARY | NO_DEFAULT_VALUE",
+          "collation": 224,
+          "max_size": 512
+        },
+        "origin": {
+          "Table": {
+            "table": "test-pesde-registry.package_version",
+            "name": "manifest_hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "779301c816b38ab8fc897f589b94e8a7e37454aa75baddf5ac0317bd3c3c7d46"
+}

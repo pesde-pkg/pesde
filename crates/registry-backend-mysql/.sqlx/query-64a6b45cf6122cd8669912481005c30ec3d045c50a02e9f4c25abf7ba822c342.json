@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\nINSERT INTO deprecations_leaf_node_entry (node_blake3, idx, scope, package_idx, reason_id)\nSELECT ?, ?, package.scope, package.idx, ?\nFROM package\nINNER JOIN global_log_scope_genesis_entry ON global_log_scope_genesis_entry.idx=package.scope\nWHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "64a6b45cf6122cd8669912481005c30ec3d045c50a02e9f4c25abf7ba822c342"
+}

@@ -26,10 +26,11 @@ pub trait ScopeReadRepository:
 {
 	async fn scope_log_size(&self, scope: &ScopeId) -> anyhow::Result<Option<NonZero<u64>>>;
 
-	async fn scope_log_entry(&self, scope: ScopeId, pos: u64)
-	-> anyhow::Result<Option<ScopeEntry>>;
-
-	async fn scope_state(&self, scope: &ScopeId) -> anyhow::Result<Option<ScopeStateResponse>>;
+	async fn scope_log_entry(
+		&self,
+		scope: ScopeId,
+		index: u64,
+	) -> anyhow::Result<Option<ScopeEntry>>;
 
 	async fn scope_log_node(
 		&self,
@@ -63,12 +64,10 @@ pub trait ScopeWriteRepository:
 		elems: Vec<CurrentHash>,
 	) -> anyhow::Result<()>;
 
-	async fn set_scope_log_size(&mut self, scope: &ScopeId, size: u64) -> anyhow::Result<()>;
-
 	async fn insert_package_version(
 		&mut self,
 		scope: &ScopeId,
-		pos: u64,
+		index: u64,
 		package_version: &PackageVersion,
 		archive_hash: &Hash,
 	) -> anyhow::Result<()>;
@@ -99,16 +98,9 @@ macro_rules! forward_scope_read {
 			async fn scope_log_entry(
 				&self,
 				scope: ScopeId,
-				pos: u64,
+				index: u64,
 			) -> anyhow::Result<Option<ScopeEntry>> {
-				(**self).scope_log_entry(scope, pos).await
-			}
-
-			async fn scope_state(
-				&self,
-				scope: &ScopeId,
-			) -> anyhow::Result<Option<ScopeStateResponse>> {
-				(**self).scope_state(scope).await
+				(**self).scope_log_entry(scope, index).await
 			}
 
 			async fn scope_log_node(
@@ -155,23 +147,15 @@ macro_rules! forward_scope_write {
 				(**self).append_scope_log_nodes(scope, pos, elems).await
 			}
 
-			async fn set_scope_log_size(
-				&mut self,
-				scope: &ScopeId,
-				size: u64,
-			) -> anyhow::Result<()> {
-				(**self).set_scope_log_size(scope, size).await
-			}
-
 			async fn insert_package_version(
 				&mut self,
 				scope: &ScopeId,
-				pos: u64,
+				index: u64,
 				package_version: &PackageVersion,
 				archive_hash: &Hash,
 			) -> anyhow::Result<()> {
 				(**self)
-					.insert_package_version(scope, pos, package_version, archive_hash)
+					.insert_package_version(scope, index, package_version, archive_hash)
 					.await
 			}
 

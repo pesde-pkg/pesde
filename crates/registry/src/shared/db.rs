@@ -3,6 +3,7 @@ use std::sync::Arc;
 use pesde::merkleberg::MMRIVER;
 use pesde::merkleberg::MMRStoreReadOps;
 use pesde::merkleberg::MMRStoreWriteOps;
+use pesde::merkleberg::leaf_index_to_mmr_size;
 use pesde::registry::*;
 use pesde_registry_core::db::Backend;
 use pesde_registry_core::db::ScopeWriteTransaction;
@@ -32,15 +33,12 @@ pub async fn append_leaf<
 		+ MMRStoreWriteOps<CurrentHash, Error = StoreError>,
 >(
 	store: S,
-	pos: u64,
 	body: &Entry<impl EntryPayload + Serialize>,
-) -> anyhow::Result<u64> {
-	let mut mmr = MMRIVER::<CurrentMerkleHasher, _>::new(pos, store);
+) -> anyhow::Result<()> {
+	let mut mmr = MMRIVER::<CurrentMerkleHasher, _>::new(leaf_index_to_mmr_size(body.index), store);
 	mmr.push(&body.canonical_bytes()).await?;
 	mmr.commit().await?;
-
-	let next_pos = mmr.mmr_size();
-	Ok(next_pos)
+	Ok(())
 }
 
 pub async fn run_tx<T, E: From<anyhow::Error>>(

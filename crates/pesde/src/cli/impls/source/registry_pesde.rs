@@ -13,13 +13,15 @@ use pesde::Url;
 use pesde::hash::Hash;
 use pesde::link::PackageStructure;
 use pesde::registry::LocalNameId;
+use pesde::registry::LogHeadResponse;
 use pesde::registry::PackageName;
 use pesde::registry::PackageVersion;
 use pesde::registry::PackageVersionValue;
 use pesde::registry::PackageVersionsTree;
 use pesde::registry::PesdeStyleVersion;
+use pesde::registry::ScopeEntryPayload;
 use pesde::registry::ScopeId;
-use pesde::registry::ScopeStateResponse;
+use pesde::registry::ScopeState;
 use pesde::registry::TreeEntriesEndpointResponse;
 use pesde::registry::TreeEntryEndpointResponse;
 use pesde::registry::manifest::ResolvedDependencySpecifier;
@@ -54,7 +56,7 @@ pub struct RegistryPesdePackageSource {
 
 #[derive(Default)]
 struct Cache {
-	scope_states: HashMap<ScopeId, Arc<OnceCell<ScopeStateResponse>>>,
+	scope_states: HashMap<ScopeId, Arc<OnceCell<ScopeState>>>,
 	package_versions:
 		HashMap<PackageName, Arc<SetOnce<HashMap<PesdeStyleVersion, PackageVersionValue>>>>,
 }
@@ -68,14 +70,11 @@ impl RegistryPesdePackageSource {
 		}
 	}
 
-	async fn fetch_scope_state(
-		&self,
-		scope_id: &ScopeId,
-	) -> Result<ScopeStateResponse, SourceError> {
+	async fn fetch_scope_state(&self, scope_id: &ScopeId) -> Result<ScopeState, SourceError> {
 		let _permit = self.network.network_concurrency.acquire().await;
 
 		let mut request = self.network.reqwest.get(format!(
-			"{}/api/v2/scope/{}/state",
+			"{}/api/v2/scope/{}/log/head",
 			rootless_url(&self.url),
 			url_component_encode(&scope_id.to_string()),
 		));
@@ -84,9 +83,11 @@ impl RegistryPesdePackageSource {
 			request = request.header(AUTHORIZATION, authorization.as_ref());
 		}
 
-		let state_response = request.send().await?.error_for_status()?.json().await?;
+		// TODO: check transparency log consistency & inclusion proofs
+		let head: LogHeadResponse<ScopeEntryPayload> =
+			request.send().await?.error_for_status()?.json().await?;
 
-		Ok(state_response)
+		Ok(head.tip.entry.payload.header().post_state.clone())
 	}
 
 	async fn get_from_package_version<T>(
