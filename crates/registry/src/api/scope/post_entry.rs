@@ -13,6 +13,7 @@ use crate::Db;
 use crate::api::scope::error::Error;
 use crate::shared::db::run_tx;
 use crate::shared::log::append_leaf;
+use crate::shared::microsecond_timestamp;
 use crate::shared::tree::run_tree;
 
 #[post("/scope/log/entry")]
@@ -283,7 +284,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 
 		let entry = Entry {
 			index: scope_size.get(),
-			published_at: Default::default(),
+			published_at: microsecond_timestamp(),
 			payload: ScopeEntryPayload::User(payload),
 		};
 		let scope_id = match &entry.payload {

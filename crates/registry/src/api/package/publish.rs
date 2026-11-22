@@ -41,6 +41,7 @@ use crate::api::package::error::Error;
 use crate::shared::blob::BlobStorage;
 use crate::shared::db::run_tx;
 use crate::shared::log::append_leaf;
+use crate::shared::microsecond_timestamp;
 use crate::shared::tree::run_tree;
 
 const JSON_BODY_LIMIT: usize = 1024 * 1024;
@@ -128,7 +129,8 @@ async fn handler(
 		for (idx, c) in zip.file().entries().iter().enumerate() {
 			match c.filename().as_str() {
 				Ok(p)
-					if ExportPath::from_str(p).is_ok()
+					if let p = p.strip_suffix('/').unwrap_or(p)
+						&& ExportPath::from_str(p).is_ok()
 						&& seen_paths.insert(p.to_lowercase().into_boxed_str()) => {}
 				_ => {
 					let bytes: Box<[u8]> = c.filename().as_bytes().into();
@@ -219,7 +221,7 @@ async fn handler(
 			} => {
 				let entry = Entry {
 					index: global_size,
-					published_at: Default::default(),
+					published_at: microsecond_timestamp(),
 					payload: scope_genesis,
 				};
 
@@ -254,7 +256,7 @@ async fn handler(
 
 		let entry = Entry {
 			index: scope_size.map_or(0, NonZero::get),
-			published_at: Default::default(),
+			published_at: microsecond_timestamp(),
 			payload: ScopeEntryPayload::User(
 				Signed::new(UnvalidatedSigned {
 					sig,

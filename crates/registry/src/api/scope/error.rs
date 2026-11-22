@@ -21,6 +21,9 @@ pub(super) enum Error {
 	#[error("scope doesn't exist")]
 	ScopeNotFound,
 
+	#[error("scope or requested entry doesn't exist")]
+	EntryNotFound,
+
 	#[error("scope write not authorised")]
 	Unauthorized,
 
@@ -70,7 +73,7 @@ impl ResponseError for Error {
 			}
 			Error::Merkleberg(_) => Category::Internal,
 			Error::PublishVersionInPostEntry => Category::BadRequest,
-			Error::ScopeNotFound => Category::NotFound,
+			Error::ScopeNotFound | Error::EntryNotFound => Category::NotFound,
 			Error::InvalidPrevHash
 			| Error::KeyAlreadyExists
 			| Error::AlreadyInState

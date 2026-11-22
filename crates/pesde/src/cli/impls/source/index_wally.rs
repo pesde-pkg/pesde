@@ -229,7 +229,7 @@ impl PackageSource for IndexWallyPackageSource {
 			tracing::trace!("{index}-th entry in wally package `{package_id}`: {entry_name}");
 
 			let path = VfsPath::from_path(entry_name)
-				.with_context(|| format!("wally zip archvie `{entry_name}`"))?;
+				.with_context(|| format!("wally zip archive entry `{entry_name}`"))?;
 
 			if entry.dir()? {
 				to.directory_at(path).await?;

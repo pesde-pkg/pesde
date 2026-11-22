@@ -43,5 +43,5 @@ async fn handler(
 		query,
 	)
 	.await
-	.and_then(|e| e.ok_or(Error::ScopeNotFound))
+	.and_then(|e| e.ok_or(Error::EntryNotFound))
 }

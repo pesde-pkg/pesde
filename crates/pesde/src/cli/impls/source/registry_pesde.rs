@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::str::FromStr as _;
 use std::sync::Arc;
 
 use anyhow::Context as _;
 use async_stream::stream;
 use async_trait::async_trait;
+use futures::AsyncReadExt as _;
+use futures::AsyncWriteExt as _;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use itertools::Either;
@@ -15,6 +18,7 @@ use pesde::registry::PackageVersionValue;
 use pesde::registry::PesdeStyleVersion;
 use pesde::registry::ScopeId;
 use pesde::registry::ScopeState;
+use pesde::registry::manifest::ExportPath;
 use pesde::registry::manifest::ResolvedDependencySpecifier;
 use pesde::registry::manifest::ResolvedManifest;
 use pesde::reporters::DownloadProgressReporter;
@@ -201,7 +205,13 @@ impl PackageSource for RegistryPesdePackageSource {
 		let stream = stream!({
 			let mut cache = HashMap::new();
 
+			let pkg = LocalNameId::from(name.local_name());
+
 			while let Some((key, value)) = entries.try_next().await? {
+				if key.pkg != pkg {
+					continue;
+				}
+
 				if req.matches(&key.version.clone().into()) {
 					yield Ok::<_, SourceError>((
 						PackageId::Pesde(registry.clone(), name.clone(), key.version.clone()),
@@ -218,15 +228,75 @@ impl PackageSource for RegistryPesdePackageSource {
 		Ok(ResolveResult::Found(stream.boxed()))
 	}
 
-	#[expect(clippy::todo)]
-	#[instrument(skip(self, _reporter, _to), level = "debug")]
+	#[instrument(skip(self, reporter, to), level = "debug")]
 	async fn download(
 		&self,
-		_package_id: &PackageId,
-		_reporter: Arc<dyn DownloadProgressReporter + 'static>,
-		_to: &mut dyn PackageStorer,
+		package_id: &PackageId,
+		reporter: Arc<dyn DownloadProgressReporter + 'static>,
+		to: &mut dyn PackageStorer,
 	) -> Result<(), SourceError> {
-		todo!()
+		let PackageId::Pesde(_, name, version) = package_id else {
+			return Err(anyhow::format_err!(
+				"invalid package id for registry pesde source: {package_id}"
+			)
+			.into());
+		};
+
+		let archive_hash = self
+			.get_from_package_version(name, version, |value| value.archive_hash)
+			.await?;
+		let archive_bytes = self
+			.client
+			.blob_with_reporter(&archive_hash, reporter)
+			.await?;
+
+		let mut archive = async_zip::tokio::read::seek::ZipFileReader::with_tokio(
+			std::io::Cursor::new(archive_bytes),
+		)
+		.await?;
+
+		if archive.file().zip64() {
+			return Err(anyhow::format_err!(
+				"zip archive for package `{package_id}` is zip64, which is not supported"
+			)
+			.into());
+		}
+
+		let mut buf = vec![0; 8 * 1024];
+
+		for index in 0..archive.file().entries().len() {
+			let entry = archive.file().entries().get(index).unwrap();
+			let entry_name = entry.filename().as_str()?;
+
+			tracing::trace!("{index}-th entry in package `{package_id}`: {entry_name}");
+
+			let path = ExportPath::from_str(entry_name.strip_suffix('/').unwrap_or(entry_name))
+				.with_context(|| format!("zip archive entry `{entry_name}`"))?;
+
+			if entry.dir()? {
+				to.directory_at(path.into()).await?;
+				continue;
+			}
+
+			let size_hint = entry.uncompressed_size();
+			let file = to.file_at(path.clone().into(), size_hint).await?;
+
+			let mut entry_reader = archive.reader_with_entry(index).await?;
+			while let n = entry_reader.read(&mut buf).await?
+				&& n > 0
+			{
+				file.write_all(&buf[..n]).await?;
+			}
+
+			if entry_reader.compute_hash() != entry_reader.entry().crc32() {
+				return Err(anyhow::format_err!(
+					"hash mismatch for file `{path}` in package `{package_id}`"
+				)
+				.into());
+			}
+		}
+
+		Ok(())
 	}
 
 	#[instrument(skip(self), level = "debug")]

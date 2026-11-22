@@ -4,7 +4,6 @@ use pesde::merkleberg::MMRIVER;
 use pesde::merkleberg::MMRStoreReadOps;
 use pesde::merkleberg::MMRStoreWriteOps;
 use pesde::merkleberg::leaf_index_to_mmr_size;
-use pesde::merkleberg::leaf_index_to_pos;
 use pesde::registry::*;
 use pesde_registry_core::db::StoreError;
 use serde::Deserialize;
@@ -47,11 +46,7 @@ pub async fn log_head<
 	let tip = get_entry(tip_index)
 		.await?
 		.ok_or_else(|| anyhow::anyhow!("the tip entry of the log is missing"))?;
-	let inclusion_proof = mmr
-		.gen_inclusion_proof(leaf_index_to_pos(tip_index))
-		.await?
-		.proof()
-		.to_vec();
+	let inclusion_proof = mmr.gen_inclusion_proof(tip_index).await?.proof().to_vec();
 
 	Ok(LogHeadResponse {
 		accumulator: mmr.get_accumulator().await?.into(),
@@ -78,7 +73,7 @@ pub async fn log_entry<
 	get_mmr: impl AsyncFnOnce() -> Result<(NonZero<u64>, S), E>,
 	query: LogEntryQuery,
 ) -> Result<Option<LogEntryResponse<P>>, E> {
-	if query.at_size.is_some_and(|s| index >= s.get()) {
+	if query.at_size.is_some_and(|at_size| at_size.get() <= index) {
 		return Err(pesde::merkleberg::Error::GenProofForInvalidLeaves.into());
 	}
 
@@ -87,7 +82,6 @@ pub async fn log_entry<
 		Ok(match query.at_size {
 			Some(at_size) => {
 				let (size, mmr_store) = get_mmr().await?;
-
 				if size < at_size {
 					return Err(pesde::merkleberg::Error::GenProofForInvalidLeaves.into());
 				}
@@ -96,10 +90,7 @@ pub async fn log_entry<
 					leaf_index_to_mmr_size(at_size.get() - 1),
 					mmr_store,
 				);
-				mmr.gen_inclusion_proof(leaf_index_to_pos(index))
-					.await?
-					.proof()
-					.to_vec()
+				mmr.gen_inclusion_proof(index).await?.proof().to_vec()
 			}
 			None => Vec::new(),
 		})

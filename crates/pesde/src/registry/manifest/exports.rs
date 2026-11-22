@@ -110,6 +110,12 @@ impl AsRef<Path> for ExportPath {
 	}
 }
 
+impl From<ExportPath> for VfsPath {
+	fn from(export_path: ExportPath) -> Self {
+		export_path.0
+	}
+}
+
 /// Errors that can occur when parsing an export path from a string
 #[derive(Debug, Error)]
 pub enum ExportPathFromStrError {

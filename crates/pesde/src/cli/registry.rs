@@ -17,6 +17,7 @@ use pesde::Url;
 use pesde::bounded::BoundedSlice;
 use pesde::hash::Hash;
 use pesde::registry::*;
+use pesde::reporters::DownloadProgressReporter;
 use reqwest::Method;
 use reqwest::RequestBuilder;
 use reqwest::Response;
@@ -28,6 +29,7 @@ use tokio::io::BufReader;
 use tokio::sync::Semaphore;
 use tokio_util::io::StreamReader;
 
+use crate::cli::reporters::response_to_async_buf_read;
 use crate::cli::rootless_url;
 use crate::cli::url_component_encode;
 
@@ -378,8 +380,12 @@ impl RegistryClient {
 		Ok(current)
 	}
 
-	pub async fn blob(&self, hash: &Hash) -> anyhow::Result<bytes::Bytes> {
-		let bytes = self
+	pub async fn blob_with_reporter(
+		&self,
+		hash: &Hash,
+		reporter: Arc<dyn DownloadProgressReporter + 'static>,
+	) -> anyhow::Result<bytes::Bytes> {
+		let response = self
 			.fetch(self.request(
 				Method::GET,
 				format!(
@@ -388,18 +394,38 @@ impl RegistryClient {
 					url_component_encode(&hash.encoded()),
 				),
 			))
-			.await?
-			.bytes()
-			.await
-			.context("failed to download blob")?;
+			.await?;
 
-		let actual = Hash::digest(hash.algorithm(), &bytes);
+		let reader = response_to_async_buf_read(response, reporter);
+		let mut reader = std::pin::pin!(reader);
+
+		let mut bytes = bytes::BytesMut::new();
+		let mut hasher = hash.algorithm().hasher();
+
+		loop {
+			let buf = reader.fill_buf().await?;
+			let n = buf.len();
+			if n == 0 {
+				break;
+			}
+
+			bytes.extend_from_slice(buf);
+			hasher.update(buf);
+
+			reader.consume(n);
+		}
+
+		let actual = hasher.finalize();
 		anyhow::ensure!(
 			actual == *hash,
-			"blob hash mismatch: expected `{hash}`, got `{actual}`"
+			"blob hash mismatch: expected `{hash}`, got `{actual}`",
 		);
 
-		Ok(bytes)
+		Ok(bytes.into())
+	}
+
+	pub async fn blob(&self, hash: &Hash) -> anyhow::Result<bytes::Bytes> {
+		self.blob_with_reporter(hash, Arc::new(())).await
 	}
 }
 
