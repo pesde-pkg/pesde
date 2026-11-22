@@ -226,6 +226,12 @@ impl Canonical for ScopeMember {
 	}
 }
 
+impl Display for ScopeMember {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.0.fmt(f)
+	}
+}
+
 /// A scope member
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScopeMemberValue {
@@ -413,6 +419,12 @@ impl Canonical for PackageDeprecation {
 			"pkg" => self.0.to_string(),
 		}
 		.write_to(writer)
+	}
+}
+
+impl Display for PackageDeprecation {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.0.fmt(f)
 	}
 }
 

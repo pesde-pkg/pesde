@@ -1,8 +1,14 @@
 use std::sync::LazyLock;
 
 use anyhow::Context as _;
+use bstr::BString;
 use clap::Args;
 use clap::ValueEnum;
+use pesde::registry::Consent;
+use pesde::registry::ScopeId;
+use pesde::registry::Tagged;
+use pesde::registry::UnvalidatedConsent;
+use pesde::registry::UnvalidatedSigned;
 use pesde::signature::PublicKey;
 use pesde::signature::PublicKeyAlgorithm;
 use pesde::signature::Signature;
@@ -19,14 +25,14 @@ use crate::cli::ui::public_key::PublicKeyExt as _;
 #[serde(rename_all = "snake_case")]
 pub enum SignatureSource {
 	#[value(
-		alias = "ssh_agent",
-		help = "the public key will be converted to the SSH format, if possible, and the signature will be requested from the SSH agent"
+		aliases = ["ssh_agent", "sshagent"],
+		help = "the public key will be required to be representable in the SSH format and the signature will be requested from the SSH agent"
 	)]
 	SshAgent,
 }
 
 impl SignatureSource {
-	pub async fn sign(&self, key: &PublicKey, message: &[u8]) -> anyhow::Result<Signature> {
+	pub async fn sign(self, key: &PublicKey, message: &[u8]) -> anyhow::Result<Signature> {
 		match self {
 			SignatureSource::SshAgent => {
 				use ssh_encoding::Decode as _;
@@ -64,30 +70,31 @@ impl SignatureSource {
 				let len = (agent_message.len() - 4) as u32;
 				agent_message[0..4].copy_from_slice(&len.to_be_bytes());
 
-				static SSH_AGENT_PATH: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
-					std::env::var_os("SSH_AUTH_SOCK").map_or_else(
-						|| {
-							#[cfg(windows)]
-							{
-								std::path::PathBuf::from(r"\\.\pipe\openssh-ssh-agent")
-							}
-							#[cfg(not(windows))]
-							{
-								panic!(
-									"SSH_AUTH_SOCK is not set, and no default path is available for this platform"
-								)
-							}
-						},
-						Into::into,
-					)
-				});
+				static SSH_AGENT_PATH: LazyLock<Option<std::path::PathBuf>> =
+					LazyLock::new(|| std::env::var_os("SSH_AUTH_SOCK").map(Into::into));
+
+				let ssh_agent_path = SSH_AGENT_PATH.as_deref().map_or_else(
+					|| {
+						#[cfg(windows)]
+						{
+							anyhow::Ok(std::path::Path::new(r"\\.\pipe\openssh-ssh-agent"))
+						}
+						#[cfg(not(windows))]
+						{
+							anyhow::bail!(
+								"SSH_AUTH_SOCK is not set, and no default path is available for this platform"
+							)
+						}
+					},
+					Ok,
+				)?;
 
 				#[cfg(windows)]
 				let mut client = tokio::net::windows::named_pipe::ClientOptions::new()
-					.open(&**SSH_AGENT_PATH)
+					.open(ssh_agent_path)
 					.context("failed to open SSH agent named pipe")?;
 				#[cfg(unix)]
-				let mut client = tokio::net::UnixStream::connect(&**SSH_AGENT_PATH)
+				let mut client = tokio::net::UnixStream::connect(ssh_agent_path)
 					.await
 					.context("failed to connect to SSH agent socket")?;
 
@@ -98,13 +105,18 @@ impl SignatureSource {
 				client
 					.flush()
 					.await
-					.context("failed to flush SSH agent named pipe")?;
+					.context("failed to flush SSH agent write buffer")?;
 
 				let len = client
 					.read_u32()
 					.await
 					.context("failed to read response length from SSH agent")?;
 
+				let payload_len = len
+					.checked_sub(1)
+					.context("SSH agent response length is too small")?;
+				let payload_len = usize::try_from(payload_len)
+					.context("SSH agent response length is too large")?;
 				let status = client
 					.read_u8()
 					.await
@@ -113,7 +125,7 @@ impl SignatureSource {
 				match status {
 					// SSH_AGENT_SIGN_RESPONSE
 					14 => {
-						let mut ssh_string = vec![0; len as usize - 1];
+						let mut ssh_string = vec![0; payload_len];
 						client
 							.read_exact(&mut ssh_string)
 							.await
@@ -142,11 +154,23 @@ impl SignatureSource {
 						anyhow::bail!("SSH agent failed to sign the message");
 					}
 					s => {
+						let mut payload = vec![0; payload_len];
+						if client.read_exact(&mut payload).await.is_ok() {
+							tracing::debug!(
+								"SSH agent returned unexpected status code {s} with payload: {:?}",
+								BString::from(payload)
+							);
+						}
 						anyhow::bail!("SSH agent returned unexpected status code: {s}");
 					}
 				}
 			}
 		}
+		.and_then(|sig| {
+			sig.verify(key, message)
+				.then_some(sig)
+				.context("signature failed to verify")
+		})
 	}
 }
 
@@ -181,5 +205,40 @@ impl SignatureSourceArgs {
 			Ok(ctx.cli_config().await?.signature_sources.get(key).copied())
 		})
 		.await
+	}
+
+	pub async fn sign(
+		&self,
+		ctx: &CommandContext,
+		key: &PublicKey,
+		message: &[u8],
+	) -> anyhow::Result<Signature> {
+		let source = self.get_source(ctx, key).await?;
+		source.sign(key, message).await
+	}
+
+	pub async fn consent<T: Tagged>(
+		&self,
+		ctx: &CommandContext,
+		scope_id: &ScopeId,
+		consenter: PublicKey,
+	) -> anyhow::Result<Consent<T>> {
+		let consent = UnvalidatedConsent {
+			nonce: rand::random(),
+			consenter,
+		};
+
+		let sig = self
+			.sign(
+				ctx,
+				&consent.consenter,
+				&Consent::<T>::signing_bytes(scope_id, &consent),
+			)
+			.await?;
+
+		let consent = Consent::<T>::new(scope_id, UnvalidatedSigned { sig, body: consent })
+			.context("failed to validate signature")?;
+
+		Ok(consent)
 	}
 }

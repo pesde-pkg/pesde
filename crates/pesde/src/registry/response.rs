@@ -93,7 +93,7 @@ where
 	Node(merkle_bplustree::proof::range::RangeProofNode<T>),
 }
 
-/// A tree transition proof
+/// A tree transition operation's result.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(
 	tag = "kind",
@@ -103,18 +103,21 @@ where
 		deserialize = "T::Key: serde::Deserialize<'de>, T::Value: serde::Deserialize<'de>"
 	)
 )]
-pub enum TreeTransitionProof<T: TreeConfig>
+pub enum TreeTransitionOperationResult<T: TreeConfig>
 where
 	T::Key: Debug,
 	T::Value: Debug,
 	T::Hasher: Hasher<T::Key, T::Value, Output = CurrentHash>,
 {
-	/// A value was set
-	Modify(merkle_bplustree::proof::modify::ModifyProof<T>),
-	/// A value was removed
-	Delete(merkle_bplustree::proof::delete::DeleteProof<T>),
-	/// A value was not removed because the key did not exist
-	DeleteNotApplied(merkle_bplustree::proof::exclusion::ExclusionProof<T>),
+	/// A value was set.
+	Modified(merkle_bplustree::proof::modify::ModifyProof<T>),
+	/// A value was removed.
+	Removed {
+		proof: merkle_bplustree::proof::delete::DeleteProof<T>,
+		value_hash: CurrentHash,
+	},
+	/// A value was not removed because the key did not exist.
+	NotRemoved(merkle_bplustree::proof::exclusion::ExclusionProof<T>),
 }
 
 /// The result of a tree transition, returned from that endpoint
@@ -131,6 +134,6 @@ where
 {
 	/// The new tree root
 	pub root: T,
-	/// The proof of the transition
-	pub proof: TreeTransitionProof<T>,
+	/// The result of the operation.
+	pub operation: TreeTransitionOperationResult<T>,
 }

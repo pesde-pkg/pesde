@@ -2,11 +2,13 @@ use std::num::NonZero;
 
 use pesde::merkleberg::MMRIVER;
 use pesde::merkleberg::MMRStoreReadOps;
+use pesde::merkleberg::MMRStoreWriteOps;
 use pesde::merkleberg::leaf_index_to_mmr_size;
 use pesde::merkleberg::leaf_index_to_pos;
 use pesde::registry::*;
 use pesde_registry_core::db::StoreError;
 use serde::Deserialize;
+use serde::Serialize;
 
 pub trait FromLogError: From<pesde::merkleberg::Error> + From<anyhow::Error> {}
 
@@ -109,4 +111,17 @@ pub async fn log_entry<
 		entry,
 		inclusion_proof,
 	}))
+}
+
+pub async fn append_leaf<
+	S: MMRStoreReadOps<CurrentHash, Error = StoreError>
+		+ MMRStoreWriteOps<CurrentHash, Error = StoreError>,
+>(
+	store: S,
+	body: &Entry<impl EntryPayload + Serialize>,
+) -> anyhow::Result<()> {
+	let mut mmr = MMRIVER::<CurrentMerkleHasher, _>::new(leaf_index_to_mmr_size(body.index), store);
+	mmr.push(&body.canonical_bytes()).await?;
+	mmr.commit().await?;
+	Ok(())
 }

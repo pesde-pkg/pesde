@@ -11,8 +11,8 @@ use pesde_registry_core::features::scope::Scoped;
 
 use crate::Db;
 use crate::api::scope::error::Error;
-use crate::shared::db::append_leaf;
 use crate::shared::db::run_tx;
+use crate::shared::log::append_leaf;
 use crate::shared::tree::run_tree;
 
 #[post("/scope/log/entry")]

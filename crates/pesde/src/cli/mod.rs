@@ -1,10 +1,10 @@
 use pesde::Url;
 
-pub mod auth;
 pub mod config;
 pub mod dirs;
 pub mod impls;
 pub mod install;
+pub mod registry;
 pub mod reporters;
 pub mod scripts;
 pub mod ui;

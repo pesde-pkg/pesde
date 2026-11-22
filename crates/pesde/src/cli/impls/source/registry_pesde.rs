@@ -7,23 +7,14 @@ use async_trait::async_trait;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use itertools::Either;
-use merkle_bplustree::proof::range::RangeVerifier as _;
-use merkle_bplustree::proof::range::range_verifier;
-use pesde::Url;
-use pesde::hash::Hash;
 use pesde::link::PackageStructure;
 use pesde::registry::LocalNameId;
-use pesde::registry::LogHeadResponse;
 use pesde::registry::PackageName;
 use pesde::registry::PackageVersion;
 use pesde::registry::PackageVersionValue;
-use pesde::registry::PackageVersionsTree;
 use pesde::registry::PesdeStyleVersion;
-use pesde::registry::ScopeEntryPayload;
 use pesde::registry::ScopeId;
 use pesde::registry::ScopeState;
-use pesde::registry::TreeEntriesEndpointResponse;
-use pesde::registry::TreeEntryEndpointResponse;
 use pesde::registry::manifest::ResolvedDependencySpecifier;
 use pesde::registry::manifest::ResolvedManifest;
 use pesde::reporters::DownloadProgressReporter;
@@ -36,21 +27,14 @@ use pesde::source::ResolveResult;
 use pesde::source::SourceError;
 use pesde::source::WallyDependencySpecifier;
 use pesde::vfs::PackageStorer;
-use reqwest::header::AUTHORIZATION;
-use tokio::io::AsyncBufReadExt as _;
-use tokio::io::BufReader;
 use tokio::sync::OnceCell;
 use tokio::sync::SetOnce;
-use tokio_util::io::StreamReader;
 use tracing::instrument;
 
-use crate::cli::impls::source::NetworkAccess;
-use crate::cli::rootless_url;
-use crate::cli::url_component_encode;
+use crate::cli::registry::RegistryClient;
 
 pub struct RegistryPesdePackageSource {
-	url: Url,
-	network: NetworkAccess,
+	client: Arc<RegistryClient>,
 	cache: std::sync::Mutex<Cache>,
 }
 
@@ -62,32 +46,11 @@ struct Cache {
 }
 
 impl RegistryPesdePackageSource {
-	pub fn new(url: Url, network: NetworkAccess) -> Self {
+	pub fn new(client: Arc<RegistryClient>) -> Self {
 		Self {
-			url,
-			network,
+			client,
 			cache: Default::default(),
 		}
-	}
-
-	async fn fetch_scope_state(&self, scope_id: &ScopeId) -> Result<ScopeState, SourceError> {
-		let _permit = self.network.network_concurrency.acquire().await;
-
-		let mut request = self.network.reqwest.get(format!(
-			"{}/api/v2/scope/{}/log/head",
-			rootless_url(&self.url),
-			url_component_encode(&scope_id.to_string()),
-		));
-
-		if let Some(authorization) = &self.network.authorization {
-			request = request.header(AUTHORIZATION, authorization.as_ref());
-		}
-
-		// TODO: check transparency log consistency & inclusion proofs
-		let head: LogHeadResponse<ScopeEntryPayload> =
-			request.send().await?.error_for_status()?.json().await?;
-
-		Ok(head.tip.entry.payload.header().post_state.clone())
 	}
 
 	async fn get_from_package_version<T>(
@@ -125,91 +88,34 @@ impl RegistryPesdePackageSource {
 			Either::Right(scope_state) => {
 				let scope_state = scope_state
 					.get_or_try_init(async || {
-						self.fetch_scope_state(&ScopeId::from(name.scope())).await
+						anyhow::Ok(
+							self.client
+								.scope_head(&ScopeId::from(name.scope()))
+								.await?
+								.tip
+								.entry
+								.payload
+								.header()
+								.post_state
+								.clone(),
+						)
 					})
 					.await?;
 
-				let _permit = self.network.network_concurrency.acquire().await;
-
-				let package_versions_root = scope_state.package_versions_root;
 				let package_version = PackageVersion {
 					pkg: LocalNameId::from(name.local_name()),
 					version: version.clone(),
 				};
 
-				let mut request = self.network.reqwest.get(format!(
-					"{}/api/v2/tree/package_versions/{}/entry/{}",
-					rootless_url(&self.url),
-					url_component_encode(&package_versions_root.0.to_string()),
-					url_component_encode(&package_version.to_string()),
-				));
+				let value = self
+					.client
+					.tree_entry(&scope_state.package_versions_root, &package_version)
+					.await?
+					.with_context(|| format!("package {name}@{version} not found"))?;
 
-				if let Some(authorization) = &self.network.authorization {
-					request = request.header(AUTHORIZATION, authorization.as_ref());
-				}
-
-				let entry_response: TreeEntryEndpointResponse<PackageVersionsTree> =
-					request.send().await?.error_for_status()?.json().await?;
-				match entry_response {
-					TreeEntryEndpointResponse::Included { proof, value } => {
-						if proof
-							.verify(&package_versions_root.0, &package_version, &value)
-							.is_err()
-						{
-							return Err(anyhow::format_err!(
-								"failed to verify the package versions tree proof for package {name}@{version}"
-							)
-							.into());
-						}
-
-						Ok(get(&value))
-					}
-					TreeEntryEndpointResponse::Excluded { proof } => {
-						if proof
-							.verify(&package_versions_root.0, &package_version)
-							.is_err()
-						{
-							return Err(anyhow::format_err!(
-								"failed to verify the package versions tree proof for package {name}@{version}"
-							)
-							.into());
-						}
-
-						Err(anyhow::format_err!("package {name}@{version} not found").into())
-					}
-				}
+				Ok(get(&value))
 			}
 		}
-	}
-
-	async fn get_blob(&self, hash: &Hash) -> Result<bytes::Bytes, SourceError> {
-		let _permit = self.network.network_concurrency.acquire().await;
-
-		let mut request = self.network.reqwest.get(format!(
-			"{}/api/v2/blob/by-hash/{}/{}",
-			rootless_url(&self.url),
-			url_component_encode(&hash.algorithm().to_string()),
-			url_component_encode(&hash.encoded()),
-		));
-
-		if let Some(authorization) = &self.network.authorization {
-			request = request.header(AUTHORIZATION, authorization.as_ref());
-		}
-
-		let response = request.send().await?.error_for_status()?;
-
-		let bytes = response.bytes().await?;
-
-		if Hash::digest(hash.algorithm(), &bytes) != *hash {
-			return Err(anyhow::format_err!(
-				"blob hash mismatch: expected {}, got {}",
-				hash.encoded(),
-				Hash::digest(hash.algorithm(), &bytes).encoded()
-			)
-			.into());
-		}
-
-		Ok(bytes)
 	}
 }
 
@@ -270,70 +176,39 @@ impl PackageSource for RegistryPesdePackageSource {
 		};
 
 		let scope_state = scope_state
-			.get_or_try_init(async || self.fetch_scope_state(&ScopeId::from(name.scope())).await)
+			.get_or_try_init(async || {
+				anyhow::Ok(
+					self.client
+						.scope_head(&ScopeId::from(name.scope()))
+						.await?
+						.tip
+						.entry
+						.payload
+						.header()
+						.post_state
+						.clone(),
+				)
+			})
 			.await?;
 
-		let package_versions_root = scope_state.package_versions_root;
-
-		let _permit = self.network.network_concurrency.acquire().await;
-
-		let mut packages_request = self.network.reqwest.get(format!(
-			"{}/api/v2/tree/package_versions/{}/entries",
-			rootless_url(&self.url),
-			url_component_encode(&package_versions_root.0.to_string()),
-		));
-
-		if let Some(authorization) = &self.network.authorization {
-			packages_request = packages_request.header(AUTHORIZATION, authorization.as_ref());
-		}
-
-		let packages_response = packages_request.send().await?.error_for_status()?;
+		let mut entries = self
+			.client
+			.tree_entries(&scope_state.package_versions_root)
+			.await?;
 
 		let stream = stream!({
-			let stream = StreamReader::new(
-				packages_response
-					.bytes_stream()
-					.map_err(std::io::Error::other),
-			);
-			let mut packages_reader = BufReader::new(stream).lines();
-
 			let mut cache = HashMap::new();
 
-			let mut verifier = range_verifier(..);
-
-			while let Some(line) = packages_reader.next_line().await? {
-				let entry: TreeEntriesEndpointResponse<PackageVersionsTree> =
-					serde_json::from_str(&line)?;
-				match entry {
-					TreeEntriesEndpointResponse::Entry { key, value } => {
-						verifier.push_entry(&key, &value).context(
-							"failed to push an entry to the package versions tree proof verifier",
-						)?;
-
-						if req.matches(&key.version.clone().into()) {
-							yield Ok::<_, SourceError>((
-								PackageId::Pesde(
-									registry.clone(),
-									name.clone(),
-									key.version.clone(),
-								),
-								None::<InspectResult>,
-							));
-						}
-
-						cache.insert(key.version, value);
-					}
-					TreeEntriesEndpointResponse::Node(node) => {
-						verifier.push_node(node).context(
-							"failed to push a node to the package versions tree proof verifier",
-						)?;
-					}
+			while let Some((key, value)) = entries.try_next().await? {
+				if req.matches(&key.version.clone().into()) {
+					yield Ok::<_, SourceError>((
+						PackageId::Pesde(registry.clone(), name.clone(), key.version.clone()),
+						None::<InspectResult>,
+					));
 				}
-			}
 
-			verifier
-				.finish(&package_versions_root.0)
-				.context("failed to verify the package versions tree proof")?;
+				cache.insert(key.version, value);
+			}
 
 			cached.set(cache).unwrap();
 		});
@@ -364,7 +239,7 @@ impl PackageSource for RegistryPesdePackageSource {
 		let manifest_hash = self
 			.get_from_package_version(name, version, |value| value.manifest_hash)
 			.await?;
-		let manifest_contents = self.get_blob(&manifest_hash).await?;
+		let manifest_contents = self.client.blob(&manifest_hash).await?;
 		let manifest: ResolvedManifest = toml::from_slice(&manifest_contents)?;
 
 		Ok(InspectResult {

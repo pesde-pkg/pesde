@@ -40,8 +40,8 @@ use crate::AppState;
 use crate::Db;
 use crate::api::package::error::Error;
 use crate::shared::blob::BlobStorage;
-use crate::shared::db::append_leaf;
 use crate::shared::db::run_tx;
+use crate::shared::log::append_leaf;
 use crate::shared::tree::empty_tree;
 use crate::shared::tree::run_tree;
 
@@ -67,11 +67,10 @@ pub(super) async fn http_v2(
 		.position(|&b| b == b'\n')
 		.ok_or(Error::MalformedBody)?;
 
-	let archive_bytes = bytes.split_to(separator_idx);
-	let body_bytes = bytes.split_off(1);
+	let archive_bytes = bytes.split_off(separator_idx + 1);
 
 	let body: PublishPackageBody =
-		serde_json::from_slice(&body_bytes).map_err(Error::MalformedJson)?;
+		serde_json::from_slice(&bytes[1..]).map_err(Error::MalformedJson)?;
 
 	handler(db.as_ref(), &app_state.blob_storage, body, archive_bytes).await?;
 
@@ -117,6 +116,13 @@ async fn handler(
 		async_zip::base::read1::ZipOptions::untrusted(),
 	)
 	.await?;
+
+	if zip.ceocdr().is_zip64() {
+		// zip64 is an overall nightmare of a format. while async-zip does support it,
+		// we don't want to support it in the registry protocol. we can always lift this restriction later if we need to,
+		// but package archives shouldn't be that big in the first place
+		return Err(Error::Zip64NotAllowed);
+	}
 
 	let manifest_file_idx = {
 		let mut manifest_file = None;

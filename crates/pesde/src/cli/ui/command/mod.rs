@@ -7,6 +7,7 @@ use pesde::Project;
 use pesde::WorkspaceMember;
 
 use crate::cli::impls::source::CliSourceProvider;
+use crate::cli::impls::source::Registries;
 use crate::cli::impls::vfs::FsVfs;
 
 mod add;
@@ -17,9 +18,9 @@ mod init;
 mod install;
 mod list;
 mod outdated;
+mod registry;
 mod remove;
 mod run;
-mod scope;
 mod update;
 
 #[derive(Debug, Subcommand)]
@@ -30,7 +31,7 @@ pub enum Command {
 	#[command(subcommand)]
 	Cas(cas::CasCommand),
 
-	Scope(scope::ScopeCommand),
+	Registry(registry::RegistryCommand),
 
 	Init(init::InitCommand),
 
@@ -56,7 +57,7 @@ impl Command {
 		match self {
 			Command::Auth(cmd) => cmd.run().await,
 			Command::Cas(cmd) => cmd.run(ctx).await,
-			Command::Scope(cmd) => cmd.run(ctx).await,
+			Command::Registry(cmd) => cmd.run(ctx).await,
 			Command::Init(cmd) => cmd.run(ctx).await,
 			Command::Add(cmd) => cmd.run(ctx).await,
 			Command::Remove(cmd) => cmd.run(ctx).await,
@@ -74,6 +75,7 @@ impl Command {
 pub struct CommandContext {
 	reqwest: std::sync::LazyLock<reqwest::Client>,
 	cwd: std::sync::LazyLock<std::path::PathBuf>,
+	registries: tokio::sync::OnceCell<Registries>,
 	project: tokio::sync::OnceCell<(Arc<FsVfs>, Project, WorkspaceMember)>,
 	cli_config: tokio::sync::OnceCell<crate::cli::config::CliConfig>,
 	network_concurrency: NonZero<usize>,
@@ -95,18 +97,11 @@ impl CommandContext {
 			cwd: std::sync::LazyLock::new(|| {
 				std::env::current_dir().expect("failed to get current working directory")
 			}),
+			registries: tokio::sync::OnceCell::new(),
 			project: tokio::sync::OnceCell::new(),
 			cli_config: tokio::sync::OnceCell::new(),
 			network_concurrency,
 		}
-	}
-
-	pub fn reqwest(&self) -> &reqwest::Client {
-		&self.reqwest
-	}
-
-	pub fn network_concurrency(&self) -> NonZero<usize> {
-		self.network_concurrency
 	}
 }
 
@@ -143,6 +138,20 @@ mod impls {
 				.await
 		}
 
+		pub async fn registries(&self) -> anyhow::Result<Registries> {
+			self.registries
+				.get_or_try_init(|| async {
+					let cli_config = self.cli_config().await?;
+					Ok(Registries::new(
+						self.reqwest.clone(),
+						self.network_concurrency,
+						cli_config.auth_scripts.clone(),
+					))
+				})
+				.await
+				.cloned()
+		}
+
 		async fn init_project(&self) -> anyhow::Result<&(Arc<FsVfs>, Project, WorkspaceMember)> {
 			self.project
 				.get_or_try_init(|| async {
@@ -156,17 +165,15 @@ mod impls {
 						vfs.cas_dir.display()
 					);
 
-					let config = self.cli_config().await?;
+					let registries = self.registries().await?;
 
 					let vfs = Arc::from(vfs);
 
 					let project = pesde::Project::new(vfs.clone(), |workspace| {
 						Arc::from(CliSourceProvider::new(
 							workspace.clone(),
+							registries,
 							vfs.sqlite.clone(),
-							self.reqwest().clone(),
-							self.network_concurrency,
-							config.auth_scripts.clone(),
 						))
 					});
 

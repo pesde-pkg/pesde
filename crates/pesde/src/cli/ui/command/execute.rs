@@ -55,8 +55,7 @@ pub struct ExecuteCommand {
 
 impl ExecuteCommand {
 	pub async fn run(mut self, ctx: CommandContext) -> anyhow::Result<()> {
-		let reqwest = ctx.reqwest().clone();
-		let cli_config = ctx.cli_config().await?;
+		let registries = ctx.registries().await?;
 		let vfs = ctx.vfs().await?;
 		let member = ctx.member().await?;
 		let project = ctx.project().await?;
@@ -243,10 +242,8 @@ impl ExecuteCommand {
 					|workspace| {
 						Arc::new(CliSourceProvider::new(
 							workspace.clone(),
+							registries,
 							vfs.sqlite.clone(),
-							reqwest,
-							ctx.network_concurrency(),
-							cli_config.auth_scripts.clone(),
 						))
 					},
 					Arc::new(manifest),

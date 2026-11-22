@@ -96,16 +96,19 @@ where
 	let mut results = vec![];
 
 	for op in operations {
-		let proof = match op {
+		let operation = match op {
 			TreeOperation::Modify { key, value } => {
 				let (_, proof) = tree.insert_with_proof(key, value).await?;
-				TreeTransitionProof::Modify(proof)
+				TreeTransitionOperationResult::Modified(proof)
 			}
 			TreeOperation::Remove { key } => {
 				let proof = tree.delete_with_proof(&key).await?;
 				match proof {
-					Some((_, proof)) => TreeTransitionProof::Delete(proof),
-					None => TreeTransitionProof::DeleteNotApplied(
+					Some((value, proof)) => TreeTransitionOperationResult::Removed {
+						proof,
+						value_hash: T::Hasher::hash_value(&value),
+					},
+					None => TreeTransitionOperationResult::NotRemoved(
 						match tree.get_with_proof_mapped(&key, |_| ()).await? {
 							GetWithProof::Excluded(proof) => proof,
 							GetWithProof::Included(_, _) => unreachable!(),
@@ -117,7 +120,7 @@ where
 
 		results.push(TreeTransitionResult {
 			root: T::from_hash(tree.root_hash()),
-			proof,
+			operation,
 		});
 	}
 
