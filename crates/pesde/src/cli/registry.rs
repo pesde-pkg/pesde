@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use async_stream::try_stream;
+use bstr::BString;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use futures::stream::BoxStream;
@@ -84,6 +85,10 @@ impl RegistryClient {
 		}
 	}
 
+	pub fn url(&self) -> &Url {
+		&self.url
+	}
+
 	fn request(&self, method: Method, path: impl Display) -> RequestBuilder {
 		let mut request = self
 			.reqwest
@@ -96,32 +101,47 @@ impl RegistryClient {
 		request
 	}
 
-	async fn fetch(&self, request: RequestBuilder) -> anyhow::Result<Response> {
+	async fn fetch_no_error(&self, request: RequestBuilder) -> anyhow::Result<Response> {
 		let _permit = self.network_concurrency.acquire().await;
 
 		request
 			.send()
 			.await
-			.context("failed to send request to registry")?
-			.error_for_status()
+			.context("failed to send request to registry")
+	}
+
+	async fn fetch(&self, request: RequestBuilder) -> anyhow::Result<Response> {
+		error_for_status_with_body(self.fetch_no_error(request).await?)
+			.await
 			.context("registry returned an error response")
 	}
 
 	pub async fn scope_head(
 		&self,
 		scope_id: &ScopeId,
-	) -> anyhow::Result<LogHeadResponse<ScopeEntryPayload>> {
-		self.fetch(self.request(
-			Method::GET,
-			format!(
-				"scope/{}/log/head",
-				url_component_encode(&scope_id.to_string())
-			),
-		))
-		.await?
-		.json()
-		.await
-		.context("failed to parse response from registry")
+	) -> anyhow::Result<Option<LogHeadResponse<ScopeEntryPayload>>> {
+		let response = self
+			.fetch_no_error(self.request(
+				Method::GET,
+				format!(
+					"scope/{}/log/head",
+					url_component_encode(&scope_id.to_string())
+				),
+			))
+			.await?;
+
+		if response.status() == reqwest::StatusCode::NOT_FOUND {
+			Ok(None)
+		} else {
+			let head = error_for_status_with_body(response)
+				.await
+				.context("registry returned an error response")?
+				.json::<LogHeadResponse<ScopeEntryPayload>>()
+				.await
+				.context("failed to parse response from registry")?;
+
+			Ok(Some(head))
+		}
 	}
 
 	pub async fn post_scope_entry(
@@ -129,6 +149,17 @@ impl RegistryClient {
 		payload: &ScopeEntryPayload,
 	) -> anyhow::Result<Entry<ScopeEntryPayload>> {
 		self.fetch(self.request(Method::POST, "scope/log/entry").json(payload))
+			.await?
+			.json()
+			.await
+			.context("failed to parse response from registry")
+	}
+
+	pub async fn publish_package(
+		&self,
+		payload: Vec<u8>,
+	) -> anyhow::Result<Entry<ScopeEntryPayload>> {
+		self.fetch(self.request(Method::POST, "package/publish").body(payload))
 			.await?
 			.json()
 			.await
@@ -369,5 +400,19 @@ impl RegistryClient {
 		);
 
 		Ok(bytes)
+	}
+}
+
+async fn error_for_status_with_body(response: Response) -> anyhow::Result<Response> {
+	if response.status().is_success() {
+		Ok(response)
+	} else {
+		let status = response.status();
+		let body = response.bytes().await.unwrap_or_default();
+		Err(anyhow::anyhow!(
+			"registry returned an error response: {} - {}",
+			status,
+			BString::from(&*body)
+		))
 	}
 }

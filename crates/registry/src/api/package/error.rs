@@ -33,9 +33,6 @@ pub(super) enum Error {
 	#[error("the uploaded archive is a zip64 file, which is not allowed")]
 	Zip64NotAllowed,
 
-	#[error("the uploaded archive is not valid")]
-	InvalidZipIo(#[source] std::io::Error),
-
 	#[error("the path `{0}` in the uploaded archive is not allowed")]
 	InvalidPath(Box<BStr>),
 
@@ -72,7 +69,6 @@ impl ResponseError for Error {
 			Error::HashMismatch => Category::BadRequest,
 			Error::InvalidZip(_) => Category::BadRequest,
 			Error::Zip64NotAllowed => Category::BadRequest,
-			Error::InvalidZipIo(_) => Category::BadRequest,
 			Error::InvalidPath(_) => Category::BadRequest,
 			Error::InvalidManifest(_) => Category::BadRequest,
 			Error::ManifestStateMismatch => Category::BadRequest,

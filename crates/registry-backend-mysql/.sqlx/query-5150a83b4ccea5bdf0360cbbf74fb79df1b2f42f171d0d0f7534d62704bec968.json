@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO deprecations_node (blake3, kind) VALUES (?, ?) ON DUPLICATE KEY UPDATE blake3 = blake3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "5150a83b4ccea5bdf0360cbbf74fb79df1b2f42f171d0d0f7534d62704bec968"
+}

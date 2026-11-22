@@ -37,10 +37,7 @@ async fn handler(
 	log_head(
 		current_size,
 		Scoped(scope_id, db as &dyn ScopeReadRepository),
-		|index| {
-			db.scope_log_entry(scope_id.clone(), index)
-				.map_err(Into::into)
-		},
+		|index| db.scope_log_entry(*scope_id, index).map_err(Into::into),
 		query,
 	)
 	.await

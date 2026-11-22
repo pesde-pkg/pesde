@@ -95,7 +95,12 @@ impl RotateKeyCommand {
 
 		let scope_id = ScopeId::from(ctx.scope());
 
-		let tip_entry = client.scope_head(&scope_id).await?.tip.entry;
+		let tip_entry = client
+			.scope_head(&scope_id)
+			.await?
+			.context("scope does not exist")?
+			.tip
+			.entry;
 
 		let mut scope_state = tip_entry.payload.header().post_state.clone();
 		if scope_state.owner == from_key {
@@ -137,13 +142,10 @@ impl RotateKeyCommand {
 			consent.into_inner(),
 		)
 		.context("failed to construct rotate key operation")?;
-		let sig = from_source
-			.sign(&ctx, body.signer(), &body.canonical_bytes())
-			.await?;
 
-		let body = UserScopeOp::RotateKey(body);
-		let body = UnvalidatedSigned { sig, body };
-		let body = Signed::new(body).context("failed to validate signature")?;
+		let body = from_source
+			.signed(&ctx, UserScopeOp::RotateKey(body))
+			.await?;
 		let body = ScopeEntryPayload::User(body);
 
 		let response = client.post_scope_entry(&body).await?;

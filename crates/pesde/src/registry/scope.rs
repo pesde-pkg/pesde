@@ -87,7 +87,7 @@ macro_rules! name_part {
 			}
 
 			#[doc = concat!("The ", stringify!([< $name:lower >]), " id; hash of the ", stringify!([< $name:lower >]))]
-			#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+			#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 			pub struct [< $name Id >](CurrentHash);
 			ser_display_deser_fromstr!([< $name Id >]);
 
@@ -201,10 +201,10 @@ impl ScopeState {
 	}
 }
 
-/// The Merkle B+Tree that contains scope members along their grants
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ScopeMembersTree(pub CurrentHash);
+tree_root!(
+	/// The Merkle B+Tree that contains scope members along their grants
+	ScopeMembersTree
+);
 impl TreeConfig for ScopeMembersTree {
 	type Key = ScopeMember;
 	type Value = ScopeMemberValue;
@@ -290,10 +290,10 @@ hash_with_plaintext!(
 #[error("invalid plaintext hash")]
 pub struct ScopeGrantEntryError;
 
-/// The Merkle B+Tree that contains package versions along their state
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct PackageVersionsTree(pub CurrentHash);
+tree_root!(
+	/// The Merkle B+Tree that contains package versions along their state
+	PackageVersionsTree
+);
 impl TreeConfig for PackageVersionsTree {
 	type Key = PackageVersion;
 	type Value = PackageVersionValue;
@@ -394,10 +394,10 @@ impl FromStr for VersionYankState {
 	}
 }
 
-/// The Merkle B+Tree that contains package deprecations along their reasons
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct PackageDeprecationsTree(pub CurrentHash);
+tree_root!(
+	/// The Merkle B+Tree that contains package deprecations along their reasons
+	PackageDeprecationsTree
+);
 impl TreeConfig for PackageDeprecationsTree {
 	type Key = PackageDeprecation;
 	type Value = PackageDeprecationValue;
@@ -475,6 +475,28 @@ pub enum PackageDeprecationReasonError {
 	#[error("reason mustn't be empty")]
 	IsEmpty,
 }
+
+macro_rules! tree_root {
+	(
+		$(#[$meta:meta])*
+		$name:ident
+	) => {
+		$(#[$meta])*
+		#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+		#[serde(transparent)]
+		pub struct $name(pub CurrentHash);
+
+		impl Default for $name {
+			fn default() -> Self {
+				Self(tree_root!(@hasher Self, hash_leaf)(0, &tree_root!(@hasher Self, empty_hash)()))
+			}
+		}
+	};
+	(@hasher $ty:ident, $name:ident) => {
+		<<$ty as TreeConfig>::Hasher as Hasher<<$ty as TreeConfig>::Key, <$ty as TreeConfig>::Value>>::$name
+	}
+}
+use tree_root;
 
 macro_rules! hash_with_plaintext {
 	(

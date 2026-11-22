@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "\nINSERT INTO plaintext_name (blake3, plaintext) VALUES (?, ?)\nON DUPLICATE KEY UPDATE blake3 = blake3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f7defa4f685c0eff9e0be2fc5dfa7db1599e2f12ded684e5b4a14a873f4dc2b1"
+}

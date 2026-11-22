@@ -11,9 +11,10 @@ use crate::bounded::BoundedStr;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LuauConfig {
+	#[serde(default, skip_serializing_if = "LuauField::is_empty")]
 	luau: LuauField,
 	// using an Arc on rest allows the client to trivially clone the config & change the aliases
-	#[serde(flatten)]
+	#[serde(default, skip_serializing_if = "BoundedBTreeMap::is_empty", flatten)]
 	rest: Arc<LuauTable>,
 }
 
@@ -28,15 +29,32 @@ impl LuauConfig {
 	pub fn aliases_mut(&mut self) -> &mut BTreeMap<Alias, Box<str>> {
 		&mut self.luau.aliases
 	}
+
+	/// Checks if the Luau config is empty.
+	#[must_use]
+	pub fn is_empty(&self) -> bool {
+		self.luau.is_empty() && self.rest.is_empty()
+	}
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 struct LuauField {
-	#[serde(deserialize_with = "deserialize_aliases")]
+	#[serde(
+		default,
+		skip_serializing_if = "BTreeMap::is_empty",
+		deserialize_with = "deserialize_aliases"
+	)]
 	aliases: BTreeMap<Alias, Box<str>>,
-	#[serde(flatten)]
+	#[serde(default, skip_serializing_if = "BoundedBTreeMap::is_empty", flatten)]
 	rest: Arc<LuauTable>,
+}
+
+impl LuauField {
+	#[must_use]
+	fn is_empty(&self) -> bool {
+		self.aliases.is_empty() && self.rest.is_empty()
+	}
 }
 
 fn deserialize_aliases<'de, D>(deserializer: D) -> Result<BTreeMap<Alias, Box<str>>, D::Error>

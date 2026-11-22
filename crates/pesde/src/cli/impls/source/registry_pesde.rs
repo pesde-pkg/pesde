@@ -92,6 +92,7 @@ impl RegistryPesdePackageSource {
 							self.client
 								.scope_head(&ScopeId::from(name.scope()))
 								.await?
+								.with_context(|| format!("scope {} does not exist", name.scope()))?
 								.tip
 								.entry
 								.payload
@@ -181,6 +182,7 @@ impl PackageSource for RegistryPesdePackageSource {
 					self.client
 						.scope_head(&ScopeId::from(name.scope()))
 						.await?
+						.with_context(|| format!("scope {} does not exist", name.scope()))?
 						.tip
 						.entry
 						.payload

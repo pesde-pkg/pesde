@@ -7,7 +7,6 @@ use actix_web::Responder;
 use actix_web::post;
 use actix_web::web;
 use actix_web::web::Bytes;
-use futures::AsyncReadExt as _;
 use pesde::MANIFEST_FILE_NAME;
 use pesde::hash::Hash;
 use pesde::registry::Canonical as _;
@@ -18,6 +17,7 @@ use pesde::registry::LocalNameId;
 use pesde::registry::PackageVersionValue;
 use pesde::registry::PublishPackageBody;
 use pesde::registry::PublishVersionUserScopeOpBody;
+use pesde::registry::ScopeEntry;
 use pesde::registry::ScopeEntryPayload;
 use pesde::registry::ScopeGenesisPayload;
 use pesde::registry::ScopeId;
@@ -42,7 +42,6 @@ use crate::api::package::error::Error;
 use crate::shared::blob::BlobStorage;
 use crate::shared::db::run_tx;
 use crate::shared::log::append_leaf;
-use crate::shared::tree::empty_tree;
 use crate::shared::tree::run_tree;
 
 const JSON_BODY_LIMIT: usize = 1024 * 1024;
@@ -70,9 +69,9 @@ pub(super) async fn http_v2(
 	let archive_bytes = bytes.split_off(separator_idx + 1);
 
 	let body: PublishPackageBody =
-		serde_json::from_slice(&bytes[1..]).map_err(Error::MalformedJson)?;
+		serde_json::from_slice(&bytes[..separator_idx]).map_err(Error::MalformedJson)?;
 
-	handler(db.as_ref(), &app_state.blob_storage, body, archive_bytes).await?;
+	let entry = handler(db.as_ref(), &app_state.blob_storage, body, archive_bytes).await?;
 
 	// if let Err(e) = app_state
 	// 	.search
@@ -82,7 +81,7 @@ pub(super) async fn http_v2(
 	// 	tracing::error!("failed to index published package for search: {e:#?}");
 	// }
 
-	Ok(HttpResponse::Created().finish())
+	Ok(HttpResponse::Created().json(entry))
 }
 
 async fn handler(
@@ -90,7 +89,7 @@ async fn handler(
 	blob: &BlobStorage,
 	body: PublishPackageBody,
 	archive: Bytes,
-) -> Result<(), Error> {
+) -> Result<ScopeEntry, Error> {
 	let PublishPackageBody {
 		scope_genesis,
 		publish_version,
@@ -111,13 +110,11 @@ async fn handler(
 		return Err(Error::HashMismatch);
 	}
 
-	let mut zip = async_zip::base::read1::seek::ZipArchiveReader::open_with_options(
-		futures::io::Cursor::new(&*archive),
-		async_zip::base::read1::ZipOptions::untrusted(),
-	)
-	.await?;
+	let mut zip =
+		async_zip::base::read::seek::ZipFileReader::with_tokio(std::io::Cursor::new(&*archive))
+			.await?;
 
-	if zip.ceocdr().is_zip64() {
+	if zip.file().zip64() {
 		// zip64 is an overall nightmare of a format. while async-zip does support it,
 		// we don't want to support it in the registry protocol. we can always lift this restriction later if we need to,
 		// but package archives shouldn't be that big in the first place
@@ -129,20 +126,20 @@ async fn handler(
 
 		// check for duplicate paths (ZIP allows them) and case-only differences
 		let mut seen_paths = HashSet::new();
-		for (idx, c) in zip.cdrs().iter().enumerate() {
-			match c.insecure_file_name.as_str() {
-				Some(p)
+		for (idx, c) in zip.file().entries().iter().enumerate() {
+			match c.filename().as_str() {
+				Ok(p)
 					if ExportPath::from_str(p).is_ok()
 						&& seen_paths.insert(p.to_lowercase().into_boxed_str()) => {}
 				_ => {
-					let bytes: Box<[u8]> = c.insecure_file_name.as_bytes().into();
+					let bytes: Box<[u8]> = c.filename().as_bytes().into();
 
 					return Err(Error::InvalidPath(bytes.into()));
 				}
 			}
 
 			// specifically case-sensitive, this isn't an oversight!
-			if c.insecure_file_name.as_bytes() == MANIFEST_FILE_NAME.as_bytes() {
+			if c.filename().as_bytes() == MANIFEST_FILE_NAME.as_bytes() {
 				manifest_file = Some(idx);
 			}
 		}
@@ -150,13 +147,13 @@ async fn handler(
 		manifest_file.ok_or(Error::MalformedBody)?
 	};
 
-	let mut manifest_file = zip.file(manifest_file_idx).await?;
+	let mut manifest_file = zip.reader_with_entry(manifest_file_idx).await?;
 	let mut manifest_contents = String::new();
 
 	manifest_file
-		.read_to_string(&mut manifest_contents)
+		.read_to_string_checked(&mut manifest_contents)
 		.await
-		.map_err(Error::InvalidZipIo)?;
+		.map_err(Error::InvalidZip)?;
 
 	if Hash::digest(manifest_hash.algorithm(), &manifest_contents) != *manifest_hash {
 		return Err(Error::HashMismatch);
@@ -227,6 +224,18 @@ async fn handler(
 					payload: GlobalEntryPayload::ScopeGenesis(scope_genesis),
 				};
 
+				tx.associate_plaintext(
+					header.scope_id.hash(),
+					manifest.package.name.scope().as_bytes(),
+				)
+				.await?;
+
+				tx.associate_plaintext(
+					package_version.pkg.hash(),
+					manifest.package.name.local_name().as_bytes(),
+				)
+				.await?;
+
 				append_leaf(Global(&mut *tx), &entry).await?;
 				tx.insert_global_entry(&entry).await?;
 
@@ -255,9 +264,44 @@ async fn handler(
 	run_tx(tx, async move |tx| {
 		let UnvalidatedSigned { sig, body } = publish_version.into_inner();
 
+		let entry = Entry {
+			index: scope_size.map_or(0, NonZero::get),
+			published_at: Default::default(),
+			payload: ScopeEntryPayload::User(
+				Signed::new(UnvalidatedSigned {
+					sig,
+					body: UserScopeOp::PublishVersion(body),
+				})
+				.expect(
+					"body ops should always have the same canonical bytes as in their enum variant",
+				),
+			),
+		};
+		#[expect(clippy::match_wildcard_for_single_variants)]
+		let body = match &entry.payload {
+			ScopeEntryPayload::User(payload) => match &payload.inner().body {
+				UserScopeOp::PublishVersion(body) => body,
+				_ => unreachable!(),
+			},
+			_ => unreachable!(),
+		};
+
+		if !tx
+			.insert_package_version(
+				&body.header.scope_id,
+				entry.index,
+				&body.package_version,
+				&body.archive_hash,
+				&body.manifest_hash,
+			)
+			.await?
+		{
+			return Err(Error::VersionAlreadyExists);
+		}
+
 		let mut scope_state = if let Some(scope_size) = scope_size {
 			let tip = tx
-				.scope_log_entry(body.header.scope_id.clone(), scope_size.get() - 1)
+				.scope_log_entry(body.header.scope_id, scope_size.get() - 1)
 				.await?
 				.ok_or(Error::InvalidPrevHash)?;
 
@@ -269,9 +313,9 @@ async fn handler(
 		} else {
 			ScopeState {
 				owner: body.header.signer.clone(),
-				scope_members_root: empty_tree(tx, &body.header.scope_id).await?,
-				package_versions_root: empty_tree(tx, &body.header.scope_id).await?,
-				package_deprecations_root: empty_tree(tx, &body.header.scope_id).await?,
+				scope_members_root: Default::default(),
+				package_versions_root: Default::default(),
+				package_deprecations_root: Default::default(),
 			}
 		};
 
@@ -304,41 +348,15 @@ async fn handler(
 			return Err(Error::InvalidScopeState);
 		}
 
-		let entry = Entry {
-			index: scope_size.map_or(0, NonZero::get),
-			published_at: Default::default(),
-			payload: ScopeEntryPayload::User(
-				Signed::new(UnvalidatedSigned {
-					sig,
-					body: UserScopeOp::PublishVersion(body),
-				})
-				.expect(
-					"body ops should always have the same canonical bytes as in their enum variant",
-				),
-			),
-		};
-		#[expect(clippy::match_wildcard_for_single_variants)]
-		let (scope_id, archive_hash, manifest_hash) = match &entry.payload {
-			ScopeEntryPayload::User(payload) => match &payload.inner().body {
-				UserScopeOp::PublishVersion(PublishVersionUserScopeOpBody {
-					header,
-					package_version: _,
-					archive_hash,
-					manifest_hash,
-				}) => (&header.scope_id, archive_hash, manifest_hash),
-				_ => unreachable!(),
-			},
-			_ => unreachable!(),
-		};
-
-		append_leaf(Scoped(scope_id, &mut *tx), &entry).await?;
+		append_leaf(Scoped(&body.header.scope_id, &mut *tx), &entry).await?;
 		tx.insert_scope_entry(&entry).await?;
 
-		let archive = blob.put_object(archive_hash, std::io::Cursor::new(archive));
-		let manifest = blob.put_object(manifest_hash, std::io::Cursor::new(manifest_contents));
+		let archive = blob.put_object(&body.archive_hash, std::io::Cursor::new(archive));
+		let manifest =
+			blob.put_object(&body.manifest_hash, std::io::Cursor::new(manifest_contents));
 		try_join!(archive, manifest).map_err(Error::Internal)?;
 
-		Ok(())
+		Ok(entry)
 	})
 	.await
 }

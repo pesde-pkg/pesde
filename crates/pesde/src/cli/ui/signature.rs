@@ -6,6 +6,8 @@ use clap::Args;
 use clap::ValueEnum;
 use pesde::registry::Consent;
 use pesde::registry::ScopeId;
+use pesde::registry::Signable;
+use pesde::registry::Signed;
 use pesde::registry::Tagged;
 use pesde::registry::UnvalidatedConsent;
 use pesde::registry::UnvalidatedSigned;
@@ -215,6 +217,21 @@ impl SignatureSourceArgs {
 	) -> anyhow::Result<Signature> {
 		let source = self.get_source(ctx, key).await?;
 		source.sign(key, message).await
+	}
+
+	pub async fn signed<T: Signable>(
+		&self,
+		ctx: &CommandContext,
+		body: T,
+	) -> anyhow::Result<Signed<T>> {
+		let sig = self
+			.sign(ctx, body.signer(), &T::signing_bytes(&body))
+			.await?;
+
+		let signed = UnvalidatedSigned { sig, body };
+		let signed = Signed::<T>::new(signed).context("failed to validate signature")?;
+
+		Ok(signed)
 	}
 
 	pub async fn consent<T: Tagged>(

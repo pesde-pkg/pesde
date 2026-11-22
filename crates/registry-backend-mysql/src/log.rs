@@ -205,7 +205,8 @@ impl GlobalWriteRepository for MySqlTransaction {
 			elems.iter().zip(pos..),
 			|mut b, (hash, pos)| {
 				b.push_bind(pos).push_bind(hash.0.as_slice());
-			}
+			},
+			"pos",
 		)
 		.await?;
 

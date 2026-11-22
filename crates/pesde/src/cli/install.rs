@@ -69,11 +69,11 @@ pub async fn get_lockfile(project: &Project) -> anyhow::Result<Resolution> {
 	Ok(lockfile)
 }
 
-// pub async fn get_lockfile_locked(project: &Project) -> anyhow::Result<Resolution> {
-// 	let (_, lockfile) = get_lockfile_internal(project, true, true).await?;
+pub async fn get_lockfile_locked(project: &Project) -> anyhow::Result<Resolution> {
+	let (_, lockfile) = get_lockfile_internal(project, true, true).await?;
 
-// 	Ok(lockfile)
-// }
+	Ok(lockfile)
+}
 
 pub async fn install(options: &CliInstallOptions, project: &Project) -> anyhow::Result<()> {
 	let start = Instant::now();

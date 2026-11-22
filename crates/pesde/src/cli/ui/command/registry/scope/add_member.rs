@@ -69,7 +69,12 @@ impl AddMemberCommand {
 		let client = ctx.client();
 
 		// TODO: check transparency log consistency & inclusion proofs
-		let tip_entry = client.scope_head(&scope_id).await?.tip.entry;
+		let tip_entry = client
+			.scope_head(&scope_id)
+			.await?
+			.context("scope does not exist")?
+			.tip
+			.entry;
 
 		let mut scope_state = tip_entry.payload.header().post_state.clone();
 
@@ -89,7 +94,7 @@ impl AddMemberCommand {
 			UserScopeOpHeader {
 				signer: scope_state.owner.clone(),
 				common: ScopeOpHeader {
-					scope_id: scope_id.clone(),
+					scope_id,
 					prev_hash: tip_entry.hash(),
 					post_state: scope_state,
 				},
@@ -99,17 +104,10 @@ impl AddMemberCommand {
 		)
 		.context("failed to construct add member operation")?;
 
-		let sig = self
+		let body = self
 			.source
-			.get_source(&ctx, &body.header().signer)
-			.await?
-			.sign(&body.header().signer, &body.signing_bytes())
-			.await
-			.context("failed to sign add member operation")?;
-
-		let body = UserScopeOp::AddMember(body);
-		let body = UnvalidatedSigned { sig, body };
-		let body = Signed::new(body).context("failed to validate signature")?;
+			.signed(&ctx, UserScopeOp::AddMember(body))
+			.await?;
 		let body = ScopeEntryPayload::User(body);
 
 		let response = client.post_scope_entry(&body).await?;

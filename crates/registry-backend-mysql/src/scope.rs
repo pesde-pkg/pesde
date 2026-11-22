@@ -33,6 +33,7 @@ use sqlx::types::Text;
 use crate::AsExecutor;
 use crate::MySqlBackend;
 use crate::MySqlTransaction;
+use crate::TreeKind;
 use crate::util::chrono_to_jiff;
 use crate::util::insert_chunked;
 use crate::util::jiff_to_chrono;
@@ -62,13 +63,6 @@ enum SignedOpKind {
 enum AdminOpKind {
 	TransferOwnership,
 	SetYanked,
-}
-
-#[derive(Debug, Clone, Copy, Type)]
-#[sqlx(rename_all = "snake_case")]
-enum TreeKind {
-	Internal,
-	Leaf,
 }
 
 async fn scope_log_size(
@@ -1020,16 +1014,25 @@ impl ScopeWriteRepository for MySqlTransaction {
 		pos: u64,
 		elems: Vec<CurrentHash>,
 	) -> anyhow::Result<()> {
+		let scope_idx = query!(
+			"SELECT idx FROM global_log_scope_genesis_entry WHERE name_blake3 = ?",
+			scope.hash().0.as_slice()
+		)
+		.fetch_one(&mut **self.tx.get_mut())
+		.await?
+		.idx;
+
 		insert_chunked!(
 			&mut **self.tx.get_mut(),
 			"scope_log_node",
 			["scope", "pos", "blake3"],
 			elems.iter().zip(pos..),
 			|mut b, (hash, pos)| {
-				b.push_bind(scope.hash().0.as_slice())
+				b.push_bind(scope_idx)
 					.push_bind(pos)
 					.push_bind(hash.0.as_slice());
-			}
+			},
+			"scope",
 		)
 		.await?;
 
@@ -1042,17 +1045,18 @@ impl ScopeWriteRepository for MySqlTransaction {
 		index: u64,
 		package_version: &PackageVersion,
 		archive_hash: &Hash,
-	) -> anyhow::Result<()> {
+		manifest_hash: &Hash,
+	) -> anyhow::Result<bool> {
 		let tx = self.tx.get_mut();
 
 		let record = query!(
 			r"
 SELECT global_log_scope_genesis_entry.idx AS scope_idx, package.idx AS package_idx
 FROM global_log_scope_genesis_entry
-LEFT JOIN package ON package.scope=global_log_scope_genesis_entry.idx
-WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ?",
-			scope.hash().0.as_slice(),
+LEFT JOIN package ON package.scope=global_log_scope_genesis_entry.idx AND package.local_name_blake3 = ?
+WHERE global_log_scope_genesis_entry.name_blake3 = ?",
 			package_version.pkg.hash().0.as_slice(),
+			scope.hash().0.as_slice(),
 		)
 		.fetch_one(&mut **tx)
 		.await?;
@@ -1072,18 +1076,19 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 			index
 		};
 
-		query!(
-			"INSERT INTO package_version (scope, idx, package_idx, version, archive_hash) VALUES (?, ?, ?, ?, ?)",
+		let result = query!(
+			"INSERT INTO package_version (scope, idx, package_idx, version, archive_hash, manifest_hash) VALUES (?, ?, ?, ?, ?, ?)",
 			record.scope_idx,
 			index,
 			package_idx,
 			package_version.version.to_string(),
 			archive_hash.to_string(),
+			manifest_hash.to_string(),
 		)
 		.execute(&mut **tx)
-		.await?;
+		.await;
 
-		Ok(())
+		node_inserted(result)
 	}
 
 	async fn insert_scope_entry(&mut self, entry: &ScopeEntry) -> anyhow::Result<()> {
@@ -1406,13 +1411,16 @@ impl ScopeTreeWriteRepository<ScopeMembersTree> for MySqlTransaction {
 		for (hash, node) in nodes {
 			match node {
 				TreeNode::Leaf(node) => {
-					query!(
+					let result = query!(
 						"INSERT INTO scope_members_node (blake3, kind) VALUES (?, ?)",
 						hash.0.as_slice(),
 						TreeKind::Leaf
 					)
 					.execute(&mut **tx)
-					.await?;
+					.await;
+					if !node_inserted(result)? {
+						continue;
+					}
 
 					// TODO: use chunked inserting
 					for (idx, (member, value)) in node.keys().iter().zip(node.values()).enumerate()
@@ -1432,13 +1440,16 @@ impl ScopeTreeWriteRepository<ScopeMembersTree> for MySqlTransaction {
 					}
 				}
 				TreeNode::Internal(node) => {
-					query!(
+					let result = query!(
 						"INSERT INTO scope_members_node (blake3, kind) VALUES (?, ?)",
 						hash.0.as_slice(),
 						TreeKind::Internal
 					)
 					.execute(&mut **tx)
-					.await?;
+					.await;
+					if !node_inserted(result)? {
+						continue;
+					}
 
 					// TODO: use chunked inserting
 					for (idx, member) in node.keys().iter().enumerate() {
@@ -1487,13 +1498,16 @@ impl ScopeTreeWriteRepository<PackageVersionsTree> for MySqlTransaction {
 		for (hash, node) in nodes {
 			match node {
 				TreeNode::Leaf(node) => {
-					query!(
+					let result = query!(
 						"INSERT INTO versions_node (blake3, kind) VALUES (?, ?)",
 						hash.0.as_slice(),
 						TreeKind::Leaf
 					)
 					.execute(&mut **tx)
-					.await?;
+					.await;
+					if !node_inserted(result)? {
+						continue;
+					}
 
 					for (idx, (key, value)) in node.keys().iter().zip(node.values()).enumerate() {
 						let result = query!(
@@ -1521,13 +1535,16 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 					}
 				}
 				TreeNode::Internal(node) => {
-					query!(
+					let result = query!(
 						"INSERT INTO versions_node (blake3, kind) VALUES (?, ?)",
 						hash.0.as_slice(),
 						TreeKind::Internal
 					)
 					.execute(&mut **tx)
-					.await?;
+					.await;
+					if !node_inserted(result)? {
+						continue;
+					}
 
 					for (idx, key) in node.keys().iter().enumerate() {
 						let result = query!(
@@ -1586,13 +1603,16 @@ impl ScopeTreeWriteRepository<PackageDeprecationsTree> for MySqlTransaction {
 		for (hash, node) in nodes {
 			match node {
 				TreeNode::Leaf(node) => {
-					query!(
+					let result = query!(
 						"INSERT INTO deprecations_node (blake3, kind) VALUES (?, ?)",
 						hash.0.as_slice(),
 						TreeKind::Leaf
 					)
 					.execute(&mut **tx)
-					.await?;
+					.await;
+					if !node_inserted(result)? {
+						continue;
+					}
 
 					for (idx, (key, value)) in node.keys().iter().zip(node.values()).enumerate() {
 						let reason_id = query!(
@@ -1628,13 +1648,16 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 					}
 				}
 				TreeNode::Internal(node) => {
-					query!(
+					let result = query!(
 						"INSERT INTO deprecations_node (blake3, kind) VALUES (?, ?)",
 						hash.0.as_slice(),
 						TreeKind::Internal
 					)
 					.execute(&mut **tx)
-					.await?;
+					.await;
+					if !node_inserted(result)? {
+						continue;
+					}
 
 					for (idx, key) in node.keys().iter().enumerate() {
 						let result = query!(
@@ -1674,5 +1697,13 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blak
 		}
 
 		Ok(())
+	}
+}
+
+fn node_inserted(result: sqlx::Result<sqlx::mysql::MySqlQueryResult>) -> anyhow::Result<bool> {
+	match result {
+		Ok(_) => Ok(true),
+		Err(sqlx::Error::Database(e)) if e.is_unique_violation() => Ok(false),
+		Err(e) => Err(e.into()),
 	}
 }

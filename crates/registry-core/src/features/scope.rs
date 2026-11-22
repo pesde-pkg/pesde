@@ -70,7 +70,8 @@ pub trait ScopeWriteRepository:
 		index: u64,
 		package_version: &PackageVersion,
 		archive_hash: &Hash,
-	) -> anyhow::Result<()>;
+		manifest_hash: &Hash,
+	) -> anyhow::Result<bool>;
 
 	async fn insert_scope_entry(&mut self, entry: &ScopeEntry) -> anyhow::Result<()>;
 }
@@ -153,9 +154,10 @@ macro_rules! forward_scope_write {
 				index: u64,
 				package_version: &PackageVersion,
 				archive_hash: &Hash,
-			) -> anyhow::Result<()> {
+				manifest_hash: &Hash,
+			) -> anyhow::Result<bool> {
 				(**self)
-					.insert_package_version(scope, index, package_version, archive_hash)
+					.insert_package_version(scope, index, package_version, archive_hash, manifest_hash)
 					.await
 			}
 

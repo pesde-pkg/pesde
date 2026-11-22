@@ -5,7 +5,7 @@ use sqlx::QueryBuilder;
 use sqlx::query_builder::Separated;
 
 macro_rules! insert_chunked {
-	($conn:expr, $table:literal, $columns:expr, $rows:expr, $bind:expr $(,)?) => {
+	($conn:expr, $table:literal, $columns:expr, $rows:expr, $bind:expr, $($ignoredups:expr ,)?) => {
 		$crate::util::insert_chunked_impl::<{ $columns.len() }, _>(
 			$conn,
 			const_str::concat!(
@@ -13,11 +13,18 @@ macro_rules! insert_chunked {
 				$table,
 				" (",
 				const_str::join!(&$columns, ", "),
-				") VALUES "
+				") "
 			),
 			$rows,
 			$bind,
+			insert_chunked!(@ignoredups $($ignoredups)?),
 		)
+	};
+	(@ignoredups) => {
+		None
+	};
+	(@ignoredups $col:expr) => {
+		Some($col)
 	};
 }
 pub(crate) use insert_chunked;
@@ -27,6 +34,7 @@ pub(crate) async fn insert_chunked_impl<const COLUMNS: usize, T>(
 	prefix: &'static str,
 	rows: impl IntoIterator<Item = T>,
 	mut bind: impl FnMut(Separated<'_, sqlx::MySql, &'static str>, T),
+	key_col_ignore_dups: Option<&'static str>,
 ) -> sqlx::Result<()> {
 	#[expect(clippy::integer_division)]
 	let max = const { (u16::MAX as usize / COLUMNS) - 1 };
@@ -35,7 +43,13 @@ pub(crate) async fn insert_chunked_impl<const COLUMNS: usize, T>(
 
 	let mut query = QueryBuilder::new(prefix);
 	while let Some(tpl) = rows.next() {
-		query.push_tuples(std::iter::once(tpl).chain((&mut rows).take(max)), &mut bind);
+		query.push_values(std::iter::once(tpl).chain((&mut rows).take(max)), &mut bind);
+		if let Some(col) = key_col_ignore_dups {
+			query.push(" ON DUPLICATE KEY UPDATE ");
+			query.push(col);
+			query.push(" = ");
+			query.push(col);
+		}
 		query.build().execute(&mut *conn).await?;
 		query.reset();
 	}

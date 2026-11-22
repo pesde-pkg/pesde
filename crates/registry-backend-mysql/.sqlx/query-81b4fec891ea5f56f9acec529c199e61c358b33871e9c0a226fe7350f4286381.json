@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\nSELECT global_log_scope_genesis_entry.idx AS scope_idx, package.idx AS package_idx\nFROM global_log_scope_genesis_entry\nLEFT JOIN package ON package.scope=global_log_scope_genesis_entry.idx\nWHERE global_log_scope_genesis_entry.name_blake3 = ? AND package.local_name_blake3 = ?",
+  "query": "\nSELECT global_log_scope_genesis_entry.idx AS scope_idx, package.idx AS package_idx\nFROM global_log_scope_genesis_entry\nLEFT JOIN package ON package.scope=global_log_scope_genesis_entry.idx AND package.local_name_blake3 = ?\nWHERE global_log_scope_genesis_entry.name_blake3 = ?",
   "describe": {
     "columns": [
       {
@@ -44,5 +44,5 @@
       true
     ]
   },
-  "hash": "6fb53440ca179e15ccdbcdd5379e5ad92cb797a311f84e20e63584693316f31f"
+  "hash": "81b4fec891ea5f56f9acec529c199e61c358b33871e9c0a226fe7350f4286381"
 }

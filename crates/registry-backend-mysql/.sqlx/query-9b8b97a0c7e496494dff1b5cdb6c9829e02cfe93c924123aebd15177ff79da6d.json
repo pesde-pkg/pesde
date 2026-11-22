@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO versions_node (blake3, kind) VALUES (?, ?) ON DUPLICATE KEY UPDATE blake3 = blake3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "9b8b97a0c7e496494dff1b5cdb6c9829e02cfe93c924123aebd15177ff79da6d"
+}

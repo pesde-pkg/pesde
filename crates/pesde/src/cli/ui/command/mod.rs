@@ -146,6 +146,7 @@ mod impls {
 						self.reqwest.clone(),
 						self.network_concurrency,
 						cli_config.auth_scripts.clone(),
+						self.cwd.clone().into(),
 					))
 				})
 				.await

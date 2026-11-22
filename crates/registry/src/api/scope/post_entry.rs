@@ -111,7 +111,7 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 		} = op.header();
 
 		let tip = tx
-			.scope_log_entry(scope_id.clone(), scope_size.get() - 1)
+			.scope_log_entry(*scope_id, scope_size.get() - 1)
 			.await?
 			.ok_or(Error::ScopeNotFound)?;
 
@@ -262,12 +262,12 @@ async fn handler(db: &dyn Backend, payload: Signed<UserScopeOp>) -> Result<Scope
 					&claimed_state.package_deprecations_root,
 					async |tree| match value {
 						Some(new_state) => tree
-							.insert(PackageDeprecation(pkg.clone()), new_state.clone())
+							.insert(PackageDeprecation(*pkg), new_state.clone())
 							.await?
 							.is_none_or(|o| o != *new_state)
 							.ok_or(Error::AlreadyInState),
 						None => tree
-							.delete(&PackageDeprecation(pkg.clone()))
+							.delete(&PackageDeprecation(*pkg))
 							.await?
 							.is_some()
 							.ok_or(Error::AlreadyInState),

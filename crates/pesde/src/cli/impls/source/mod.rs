@@ -3,6 +3,8 @@ use std::io::BufRead as _;
 use std::io::PipeReader;
 use std::io::Read as _;
 use std::num::NonZero;
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -145,18 +147,21 @@ pub struct Registries {
 	reqwest: reqwest::Client,
 	network_concurrency: Arc<Semaphore>,
 	auth_scripts: Arc<HashMap<Url, Box<str>>>,
+	auth_cwd: Box<Path>,
 }
 impl Registries {
 	pub fn new(
 		reqwest: reqwest::Client,
 		network_concurrency: NonZero<usize>,
 		auth_scripts: Arc<HashMap<Url, Box<str>>>,
+		auth_cwd: Box<Path>,
 	) -> Self {
 		Self {
 			clients: Default::default(),
 			reqwest,
 			network_concurrency: Arc::new(Semaphore::new(network_concurrency.get())),
 			auth_scripts,
+			auth_cwd,
 		}
 	}
 
@@ -171,7 +176,7 @@ impl Registries {
 			return Ok(access);
 		};
 
-		access.authorization = authorization(script).await?;
+		access.authorization = authorization(script, self.auth_cwd.clone().into()).await?;
 		Ok(access)
 	}
 
@@ -205,14 +210,14 @@ impl Registries {
 	}
 }
 
-async fn authorization(script: &str) -> anyhow::Result<Option<Box<str>>> {
+async fn authorization(script: &str, cwd: PathBuf) -> anyhow::Result<Option<Box<str>>> {
 	let mut hooks = AuthScriptHooks {
 		stdout: String::new(),
 		stdout_reader: None,
 		stderr_reader: None,
 	};
 
-	let status = execute_script("".into(), script, &mut hooks, vec![])
+	let status = execute_script(cwd, script, &mut hooks, vec![])
 		.await
 		.context("failed to execute auth script")?;
 	if status != 0i32 {

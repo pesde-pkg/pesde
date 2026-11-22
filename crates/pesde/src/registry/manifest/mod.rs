@@ -51,8 +51,10 @@ pub struct ResolvedManifest {
 	/// The exports of the package
 	pub exports: ManifestExports,
 	/// The Luau configuration of the package
+	#[serde(default, skip_serializing_if = "config_luau::LuauConfig::is_empty")]
 	pub config_luau: config_luau::LuauConfig,
 	/// The dependencies of the package
+	#[serde(default, skip_serializing_if = "BoundedBTreeMap::is_empty")]
 	pub dependencies:
 		BoundedBTreeMap<Alias, (ResolvedDependencySpecifier, DependencyType), MAX_DEPENDENCIES>,
 }

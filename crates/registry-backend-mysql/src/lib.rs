@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::lock::Mutex;
+use futures::try_join;
 use pesde::hash::Blake3Hash;
 use pesde::registry::*;
 use pesde::signature::PublicKey;
@@ -12,11 +13,13 @@ use pesde_registry_core::db::ExistingScopeLockResult;
 use pesde_registry_core::db::GlobalWriteTransaction;
 use pesde_registry_core::db::PermissionWidth;
 use pesde_registry_core::db::ScopeWriteTransaction;
+use pesde_registry_core::db::SharedWriteTransaction;
 use sqlx::Database as _;
 use sqlx::MySql;
 use sqlx::MySqlExecutor;
 use sqlx::MySqlPool;
 use sqlx::mysql::MySqlPoolOptions;
+use sqlx::prelude::Type;
 use sqlx::query;
 use sqlx::types::Text;
 
@@ -33,7 +36,40 @@ pub async fn connect(url: &str) -> anyhow::Result<Arc<dyn Backend>> {
 
 	sqlx::migrate!().run(&pool).await?;
 
+	let root = ScopeMembersTree::default().0.0;
+	let members = query!(
+		"INSERT INTO scope_members_node (blake3, kind) VALUES (?, ?) ON DUPLICATE KEY UPDATE blake3 = blake3",
+		root.as_slice(),
+		TreeKind::Leaf,
+	)
+	.execute(&pool);
+
+	let root = PackageVersionsTree::default().0.0;
+	let versions = query!(
+		"INSERT INTO versions_node (blake3, kind) VALUES (?, ?) ON DUPLICATE KEY UPDATE blake3 = blake3",
+		root.as_slice(),
+		TreeKind::Leaf,
+	)
+	.execute(&pool);
+
+	let root = PackageDeprecationsTree::default().0.0;
+	let deprecations = query!(
+		"INSERT INTO deprecations_node (blake3, kind) VALUES (?, ?) ON DUPLICATE KEY UPDATE blake3 = blake3",
+		root.as_slice(),
+		TreeKind::Leaf,
+	)
+	.execute(&pool);
+
+	try_join!(members, versions, deprecations)?;
+
 	Ok(Arc::new(MySqlBackend { pool }))
+}
+
+#[derive(Debug, Clone, Copy, Type)]
+#[sqlx(rename_all = "snake_case")]
+pub(crate) enum TreeKind {
+	Internal,
+	Leaf,
 }
 
 struct MySqlBackend {
@@ -249,6 +285,29 @@ impl GlobalWriteTransaction for MySqlTransaction {
 	}
 }
 
+#[async_trait]
+impl SharedWriteTransaction for MySqlTransaction {
+	async fn associate_plaintext(
+		&mut self,
+		hash: &CurrentHash,
+		plaintext: &[u8],
+	) -> anyhow::Result<()> {
+		let mut tx = self.tx.lock().await;
+
+		query!(
+			r"
+INSERT INTO plaintext_name (blake3, plaintext) VALUES (?, ?)
+ON DUPLICATE KEY UPDATE blake3 = blake3",
+			hash.0.as_slice(),
+			plaintext,
+		)
+		.execute(&mut **tx)
+		.await?;
+
+		Ok(())
+	}
+}
+
 impl MySqlTransaction {
 	pub async fn insert_public_key(
 		tx: &mut sqlx::MySqlTransaction<'_>,
@@ -293,7 +352,7 @@ impl MySqlTransaction {
 					|mut b, entry| {
 						b.push_bind(blake3.0.as_slice())
 							.push_bind(entry.pkg().hash().0.as_slice());
-					}
+					},
 				)
 				.await?;
 			}

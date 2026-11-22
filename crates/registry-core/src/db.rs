@@ -56,13 +56,26 @@ pub trait Backend:
 }
 
 #[async_trait]
-pub trait ScopeWriteTransaction: crate::features::scope::ScopeWriteRepository {
+pub trait SharedWriteTransaction {
+	async fn associate_plaintext(
+		&mut self,
+		hash: &CurrentHash,
+		plaintext: &[u8],
+	) -> anyhow::Result<()>;
+}
+
+#[async_trait]
+pub trait ScopeWriteTransaction:
+	SharedWriteTransaction + crate::features::scope::ScopeWriteRepository
+{
 	async fn commit(self: Box<Self>) -> anyhow::Result<()>;
 	async fn rollback(self: Box<Self>) -> anyhow::Result<()>;
 }
 
 #[async_trait]
-pub trait GlobalWriteTransaction: crate::features::global::GlobalWriteRepository {
+pub trait GlobalWriteTransaction:
+	SharedWriteTransaction + crate::features::global::GlobalWriteRepository
+{
 	fn into_scope_transaction(self: Box<Self>) -> Box<dyn ScopeWriteTransaction>;
 
 	async fn rollback(self: Box<Self>) -> anyhow::Result<()>;

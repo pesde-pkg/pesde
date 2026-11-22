@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO scope_members_node (blake3, kind) VALUES (?, ?) ON DUPLICATE KEY UPDATE blake3 = blake3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "ca96cd79bb1603a36825f0821283aef6697e614a3c0d42c1e54c2efb3ace9fb9"
+}

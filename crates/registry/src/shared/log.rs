@@ -120,7 +120,14 @@ pub async fn append_leaf<
 	store: S,
 	body: &Entry<impl EntryPayload + Serialize>,
 ) -> anyhow::Result<()> {
-	let mut mmr = MMRIVER::<CurrentMerkleHasher, _>::new(leaf_index_to_mmr_size(body.index), store);
+	let mut mmr = MMRIVER::<CurrentMerkleHasher, _>::new(
+		if let Some(idx) = body.index.checked_sub(1) {
+			leaf_index_to_mmr_size(idx)
+		} else {
+			0
+		},
+		store,
+	);
 	mmr.push(&body.canonical_bytes()).await?;
 	mmr.commit().await?;
 	Ok(())

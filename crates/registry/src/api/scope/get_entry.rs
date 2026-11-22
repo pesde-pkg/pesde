@@ -32,10 +32,7 @@ async fn handler(
 ) -> Result<LogEntryResponse<ScopeEntryPayload>, Error> {
 	log_entry(
 		index,
-		|index| {
-			db.scope_log_entry(scope_id.clone(), index)
-				.map_err(Into::into)
-		},
+		|index| db.scope_log_entry(scope_id, index).map_err(Into::into),
 		async || {
 			let size = db
 				.scope_log_size(&scope_id)
