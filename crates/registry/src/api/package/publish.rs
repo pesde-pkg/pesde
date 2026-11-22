@@ -12,7 +12,6 @@ use pesde::hash::Hash;
 use pesde::registry::Canonical as _;
 use pesde::registry::CurrentHash;
 use pesde::registry::Entry;
-use pesde::registry::GlobalEntryPayload;
 use pesde::registry::LocalNameId;
 use pesde::registry::PackageVersionValue;
 use pesde::registry::PublishPackageBody;
@@ -221,23 +220,12 @@ async fn handler(
 				let entry = Entry {
 					index: global_size,
 					published_at: Default::default(),
-					payload: GlobalEntryPayload::ScopeGenesis(scope_genesis),
+					payload: scope_genesis,
 				};
 
-				tx.associate_plaintext(
-					header.scope_id.hash(),
-					manifest.package.name.scope().as_bytes(),
-				)
-				.await?;
-
-				tx.associate_plaintext(
-					package_version.pkg.hash(),
-					manifest.package.name.local_name().as_bytes(),
-				)
-				.await?;
-
 				append_leaf(Global(&mut *tx), &entry).await?;
-				tx.insert_global_entry(&entry).await?;
+				tx.insert_scope_genesis(manifest.package.name.scope(), &entry)
+					.await?;
 
 				(tx.into_scope_transaction(), None)
 			}
@@ -289,6 +277,7 @@ async fn handler(
 		if !tx
 			.insert_package_version(
 				&body.header.scope_id,
+				manifest.package.name.local_name(),
 				entry.index,
 				&body.package_version,
 				&body.archive_hash,

@@ -534,6 +534,12 @@ macro_rules! hash_with_plaintext {
 			pub fn $plaintext_name(&self) -> &$plaintext_ty {
 				&self.$plaintext_name
 			}
+
+			/// Consumes self and returns the parts.
+			#[must_use]
+			pub fn into_inner(self) -> ($hash_ty, $plaintext_ty) {
+				(self.$hash_name, self.$plaintext_name)
+			}
 		}
 
 		$(hash_with_plaintext!(@ord $ord, $struct_name, $hash_name);)?

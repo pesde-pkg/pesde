@@ -13,7 +13,6 @@ use pesde_registry_core::db::ExistingScopeLockResult;
 use pesde_registry_core::db::GlobalWriteTransaction;
 use pesde_registry_core::db::PermissionWidth;
 use pesde_registry_core::db::ScopeWriteTransaction;
-use pesde_registry_core::db::SharedWriteTransaction;
 use sqlx::Database as _;
 use sqlx::MySql;
 use sqlx::MySqlExecutor;
@@ -285,15 +284,12 @@ impl GlobalWriteTransaction for MySqlTransaction {
 	}
 }
 
-#[async_trait]
-impl SharedWriteTransaction for MySqlTransaction {
-	async fn associate_plaintext(
-		&mut self,
+impl MySqlTransaction {
+	pub async fn associate_plaintext(
+		tx: &mut sqlx::MySqlTransaction<'_>,
 		hash: &CurrentHash,
 		plaintext: &[u8],
 	) -> anyhow::Result<()> {
-		let mut tx = self.tx.lock().await;
-
 		query!(
 			r"
 INSERT INTO plaintext_name (blake3, plaintext) VALUES (?, ?)
@@ -306,9 +302,7 @@ ON DUPLICATE KEY UPDATE blake3 = blake3",
 
 		Ok(())
 	}
-}
 
-impl MySqlTransaction {
 	pub async fn insert_public_key(
 		tx: &mut sqlx::MySqlTransaction<'_>,
 		public_key: &PublicKey,
@@ -344,6 +338,22 @@ impl MySqlTransaction {
 
 		match result {
 			Ok(_) => {
+				insert_chunked!(
+					&mut **tx,
+					"plaintext_name",
+					["blake3", "plaintext"],
+					grant.0.iter().cloned().filter_map(|entry| {
+						let (hash, plaintext) = entry.into_inner();
+						Some((hash, plaintext?))
+					}),
+					|mut b, (pkg_hash, plaintext)| {
+						b.push_bind(pkg_hash.hash().0.as_slice())
+							.push_bind(plaintext.as_str());
+					},
+					"blake3",
+				)
+				.await?;
+
 				insert_chunked!(
 					&mut **tx,
 					"member_grant_package",

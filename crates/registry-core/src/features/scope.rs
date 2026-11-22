@@ -67,6 +67,7 @@ pub trait ScopeWriteRepository:
 	async fn insert_package_version(
 		&mut self,
 		scope: &ScopeId,
+		pkg: &LocalName,
 		index: u64,
 		package_version: &PackageVersion,
 		archive_hash: &Hash,
@@ -151,13 +152,14 @@ macro_rules! forward_scope_write {
 			async fn insert_package_version(
 				&mut self,
 				scope: &ScopeId,
+				pkg: &LocalName,
 				index: u64,
 				package_version: &PackageVersion,
 				archive_hash: &Hash,
 				manifest_hash: &Hash,
 			) -> anyhow::Result<bool> {
 				(**self)
-					.insert_package_version(scope, index, package_version, archive_hash, manifest_hash)
+					.insert_package_version(scope, pkg, index, package_version, archive_hash, manifest_hash)
 					.await
 			}
 

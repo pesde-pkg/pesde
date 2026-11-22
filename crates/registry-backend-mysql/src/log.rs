@@ -213,7 +213,11 @@ impl GlobalWriteRepository for MySqlTransaction {
 		Ok(())
 	}
 
-	async fn insert_global_entry(&mut self, entry: &GlobalEntry) -> anyhow::Result<()> {
+	async fn insert_scope_genesis(
+		&mut self,
+		scope: &Scope,
+		entry: &Entry<Signed<ScopeGenesisPayload>>,
+	) -> anyhow::Result<()> {
 		let tx = self.tx.get_mut();
 		let Entry {
 			index,
@@ -223,43 +227,41 @@ impl GlobalWriteRepository for MySqlTransaction {
 
 		let published_at = jiff_to_chrono(*published_at)?;
 
-		match payload {
-			GlobalEntryPayload::ScopeGenesis(payload) => {
-				query!(
-					"INSERT INTO global_log_entry (idx, pos, op_kind, published_at) VALUES (?, ?, ?, ?)",
-					index,
-					leaf_index_to_pos(*index),
-					OpKind::ScopeGenesis,
-					published_at
-				)
-				.execute(&mut **tx)
-				.await?;
+		Self::associate_plaintext(tx, payload.inner().body.scope_id.hash(), scope.as_bytes())
+			.await?;
 
-				let UnvalidatedSigned {
-					sig,
-					body:
-						ScopeGenesisPayload {
-							scope_id,
-							owner,
-							first_entry_hash,
-						},
-				} = payload.inner();
+		query!(
+			"INSERT INTO global_log_entry (idx, pos, op_kind, published_at) VALUES (?, ?, ?, ?)",
+			index,
+			leaf_index_to_pos(*index),
+			OpKind::ScopeGenesis,
+			published_at
+		)
+		.execute(&mut **tx)
+		.await?;
 
-				let owner_id = Self::insert_public_key(tx, owner).await?;
+		let UnvalidatedSigned {
+			sig,
+			body: ScopeGenesisPayload {
+				scope_id,
+				owner,
+				first_entry_hash,
+			},
+		} = payload.inner();
 
-				query!(
-					"INSERT INTO global_log_scope_genesis_entry (idx, sig_kind, sig, name_blake3, owner_id, first_entry_hash) VALUES (?, ?, ?, ?, ?, ?)",
-					index,
-					Text(sig.kind()),
-					sig.data(),
-					scope_id.hash().0.as_slice(),
-					owner_id,
-					first_entry_hash.to_string(),
-				)
-				.execute(&mut **tx)
-				.await?;
-			}
-		}
+		let owner_id = Self::insert_public_key(tx, owner).await?;
+
+		query!(
+			"INSERT INTO global_log_scope_genesis_entry (idx, sig_kind, sig, name_blake3, owner_id, first_entry_hash) VALUES (?, ?, ?, ?, ?, ?)",
+			index,
+			Text(sig.kind()),
+			sig.data(),
+			scope_id.hash().0.as_slice(),
+			owner_id,
+			first_entry_hash.to_string(),
+		)
+		.execute(&mut **tx)
+		.await?;
 
 		Ok(())
 	}

@@ -27,7 +27,11 @@ pub trait GlobalWriteRepository: GlobalReadRepository {
 		elems: Vec<CurrentHash>,
 	) -> anyhow::Result<()>;
 
-	async fn insert_global_entry(&mut self, entry: &GlobalEntry) -> anyhow::Result<()>;
+	async fn insert_scope_genesis(
+		&mut self,
+		scope: &Scope,
+		entry: &Entry<Signed<ScopeGenesisPayload>>,
+	) -> anyhow::Result<()>;
 }
 
 macro_rules! forward_global_read {
@@ -68,8 +72,12 @@ macro_rules! forward_global_write {
 				(**self).append_global_log_nodes(pos, elems).await
 			}
 
-			async fn insert_global_entry(&mut self, entry: &GlobalEntry) -> anyhow::Result<()> {
-				(**self).insert_global_entry(entry).await
+			async fn insert_scope_genesis(
+				&mut self,
+				scope: &Scope,
+				entry: &Entry<Signed<ScopeGenesisPayload>>,
+			) -> anyhow::Result<()> {
+				(**self).insert_scope_genesis(scope, entry).await
 			}
 		}
 	)+};

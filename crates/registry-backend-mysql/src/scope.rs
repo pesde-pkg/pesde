@@ -1042,6 +1042,7 @@ impl ScopeWriteRepository for MySqlTransaction {
 	async fn insert_package_version(
 		&mut self,
 		scope: &ScopeId,
+		pkg: &LocalName,
 		index: u64,
 		package_version: &PackageVersion,
 		archive_hash: &Hash,
@@ -1064,6 +1065,8 @@ WHERE global_log_scope_genesis_entry.name_blake3 = ?",
 		let package_idx = if let Some(p) = record.package_idx {
 			p
 		} else {
+			Self::associate_plaintext(tx, package_version.pkg.hash(), pkg.as_bytes()).await?;
+
 			query!(
 				"INSERT INTO package (scope, idx, local_name_blake3) VALUES (?, ?, ?)",
 				record.scope_idx,
