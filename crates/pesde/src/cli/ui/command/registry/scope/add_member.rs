@@ -4,6 +4,7 @@ use pesde::registry::*;
 
 use crate::cli::registry::TreeUpdate;
 use crate::cli::ui::command::registry::scope::ScopeCommandContext;
+use crate::cli::ui::scope_grant::ScopeGrantArgs;
 use crate::cli::ui::signature::SignatureSourceArgs;
 
 /// Adds a member to a scope
@@ -11,6 +12,9 @@ use crate::cli::ui::signature::SignatureSourceArgs;
 pub struct AddMemberCommand {
 	/// The member's consent message
 	message: Box<str>,
+
+	#[command(flatten)]
+	grant: ScopeGrantArgs,
 
 	#[command(flatten)]
 	source: SignatureSourceArgs,
@@ -32,8 +36,7 @@ impl AddMemberCommand {
 			.context("consent was not for the expected scope or had a malformed signature")?
 			.into_inner();
 
-		// TODO: prompt for this
-		let grant = pesde::registry::ScopeGrant(Default::default());
+		let grant = self.grant.get()?;
 
 		eprintln!("scope: {}", ctx.scope());
 		eprintln!("member public key: {}", consent.body.consenter);

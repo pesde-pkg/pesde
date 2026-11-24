@@ -3,6 +3,7 @@ use pesde::registry::manifest::DependencyType;
 mod command;
 pub use command::*;
 pub mod public_key;
+pub mod scope_grant;
 pub mod signature;
 pub mod specifier;
 

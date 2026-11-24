@@ -10,6 +10,7 @@ mod join;
 mod rotate_key;
 mod takeover;
 mod transfer;
+mod update_member_grant;
 
 /// Scope related commands
 #[derive(Debug, Args)]
@@ -28,6 +29,8 @@ enum ScopeSubcommand {
 
 	AddMember(add_member::AddMemberCommand),
 
+	UpdateMemberGrant(update_member_grant::UpdateMemberGrantCommand),
+
 	Takeover(takeover::TakeoverCommand),
 
 	Transfer(transfer::TransferCommand),
@@ -45,6 +48,7 @@ impl ScopeCommand {
 		match self.subcommand {
 			ScopeSubcommand::Join(cmd) => cmd.run(ctx).await,
 			ScopeSubcommand::AddMember(cmd) => cmd.run(ctx).await,
+			ScopeSubcommand::UpdateMemberGrant(cmd) => cmd.run(ctx).await,
 			ScopeSubcommand::Takeover(cmd) => cmd.run(ctx).await,
 			ScopeSubcommand::Transfer(cmd) => cmd.run(ctx).await,
 			ScopeSubcommand::RotateKey(cmd) => cmd.run(ctx).await,
