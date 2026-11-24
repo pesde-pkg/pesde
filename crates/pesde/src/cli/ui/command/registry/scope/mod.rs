@@ -8,6 +8,8 @@ use crate::cli::ui::command::registry::RegistryCommandContext;
 mod add_member;
 mod join;
 mod rotate_key;
+mod takeover;
+mod transfer;
 
 /// Scope related commands
 #[derive(Debug, Args)]
@@ -26,6 +28,10 @@ enum ScopeSubcommand {
 
 	AddMember(add_member::AddMemberCommand),
 
+	Takeover(takeover::TakeoverCommand),
+
+	Transfer(transfer::TransferCommand),
+
 	RotateKey(rotate_key::RotateKeyCommand),
 }
 
@@ -39,6 +45,8 @@ impl ScopeCommand {
 		match self.subcommand {
 			ScopeSubcommand::Join(cmd) => cmd.run(ctx).await,
 			ScopeSubcommand::AddMember(cmd) => cmd.run(ctx).await,
+			ScopeSubcommand::Takeover(cmd) => cmd.run(ctx).await,
+			ScopeSubcommand::Transfer(cmd) => cmd.run(ctx).await,
 			ScopeSubcommand::RotateKey(cmd) => cmd.run(ctx).await,
 		}
 	}

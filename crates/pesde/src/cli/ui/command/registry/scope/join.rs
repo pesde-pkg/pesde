@@ -6,7 +6,7 @@ use crate::cli::ui::command::registry::scope::ScopeCommandContext;
 use crate::cli::ui::public_key::UserInputPublicKey;
 use crate::cli::ui::signature::SignatureSourceArgs;
 
-/// Creates a consent message to be sent to the owner of the scope
+/// Creates a message that will allow the key to join the scope
 #[derive(Debug, Args)]
 pub struct JoinCommand {
 	/// The public key to add as a member of the scope
@@ -33,6 +33,8 @@ impl JoinCommand {
 			.source
 			.consent::<AddMemberUserScopeOpBody>(&ctx, &scope_id, self.public_key.key)
 			.await?;
+
+		eprintln!("send this message to the owner of the scope to request membership:");
 
 		print!(
 			"{}",
