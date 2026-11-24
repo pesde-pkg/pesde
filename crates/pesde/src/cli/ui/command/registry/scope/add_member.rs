@@ -4,7 +4,6 @@ use pesde::registry::*;
 
 use crate::cli::registry::TreeUpdate;
 use crate::cli::ui::command::registry::scope::ScopeCommandContext;
-use crate::cli::ui::print_immutable_protocol_warning;
 use crate::cli::ui::signature::SignatureSourceArgs;
 
 /// Adds a member to a scope
@@ -12,10 +11,6 @@ use crate::cli::ui::signature::SignatureSourceArgs;
 pub struct AddMemberCommand {
 	/// The member's consent message
 	message: Box<str>,
-
-	/// Whether to sign the operation without prompting for confirmation
-	#[arg(long)]
-	no_prompt: bool,
 
 	#[command(flatten)]
 	source: SignatureSourceArgs,
@@ -53,18 +48,7 @@ impl AddMemberCommand {
 
 		eprintln!();
 
-		print_immutable_protocol_warning();
-
-		eprintln!();
-
-		if !self.no_prompt {
-			inquire::Confirm::new("do you want to continue?")
-				.with_default(false)
-				.with_help_message("this action cannot be undone")
-				.prompt()
-				.context("failed to read user input")?
-				.ok_or_else(|| anyhow::anyhow!("aborted by user"))?;
-		}
+		ctx.signature_lecture()?;
 
 		let client = ctx.client();
 

@@ -3,7 +3,6 @@ use pesde::registry::AddMemberUserScopeOpBody;
 use pesde::registry::ScopeId;
 
 use crate::cli::ui::command::registry::scope::ScopeCommandContext;
-use crate::cli::ui::print_immutable_protocol_warning;
 use crate::cli::ui::public_key::UserInputPublicKey;
 use crate::cli::ui::signature::SignatureSourceArgs;
 
@@ -26,9 +25,7 @@ impl JoinCommand {
 
 		eprintln!();
 
-		print_immutable_protocol_warning();
-
-		eprintln!();
+		ctx.signature_lecture()?;
 
 		let scope_id = ScopeId::from(ctx.scope());
 

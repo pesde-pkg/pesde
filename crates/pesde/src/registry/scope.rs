@@ -409,7 +409,7 @@ impl TreeConfig for PackageDeprecationsTree {
 pub const MAX_REASON_LEN: usize = 255;
 
 /// A package deprecation, i.e. a local name id
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PackageDeprecation(pub LocalNameId);
 impl crate::sealed::Sealed for PackageDeprecation {}

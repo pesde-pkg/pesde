@@ -32,7 +32,6 @@ use tokio::io::AsyncReadExt as _;
 use crate::cli::install::get_lockfile_locked;
 use crate::cli::registry::TreeUpdate;
 use crate::cli::ui::command::registry::RegistryCommandContext;
-use crate::cli::ui::print_immutable_protocol_warning;
 use crate::cli::ui::public_key::UserInputPublicKey;
 use crate::cli::ui::signature::SignatureSourceArgs;
 
@@ -42,10 +41,6 @@ pub struct PublishCommand {
 	/// Whether to save the package to a file instead of publishing it to the registry
 	#[arg(short, long)]
 	dry_run: bool,
-
-	/// Agree to all prompts
-	#[arg(short, long)]
-	yes: bool,
 
 	/// The public key to use for signing the package. If not specified, the associated key of the registry will be used
 	#[arg(short, long)]
@@ -290,18 +285,7 @@ impl PublishCommand {
 
 		eprintln!();
 
-		print_immutable_protocol_warning();
-
-		eprintln!();
-
-		if !self.yes {
-			inquire::Confirm::new("do you want to continue?")
-				.with_default(false)
-				.with_help_message("this action cannot be undone")
-				.prompt()
-				.context("failed to read user input")?
-				.ok_or_else(|| anyhow::anyhow!("aborted by user"))?;
-		}
+		ctx.signature_lecture()?;
 
 		let public_key = if let Some(public_key) = &self.public_key {
 			&public_key.key

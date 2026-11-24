@@ -17,17 +17,25 @@ pub struct RegistryCommand {
 	#[arg(short, long)]
 	registry: Option<Box<str>>,
 
+	/// Whether to sign the operation without prompting for confirmation
+	#[arg(long)]
+	no_prompt: bool,
+
 	#[command(subcommand)]
 	subcommand: RegistrySubcommand,
 }
 
+mod deprecate;
 mod publish;
 mod scope;
+mod yank;
 
 #[derive(Debug, Subcommand)]
 enum RegistrySubcommand {
 	Scope(scope::ScopeCommand),
 	Publish(publish::PublishCommand),
+	Yank(yank::YankCommand),
+	Deprecate(deprecate::DeprecateCommand),
 }
 
 impl RegistryCommand {
@@ -50,11 +58,14 @@ impl RegistryCommand {
 		let ctx = RegistryCommandContext {
 			client: ctx.registries().await?.client(registry).await?,
 			cmd: ctx,
+			no_prompt: self.no_prompt,
 		};
 
 		match self.subcommand {
 			RegistrySubcommand::Scope(cmd) => cmd.run(ctx).await,
 			RegistrySubcommand::Publish(cmd) => cmd.run(ctx).await,
+			RegistrySubcommand::Yank(cmd) => cmd.run(ctx).await,
+			RegistrySubcommand::Deprecate(cmd) => cmd.run(ctx).await,
 		}
 	}
 }
@@ -62,6 +73,7 @@ impl RegistryCommand {
 pub struct RegistryCommandContext {
 	cmd: CommandContext,
 	client: Arc<RegistryClient>,
+	no_prompt: bool,
 }
 
 impl Deref for RegistryCommandContext {
@@ -75,5 +87,31 @@ impl Deref for RegistryCommandContext {
 impl RegistryCommandContext {
 	pub fn client(&self) -> &RegistryClient {
 		&self.client
+	}
+
+	pub fn signature_lecture(&self) -> anyhow::Result<()> {
+		eprintln!(
+			"IMPORTANT: the pesde registry protocol is backed by cryptographic data structures, including transparency logs"
+		);
+		eprintln!(
+			"data removal capabilities are limited. make sure you understand the implications of this before sending any data"
+		);
+		eprintln!(
+			"make sure to use unique identifiers, such as independent keys, so that they cannot be used to track you"
+		);
+		eprintln!("visit the documentation of the registry protocol for more information");
+
+		eprintln!();
+
+		if !self.no_prompt {
+			inquire::Confirm::new("do you want to continue?")
+				.with_default(false)
+				.with_help_message("this action cannot be undone")
+				.prompt()
+				.context("failed to read user input")?
+				.ok_or_else(|| anyhow::anyhow!("aborted by user"))?;
+		}
+
+		Ok(())
 	}
 }
